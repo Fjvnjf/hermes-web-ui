@@ -337,6 +337,23 @@ async function copySessionId(id?: string) {
   }
 }
 
+function openCommandDrawer(tab: "terminal" | "files") {
+  drawerActiveTab.value = tab;
+  showDrawer.value = true;
+}
+
+function openCommandSettings() {
+  void router.push({ name: "hermes.settings" });
+}
+
+async function refreshCommandRuntime() {
+  await Promise.all([
+    appStore.checkConnection(),
+    appStore.reloadModels(),
+    chatStore.loadSessions(chatStore.sessionProfileFilter),
+  ]);
+}
+
 function handleDeleteSession(id: string) {
   sessionBrowserPrefsStore.removePinned(id);
   chatStore.deleteSession(id);
@@ -1226,6 +1243,75 @@ async function handleSessionModelCustomSubmit() {
             <span class="evidence-chip approved">{{ activeSourceLabel }}</span>
             <span class="evidence-chip assumption">{{ activeProfileLabel }}</span>
             <span class="evidence-copy">Hermes Command Center runtime is attached to this session.</span>
+            <div class="command-strip-actions" aria-label="Session command actions">
+              <button
+                type="button"
+                class="command-action"
+                aria-label="Open files drawer"
+                title="Open files drawer"
+                @click="openCommandDrawer('files')"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                </svg>
+                <span>Files</span>
+              </button>
+              <button
+                type="button"
+                class="command-action"
+                aria-label="Open terminal drawer"
+                title="Open terminal drawer"
+                @click="openCommandDrawer('terminal')"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="4 17 10 11 4 5" />
+                  <line x1="12" y1="19" x2="20" y2="19" />
+                </svg>
+                <span>Terminal</span>
+              </button>
+              <button
+                type="button"
+                class="command-action"
+                aria-label="Copy session link"
+                title="Copy session link"
+                :disabled="!chatStore.activeSessionId"
+                @click="copySessionLink()"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L11 4.93" />
+                  <path d="M14 11a5 5 0 0 0-7.07 0L4.81 13.12a5 5 0 0 0 7.07 7.07L13 19.07" />
+                </svg>
+                <span>Link</span>
+              </button>
+              <button
+                type="button"
+                class="command-action"
+                aria-label="Open settings"
+                title="Open settings"
+                @click="openCommandSettings"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.82.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.82-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.26.55.82 1 1.55 1H21a2 2 0 1 1 0 4h-.05A1.7 1.7 0 0 0 19.4 15z" />
+                </svg>
+                <span>Settings</span>
+              </button>
+              <button
+                type="button"
+                class="command-action icon-only"
+                aria-label="Refresh runtime"
+                title="Refresh runtime"
+                @click="refreshCommandRuntime"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="23 4 23 10 17 10" />
+                  <polyline points="1 20 1 14 7 14" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+                  <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+                </svg>
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
           <div class="command-kpis">
             <div class="command-kpi">
@@ -2099,9 +2185,64 @@ async function handleSessionModelCustomSubmit() {
 }
 
 .evidence-copy {
+  flex: 1 1 220px;
+  min-width: 180px;
   color: $text-muted;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.command-strip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.command-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  background: rgba(19, 26, 40, 0.86);
+  color: $text-secondary;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color $transition-fast, border-color $transition-fast, background $transition-fast;
+
+  &:hover:not(:disabled) {
+    color: $accent-info;
+    border-color: rgba(var(--accent-info-rgb), 0.62);
+    background: rgba(var(--accent-info-rgb), 0.08);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  svg {
+    flex: 0 0 auto;
+  }
+
+  &.icon-only {
+    width: 28px;
+    padding: 0;
+
+    span {
+      display: none;
+    }
+  }
 }
 
 .command-kpis {
@@ -2357,6 +2498,34 @@ async function handleSessionModelCustomSubmit() {
   width: 100%;
 }
 @media (max-width: 768px) {
+  .command-evidence-strip {
+    align-items: stretch;
+  }
+
+  .evidence-copy {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .command-strip-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .command-action {
+    width: 100%;
+
+    &.icon-only {
+      width: 100%;
+
+      span {
+        display: inline;
+      }
+    }
+  }
+
   .approval-bar {
     margin: 0 10px 10px;
     padding: 10px;

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { authenticate, mockHermesApi } from './fixtures'
+import { authenticate, mockHermesApi, mockTerminalWebSocket } from './fixtures'
 
 const requiredSidebarItems = [
   'Chat',
@@ -24,6 +24,13 @@ const requiredSidebarItems = [
 ]
 
 const requiredTopbarActions = ['Search', 'Chat', 'Files', 'Terminal', 'Settings']
+const requiredSessionActions = [
+  'Open files drawer',
+  'Open terminal drawer',
+  'Copy session link',
+  'Open settings',
+  'Refresh runtime',
+]
 
 async function expectNoHorizontalViewportOverflow(page: Page) {
   const metrics = await page.evaluate(() => ({
@@ -42,6 +49,7 @@ async function sidebarNavTexts(page: Page): Promise<string[]> {
 
 test('desktop command shell exposes the complete Hermes feature surface', async ({ page }) => {
   await authenticate(page)
+  await mockTerminalWebSocket(page)
   const api = await mockHermesApi(page)
   await page.setViewportSize({ width: 1440, height: 900 })
 
@@ -56,6 +64,18 @@ test('desktop command shell exposes the complete Hermes feature surface', async 
   await expect(page).toHaveURL(/#\/hermes\/files$/)
   await topbarActions.getByRole('button', { name: 'Chat' }).click()
   await expect(page).toHaveURL(/#\/hermes\/chat$/)
+  const sessionActions = page.locator('.command-strip-actions')
+  for (const action of requiredSessionActions) {
+    await expect(sessionActions.getByRole('button', { name: action })).toBeVisible()
+  }
+  await sessionActions.getByRole('button', { name: 'Open files drawer' }).click()
+  await expect(page.locator('.drawer-panel.show')).toBeVisible()
+  await expect(page.locator('.drawer-panel.show .tab-button.active')).toHaveText('Workspace')
+  await page.locator('.drawer-panel.show .close-button').click()
+  await expect(page.locator('.drawer-panel.show')).toHaveCount(0)
+  await sessionActions.getByRole('button', { name: 'Open terminal drawer' }).click()
+  await expect(page.locator('.drawer-panel.show .tab-button.active')).toHaveText('Terminal')
+  await page.locator('.drawer-panel.show .close-button').click()
   const navTexts = await sidebarNavTexts(page)
   for (const item of requiredSidebarItems) {
     expect(navTexts.some(text => text === item || text.startsWith(`${item}(`))).toBe(true)
