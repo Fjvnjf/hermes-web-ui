@@ -8,6 +8,14 @@ BRANCH="${BRANCH:-chemicon-redesign}"
 MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-87d895bdb4d6a2706b1d1108851a3ef4b1b14d5e}"
 LOG_FILE="${LOG_FILE:-/tmp/hermes-web-ui.log}"
 
+require_command() {
+  local command="$1"
+  if ! command -v "$command" >/dev/null 2>&1; then
+    echo "Missing required command: $command" >&2
+    exit 1
+  fi
+}
+
 search_text() {
   local pattern="$1"
   shift
@@ -18,12 +26,43 @@ search_text() {
   fi
 }
 
+print_cloudflare_state() {
+  echo "== Cloudflare tunnel state =="
+  pgrep -af "cloudflared" || true
+
+  local url=""
+  for file in /tmp/cloudflared.log /tmp/cloudflared*.log "$HOME"/.cloudflared/*.log "$HOME"/.hermes/logs/*.log; do
+    if [ -f "$file" ]; then
+      url="$(grep -Eoh 'https://[a-zA-Z0-9-]+\\.trycloudflare\\.com' "$file" 2>/dev/null | tail -n 1 || true)"
+      if [ -n "$url" ]; then
+        echo "CLOUDFLARE_URL=$url"
+        return 0
+      fi
+    fi
+  done
+  echo "CLOUDFLARE_URL=unknown"
+}
+
+require_command git
+require_command node
+require_command npm
+require_command curl
+require_command sudo
+
 cd "$APP_DIR"
 
 echo "== Current state =="
 git status --short --branch || true
 node -v
 npm -v
+
+node_major="$(node -p "Number(process.versions.node.split('.')[0])")"
+if [ "$node_major" -lt 23 ]; then
+  echo "Node >=23 is required; found $(node -v)" >&2
+  exit 1
+fi
+
+sudo -n true
 
 echo "== Preserve repo-only local changes =="
 if [ -n "$(git status --porcelain)" ]; then
@@ -36,6 +75,7 @@ git remote set-url "$REMOTE_NAME" "$REMOTE_URL"
 git fetch "$REMOTE_NAME" "$BRANCH"
 git checkout -B "$BRANCH" "$REMOTE_NAME/$BRANCH"
 git merge-base --is-ancestor "$MIN_REQUIRED_COMMIT" HEAD
+echo "CHECKED_OUT_COMMIT=$(git rev-parse HEAD)"
 
 echo "== Install and build =="
 npm install
@@ -53,6 +93,7 @@ sudo npm install -g "$APP_DIR"
 
 echo "== Restart only hermes-web-ui =="
 pgrep -af "hermes-web-ui|dist/server" || true
+print_cloudflare_state
 pkill -f "hermes-web-ui/dist/server" || true
 pkill -f "hermes-web-ui start" || true
 sleep 2
@@ -60,12 +101,12 @@ nohup hermes-web-ui start > "$LOG_FILE" 2>&1 &
 sleep 6
 
 echo "== Verify local services =="
-curl -fsS http://127.0.0.1:8648 >/dev/null
+curl -fsSI http://127.0.0.1:8648 | sed -n '1,12p'
 curl -fsS http://127.0.0.1:8642/health || curl -fsS http://127.0.0.1:8642/
 
 echo "== Process state =="
 pgrep -af "hermes-web-ui|dist/server"
-pgrep -af "cloudflared" || true
+print_cloudflare_state
 tail -100 "$LOG_FILE" || true
 
 echo "DEPLOY_OK commit=$(git rev-parse HEAD)"
