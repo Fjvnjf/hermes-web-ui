@@ -18,20 +18,18 @@ import ModelSettings from "@/components/hermes/settings/ModelSettings.vue";
 import AccountSettings from "@/components/hermes/settings/AccountSettings.vue";
 import UserManagementSettings from "@/components/hermes/settings/UserManagementSettings.vue";
 import VoiceSettings from "@/components/hermes/settings/VoiceSettings.vue";
-import { isStoredSuperAdmin } from "@/api/client";
 import { useProfilesStore } from "@/stores/hermes/profiles";
 
 const settingsStore = useSettingsStore();
 const profilesStore = useProfilesStore();
 const { t } = useI18n();
-const canManageUsers = isStoredSuperAdmin();
 const route = useRoute();
 const router = useRouter();
 const activeTab = ref("account");
 
 const validTabs = computed(() => new Set([
   "account",
-  ...(canManageUsers ? ["users"] : []),
+  "users",
   "display",
   "agent",
   "memory",
@@ -89,7 +87,7 @@ onMounted(() => {
           <NTabPane name="account" :tab="t('settings.tabs.account')">
             <AccountSettings />
           </NTabPane>
-          <NTabPane v-if="canManageUsers" name="users" :tab="t('settings.tabs.users')">
+          <NTabPane name="users" :tab="t('settings.tabs.users')">
             <UserManagementSettings />
           </NTabPane>
           <NTabPane name="display" :tab="t('settings.tabs.display')">
@@ -126,7 +124,7 @@ onMounted(() => {
 @use "@/styles/variables" as *;
 
 .settings-view {
-  height: calc(100 * var(--vh));
+  height: var(--app-content-height, calc(100 * var(--vh)));
   display: flex;
   flex-direction: column;
 }

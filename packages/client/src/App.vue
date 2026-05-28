@@ -101,6 +101,7 @@ useKeyboard()
 }
 
 .app-main {
+  --app-content-height: calc(100 * var(--vh) - #{$header-height});
   flex: 1;
   overflow-y: auto;
   background-color: #060a12;

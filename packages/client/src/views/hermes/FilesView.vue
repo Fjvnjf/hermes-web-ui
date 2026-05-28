@@ -52,7 +52,10 @@ async function loadRoot() {
 }
 
 onMounted(() => {
-  void loadRoot()
+  void loadRoot().catch(() => {
+    // Keep the route mounted so connection/auth errors can be surfaced in the
+    // existing file-list empty state instead of breaking the shell.
+  })
 })
 </script>
 
@@ -85,7 +88,7 @@ onMounted(() => {
 
 .files-view {
   display: flex;
-  height: 100%;
+  height: var(--app-content-height, 100%);
   overflow: hidden;
 }
 

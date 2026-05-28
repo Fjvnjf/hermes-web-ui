@@ -740,7 +740,7 @@ onUnmounted(() => {
 
 .terminal-panel {
   display: flex;
-  height: 100%;
+  height: var(--app-content-height, 100%);
   position: relative;
 }
 
@@ -1021,8 +1021,8 @@ onUnmounted(() => {
 
 @media (max-width: $breakpoint-mobile) {
   .terminal-panel {
-    height: calc(100 * var(--vh));
-    max-height: calc(100 * var(--vh));
+    height: var(--app-content-height, calc(100 * var(--vh)));
+    max-height: var(--app-content-height, calc(100 * var(--vh)));
   }
 
   .terminal-main {

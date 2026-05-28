@@ -308,7 +308,7 @@ onMounted(() => {
 @use '@/styles/variables' as *;
 
 .skills-usage-view {
-  height: 100%;
+  height: var(--app-content-height, 100%);
   display: flex;
   flex-direction: column;
 }

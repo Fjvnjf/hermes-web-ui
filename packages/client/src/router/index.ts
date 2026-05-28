@@ -1,5 +1,4 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { isStoredSuperAdmin } from '@/api/client'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -47,7 +46,6 @@ const router = createRouter({
       path: '/hermes/profiles',
       name: 'hermes.profiles',
       component: () => import('@/views/hermes/ProfilesView.vue'),
-      meta: { requiresSuperAdmin: true },
     },
     {
       path: '/hermes/logs',
@@ -63,7 +61,6 @@ const router = createRouter({
       path: '/hermes/performance',
       name: 'hermes.performance',
       component: () => import('@/views/hermes/PerformanceView.vue'),
-      meta: { requiresSuperAdmin: true },
     },
     {
       path: '/hermes/skills-usage',
@@ -119,18 +116,8 @@ const router = createRouter({
       path: '/hermes/version-preview',
       name: 'hermes.versionPreview',
       component: () => import('@/views/hermes/VersionPreviewView.vue'),
-      meta: { requiresSuperAdmin: true },
     },
   ],
-})
-
-router.beforeEach((to, _from, next) => {
-  if (to.meta.requiresSuperAdmin && !isStoredSuperAdmin()) {
-    next({ name: 'hermes.chat' })
-    return
-  }
-
-  next()
 })
 
 export default router

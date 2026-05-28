@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { NButton, NModal, useMessage } from "naive-ui";
 import { useAppStore } from "@/stores/hermes/app";
@@ -12,12 +12,10 @@ import { useSessionSearch } from '@/composables/useSessionSearch'
 import { usePersistentRecord } from '@/composables/usePersistentRecord'
 import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
 import { changelog } from "@/data/changelog";
-import { isStoredSuperAdmin } from "@/api/client";
 
 const { t } = useI18n();
 const message = useMessage();
 const route = useRoute();
-const router = useRouter();
 const appStore = useAppStore();
 const { openSessionSearch } = useSessionSearch();
 const selectedKey = computed(() => {
@@ -26,7 +24,6 @@ const selectedKey = computed(() => {
   if (route.name === "hermes.groupChatRoom") return "hermes.groupChat";
   return route.name as string;
 });
-const isSuperAdmin = computed(() => isStoredSuperAdmin());
 const isVersionPreview = import.meta.env.VITE_HERMES_PREVIEW === '1';
 
 function isNavActive(...names: string[]) {
@@ -65,9 +62,11 @@ function handleReloadClient() {
   appStore.reloadClient();
 }
 
-function handleLogout() {
-  localStorage.clear();
-  router.replace({ name: 'hermes.chat' });
+async function handleRefresh() {
+  await Promise.all([
+    appStore.checkConnection(),
+    appStore.reloadModels(),
+  ]);
 }
 
 // Changelog
@@ -241,7 +240,7 @@ function openChangelog() {
             </svg>
             <span>{{ t("sidebar.usage") }}</span>
           </RouteLinkItem>
-          <RouteLinkItem v-if="isSuperAdmin" class="nav-item" :to="{ name: 'hermes.performance' }" :active="selectedKey === 'hermes.performance'">
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.performance' }" :active="selectedKey === 'hermes.performance'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
@@ -266,7 +265,20 @@ function openChangelog() {
           </svg>
         </div>
         <div v-show="!isGroupCollapsed('tools')" class="nav-group-items">
-          <RouteLinkItem v-if="isSuperAdmin && !isVersionPreview" class="nav-item" :to="{ name: 'hermes.versionPreview' }" :active="selectedKey === 'hermes.versionPreview'">
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.files' }" :active="selectedKey === 'hermes.files'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
+            <span>{{ t("sidebar.files") }}</span>
+          </RouteLinkItem>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.terminal' }" :active="selectedKey === 'hermes.terminal'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+            <span>{{ t("sidebar.terminal") }}</span>
+          </RouteLinkItem>
+          <RouteLinkItem v-if="!isVersionPreview" class="nav-item" :to="{ name: 'hermes.versionPreview' }" :active="selectedKey === 'hermes.versionPreview'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
               <polyline points="7.5 4.21 12 6.81 16.5 4.21" />
@@ -289,7 +301,7 @@ function openChangelog() {
           </svg>
         </div>
         <div v-show="!isGroupCollapsed('system')" class="nav-group-items">
-          <RouteLinkItem v-if="isSuperAdmin" class="nav-item" :to="{ name: 'hermes.profiles' }" :active="selectedKey === 'hermes.profiles'">
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.profiles' }" :active="selectedKey === 'hermes.profiles'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
               <circle cx="12" cy="7" r="4" />
@@ -311,13 +323,14 @@ function openChangelog() {
     <ModelSelector />
 
     <div class="sidebar-footer">
-      <button class="nav-item logout-item" @click="handleLogout">
+      <button class="nav-item refresh-item" @click="handleRefresh">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <polyline points="16 17 21 12 16 7" />
-          <line x1="21" y1="12" x2="9" y2="12" />
+          <polyline points="23 4 23 10 17 10" />
+          <polyline points="1 20 1 14 7 14" />
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+          <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
         </svg>
-        <span>{{ t("sidebar.logout") }}</span>
+        <span>{{ t("common.retry") }}</span>
       </button>
       <div class="status-row">
         <div
@@ -561,15 +574,15 @@ function openChangelog() {
   border-top: 1px solid $border-color;
 }
 
-.logout-item {
+.refresh-item {
   margin: 0 -12px 2px;
   padding: 10px 18px;
   font-size: 13px;
   color: $text-muted;
 
   &:hover {
-    color: $error;
-    background: rgba(var(--error-rgb, 239, 68, 68), 0.06);
+    color: $accent-info;
+    background: rgba(var(--accent-info-rgb), 0.08);
   }
 }
 
@@ -807,13 +820,13 @@ function openChangelog() {
   }
 
   .sidebar-footer {
-    .logout-item {
+    .refresh-item {
       margin: 0;
       padding: 10px 4px;
       border-radius: $radius-sm;
     }
 
-    .logout-item span {
+    .refresh-item span {
       display: none;
     }
 

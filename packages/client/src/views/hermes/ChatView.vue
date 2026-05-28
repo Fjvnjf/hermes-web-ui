@@ -68,7 +68,7 @@ watch([routeSessionId, routeProfile], async ([sessionId]) => {
 
 <style scoped lang="scss">
 .chat-view {
-  height: calc(100 * var(--vh));
+  height: var(--app-content-height, calc(100 * var(--vh)));
   display: flex;
   flex-direction: column;
 }

@@ -47,7 +47,10 @@ function handleRename(entry: FileEntry) {
 }
 
 onMounted(() => {
-  filesStore.fetchEntries('')
+  void filesStore.fetchEntries('').catch(() => {
+    // The embedded file drawer should not turn a missing/offline backend into
+    // an unhandled app-level rejection.
+  })
 })
 </script>
 

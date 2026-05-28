@@ -210,7 +210,7 @@ onBeforeUnmount(() => {
 @use '@/styles/variables' as *;
 
 .performance-view {
-  height: 100%;
+  height: var(--app-content-height, 100%);
   display: flex;
   flex-direction: column;
 }

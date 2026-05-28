@@ -781,7 +781,7 @@ function handleBatchDeleteConfirm() {
 
 .history-panel {
   display: flex;
-  height: 100%;
+  height: var(--app-content-height, 100%);
   position: relative;
 }
 
