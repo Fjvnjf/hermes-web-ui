@@ -180,6 +180,7 @@ defineExpose({
         title="Command channel ready"
         :subtitle="t('chat.emptyState')"
         context="Realtime chat"
+        show-quick-actions
       />
     </template>
     <template #before>

@@ -7,11 +7,13 @@ const message = useMessage()
 const { t } = useI18n()
 
 let lastNoticeAt = 0
+const NOTICE_DEBOUNCE_MS = 10_000
 
 function onAuthNotice(event: Event) {
   const detail = (event as CustomEvent<{ kind?: string }>).detail || {}
   const now = Date.now()
-  if (now - lastNoticeAt < 1200) return
+  // Multiple startup requests can fail together; one visible auth notice is enough.
+  if (now - lastNoticeAt < NOTICE_DEBOUNCE_MS) return
   lastNoticeAt = now
 
   if (detail.kind === 'forbidden') {

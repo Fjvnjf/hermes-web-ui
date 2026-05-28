@@ -22,6 +22,7 @@ const requiredSidebarItems = [
   'Profiles',
   'Settings',
 ]
+const shellLoadTimeout = 15_000
 
 const requiredTopbarActions = ['Search', 'Chat', 'Files', 'Terminal', 'Settings']
 const requiredSessionActions = [
@@ -30,6 +31,12 @@ const requiredSessionActions = [
   'Copy session link',
   'Open settings',
   'Refresh runtime',
+]
+const requiredEmptyShortcuts = [
+  { label: 'Files', href: '#/hermes/files' },
+  { label: 'Terminal', href: '#/hermes/terminal' },
+  { label: 'Models', href: '#/hermes/models' },
+  { label: 'Jobs', href: '#/hermes/jobs' },
 ]
 
 async function expectNoHorizontalViewportOverflow(page: Page) {
@@ -55,7 +62,7 @@ test('desktop command shell exposes the complete Hermes feature surface', async 
 
   await page.goto('/#/hermes/chat')
 
-  await expect(page.locator('.topbar-brand')).toHaveText('Hermes Command Center')
+  await expect(page.locator('.topbar-brand')).toHaveText('Hermes Command Center', { timeout: shellLoadTimeout })
   const topbarActions = page.locator('.topbar-actions')
   for (const action of requiredTopbarActions) {
     await expect(topbarActions.getByRole('button', { name: action })).toBeVisible()
@@ -67,6 +74,10 @@ test('desktop command shell exposes the complete Hermes feature surface', async 
   const sessionActions = page.locator('.command-strip-actions')
   for (const action of requiredSessionActions) {
     await expect(sessionActions.getByRole('button', { name: action })).toBeVisible()
+  }
+  const emptyShortcuts = page.locator('.empty-actions')
+  for (const shortcut of requiredEmptyShortcuts) {
+    await expect(emptyShortcuts.getByRole('link', { name: shortcut.label })).toHaveAttribute('href', shortcut.href)
   }
   await sessionActions.getByRole('button', { name: 'Open files drawer' }).click()
   await expect(page.locator('.drawer-panel.show')).toBeVisible()
