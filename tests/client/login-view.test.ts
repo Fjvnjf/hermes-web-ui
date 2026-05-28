@@ -54,12 +54,19 @@ describe('LoginView password login', () => {
     expect(mockReplace).toHaveBeenCalledWith('/hermes/chat')
   })
 
-  it('does not show default credentials or the logo image', () => {
+  it('keeps the login screen visually minimal', () => {
     const wrapper = mount(LoginView)
 
     expect(wrapper.text()).not.toContain('login.defaultCredentialsHint')
+    expect(wrapper.text()).not.toContain('Private Command Center')
+    expect(wrapper.text()).not.toContain('Hermes Command Center')
+    expect(wrapper.text()).not.toContain('login.description')
     expect(wrapper.find('.login-logo').exists()).toBe(false)
     expect(wrapper.find('img[alt="Hermes"]').exists()).toBe(false)
+    expect(wrapper.findAll('input.login-input').map(input => input.attributes('placeholder'))).toEqual([
+      undefined,
+      undefined,
+    ])
   })
 
   it('shows an error when password login fails', async () => {

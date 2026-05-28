@@ -61,23 +61,21 @@ async function handlePasswordLogin() {
 <template>
   <div class="login-view">
     <div class="login-card">
-      <div class="login-kicker">Private Command Center</div>
-      <h1 class="login-title">Hermes Command Center</h1>
-      <p class="login-desc">{{ t("login.description") }}</p>
-
       <form class="login-form" @submit.prevent="handleLogin">
         <input
           v-model="username"
           type="text"
           class="login-input"
-          :placeholder="t('login.usernamePlaceholder')"
+          :aria-label="t('login.usernamePlaceholder')"
+          autocomplete="username"
           autofocus
         />
         <input
           v-model="password"
           type="password"
           class="login-input"
-          :placeholder="t('login.passwordPlaceholder')"
+          :aria-label="t('login.passwordPlaceholder')"
+          autocomplete="current-password"
           @keyup.enter="handleLogin"
         />
 
@@ -121,30 +119,6 @@ async function handlePasswordLogin() {
   @media (max-width: $breakpoint-mobile) {
     padding: 32px 24px;
   }
-}
-
-.login-kicker {
-  margin-bottom: 8px;
-  color: $text-muted;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.login-title {
-  font-size: 24px;
-  font-weight: 800;
-  color: $accent-primary;
-  margin: 0 0 10px;
-  letter-spacing: 0.04em;
-}
-
-.login-desc {
-  font-size: 14px;
-  color: $text-muted;
-  margin: 0 0 28px;
-  line-height: 1.6;
 }
 
 .login-form {
