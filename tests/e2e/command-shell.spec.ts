@@ -119,6 +119,7 @@ test('desktop command shell exposes the complete Hermes feature surface', async 
 test('mobile command shell uses the drawer and keeps navigation usable', async ({ page }) => {
   await authenticate(page)
   await mockHermesApi(page)
+  await page.addInitScript(() => window.localStorage.setItem('hermes_sidebar_collapsed', '1'))
   await page.setViewportSize({ width: 390, height: 844 })
 
   await page.goto('/#/hermes/chat')
@@ -126,9 +127,43 @@ test('mobile command shell uses the drawer and keeps navigation usable', async (
   await expect(page.locator('.sidebar')).not.toHaveClass(/open/)
   await page.locator('.hamburger-btn').click()
   await expect(page.locator('.sidebar')).toHaveClass(/open/)
+  await expect(page.locator('.sidebar')).not.toHaveClass(/collapsed/)
+  const sidebarWidth = await page.locator('.sidebar.open').evaluate(element => element.getBoundingClientRect().width)
+  expect(sidebarWidth).toBeGreaterThan(200)
+  await expect.poll(async () =>
+    page.locator('.sidebar.open').evaluate(element => element.getBoundingClientRect().x),
+  ).toBeGreaterThanOrEqual(-1)
+  const mobileGroupLabels = await page.locator('.sidebar.open .nav-group-label span').evaluateAll(elements =>
+    elements.map(element => (element.textContent || '').trim()),
+  )
+  expect(mobileGroupLabels).toEqual(['Conversation', 'Agent', 'Monitoring', 'Tools', 'System'])
   const navTexts = await sidebarNavTexts(page)
   expect(navTexts).toContain('Files')
   expect(navTexts).toContain('Terminal')
+  await expectNoHorizontalViewportOverflow(page)
+})
+
+test('collapsed desktop rail uses intentional command group codes', async ({ page }) => {
+  await authenticate(page)
+  await mockHermesApi(page)
+  await page.addInitScript(() => window.localStorage.setItem('hermes_sidebar_collapsed', '1'))
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  await page.goto('/#/hermes/chat')
+
+  await expect(page.locator('.sidebar')).toHaveClass(/collapsed/)
+  const labels = await page.locator('.sidebar.collapsed .nav-group-label span').evaluateAll(elements =>
+    elements.map(element => (element.textContent || '').trim()),
+  )
+  expect(labels).toEqual(['CONV', 'AGT', 'MON', 'TOOL', 'SYS'])
+  const overflowingLabels = await page.locator('.sidebar.collapsed .nav-group-label span').evaluateAll(elements =>
+    elements.filter(element => element.scrollWidth > element.clientWidth + 1).map(element => element.textContent || ''),
+  )
+  expect(overflowingLabels).toEqual([])
+  const arrowDisplays = await page.locator('.sidebar.collapsed .nav-group-arrow').evaluateAll(elements =>
+    elements.map(element => getComputedStyle(element).display),
+  )
+  expect(arrowDisplays).toEqual(['none', 'none', 'none', 'none', 'none'])
   await expectNoHorizontalViewportOverflow(page)
 })
 

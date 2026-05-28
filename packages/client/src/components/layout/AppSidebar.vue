@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { NButton, NModal, useMessage } from "naive-ui";
@@ -19,6 +19,8 @@ const message = useMessage();
 const route = useRoute();
 const appStore = useAppStore();
 const { openSessionSearch } = useSessionSearch();
+const MOBILE_BREAKPOINT_PX = 768;
+const isMobileSidebar = ref(false);
 const selectedKey = computed(() => {
   if (route.name === "hermes.session") return "hermes.chat";
   if (route.name === "hermes.historySession") return "hermes.history";
@@ -26,6 +28,24 @@ const selectedKey = computed(() => {
   return route.name as string;
 });
 const isVersionPreview = import.meta.env.VITE_HERMES_PREVIEW === '1';
+const sidebarIsCollapsed = computed(() => appStore.sidebarCollapsed && !isMobileSidebar.value);
+const sidebarControlTitle = computed(() => {
+  if (isMobileSidebar.value) return 'Close command menu';
+  return appStore.sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse');
+});
+
+function syncMobileSidebar() {
+  isMobileSidebar.value = window.innerWidth <= MOBILE_BREAKPOINT_PX;
+}
+
+onMounted(() => {
+  syncMobileSidebar();
+  window.addEventListener('resize', syncMobileSidebar);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', syncMobileSidebar);
+});
 
 function isNavActive(...names: string[]) {
   return names.includes(selectedKey.value);
@@ -35,8 +55,24 @@ const { record: collapsedGroups, persist: persistCollapsedGroups } = usePersiste
 
 type SidebarGroupKey = "Conversation" | "Agent" | "Monitoring" | "Tools" | "System";
 
+const collapsedGroupLabels: Record<SidebarGroupKey, string> = {
+  Conversation: 'CONV',
+  Agent: 'AGT',
+  Monitoring: 'MON',
+  Tools: 'TOOL',
+  System: 'SYS',
+};
+
+function groupTitle(key: SidebarGroupKey) {
+  return t(`sidebar.group${key}`);
+}
+
 function groupLabel(key: SidebarGroupKey) {
-  return t(`sidebar.group${key}${appStore.sidebarCollapsed ? "Short" : ""}`);
+  return sidebarIsCollapsed.value ? collapsedGroupLabels[key] : groupTitle(key);
+}
+
+function groupAriaLabel(key: SidebarGroupKey) {
+  return `${groupTitle(key)} navigation group`;
 }
 
 function toggleGroup(key: string) {
@@ -48,6 +84,13 @@ function isGroupCollapsed(key: string) {
   return !!collapsedGroups[key];
 }
 
+function handleSidebarControl() {
+  if (isMobileSidebar.value) {
+    appStore.closeSidebar();
+    return;
+  }
+  appStore.toggleSidebarCollapsed();
+}
 
 async function handleUpdate() {
   const ok = await appStore.doUpdate();
@@ -78,7 +121,7 @@ function openChangelog() {
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: appStore.sidebarCollapsed }">
+  <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: sidebarIsCollapsed }">
     <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.chat' }">
       <CommandGlyph class="logo-mark" :size="30" />
       <span class="logo-copy">
@@ -87,9 +130,10 @@ function openChangelog() {
       </span>
     </RouteLinkItem>
 
-    <button class="collapse-btn" @click="appStore.toggleSidebarCollapsed()" :title="appStore.sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')">
+    <button class="collapse-btn" @click="handleSidebarControl" :title="sidebarControlTitle" :aria-label="sidebarControlTitle">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline v-if="appStore.sidebarCollapsed" points="9 18 15 12 9 6" />
+        <path v-if="isMobileSidebar" d="M18 6 6 18M6 6l12 12" />
+        <polyline v-else-if="sidebarIsCollapsed" points="9 18 15 12 9 6" />
         <polyline v-else points="15 18 9 12 15 6" />
       </svg>
     </button>
@@ -97,7 +141,7 @@ function openChangelog() {
     <nav class="sidebar-nav">
       <!-- Conversation -->
       <div class="nav-group">
-        <div class="nav-group-label" @click="toggleGroup('conversation')">
+        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Conversation')" :aria-label="groupAriaLabel('Conversation')" @click="toggleGroup('conversation')" @keydown.enter.prevent="toggleGroup('conversation')" @keydown.space.prevent="toggleGroup('conversation')">
           <span>{{ groupLabel("Conversation") }}</span>
           <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('conversation') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -142,7 +186,7 @@ function openChangelog() {
 
       <!-- Agent -->
       <div class="nav-group">
-        <div class="nav-group-label" @click="toggleGroup('agent')">
+        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Agent')" :aria-label="groupAriaLabel('Agent')" @click="toggleGroup('agent')" @keydown.enter.prevent="toggleGroup('agent')" @keydown.space.prevent="toggleGroup('agent')">
           <span>{{ groupLabel("Agent") }}</span>
           <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('agent') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -214,7 +258,7 @@ function openChangelog() {
 
       <!-- Monitoring -->
       <div class="nav-group">
-        <div class="nav-group-label" @click="toggleGroup('monitoring')">
+        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Monitoring')" :aria-label="groupAriaLabel('Monitoring')" @click="toggleGroup('monitoring')" @keydown.enter.prevent="toggleGroup('monitoring')" @keydown.space.prevent="toggleGroup('monitoring')">
           <span>{{ groupLabel("Monitoring") }}</span>
           <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('monitoring') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -257,7 +301,7 @@ function openChangelog() {
 
       <!-- Tools -->
       <div class="nav-group">
-        <div class="nav-group-label" @click="toggleGroup('tools')">
+        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Tools')" :aria-label="groupAriaLabel('Tools')" @click="toggleGroup('tools')" @keydown.enter.prevent="toggleGroup('tools')" @keydown.space.prevent="toggleGroup('tools')">
           <span>{{ groupLabel("Tools") }}</span>
           <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('tools') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -293,7 +337,7 @@ function openChangelog() {
 
       <!-- System -->
       <div class="nav-group">
-        <div class="nav-group-label" @click="toggleGroup('system')">
+        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('System')" :aria-label="groupAriaLabel('System')" @click="toggleGroup('system')" @keydown.enter.prevent="toggleGroup('system')" @keydown.space.prevent="toggleGroup('system')">
           <span>{{ groupLabel("System") }}</span>
           <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('system') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
@@ -736,16 +780,21 @@ function openChangelog() {
 
   .nav-group-label {
     justify-content: center;
-    gap: 2px;
+    gap: 0;
     padding: 8px 0 5px;
+    font-size: 9px;
     letter-spacing: 0;
 
     span {
-      max-width: 36px;
+      max-width: 42px;
       overflow: hidden;
       text-align: center;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .nav-group-arrow {
+      display: none;
     }
   }
 

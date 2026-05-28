@@ -153,7 +153,7 @@ describe('AppSidebar search entry', () => {
     expect(mockAppStore.reloadClient).toHaveBeenCalledTimes(1)
   })
 
-  it('uses short group labels and keeps group folding active when collapsed', async () => {
+  it('uses compact command group codes and keeps group folding active when collapsed', async () => {
     mockAppStore.sidebarCollapsed = true
     const wrapper = mount(AppSidebar, {
       global: {
@@ -169,11 +169,11 @@ describe('AppSidebar search entry', () => {
 
     expect(wrapper.classes()).toContain('collapsed')
     expect(wrapper.findAll('.nav-group-label span').map(node => node.text())).toEqual([
-      'sidebar.groupConversationShort',
-      'sidebar.groupAgentShort',
-      'sidebar.groupMonitoringShort',
-      'sidebar.groupToolsShort',
-      'sidebar.groupSystemShort',
+      'CONV',
+      'AGT',
+      'MON',
+      'TOOL',
+      'SYS',
     ])
 
     const agentGroup = wrapper.findAll('.nav-group')[1]
