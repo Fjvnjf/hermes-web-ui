@@ -109,4 +109,8 @@ pgrep -af "hermes-web-ui|dist/server"
 print_cloudflare_state
 tail -100 "$LOG_FILE" || true
 
+if [ -x scripts/verify-command-center-server.sh ]; then
+  bash scripts/verify-command-center-server.sh
+fi
+
 echo "DEPLOY_OK commit=$(git rev-parse HEAD)"
