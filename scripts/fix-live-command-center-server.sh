@@ -223,6 +223,9 @@ curl -fsSI http://127.0.0.1:8648 | sed -n '1,12p'
 if [ -f scripts/verify-command-center-server.sh ]; then
   bash scripts/verify-command-center-server.sh
 fi
+if [ -f scripts/verify-live-functions-server.sh ]; then
+  bash scripts/verify-live-functions-server.sh
+fi
 
 echo "== Verify public tunnel =="
 ensure_cloudflare_tunnel
