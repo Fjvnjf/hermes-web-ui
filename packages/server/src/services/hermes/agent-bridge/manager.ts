@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { createServer } from 'net'
-import { dirname, isAbsolute, join, resolve } from 'path'
+import { basename, dirname, isAbsolute, join, resolve } from 'path'
 import { logger } from '../../logger'
 import { detectHermesHome, getHermesBin } from '../hermes-path'
 import { DEFAULT_AGENT_BRIDGE_ENDPOINT } from './client'
@@ -118,6 +118,33 @@ function resolveExecutable(command: string): string | undefined {
   }
 }
 
+function resolvePythonShebang(firstLine: string): string | undefined {
+  const match = firstLine.match(/^#!\s*(.+)$/)
+  if (!match) return undefined
+
+  const parts = match[1].trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return undefined
+
+  const pythonCandidate = (candidate: string | undefined): string | undefined => {
+    if (!candidate) return undefined
+    const resolved = resolveExecutable(candidate)
+    if (!resolved) return undefined
+    const name = basename(resolved).toLowerCase().replace(/\.exe$/, '')
+    return name === 'py' || name === 'python' || /^python\d+(\.\d+)?$/.test(name)
+      ? resolved
+      : undefined
+  }
+
+  const first = basename(parts[0]).toLowerCase().replace(/\.exe$/, '')
+  if (first === 'env') {
+    const envArgs = parts.slice(1)
+    const searchArgs = envArgs[0] === '-S' ? envArgs.slice(1) : envArgs
+    return pythonCandidate(searchArgs.find(arg => !arg.startsWith('-')))
+  }
+
+  return pythonCandidate(parts[0])
+}
+
 function agentRootFromHermesBin(): string | undefined {
   const hermesBin = resolveExecutable(getHermesBin())
   if (!hermesBin) return undefined
@@ -135,8 +162,7 @@ function agentRootFromHermesBin(): string | undefined {
 
   try {
     const first = readFileSync(hermesBin, 'utf-8').split(/\r?\n/, 1)[0]
-    const match = first.match(/^#!\s*(.+)$/)
-    const python = match?.[1]?.trim().split(/\s+/)[0]
+    const python = resolvePythonShebang(first)
     if (python) {
       const pyDir = dirname(python)
       const shebangRootCandidates = [
@@ -155,9 +181,7 @@ function hermesBinPython(): string | undefined {
   if (!hermesBin) return undefined
   try {
     const first = readFileSync(hermesBin, 'utf-8').split(/\r?\n/, 1)[0]
-    const match = first.match(/^#!\s*(.+)$/)
-    const python = match?.[1]?.trim().split(/\s+/)[0]
-    return python && existsSync(python) ? python : undefined
+    return resolvePythonShebang(first)
   } catch {
     return undefined
   }

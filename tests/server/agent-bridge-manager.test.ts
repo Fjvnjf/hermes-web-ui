@@ -72,6 +72,32 @@ describe('agent bridge manager command resolution', () => {
     expect(command.agentRoot).toBe(agentRoot)
   })
 
+  it('ignores shell-wrapped hermes commands when resolving the bridge Python', async () => {
+    const binDir = join(tempDir, 'bin')
+    const homeDir = join(tempDir, 'home')
+    const fallbackPython = join(tempDir, 'python3')
+    const fakeHermes = join(binDir, 'hermes')
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(homeDir, { recursive: true })
+    writeFileSync(fakeHermes, '#!/bin/sh\n')
+    chmodSync(fakeHermes, 0o755)
+    writeFileSync(fallbackPython, '#!/bin/sh\n')
+    chmodSync(fallbackPython, 0o755)
+    process.env.HERMES_HOME = homeDir
+    process.env.HERMES_BIN = fakeHermes
+    process.env.PYTHON = fallbackPython
+
+    const { resolveAgentBridgeCommand } = await import('../../packages/server/src/services/hermes/agent-bridge/manager')
+    const command = resolveAgentBridgeCommand()
+
+    expect(command).toEqual({
+      command: fallbackPython,
+      argsPrefix: [],
+      agentRoot: undefined,
+      hermesHome: homeDir,
+    })
+  })
+
   it('falls back to system Python instead of uv when no source root exists', async () => {
     const homeDir = join(tempDir, 'home')
     const fakePython = join(tempDir, 'python3')
