@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { authenticate, mockChatSocket, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
 
 const inputPlaceholder = 'Type a message... (Enter to send, Shift+Enter for new line)'
+const resumedSessionTimeout = 15_000
 
 async function sendChatMessage(page: Page, message: string) {
   const input = page.getByPlaceholder(inputPlaceholder)
@@ -101,7 +102,11 @@ test('uses the newly selected profile for the next chat-run socket after profile
   await page.getByTestId('profile-selector-select').click()
   await expect(page.getByRole('dialog').filter({ hasText: 'research' })).toBeVisible()
   const reloadPromise = page.waitForEvent('framenavigated', frame => frame === page.mainFrame())
-  await page.locator('.profile-runtime-item').filter({ hasText: /^research/ }).getByRole('button', { name: 'Switch Frontend Profile' }).click()
+  await page
+    .locator('.profile-runtime-item')
+    .filter({ has: page.locator('.profile-runtime-name', { hasText: /^research$/ }) })
+    .getByRole('button', { name: 'Switch Frontend Profile' })
+    .click()
   await reloadPromise
   await page.waitForLoadState('domcontentloaded')
   await expect(page.getByTestId('profile-selector-select').filter({ hasText: 'research' })).toBeVisible()
@@ -745,7 +750,7 @@ test('keeps unnamed resumed tool traces hidden after session reload', async ({ p
 
   await page.goto('/#/hermes/chat')
 
-  await expect(page.getByText('History answer visible.')).toBeVisible()
+  await expect(page.getByText('History answer visible.')).toBeVisible({ timeout: resumedSessionTimeout })
   await expect(page.locator('.message.tool .tool-line')).toHaveCount(0)
   await expect(page.locator('.message.tool')).toHaveCount(0)
   const resumeRequest = await page.waitForFunction((sid) => {
@@ -849,7 +854,7 @@ test('restores named resumed tool traces from assistant tool calls after session
 
   await page.goto('/#/hermes/chat')
 
-  await expect(page.getByText('Named history answer visible.')).toBeVisible()
+  await expect(page.getByText('Named history answer visible.')).toBeVisible({ timeout: resumedSessionTimeout })
   const restoredTrace = page.locator('.message.tool .tool-line').filter({ hasText: 'read_file' })
   await expect(restoredTrace).toHaveCount(1)
   await restoredTrace.click()

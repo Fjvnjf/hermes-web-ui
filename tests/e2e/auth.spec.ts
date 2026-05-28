@@ -7,7 +7,7 @@ test('opens the dashboard shell from the root route without a login page', async
   await page.goto('/')
 
   await expect(page).toHaveURL(/#\/hermes\/chat$/)
-  await expect(page.getByText('Private Command Center')).toBeVisible()
+  await expect(page.getByRole('link', { name: /Hermes Command Center/ })).toBeVisible()
   await expect(page.getByPlaceholder('Username')).toHaveCount(0)
   await expect(page.getByPlaceholder('Password')).toHaveCount(0)
   expect(api.unexpectedRequests).toEqual([])
