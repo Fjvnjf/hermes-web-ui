@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/.hermes/hermes-web-ui}"
 REMOTE_NAME="${REMOTE_NAME:-command-center}"
-REMOTE_URL="${REMOTE_URL:-https://github.com/leadrescuepro/hermes-web-ui.git}"
+REMOTE_URL="${REMOTE_URL:-https://github.com/Fjvnjf/hermes-web-ui.git}"
 BRANCH="${BRANCH:-chemicon-redesign}"
 LOG_FILE="${LOG_FILE:-/tmp/hermes-web-ui-command-center.log}"
 CLOUDFLARED_LOG="${CLOUDFLARED_LOG:-/tmp/hermes-cloudflared.log}"

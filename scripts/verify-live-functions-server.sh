@@ -170,6 +170,73 @@ await new Promise((resolve, reject) => {
 }).catch((err) => fail(`chat-run socket failed: ${err.message}`))
 console.log('LIVE_VERIFY_OK chat-run-socket-resume')
 
+const runSessionId = `verify_chat_${Date.now().toString(36)}`
+const runResult = await new Promise((resolve, reject) => {
+  const socket = io(`${baseUrl}/chat-run`, {
+    auth: { token },
+    query: { profile: 'default' },
+    transports: ['websocket', 'polling'],
+    timeout: 10000,
+    reconnection: false,
+  })
+  let deltas = ''
+  let settled = false
+  const finish = (err, result) => {
+    if (settled) return
+    settled = true
+    clearTimeout(timer)
+    socket.disconnect()
+    if (err) reject(err)
+    else resolve(result)
+  }
+  const timer = setTimeout(() => {
+    finish(new Error('real chat run timed out'))
+  }, 150000)
+  const matchesSession = (evt) => !evt?.session_id || evt.session_id === runSessionId
+  socket.once('connect_error', (err) => finish(err))
+  socket.once('connect', () => {
+    socket.emit('run', {
+      session_id: runSessionId,
+      input: 'Reply with exactly: OK',
+      source: 'cli',
+      profile: 'default',
+    })
+  })
+  socket.on('message.delta', (evt) => {
+    if (!matchesSession(evt)) return
+    deltas += String(evt?.delta || '')
+  })
+  socket.on('run.completed', (evt) => {
+    if (!matchesSession(evt)) return
+    finish(null, {
+      deltas,
+      output: typeof evt?.output === 'string' ? evt.output : '',
+      resultFinal: typeof evt?.result?.final_response === 'string' ? evt.result.final_response : '',
+    })
+  })
+  socket.on('run.failed', (evt) => {
+    if (!matchesSession(evt)) return
+    finish(new Error(evt?.error || 'real chat run failed'))
+  })
+}).catch((err) => fail(`real chat run failed: ${err.message}`))
+
+const visibleOutput = `${runResult.deltas}\n${runResult.output}`.trim()
+if (!visibleOutput) {
+  fail(`real chat produced no visible output; result.final_response=${JSON.stringify(runResult.resultFinal || '')}`)
+}
+if (!/\bOK\b/i.test(visibleOutput)) {
+  fail(`real chat output did not contain OK: ${JSON.stringify(visibleOutput.slice(0, 240))}`)
+}
+
+const sessionDetailRes = await fetch(`${baseUrl}/api/hermes/sessions/${encodeURIComponent(runSessionId)}?profile=default`, {
+  headers: { Authorization: `Bearer ${token}` },
+})
+if (!sessionDetailRes.ok) fail(`real chat session detail returned HTTP ${sessionDetailRes.status}`)
+const sessionDetail = await sessionDetailRes.json()
+const assistantMessage = sessionDetail?.session?.messages?.find((message) => message?.role === 'assistant' && /\bOK\b/i.test(String(message?.content || '')))
+if (!assistantMessage) fail('real chat assistant response was not persisted to session history')
+console.log('LIVE_VERIFY_OK real-chat-response-and-persistence')
+
 const wsBase = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:')
 await new Promise((resolve, reject) => {
   const ws = new WebSocket(`${wsBase}/api/hermes/terminal?token=${encodeURIComponent(token)}`)
