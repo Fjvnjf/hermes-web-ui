@@ -313,16 +313,6 @@ onMounted(() => {
   flex-direction: column;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-shrink: 0;
-  padding: 21px 20px;
-  border-bottom: 1px solid $border-color;
-}
-
 .header-text {
   display: flex;
   align-items: baseline;

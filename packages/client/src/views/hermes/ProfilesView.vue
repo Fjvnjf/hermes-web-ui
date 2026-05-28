@@ -93,20 +93,6 @@ function handleImported() {
   flex-direction: column;
 }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid $border-color;
-}
-
-.header-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
-}
-
 .header-actions {
   display: flex;
   gap: 8px;

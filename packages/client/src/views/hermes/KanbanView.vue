@@ -358,15 +358,6 @@ async function handleArchiveSelectedBoard() {
   flex-direction: column;
 }
 
-.page-header {
-  padding: 21px 20px;
-  border-bottom: 1px solid $border-color;
-}
-
-.header-title {
-  font-size: 16px;
-}
-
 .header-actions {
   display: flex;
   align-items: center;
