@@ -5,7 +5,12 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/hermes/chat',
+      redirect: '/hermes/dashboard',
+    },
+    {
+      path: '/hermes/dashboard',
+      name: 'hermes.dashboard',
+      component: () => import('@/views/hermes/DashboardView.vue'),
     },
     {
       path: '/hermes/chat',

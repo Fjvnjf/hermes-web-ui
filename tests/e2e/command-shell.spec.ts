@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { authenticate, mockChatSocket, mockHermesApi, mockTerminalWebSocket } from './fixtures'
 
 const requiredSidebarItems = [
+  'Overview',
   'Chat',
   'History',
   'Group Chat',
@@ -39,6 +40,7 @@ const requiredEmptyShortcuts = [
   { label: 'Jobs', href: '#/hermes/jobs' },
 ]
 const commandRoutes = [
+  { path: '/#/hermes/dashboard', selector: '.dashboard-view' },
   { path: '/#/hermes/chat', selector: '.chat-view' },
   { path: '/#/hermes/history', selector: '.history-panel' },
   { path: '/#/hermes/jobs', selector: '.jobs-view' },
@@ -113,6 +115,54 @@ test('desktop command shell exposes the complete Hermes feature surface', async 
     expect(navTexts.some(text => text === item || text.startsWith(`${item}(`))).toBe(true)
   }
   await expectNoHorizontalViewportOverflow(page)
+  expect(api.unexpectedRequests).toEqual([])
+})
+
+test('dashboard overview loads live command-center panels from existing APIs', async ({ page }) => {
+  await authenticate(page)
+  const api = await mockHermesApi(page, {
+    sessions: [
+      {
+        id: 'session-dashboard-1',
+        title: 'Dashboard Audit Session',
+        source: 'cli',
+        model: 'test-model',
+        provider: 'test-provider',
+        profile: 'research',
+        started_at: 1_700_000_000,
+        ended_at: null,
+        last_active: 1_700_000_100,
+        message_count: 4,
+        tool_call_count: 2,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        reasoning_tokens: 0,
+        billing_provider: null,
+        estimated_cost_usd: 0,
+        actual_cost_usd: null,
+        cost_status: 'none',
+      },
+    ],
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+
+  await page.goto('/#/hermes/dashboard')
+
+  await expect(page.locator('.dashboard-view')).toBeVisible()
+  await expect(page.getByText('Live operations overview')).toBeVisible()
+  const dashboardStatus = page.getByLabel('Command center status')
+  await expect(dashboardStatus.getByText('API Online')).toBeVisible()
+  await expect(dashboardStatus.getByText('Bridge Ready')).toBeVisible()
+  await expect(page.getByText('Dashboard Audit Session')).toBeVisible()
+  await expect(page.getByText('Nightly Smoke')).toBeVisible()
+  await expect(page.locator('.workstream-card')).toHaveCount(5)
+  await expect(page.getByRole('link', { name: 'Terminal' }).first()).toHaveAttribute('href', '#/hermes/terminal')
+  await expectNoHorizontalViewportOverflow(page)
+  expect(api.requests.some(request => request.pathname === '/api/hermes/performance/runtime')).toBe(true)
+  expect(api.requests.some(request => request.pathname === '/api/hermes/jobs')).toBe(true)
+  expect(api.requests.some(request => request.pathname === '/api/hermes/sessions')).toBe(true)
   expect(api.unexpectedRequests).toEqual([])
 })
 

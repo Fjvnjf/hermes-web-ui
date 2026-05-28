@@ -122,7 +122,7 @@ function openChangelog() {
 
 <template>
   <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: sidebarIsCollapsed }">
-    <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.chat' }">
+    <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.dashboard' }">
       <CommandGlyph class="logo-mark" :size="30" />
       <span class="logo-copy">
         <span class="logo-title">Hermes Command Center</span>
@@ -148,6 +148,15 @@ function openChangelog() {
           </svg>
         </div>
         <div v-show="!isGroupCollapsed('conversation')" class="nav-group-items">
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.dashboard' }" :active="selectedKey === 'hermes.dashboard'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+            <span>Overview</span>
+          </RouteLinkItem>
           <RouteLinkItem class="nav-item" :to="{ name: 'hermes.chat' }" :active="isNavActive('hermes.chat', 'hermes.session')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
