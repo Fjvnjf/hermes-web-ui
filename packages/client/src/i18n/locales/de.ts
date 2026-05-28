@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: 'Zu viele fehlgeschlagene Versuche, bitte versuchen Sie es spater erneut',
     lockResetHint: 'Wenn dies Ihr Server ist, heben Sie die Login-Sperre auf mit:',
     defaultLoginResetHint: 'Um das Standard-Admin-Passwort zuruckzusetzen, fuhren Sie aus:',
-    sessionExpired: 'Die Anmeldung ist abgelaufen. Bitte melden Sie sich erneut an.',
+    sessionExpired: 'Das Zugriffstoken ist abgelaufen oder fehlt. Offnen Sie das Dashboard mit einem gultigen Token.',
     accessDenied: 'Sie haben keine Berechtigung fur diese Ressource.',
     passwordMismatch: 'Passworter stimmen nicht uberein',
     passwordTooShort: 'Passwort muss mindestens 6 Zeichen lang sein',

@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: '登录失败次数过多，请稍后重试',
     lockResetHint: '如果这是你的服务器，可以执行以下命令清除登录锁定：',
     defaultLoginResetHint: '如需重置默认 admin 密码，可以执行：',
-    sessionExpired: '登录已过期，请重新登录',
+    sessionExpired: '访问令牌已过期或缺失，请使用有效令牌重新打开仪表板',
     accessDenied: '你没有权限访问该资源',
     passwordMismatch: '两次密码不一致',
     passwordTooShort: '密码长度至少 6 个字符',

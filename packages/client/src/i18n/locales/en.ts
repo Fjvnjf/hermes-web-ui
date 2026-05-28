@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: 'Too many failed attempts, please try again later',
     lockResetHint: 'If this is your server, clear the login lock with:',
     defaultLoginResetHint: 'To reset the default admin password, run:',
-    sessionExpired: 'Login expired. Please sign in again.',
+    sessionExpired: 'Access token expired or missing. Reopen the dashboard with a valid token.',
     accessDenied: 'You do not have permission to access this resource.',
     passwordMismatch: 'Passwords do not match',
     passwordTooShort: 'Password must be at least 6 characters',

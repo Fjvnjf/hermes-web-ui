@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: 'Demasiados intentos fallidos, por favor intente mas tarde',
     lockResetHint: 'Si este es su servidor, borre el bloqueo de inicio de sesion con:',
     defaultLoginResetHint: 'Para restablecer la contrasena admin predeterminada, ejecute:',
-    sessionExpired: 'La sesion expiro. Inicia sesion de nuevo.',
+    sessionExpired: 'El token de acceso expiro o falta. Abre el dashboard con un token valido.',
     accessDenied: 'No tienes permiso para acceder a este recurso.',
     passwordMismatch: 'Las contrasenas no coinciden',
     passwordTooShort: 'La contrasena debe tener al menos 6 caracteres',

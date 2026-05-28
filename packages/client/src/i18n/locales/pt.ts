@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: 'Muitas tentativas falhadas, por favor tente novamente mais tarde',
     lockResetHint: 'Se este for seu servidor, limpe o bloqueio de login com:',
     defaultLoginResetHint: 'Para redefinir a senha admin padrao, execute:',
-    sessionExpired: 'Login expirado. Entre novamente.',
+    sessionExpired: 'Token de acesso expirado ou ausente. Abra o dashboard com um token valido.',
     accessDenied: 'Voce nao tem permissao para acessar este recurso.',
     passwordMismatch: 'As senhas nao conferem',
     passwordTooShort: 'A senha deve ter pelo menos 6 caracteres',

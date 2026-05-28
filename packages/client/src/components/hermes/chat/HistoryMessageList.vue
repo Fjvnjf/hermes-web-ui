@@ -3,6 +3,7 @@ import { ref, computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import MessageItem from "./MessageItem.vue";
+import CommandEmptyState from "@/components/common/CommandEmptyState.vue";
 import { useChatStore } from "@/stores/hermes/chat";
 import { useToolTraceVisibility } from "@/composables/useToolTraceVisibility";
 import type { Session } from "@/stores/hermes/chat";
@@ -99,10 +100,11 @@ defineExpose({
     :messages="displayMessages"
   >
     <template #empty>
-      <div class="empty-state">
-        <img src="/logo.png" alt="Hermes" class="empty-logo" />
-        <p>{{ t("chat.emptyState") }}</p>
-      </div>
+      <CommandEmptyState
+        title="No visible messages"
+        :subtitle="t('chat.emptyState')"
+        context="History view"
+      />
     </template>
     <template #item="{ message: msg }">
       <MessageItem
@@ -115,26 +117,6 @@ defineExpose({
 
 <style scoped lang="scss">
 @use "@/styles/variables" as *;
-
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: $text-muted;
-  gap: 12px;
-
-  .empty-logo {
-    width: 48px;
-    height: 48px;
-    opacity: 0.25;
-  }
-
-  p {
-    font-size: 14px;
-  }
-}
 
 .fade-enter-active,
 .fade-leave-active {

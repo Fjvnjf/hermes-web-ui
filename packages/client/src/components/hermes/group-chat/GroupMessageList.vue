@@ -3,6 +3,7 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGroupChatStore } from '@/stores/hermes/group-chat'
 import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
+import CommandEmptyState from '@/components/common/CommandEmptyState.vue'
 import GroupMessageItem from './GroupMessageItem.vue'
 import VirtualMessageList from '../chat/VirtualMessageList.vue'
 
@@ -51,10 +52,11 @@ defineExpose({ scrollToBottom })
         @top-reach="handleTopReach"
     >
         <template #empty>
-            <div class="empty-state">
-            <img src="/logo.png" alt="Hermes" class="empty-logo" />
-            <p>{{ t("chat.emptyState") }}</p>
-        </div>
+            <CommandEmptyState
+                title="Group channel ready"
+                :subtitle="t('chat.emptyState')"
+                context="Group chat"
+            />
         </template>
         <template #before>
             <div
@@ -76,26 +78,6 @@ defineExpose({ scrollToBottom })
 
 <style scoped lang="scss">
 @use "@/styles/variables" as *;
-
-.empty-state {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    color: $text-muted;
-
-    .empty-logo {
-        width: 48px;
-        height: 48px;
-        opacity: 0.25;
-    }
-
-    p {
-        font-size: 14px;
-    }
-}
 
 .history-loader {
     height: 28px;

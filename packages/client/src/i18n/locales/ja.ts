@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: 'ログイン試行回数が多すぎます。しばらくしてからお試しください',
     lockResetHint: '自分のサーバーの場合は、次のコマンドでログインロックを解除できます:',
     defaultLoginResetHint: '既定の admin パスワードをリセットするには、次を実行してください:',
-    sessionExpired: 'ログインの有効期限が切れました。再度ログインしてください。',
+    sessionExpired: 'アクセストークンが期限切れ、または見つかりません。有効なトークンでダッシュボードを開いてください。',
     accessDenied: 'このリソースにアクセスする権限がありません。',
     passwordMismatch: 'パスワードが一致しません',
     passwordTooShort: 'パスワードは6文字以上必要です',

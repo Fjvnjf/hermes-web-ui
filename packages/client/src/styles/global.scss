@@ -450,6 +450,12 @@ select:focus {
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
+.hamburger-btn .command-glyph {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
 // Mobile responsive
 @media (max-width: $breakpoint-mobile) {
   .mobile-backdrop {

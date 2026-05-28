@@ -3,6 +3,7 @@ import { ref, computed, nextTick, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import MessageItem from "./MessageItem.vue";
+import CommandEmptyState from "@/components/common/CommandEmptyState.vue";
 import { useChatStore } from "@/stores/hermes/chat";
 import thinkingImageLight from "@/assets/thinking-light.gif";
 import thinkingImageDark from "@/assets/thinking-dark.gif";
@@ -175,10 +176,11 @@ defineExpose({
     @top-reach="handleTopReach"
   >
     <template #empty>
-      <div class="empty-state">
-        <img src="/logo.png" alt="Hermes" class="empty-logo" />
-        <p>{{ t("chat.emptyState") }}</p>
-      </div>
+      <CommandEmptyState
+        title="Command channel ready"
+        :subtitle="t('chat.emptyState')"
+        context="Realtime chat"
+      />
     </template>
     <template #before>
       <div
@@ -587,28 +589,6 @@ defineExpose({
 .queue-float-leave-to {
   opacity: 0;
   transform: translateY(10px) scale(0.98);
-}
-
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: $text-muted;
-  gap: 12px;
-  min-height: 320px;
-  background: #060a12;
-
-  .empty-logo {
-    width: 48px;
-    height: 48px;
-    opacity: 0.25;
-  }
-
-  p {
-    font-size: 14px;
-  }
 }
 
 .history-loader {

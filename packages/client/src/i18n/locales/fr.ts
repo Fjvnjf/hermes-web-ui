@@ -18,7 +18,7 @@ export default {
     tooManyAttempts: 'Trop de tentatives echouees, veuillez reessayer plus tard',
     lockResetHint: 'Si c est votre serveur, supprimez le verrouillage de connexion avec :',
     defaultLoginResetHint: 'Pour reinitialiser le mot de passe admin par defaut, executez :',
-    sessionExpired: 'La session a expire. Veuillez vous reconnecter.',
+    sessionExpired: 'Le jeton d acces a expire ou est absent. Rouvrez le tableau de bord avec un jeton valide.',
     accessDenied: 'Vous n\'avez pas l\'autorisation d\'acceder a cette ressource.',
     passwordMismatch: 'Les mots de passe ne correspondent pas',
     passwordTooShort: 'Le mot de passe doit contenir au moins 6 caracteres',

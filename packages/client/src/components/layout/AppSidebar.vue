@@ -11,6 +11,7 @@ import ThemeSwitch from "./ThemeSwitch.vue";
 import { useSessionSearch } from '@/composables/useSessionSearch'
 import { usePersistentRecord } from '@/composables/usePersistentRecord'
 import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
+import CommandGlyph from '@/components/common/CommandGlyph.vue'
 import { changelog } from "@/data/changelog";
 
 const { t } = useI18n();
@@ -29,7 +30,6 @@ const isVersionPreview = import.meta.env.VITE_HERMES_PREVIEW === '1';
 function isNavActive(...names: string[]) {
   return names.includes(selectedKey.value);
 }
-const logoPath = '/logo.png';
 
 const { record: collapsedGroups, persist: persistCollapsedGroups } = usePersistentRecord('hermes.sidebar.collapsedGroups');
 
@@ -80,7 +80,7 @@ function openChangelog() {
 <template>
   <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: appStore.sidebarCollapsed }">
     <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.chat' }">
-      <img :src="logoPath" alt="Hermes" class="logo-img" />
+      <CommandGlyph class="logo-mark" :size="30" />
       <span class="logo-copy">
         <span class="logo-title">Hermes Command Center</span>
         <span class="logo-subtitle">Private dashboard</span>
@@ -403,11 +403,8 @@ function openChangelog() {
   box-shadow: 12px 0 32px rgba(0, 0, 0, 0.18);
 }
 
-.logo-img {
-  width: 28px;
-  height: 28px;
-  border-radius: 0;
-  flex-shrink: 0;
+.logo-mark {
+  color: $accent-info;
 }
 
 .sidebar-logo {

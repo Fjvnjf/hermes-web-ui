@@ -12,6 +12,7 @@ import SessionSearchModal from '@/components/hermes/chat/SessionSearchModal.vue'
 import AuthEventListener from '@/components/auth/AuthEventListener.vue'
 import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.vue'
 import { useSessionSearch } from '@/composables/useSessionSearch'
+import CommandGlyph from '@/components/common/CommandGlyph.vue'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
@@ -72,8 +73,8 @@ useKeyboard()
             {{ t('sidebar.nodeVersionWarning', { version: appStore.nodeVersion }) }}
           </div>
           <div v-if="ready" class="app-layout">
-            <button class="hamburger-btn" @click="appStore.toggleSidebar">
-              <img src="/logo.png" alt="Menu" style="width: 24px; height: 24px;" />
+            <button class="hamburger-btn" aria-label="Open command menu" @click="appStore.toggleSidebar">
+              <CommandGlyph :size="24" />
             </button>
             <div v-if="appStore.sidebarOpen" class="mobile-backdrop" @click="appStore.closeSidebar" />
             <AppSidebar />
