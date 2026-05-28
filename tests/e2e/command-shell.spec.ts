@@ -23,6 +23,8 @@ const requiredSidebarItems = [
   'Settings',
 ]
 
+const requiredTopbarActions = ['Search', 'Chat', 'Files', 'Terminal', 'Settings']
+
 async function expectNoHorizontalViewportOverflow(page: Page) {
   const metrics = await page.evaluate(() => ({
     bodyScrollWidth: document.body.scrollWidth,
@@ -45,7 +47,15 @@ test('desktop command shell exposes the complete Hermes feature surface', async 
 
   await page.goto('/#/hermes/chat')
 
-  await expect(page.getByText('Private Command Center')).toBeVisible()
+  await expect(page.locator('.topbar-brand')).toHaveText('Hermes Command Center')
+  const topbarActions = page.locator('.topbar-actions')
+  for (const action of requiredTopbarActions) {
+    await expect(topbarActions.getByRole('button', { name: action })).toBeVisible()
+  }
+  await topbarActions.getByRole('button', { name: 'Files' }).click()
+  await expect(page).toHaveURL(/#\/hermes\/files$/)
+  await topbarActions.getByRole('button', { name: 'Chat' }).click()
+  await expect(page).toHaveURL(/#\/hermes\/chat$/)
   const navTexts = await sidebarNavTexts(page)
   for (const item of requiredSidebarItems) {
     expect(navTexts.some(text => text === item || text.startsWith(`${item}(`))).toBe(true)

@@ -11,11 +11,13 @@ import { useAppStore } from '@/stores/hermes/app'
 import SessionSearchModal from '@/components/hermes/chat/SessionSearchModal.vue'
 import AuthEventListener from '@/components/auth/AuthEventListener.vue'
 import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.vue'
+import { useSessionSearch } from '@/composables/useSessionSearch'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
 const appStore = useAppStore()
 const router = useRouter()
+const { openSessionSearch } = useSessionSearch()
 const ready = ref(false)
 
 const themeOverrides = computed(() => getThemeOverrides(isDark.value, isComic.value))
@@ -46,6 +48,17 @@ onUnmounted(() => {
   appStore.stopHealthPolling()
 })
 
+function navigateTo(name: string) {
+  void router.push({ name })
+}
+
+async function refreshCommandCenter() {
+  await Promise.all([
+    appStore.checkConnection(),
+    appStore.reloadModels(),
+  ])
+}
+
 useKeyboard()
 </script>
 
@@ -68,8 +81,7 @@ useKeyboard()
               <header class="command-topbar">
                 <div class="topbar-title">
                   <span class="topbar-dot" :class="{ online: appStore.connected }"></span>
-                  <span class="topbar-brand">Private Command Center</span>
-                  <span class="topbar-pill command-name">Hermes Command Center</span>
+                  <span class="topbar-brand">Hermes Command Center</span>
                 </div>
                 <div class="topbar-meta">
                   <span class="topbar-pill" :class="{ online: appStore.connected }">
@@ -77,6 +89,50 @@ useKeyboard()
                   </span>
                   <span class="topbar-pill subtle">Node {{ appStore.nodeVersion || 'checking' }}</span>
                   <span class="topbar-pill subtle">v{{ appStore.serverVersion || '0.6.4' }}</span>
+                </div>
+                <div class="topbar-actions" aria-label="Command center quick actions">
+                  <button class="topbar-action" type="button" title="Search sessions" aria-label="Search" @click="openSessionSearch">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="11" cy="11" r="7" />
+                      <path d="m20 20-3.5-3.5" />
+                    </svg>
+                    <span>Search</span>
+                  </button>
+                  <button class="topbar-action" type="button" title="Open chat" aria-label="Chat" @click="navigateTo('hermes.chat')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>Chat</span>
+                  </button>
+                  <button class="topbar-action" type="button" title="Open files" aria-label="Files" @click="navigateTo('hermes.files')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    </svg>
+                    <span>Files</span>
+                  </button>
+                  <button class="topbar-action" type="button" title="Open terminal" aria-label="Terminal" @click="navigateTo('hermes.terminal')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="4 17 10 11 4 5" />
+                      <line x1="12" y1="19" x2="20" y2="19" />
+                    </svg>
+                    <span>Terminal</span>
+                  </button>
+                  <button class="topbar-action" type="button" title="Open settings" aria-label="Settings" @click="navigateTo('hermes.settings')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.05a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.82.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.05A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.05a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.82-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.26.55.82 1 1.55 1H21a2 2 0 1 1 0 4h-.05A1.7 1.7 0 0 0 19.4 15z" />
+                    </svg>
+                    <span>Settings</span>
+                  </button>
+                  <button class="topbar-action icon-only" type="button" title="Refresh status and models" aria-label="Refresh status and models" @click="refreshCommandCenter">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="23 4 23 10 17 10" />
+                      <polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10" />
+                      <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14" />
+                    </svg>
+                    <span>Refresh</span>
+                  </button>
                 </div>
               </header>
               <router-view />
@@ -182,6 +238,51 @@ useKeyboard()
   }
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.topbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  background: $bg-card;
+  color: $text-secondary;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color $transition-fast, border-color $transition-fast, background $transition-fast;
+
+  &:hover {
+    color: $accent-primary;
+    border-color: rgba(var(--accent-primary-rgb), 0.7);
+    background: $bg-card-hover;
+  }
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  &.icon-only {
+    width: 30px;
+    justify-content: center;
+    padding: 0;
+
+    span {
+      display: none;
+    }
+  }
+}
+
 .node-warning-bar {
   position: absolute;
   top: 0;
@@ -198,6 +299,24 @@ useKeyboard()
   line-height: 1.4;
 }
 
+@media (max-width: 1180px) {
+  .topbar-meta .subtle {
+    display: none;
+  }
+}
+
+@media (max-width: 1024px) {
+  .topbar-action {
+    width: 30px;
+    justify-content: center;
+    padding: 0;
+
+    span {
+      display: none;
+    }
+  }
+}
+
 @media (max-width: $breakpoint-mobile) {
   .command-topbar {
     padding-left: 56px;
@@ -207,7 +326,7 @@ useKeyboard()
     display: none;
   }
 
-  .command-name {
+  .topbar-actions {
     display: none;
   }
 
