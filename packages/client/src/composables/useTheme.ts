@@ -1,18 +1,16 @@
 import { ref, watch, computed } from 'vue'
 
 export type BrightnessMode = 'light' | 'dark' | 'system'
-export type ThemeStyle = 'ink' | 'comic'
+export type ThemeStyle = 'command'
 
 const BRIGHTNESS_KEY = 'hermes_brightness'
 const STYLE_KEY = 'hermes_style'
 
 const brightness = ref<BrightnessMode>(
-  (localStorage.getItem(BRIGHTNESS_KEY) as BrightnessMode) || 'system',
+  (localStorage.getItem(BRIGHTNESS_KEY) as BrightnessMode) || 'dark',
 )
 
-const style = ref<ThemeStyle>(
-  (localStorage.getItem(STYLE_KEY) as ThemeStyle) || 'ink',
-)
+const style = ref<ThemeStyle>('command')
 
 const isDark = ref(false)
 const isComic = ref(false)
@@ -27,9 +25,9 @@ function resolveDark(b: BrightnessMode): boolean {
 function applyClasses() {
   const dark = resolveDark(brightness.value)
   isDark.value = dark
-  isComic.value = style.value === 'comic'
+  isComic.value = false
   document.documentElement.classList.toggle('dark', dark)
-  document.documentElement.classList.toggle('comic', isComic.value)
+  document.documentElement.classList.remove('comic')
 }
 
 // Initial
@@ -56,7 +54,7 @@ watch(style, (s) => {
 export function useTheme() {
   const themeName = computed(() => {
     const b = isDark.value ? 'dark' : 'light'
-    return isComic.value ? `comic-${b}` : b
+    return `command-${b}`
   })
 
   function setBrightness(b: BrightnessMode) {
@@ -64,7 +62,8 @@ export function useTheme() {
   }
 
   function setStyle(s: ThemeStyle) {
-    style.value = s
+    void s
+    style.value = 'command'
   }
 
   function toggleBrightness() {
@@ -72,7 +71,7 @@ export function useTheme() {
   }
 
   function toggleStyle() {
-    style.value = isComic.value ? 'ink' : 'comic'
+    style.value = 'command'
   }
 
   return {

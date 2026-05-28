@@ -320,13 +320,13 @@ onMounted(() => {
 @use '@/styles/variables' as *;
 
 .profile-selector {
-  padding: 0 12px;
+  padding: 0;
   margin-bottom: 8px;
 }
 
 .selector-label {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 800;
   color: $text-muted;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -340,10 +340,16 @@ onMounted(() => {
   min-width: 0;
   height: 34px;
   padding: 4px 6px;
-  border-radius: 8px;
-  background: $bg-secondary;
+  border-radius: 999px;
+  background: $bg-input;
   border: 1px solid $border-color;
   cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+  &:hover {
+    border-color: $accent-primary;
+    background: $bg-card-hover;
+  }
 }
 
 .profile-avatar {
@@ -402,7 +408,7 @@ onMounted(() => {
   white-space: nowrap;
   font-size: 14px;
   font-weight: 700;
-  color: $text-primary;
+  color: $accent-primary;
 }
 
 .profile-popover-subtitle,
@@ -438,8 +444,8 @@ onMounted(() => {
   background: $bg-card;
 
   &.active {
-    border-color: $accent-muted;
-    background: $bg-card-hover;
+    border-color: $accent-info;
+    background: rgba(var(--accent-info-rgb), 0.08);
   }
 }
 

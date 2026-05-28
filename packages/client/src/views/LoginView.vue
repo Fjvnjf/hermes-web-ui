@@ -64,7 +64,8 @@ async function handlePasswordLogin() {
       <div class="login-logo">
         <img src="/logo.png" alt="Hermes" width="80" height="80" />
       </div>
-      <h1 class="login-title">{{ t("login.title") }}</h1>
+      <div class="login-kicker">Private Command Center</div>
+      <h1 class="login-title">Hermes Command Center</h1>
       <p class="login-desc">{{ t("login.description") }}</p>
       <p class="login-default-hint">{{ t("login.defaultCredentialsHint") }}</p>
 
@@ -107,17 +108,21 @@ async function handlePasswordLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: $bg-primary;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-info-rgb), 0.06), transparent 42%),
+    $bg-primary;
+  padding: 18px;
 }
 
 .login-card {
   width: 480px;
   max-width: calc(100vw - 32px);
-  padding: 56px;
+  padding: 48px;
   border: 1px solid $border-color;
   border-radius: $radius-lg;
   background: $bg-card;
   text-align: center;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
 
   @media (max-width: $breakpoint-mobile) {
     padding: 32px 24px;
@@ -125,14 +130,28 @@ async function handlePasswordLogin() {
 }
 
 .login-logo {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
+
+  img {
+    filter: drop-shadow(0 0 18px rgba(var(--accent-info-rgb), 0.18));
+  }
+}
+
+.login-kicker {
+  margin-bottom: 8px;
+  color: $text-muted;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .login-title {
-  font-size: 26px;
-  font-weight: 600;
-  color: $text-primary;
+  font-size: 24px;
+  font-weight: 800;
+  color: $accent-primary;
   margin: 0 0 10px;
+  letter-spacing: 0.04em;
 }
 
 .login-desc {
@@ -146,7 +165,7 @@ async function handlePasswordLogin() {
   margin: 0 0 28px;
   font-family: $font-code;
   font-size: 13px;
-  color: $text-secondary;
+  color: $accent-info;
 }
 
 .login-form {
@@ -174,6 +193,7 @@ async function handlePasswordLogin() {
 
   &:focus {
     border-color: $accent-primary;
+    box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.12);
   }
 }
 
@@ -205,17 +225,19 @@ async function handlePasswordLogin() {
 .login-btn {
   width: 100%;
   padding: 14px;
-  border: none;
-  border-radius: $radius-sm;
-  background: $text-primary;
+  border: 1px solid $accent-primary;
+  border-radius: 999px;
+  background: $accent-primary;
   color: var(--text-on-accent);
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 800;
   cursor: pointer;
-  transition: opacity $transition-fast;
+  transition: background $transition-fast, border-color $transition-fast, transform $transition-fast;
 
   &:hover {
-    opacity: 0.85;
+    background: $accent-hover;
+    border-color: $accent-hover;
+    transform: translateY(-1px);
   }
 
   &:disabled {

@@ -20,7 +20,7 @@ const router = useRouter()
 const ready = ref(false)
 
 const themeOverrides = computed(() => getThemeOverrides(isDark.value, isComic.value))
-const naiveTheme = computed(() => isDark.value ? darkTheme : null)
+const naiveTheme = computed(() => darkTheme)
 
 const isLoginPage = computed(() => route.name === 'login')
 
@@ -70,6 +70,17 @@ useKeyboard()
             <div v-if="!isLoginPage && appStore.sidebarOpen" class="mobile-backdrop" @click="appStore.closeSidebar" />
             <AppSidebar v-if="!isLoginPage" />
             <main class="app-main">
+              <header v-if="!isLoginPage" class="command-topbar">
+                <div class="topbar-title">
+                  <span class="topbar-dot" :class="{ online: appStore.connected }"></span>
+                  <span class="topbar-brand">Hermes Command Center</span>
+                  <span class="topbar-pill">Live Ops</span>
+                </div>
+                <div class="topbar-meta">
+                  <span class="topbar-pill subtle">Node {{ appStore.nodeVersion || 'checking' }}</span>
+                  <span class="topbar-pill subtle">v{{ appStore.serverVersion || '0.6.4' }}</span>
+                </div>
+              </header>
               <router-view />
             </main>
           </div>
@@ -99,9 +110,79 @@ useKeyboard()
   flex: 1;
   overflow-y: auto;
   background-color: $bg-primary;
+  min-width: 0;
 
   .no-sidebar & {
     height: calc(100 * var(--vh));
+  }
+}
+
+.command-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: $header-height;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px;
+  background: $bg-shell;
+  border-bottom: 1px solid $border-color;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
+
+.topbar-title,
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.topbar-brand {
+  color: $accent-primary;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.topbar-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: $error;
+  box-shadow: 0 0 8px rgba(var(--error-rgb), 0.65);
+  flex-shrink: 0;
+
+  &.online {
+    background: $success;
+    box-shadow: 0 0 8px rgba(var(--success-rgb), 0.8);
+  }
+}
+
+.topbar-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 9px;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  color: $text-muted;
+  background: rgba(19, 26, 40, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+
+  &.subtle {
+    font-family: $font-code;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
   }
 }
 
@@ -114,10 +195,24 @@ useKeyboard()
   padding: 4px 16px;
   font-size: 12px;
   font-weight: 500;
-  color: #b45309;
-  background-color: #fef3c7;
-  border-bottom: 1px solid #fde68a;
+  color: $warning;
+  background-color: #1d1208;
+  border-bottom: 1px solid #6b3a16;
   text-align: center;
   line-height: 1.4;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .command-topbar {
+    padding-left: 56px;
+  }
+
+  .topbar-meta {
+    display: none;
+  }
+
+  .topbar-brand {
+    font-size: 12px;
+  }
 }
 </style>

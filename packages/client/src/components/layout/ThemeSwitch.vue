@@ -1,22 +1,12 @@
 <script setup lang="ts">
 import { useTheme } from '@/composables/useTheme'
 
-const { isDark, isComic, toggleBrightness, toggleStyle } = useTheme()
+const { isDark, toggleBrightness } = useTheme()
 </script>
 
 <template>
-  <div class="theme-switch-container" style="display: flex; gap: 4px; align-items: center;">
-    <button class="theme-switch" :title="isComic ? 'Ink style' : 'Comic style'" @click="toggleStyle">
-      <!-- Palette icon for comic toggle -->
-      <svg v-if="isComic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
-      </svg>
-      <!-- Sparkle icon for ink mode -->
-      <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 3l1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3z" />
-      </svg>
-    </button>
-    <button class="theme-switch" :title="isDark ? 'Light mode' : 'Dark mode'" @click="toggleBrightness">
+  <div class="theme-switch-container">
+    <button class="theme-switch" :title="isDark ? 'Dim command view' : 'Full command view'" @click="toggleBrightness">
       <!-- Sun icon (shown in dark mode) -->
       <svg v-if="isDark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <circle cx="12" cy="12" r="5" />
@@ -38,22 +28,29 @@ const { isDark, isComic, toggleBrightness, toggleStyle } = useTheme()
 </template>
 
 <style scoped lang="scss">
+.theme-switch-container {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 .theme-switch {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: none;
-  background: transparent;
-  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  border-radius: 999px;
   cursor: pointer;
   color: var(--text-muted);
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
 
   &:hover {
-    color: var(--text-primary);
-    background: rgba(var(--accent-primary-rgb), 0.06);
+    color: var(--accent-primary);
+    background: var(--bg-card-hover);
+    border-color: var(--accent-primary);
   }
 }
 </style>

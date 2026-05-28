@@ -226,13 +226,13 @@ function openModal() {
 @use '@/styles/variables' as *;
 
 .model-selector {
-  padding: 0 12px;
-  margin-bottom: 8px;
+  padding: 0;
+  margin: 10px 12px 8px;
 }
 
 .model-label {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 800;
   color: $text-muted;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -247,14 +247,15 @@ function openModal() {
   padding: 6px 8px;
   background: $bg-input;
   border: 1px solid $border-color;
-  border-radius: $radius-sm;
+  border-radius: 999px;
   color: $text-primary;
   font-size: 13px;
   cursor: pointer;
   transition: border-color $transition-fast;
 
   &:hover {
-    border-color: $accent-muted;
+    border-color: $accent-primary;
+    color: $accent-primary;
   }
 }
 
@@ -299,7 +300,8 @@ function openModal() {
   transition: background-color $transition-fast;
 
   &:hover {
-    background-color: $bg-secondary;
+    background-color: $bg-card-hover;
+    color: $accent-primary;
   }
 }
 
@@ -338,12 +340,12 @@ function openModal() {
   transition: all $transition-fast;
 
   &:hover {
-    background-color: rgba(var(--accent-primary-rgb), 0.06);
+    background-color: rgba(var(--accent-info-rgb), 0.08);
     color: $text-primary;
   }
 
   &.active {
-    color: $accent-primary;
+    color: $accent-info;
     font-weight: 500;
   }
 
@@ -387,21 +389,27 @@ function openModal() {
 
 .model-check {
   flex-shrink: 0;
-  color: $accent-primary;
+  color: $accent-info;
 }
 
-.model-badge-custom {
+.model-badge-custom,
+.model-badge-preview,
+.model-badge-disabled {
   flex-shrink: 0;
   font-size: 9px;
   font-weight: 600;
-  color: #fff;
-  background: $accent-primary;
+  border: 1px solid $border-color;
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: 999px;
   margin-right: 4px;
   letter-spacing: 0.03em;
 }
 
+.model-badge-custom {
+  color: $accent-info;
+  border-color: rgba(var(--accent-info-rgb), 0.5);
+  background: rgba(var(--accent-info-rgb), 0.10);
+}
 
 .model-custom-remove {
   flex-shrink: 0;
@@ -422,28 +430,14 @@ function openModal() {
 }
 
 .model-badge-preview {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 600;
-  color: #fff;
-  background: #d97706;
-  padding: 1px 5px;
-  border-radius: 3px;
-  margin-right: 4px;
-  letter-spacing: 0.03em;
+  color: $warning;
+  border-color: rgba(var(--warning-rgb), 0.55);
+  background: rgba(var(--warning-rgb), 0.10);
 }
 
 .model-badge-disabled {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 600;
   color: $text-muted;
   background: transparent;
-  border: 1px solid $border-color;
-  padding: 0 5px;
-  border-radius: 3px;
-  margin-right: 4px;
-  letter-spacing: 0.03em;
 }
 
 .model-empty {

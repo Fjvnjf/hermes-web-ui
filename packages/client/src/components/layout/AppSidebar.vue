@@ -82,7 +82,7 @@ function openChangelog() {
   <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: appStore.sidebarCollapsed }">
     <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.chat' }">
       <img :src="logoPath" alt="Hermes" class="logo-img" />
-      <span class="logo-text">Hermes</span>
+      <span class="logo-text">Hermes<br />Command</span>
       <!-- <video class="logo-dance" :src="isDark ? danceVideoDark : danceVideoLight" autoplay loop muted playsinline /> -->
     </RouteLinkItem>
 
@@ -377,18 +377,19 @@ function openChangelog() {
   position: relative;
   width: $sidebar-width;
   height: calc(100 * var(--vh));
-  background-color: $bg-sidebar;
+  background: $bg-sidebar;
   border-right: 1px solid $border-color;
   display: flex;
   flex-direction: column;
-  padding: 0 12px 20px;
+  padding: 14px 0 16px;
   flex-shrink: 0;
   transition: width $transition-normal;
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.18);
 }
 
 .logo-img {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 0;
   flex-shrink: 0;
 }
@@ -397,23 +398,21 @@ function openChangelog() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 20px 12px;
-  margin: 0 -12px;
-  color: $text-primary;
+  padding: 0 18px 16px;
+  margin: 0 0 12px;
+  color: $accent-primary;
   cursor: pointer;
-  background-color: $bg-card;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-
-  .dark & {
-    background-color: #393939;
-  }
+  background: transparent;
+  border-bottom: 1px solid $border-color;
   position: relative;
   overflow: hidden;
 
   .logo-text {
-    font-size: 18px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    line-height: 1.05;
+    text-transform: uppercase;
   }
 
   .logo-dance {
@@ -433,9 +432,9 @@ function openChangelog() {
 .sidebar-nav {
   flex: 1;
   display: flex;
-  padding-top: 12px;
+  padding: 0;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
   overflow-y: auto;
   min-height: 0;
   scrollbar-width: none;
@@ -446,6 +445,7 @@ function openChangelog() {
 }
 
 :deep(.profile-selector) {
+  margin: 10px 12px 0;
   padding-top: 12px;
   border-top: 1px solid $border-color;
 }
@@ -453,7 +453,8 @@ function openChangelog() {
 .nav-group {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  padding: 0 0 6px;
 
   &.nav-group-bottom {
     margin-top: auto;
@@ -465,26 +466,25 @@ function openChangelog() {
 .nav-group-items {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .nav-group-label {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 800;
   color: $text-muted;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  padding: 8px 12px 4px;
+  padding: 8px 18px 5px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   cursor: pointer;
   user-select: none;
-  border-radius: $radius-sm;
   transition: color $transition-fast;
 
   &:hover {
-    color: $text-secondary;
+    color: $accent-primary;
   }
 
   .nav-group:first-child & {
@@ -504,28 +504,30 @@ function openChangelog() {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 9px 18px;
   border: none;
   background: none;
   appearance: none;
   text-decoration: none;
-  color: $text-secondary;
-  font-size: 14px;
-  border-radius: $radius-sm;
+  color: $text-muted;
+  font-size: 13px;
+  border-radius: 0;
+  border-right: 2px solid transparent;
   cursor: pointer;
   transition: all $transition-fast;
   width: 100%;
   text-align: left;
 
   &:hover {
-    background-color: rgba(var(--accent-primary-rgb), 0.06);
+    background-color: $bg-card;
     color: $text-primary;
   }
 
   &.active {
-    background-color: rgba(var(--accent-primary-rgb), 0.12);
-    color: $accent-primary;
+    background-color: rgba(var(--accent-info-rgb), 0.07);
+    border-right-color: $accent-info;
+    color: $accent-info;
   }
 
   .beta-tag {
@@ -536,14 +538,14 @@ function openChangelog() {
 }
 
 .sidebar-footer {
+  margin: 8px 12px 0;
   padding-top: 8px;
   border-top: 1px solid $border-color;
 }
 
 .logout-item {
-  margin: 0 -12px;
-  padding: 10px 12px;
-  border-radius: 0;
+  margin: 0 -12px 2px;
+  padding: 10px 18px;
   font-size: 13px;
   color: $text-muted;
 
@@ -557,7 +559,7 @@ function openChangelog() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: 8px 0;
 }
 
 .status-indicator {
@@ -567,8 +569,8 @@ function openChangelog() {
   font-size: 12px;
 
   .status-dot {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     flex-shrink: 0;
   }
@@ -588,7 +590,7 @@ function openChangelog() {
 }
 
 .version-info {
-  padding: 2px 12px 8px;
+  padding: 4px 0 8px;
   font-size: 11px;
   color: $text-muted;
   display: flex;
@@ -618,7 +620,7 @@ function openChangelog() {
   transition: color 0.2s;
 
   &:hover {
-    color: $text-primary;
+    color: $accent-primary;
   }
 }
 
@@ -694,11 +696,11 @@ function openChangelog() {
 
 .sidebar.collapsed {
   width: $sidebar-collapsed-width;
-  padding: 0 8px 12px;
+  padding: 14px 8px 12px;
   overflow: hidden;
 
   .sidebar-logo {
-    padding: 12px 4px 8px;
+    padding: 0 4px 12px;
     margin: 0 -8px;
     justify-content: center;
     gap: 0;
@@ -716,7 +718,7 @@ function openChangelog() {
   .nav-group-label {
     justify-content: center;
     gap: 2px;
-    padding: 8px 0 4px;
+    padding: 8px 0 5px;
     letter-spacing: 0;
 
     span {
@@ -829,8 +831,8 @@ function openChangelog() {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: none;
-  background: none;
+  border: 1px solid $border-color;
+  background: $bg-card;
   appearance: none;
   text-decoration: none;
   color: $text-muted;
@@ -842,16 +844,17 @@ function openChangelog() {
   transition: all $transition-fast;
 
   &:hover {
-    color: $text-primary;
-    background-color: rgba(var(--accent-primary-rgb), 0.08);
+    color: $accent-primary;
+    border-color: $accent-primary;
+    background-color: $bg-card-hover;
   }
 }
 
 // In expanded mode, overlap the top-right of the logo area
 .sidebar:not(.collapsed) .collapse-btn {
   position: absolute;
-  top: 18px;
-  right: 16px;
+  top: 16px;
+  right: 14px;
   z-index: 5;
 }
 

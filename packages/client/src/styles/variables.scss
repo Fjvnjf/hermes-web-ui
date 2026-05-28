@@ -1,123 +1,123 @@
-// 黑白水墨 — Pure Ink
-// 纯黑白灰，无彩色
-// 支持 light / dark / comic 三主题
+// Hermes Command Center — Chemicon-inspired dashboard palette.
+// Dark navy shell, gold headings, cyan active states, and compact panels.
 
 // ─── CSS Custom Properties ─────────────────────────────────────
 
 :root {
   // Backgrounds
-  --bg-primary: #fafafa;
-  --bg-secondary: #f0f0f0;
-  --bg-sidebar: #f5f5f5;
-  --bg-card: #ffffff;
-  --bg-card-hover: #fafafa;
-  --bg-input: #ffffff;
+  --bg-primary: #060a12;
+  --bg-secondary: #0f1520;
+  --bg-sidebar: #080c14;
+  --bg-shell: #080c14;
+  --bg-card: #131a28;
+  --bg-card-hover: #172033;
+  --bg-panel: #0b111b;
+  --bg-input: #060a12;
 
   // Borders
-  --border-color: #e0e0e0;
-  --border-light: #ebebeb;
+  --border-color: #1e3050;
+  --border-light: #263a5c;
 
   // Accent
-  --accent-primary: #333333;
-  --accent-hover: #1a1a1a;
-  --accent-muted: #888888;
+  --accent-primary: #c9a84c;
+  --accent-hover: #e0c96d;
+  --accent-muted: #8e793c;
+  --accent-info: #4fc3f7;
+  --accent-info-hover: #7ad7ff;
 
   // Text
-  --text-primary: #1a1a1a;
-  --text-secondary: #666666;
-  --text-muted: #999999;
-
-  // Status
-  --success: #2e7d32;
-  --error: #c62828;
-  --warning: #f57f17;
-
-  // Message bubbles
-  --msg-user-bg: #f5f5f5;
-  --msg-assistant-bg: #f5f5f5;
-  --msg-system-border: #bdbdbd;
-
-  // Code
-  --code-bg: #f4f4f4;
-
-  // Utility
-  --text-on-accent: #ffffff;
-  --text-on-overlay: #ffffff;
-  --accent-info: #4a90d9;
-
-  // RGB components (for rgba() usage)
-  --accent-primary-rgb: 51, 51, 51;
-  --accent-hover-rgb: 26, 26, 26;
-  --text-primary-rgb: 26, 26, 26;
-  --text-muted-rgb: 153, 153, 153;
-  --success-rgb: 46, 125, 50;
-  --error-rgb: 198, 40, 40;
-  --warning-rgb: 245, 127, 23;
-  --accent-info-rgb: 74, 144, 217;
-}
-
-.dark {
-  // Backgrounds
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #252525;
-  --bg-sidebar: #202020;
-  --bg-card: #333333;
-  --bg-card-hover: #333333;
-  --bg-input: #2a2a2a;
-
-  // Borders
-  --border-color: #3a3a3a;
-  --border-light: #333333;
-
-  // Accent
-  --accent-primary: #e0e0e0;
-  --accent-hover: #f5f5f5;
-  --accent-muted: #888888;
-
-  // Text
-  --text-primary: #f0f0f0;
-  --text-secondary: #c0c0c0;
-  --text-muted: #888888;
+  --text-primary: #c8d0dc;
+  --text-secondary: #8da0bc;
+  --text-muted: #5a6a8a;
 
   // Status
   --success: #66bb6a;
   --error: #ef5350;
-  --warning: #ffb74d;
+  --warning: #ffa726;
 
   // Message bubbles
-  --msg-user-bg: #252525;
-  --msg-assistant-bg: #252525;
-  --msg-system-border: #555555;
+  --msg-user-bg: #102040;
+  --msg-assistant-bg: #131a28;
+  --msg-system-border: #1e3050;
 
   // Code
-  --code-bg: #1e1e1e;
+  --code-bg: #090f19;
 
   // Utility
-  --text-on-accent: #1a1a1a;
+  --text-on-accent: #060a12;
   --text-on-overlay: #ffffff;
-  --accent-info: #6ba3d6;
 
-  // RGB components
-  --accent-primary-rgb: 240, 240, 240;
-  --accent-hover-rgb: 245, 245, 245;
-  --text-primary-rgb: 240, 240, 240;
-  --text-muted-rgb: 136, 136, 136;
+  // RGB components (for rgba() usage)
+  --accent-primary-rgb: 201, 168, 76;
+  --accent-hover-rgb: 224, 201, 109;
+  --text-primary-rgb: 200, 208, 220;
+  --text-muted-rgb: 90, 106, 138;
   --success-rgb: 102, 187, 106;
   --error-rgb: 239, 83, 80;
-  --warning-rgb: 255, 183, 77;
-  --accent-info-rgb: 107, 163, 214;
+  --warning-rgb: 255, 167, 38;
+  --accent-info-rgb: 79, 195, 247;
+}
+
+.dark {
+  // Backgrounds
+  --bg-primary: #060a12;
+  --bg-secondary: #0f1520;
+  --bg-sidebar: #080c14;
+  --bg-shell: #080c14;
+  --bg-card: #131a28;
+  --bg-card-hover: #172033;
+  --bg-panel: #0b111b;
+  --bg-input: #060a12;
+
+  // Borders
+  --border-color: #1e3050;
+  --border-light: #263a5c;
+
+  // Accent
+  --accent-primary: #c9a84c;
+  --accent-hover: #e0c96d;
+  --accent-muted: #8e793c;
+  --accent-info: #4fc3f7;
+  --accent-info-hover: #7ad7ff;
+
+  // Text
+  --text-primary: #c8d0dc;
+  --text-secondary: #8da0bc;
+  --text-muted: #5a6a8a;
+
+  // Status
+  --success: #66bb6a;
+  --error: #ef5350;
+  --warning: #ffa726;
+
+  // Message bubbles
+  --msg-user-bg: #102040;
+  --msg-assistant-bg: #131a28;
+  --msg-system-border: #1e3050;
+
+  // Code
+  --code-bg: #090f19;
+
+  // Utility
+  --text-on-accent: #060a12;
+  --text-on-overlay: #ffffff;
+
+  // RGB components
+  --accent-primary-rgb: 201, 168, 76;
+  --accent-hover-rgb: 224, 201, 109;
+  --text-primary-rgb: 200, 208, 220;
+  --text-muted-rgb: 90, 106, 138;
+  --success-rgb: 102, 187, 106;
+  --error-rgb: 239, 83, 80;
+  --warning-rgb: 255, 167, 38;
+  --accent-info-rgb: 79, 195, 247;
 }
 
 .comic {
-  // Borders — bold comic outlines
-  --border-color: #1a1a1a;
-  --border-light: #555555;
-  --msg-system-border: #1a1a1a;
-
-  // Comic-specific
-  --font-ui: 'Comic Neue', 'ZCOOL KuaiLe', 'Zen Maru Gothic', 'Gaegu', cursive, sans-serif;
-  --comic-border-width: 2.5px;
-  --comic-shadow: 3px 3px 0px rgba(0, 0, 0, 0.15);
+  // Kept for backward compatibility with saved preferences; the redesign no
+  // longer switches to a comic font.
+  --comic-border-width: 1px;
+  --comic-shadow: none;
 }
 
 .dark.comic {
@@ -135,8 +135,10 @@
 $bg-primary: var(--bg-primary);
 $bg-secondary: var(--bg-secondary);
 $bg-sidebar: var(--bg-sidebar);
+$bg-shell: var(--bg-shell);
 $bg-card: var(--bg-card);
 $bg-card-hover: var(--bg-card-hover);
+$bg-panel: var(--bg-panel);
 $bg-input: var(--bg-input);
 
 // Borders
@@ -147,6 +149,8 @@ $border-light: var(--border-light);
 $accent-primary: var(--accent-primary);
 $accent-hover: var(--accent-hover);
 $accent-muted: var(--accent-muted);
+$accent-info: var(--accent-info);
+$accent-info-hover: var(--accent-info-hover);
 
 // Text
 $text-primary: var(--text-primary);
@@ -157,7 +161,7 @@ $text-muted: var(--text-muted);
 $success: var(--success);
 $error: var(--error);
 $warning: var(--warning);
-$info: $accent-primary;
+$info: $accent-info;
 
 // Message bubbles
 $msg-user-bg: var(--msg-user-bg);
@@ -172,15 +176,15 @@ $font-ui: var(--font-ui, 'Inter', system-ui, -apple-system, sans-serif);
 $font-code: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 
 // Layout
-$sidebar-width: 240px;
+$sidebar-width: 252px;
 $sidebar-collapsed-width: 64px;
-$header-height: 60px;
+$header-height: 48px;
 $breakpoint-mobile: 768px;
 
 // Radius
-$radius-sm: 6px;
+$radius-sm: 8px;
 $radius-md: 10px;
-$radius-lg: 14px;
+$radius-lg: 10px;
 
 // Transition
 $transition-fast: 0.15s ease;

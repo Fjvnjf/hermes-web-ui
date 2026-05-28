@@ -92,7 +92,9 @@ html, body, #app {
 
 body {
   font-family: $font-ui;
-  background-color: $bg-primary;
+  background:
+    linear-gradient(180deg, rgba(79, 195, 247, 0.035), transparent 220px),
+    $bg-primary;
   color: $text-primary;
   font-size: 14px;
   line-height: 1.6;
@@ -126,10 +128,10 @@ a {
 
 ::-webkit-scrollbar-thumb {
   background: $border-color;
-  border-radius: 3px;
+  border-radius: 999px;
 
   &:hover {
-    background: $text-muted;
+    background: $accent-primary;
   }
 }
 
@@ -142,15 +144,279 @@ a {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 21px 20px;
+  gap: 12px;
+  padding: 16px 18px;
   border-bottom: 1px solid $border-color;
+  background: $bg-shell;
   flex-shrink: 0;
+  min-height: $header-height;
 }
 
 .header-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 800;
+  color: $accent-primary;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.header-subtitle,
+.muted,
+.empty-state,
+.session-empty {
+  color: $text-muted;
+}
+
+.page-content,
+.usage-content,
+.plugins-content,
+.models-content,
+.jobs-content,
+.profiles-content,
+.settings-content,
+.memory-content,
+.channels-content,
+.skills-usage-content,
+.performance-content {
+  background: $bg-primary;
+}
+
+.summary-grid,
+.overview-grid,
+.stat-cards,
+.jobs-grid,
+.profiles-grid,
+.providers-grid {
+  gap: 12px;
+}
+
+.summary-card,
+.stat-card,
+.job-card,
+.provider-card,
+.profile-card,
+.platform-card,
+.usage-panel,
+.metadata-panel,
+.recommendations-panel,
+.kanban-task-card,
+.section-card,
+.panel,
+.card {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
   color: $text-primary;
+  box-shadow: none;
+}
+
+.summary-card:hover,
+.job-card:hover,
+.provider-card:hover,
+.profile-card:hover,
+.platform-card:hover,
+.kanban-task-card:hover {
+  border-color: rgba(var(--accent-info-rgb), 0.7);
+  background: $bg-card-hover;
+}
+
+.card-header,
+.panel-header,
+.section-header,
+.history-header,
+.file-list-header,
+.tree-header,
+.editor-header,
+.preview-header,
+.drawer-header,
+.sidebar-header {
+  border-color: $border-color;
+  color: $accent-primary;
+}
+
+.status-badge,
+.type-badge,
+.workspace-badge,
+.source-badge,
+.locked-badge,
+.modified-badge,
+.session-model-badge-preview,
+.session-model-badge-disabled,
+.session-model-badge-custom {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  background: rgba(19, 26, 40, 0.88);
+  color: $text-secondary;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.status-badge.running,
+.status-badge.active,
+.status-badge.success,
+.type-badge.default {
+  border-color: rgba(var(--success-rgb), 0.55);
+  color: $success;
+  background: rgba(var(--success-rgb), 0.10);
+}
+
+.status-badge.failed,
+.status-badge.error {
+  border-color: rgba(var(--error-rgb), 0.55);
+  color: $error;
+  background: rgba(var(--error-rgb), 0.10);
+}
+
+.status-badge.pending,
+.status-badge.warning {
+  border-color: rgba(var(--warning-rgb), 0.55);
+  color: $warning;
+  background: rgba(var(--warning-rgb), 0.10);
+}
+
+.chat-panel,
+.history-panel,
+.group-chat-panel,
+.terminal-panel,
+.files-view,
+.skills-view,
+.kanban-view {
+  background: $bg-primary;
+  color: $text-primary;
+}
+
+main.app-main .chat-view,
+main.app-main .group-chat-view,
+main.app-main .history-panel,
+main.app-main .terminal-panel,
+main.app-main .files-view {
+  height: calc(100 * var(--vh) - #{$header-height});
+  min-height: 0;
+}
+
+.chat-header,
+.terminal-header,
+.session-list-header,
+.main-toolbar,
+.file-toolbar {
+  background: $bg-shell;
+  border-color: $border-color;
+}
+
+.session-list,
+.terminal-sidebar,
+.room-sidebar,
+.files-tree-panel,
+.files-main-panel,
+.drawer-panel,
+.outline-panel,
+.files-panel-drawer,
+.terminal-panel-drawer {
+  background: $bg-secondary;
+  border-color: $border-color;
+}
+
+.session-group-header,
+.session-model-group-header,
+.session-group-label,
+.sidebar-title,
+.outline-title,
+.new-chat-label {
+  color: $accent-primary;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.session-item,
+.room-item,
+.file-row,
+.category-header,
+.setting-row {
+  border-color: $border-color;
+}
+
+.session-item:hover,
+.room-item:hover,
+.file-row:hover,
+.category-header:hover {
+  background: $bg-card-hover;
+}
+
+.session-item.active,
+.room-item.active {
+  background: rgba(var(--accent-info-rgb), 0.08);
+  border-color: $accent-info;
+}
+
+.message-bubble,
+.group-message .msg-content,
+.tool-calls-panel,
+.queue-float-panel,
+.approval-content,
+.clarify-content {
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  color: $text-primary;
+}
+
+.message.user .message-bubble,
+.group-message.self .msg-content {
+  background: $msg-user-bg;
+  border-color: rgba(var(--accent-info-rgb), 0.45);
+}
+
+.message.assistant .message-bubble,
+.group-message.agent .msg-content {
+  background: $msg-assistant-bg;
+}
+
+.chat-input-area,
+.group-chat-input-area,
+.new-chat-form {
+  background: $bg-shell;
+  border-color: $border-color;
+}
+
+.input-top-bar,
+.message-meta,
+.card-body,
+.card-meta,
+.file-size,
+.file-date {
+  color: $text-muted;
+}
+
+.n-button {
+  border-radius: 999px;
+}
+
+.n-card,
+.n-modal,
+.n-dialog {
+  border: 1px solid $border-color;
+}
+
+.n-input,
+.n-base-selection {
+  --n-color: var(--bg-input);
+}
+
+input,
+textarea,
+select {
+  color: $text-primary;
+  background: $bg-input;
+  border-color: $border-color;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: $accent-primary;
+  outline: none;
 }
 
 // Responsive utility classes for inline width replacement
@@ -163,7 +429,8 @@ a {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(2px);
   z-index: 999;
 }
 
@@ -176,13 +443,13 @@ a {
   z-index: 99;
   width: 36px;
   height: 36px;
-  border: none;
+  border: 1px solid $border-color;
   background: $bg-card;
-  border-radius: $radius-sm;
+  border-radius: 999px;
   cursor: pointer;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 // Mobile responsive
