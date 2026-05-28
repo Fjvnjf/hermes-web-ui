@@ -485,7 +485,7 @@ onBeforeUnmount(() => {
                         >
                             <polyline points="9 18 15 12 9 6" />
                         </svg>
-                        <span class="thinking-icon">💭</span>
+                        <span class="thinking-icon">AI</span>
                         <span class="thinking-label">
                             {{ thinkingStreamingNow ? t('chat.thinkingInProgress') : t('chat.thinkingLabel') }}
                         </span>
@@ -554,7 +554,8 @@ onBeforeUnmount(() => {
     }
 
     &.agent .msg-content.agent-content {
-        background-color: rgba(var(--accent-primary-rgb), 0.06);
+        background-color: $msg-assistant-bg;
+        border-color: $border-color;
     }
 
     &.agent .msg-content.agent-error {
@@ -572,7 +573,8 @@ onBeforeUnmount(() => {
     }
 
     &.self .msg-content {
-        background-color: rgba(var(--accent-primary-rgb), 0.1);
+        background-color: $msg-user-bg;
+        border-color: rgba(var(--accent-info-rgb), 0.42);
     }
 }
 
@@ -778,23 +780,14 @@ onBeforeUnmount(() => {
     transition: color 0.15s ease, background 0.15s ease;
 
     &:hover {
-        color: $text-secondary;
-        background: rgba(0, 0, 0, 0.06);
-    }
-
-    .dark & {
-        color: #999999;
-
-        &:hover {
-            color: #cccccc;
-            background: rgba(255, 255, 255, 0.1);
-        }
+        color: $accent-info;
+        background: rgba(var(--accent-info-rgb), 0.08);
     }
 }
 
 .speech-bubble-btn {
     &.playing {
-        color: var(--accent-primary);
+        color: var(--accent-info);
         animation: pulse 1.5s ease-in-out infinite;
 
         &.paused {
@@ -804,67 +797,20 @@ onBeforeUnmount(() => {
     }
 }
 
-@keyframes rainbow-glow {
-    0% {
-        box-shadow:
-            0 0 0 2px #ff6b6b,
-            0 0 10px rgba(255, 107, 107, 0.4),
-            0 0 20px rgba(255, 107, 107, 0.2);
-    }
-    16.66% {
-        box-shadow:
-            0 0 0 2px #feca57,
-            0 0 10px rgba(254, 202, 87, 0.4),
-            0 0 20px rgba(254, 202, 87, 0.2);
-    }
-    33.33% {
-        box-shadow:
-            0 0 0 2px #48dbfb,
-            0 0 10px rgba(72, 219, 251, 0.4),
-            0 0 20px rgba(72, 219, 251, 0.2);
-    }
-    50% {
-        box-shadow:
-            0 0 0 2px #ff9ff3,
-            0 0 10px rgba(255, 159, 243, 0.4),
-            0 0 20px rgba(255, 159, 243, 0.2);
-    }
-    66.66% {
-        box-shadow:
-            0 0 0 2px #54a0ff,
-            0 0 10px rgba(84, 160, 255, 0.4),
-            0 0 20px rgba(84, 160, 255, 0.2);
-    }
-    83.33% {
-        box-shadow:
-            0 0 0 2px #5f27cd,
-            0 0 10px rgba(95, 39, 205, 0.4),
-            0 0 20px rgba(95, 39, 205, 0.2);
-    }
-    100% {
-        box-shadow:
-            0 0 0 2px #ff6b6b,
-            0 0 10px rgba(255, 107, 107, 0.4),
-            0 0 20px rgba(255, 107, 107, 0.2);
-    }
-}
-
 .msg-content {
-    padding: 10px 14px;
-    font-size: 14px;
-    line-height: 1.65;
+    padding: 10px;
+    font-size: 13px;
+    line-height: 1.5;
     color: $text-primary;
     border-radius: 10px;
     background-color: $msg-user-bg;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.42);
     word-break: break-word;
     overflow-wrap: break-word;
 
     &.speech-playing {
-        box-shadow:
-            0 0 0 2px #ff6b6b,
-            0 0 10px rgba(255, 107, 107, 0.4),
-            0 0 20px rgba(255, 107, 107, 0.2);
-        animation: rainbow-glow 4s linear infinite;
+        border-color: rgba(var(--accent-info-rgb), 0.72);
+        box-shadow: 0 0 16px rgba(var(--accent-info-rgb), 0.18);
     }
 
     &.agent-error {

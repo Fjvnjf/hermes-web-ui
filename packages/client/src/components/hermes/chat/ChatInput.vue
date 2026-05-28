@@ -676,16 +676,18 @@ function isImage(type: string): boolean {
 @use '@/styles/variables' as *;
 
 .chat-input-area {
-  padding: 12px 20px 16px;
+  padding: 12px 16px 16px;
   border-top: 1px solid $border-color;
   flex-shrink: 0;
+  background: #060a12;
 }
 
 .input-top-bar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 0 6px;
+  padding: 0 0 8px;
+  color: $text-muted;
 }
 
 .auto-play-speech-switch {
@@ -702,7 +704,7 @@ function isImage(type: string): boolean {
     justify-content: center;
     width: 16px;
     height: 16px;
-    color: #999999;
+    color: $text-muted;
     font-size: 12px;
 
     svg {
@@ -720,7 +722,7 @@ function isImage(type: string): boolean {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #999999;
+  color: $text-muted;
   width: 24px;
   min-width: 24px;
   height: 22px;
@@ -743,12 +745,12 @@ function isImage(type: string): boolean {
   }
 
   &.active {
-    color: #999999;
+    color: $accent-info;
     opacity: 1;
   }
 
   &:hover {
-    color: #999999;
+    color: $text-primary;
     opacity: 1;
   }
 }
@@ -758,7 +760,7 @@ function isImage(type: string): boolean {
   color: $text-muted;
 
   &.context-warning {
-    color: #e8a735;
+    color: $warning;
   }
 }
 
@@ -778,23 +780,23 @@ function isImage(type: string): boolean {
 .context-bar {
   width: 60px;
   height: 4px;
-  background: rgba(128, 128, 128, 0.2);
+  background: rgba(var(--text-muted-rgb), 0.2);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .context-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, rgba(128, 128, 128, 0.3), rgba(128, 128, 128, 0.6));
+  background: $accent-info;
   border-radius: 2px;
   transition: width 0.3s ease;
 
   &.context-bar-warn {
-    background: linear-gradient(90deg, #c98a1a, #e8a735);
+    background: $warning;
   }
 
   &.context-bar-danger {
-    background: linear-gradient(90deg, #c43a2a, #e85d4a);
+    background: $error;
   }
 }
 
@@ -879,7 +881,7 @@ function isImage(type: string): boolean {
   display: flex;
   align-items: center;
   gap: 10px;
-  background-color: $bg-input;
+  background-color: #060a12;
   border: 1px solid $border-color;
   border-radius: $radius-md;
   padding: 10px 12px;
@@ -887,11 +889,7 @@ function isImage(type: string): boolean {
   transition: border-color $transition-fast, background-color $transition-fast;
 
   &:focus-within {
-    border-color: $accent-primary;
-  }
-
-  .dark & {
-    background-color: #333333;
+    border-color: $accent-info;
   }
 }
 
@@ -917,7 +915,7 @@ function isImage(type: string): boolean {
   outline: none;
   color: $text-primary;
   font-family: $font-ui;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   resize: none;
   max-height: 400px;
@@ -946,16 +944,13 @@ function isImage(type: string): boolean {
   bottom: calc(100% + 8px);
   max-height: 240px;
   overflow-y: auto;
-  background: $bg-primary;
+  background: $bg-secondary;
   border: 1px solid $border-color;
-  border-radius: $radius-sm;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+  border-radius: $radius-md;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   z-index: 20;
   padding: 4px;
 
-  .dark & {
-    background: #2a2a2a;
-  }
 }
 
 .slash-command-item {
@@ -970,14 +965,14 @@ function isImage(type: string): boolean {
 
   &.active,
   &:hover {
-    background: rgba(var(--accent-primary-rgb), 0.1);
+    background: rgba(var(--accent-info-rgb), 0.08);
   }
 }
 
 .slash-command-name {
   font-family: $font-code;
   font-size: 13px;
-  color: $accent-primary;
+  color: $accent-info;
   white-space: nowrap;
 }
 

@@ -82,7 +82,10 @@ function openChangelog() {
   <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: appStore.sidebarCollapsed }">
     <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.chat' }">
       <img :src="logoPath" alt="Hermes" class="logo-img" />
-      <span class="logo-text">Hermes<br />Command</span>
+      <span class="logo-copy">
+        <span class="logo-title">Hermes Command Center</span>
+        <span class="logo-subtitle">Private dashboard</span>
+      </span>
       <!-- <video class="logo-dance" :src="isDark ? danceVideoDark : danceVideoLight" autoplay loop muted playsinline /> -->
     </RouteLinkItem>
 
@@ -388,8 +391,8 @@ function openChangelog() {
 }
 
 .logo-img {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 0;
   flex-shrink: 0;
 }
@@ -407,12 +410,27 @@ function openChangelog() {
   position: relative;
   overflow: hidden;
 
-  .logo-text {
+  .logo-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .logo-title {
     font-size: 15px;
     font-weight: 800;
     letter-spacing: 0.05em;
     line-height: 1.05;
     text-transform: uppercase;
+  }
+
+  .logo-subtitle {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1;
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .logo-dance {
@@ -475,7 +493,7 @@ function openChangelog() {
   color: $text-muted;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  padding: 8px 18px 5px;
+  padding: 18px 18px 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -706,6 +724,10 @@ function openChangelog() {
     gap: 0;
 
     .logo-text {
+      display: none;
+    }
+
+    .logo-copy {
       display: none;
     }
   }

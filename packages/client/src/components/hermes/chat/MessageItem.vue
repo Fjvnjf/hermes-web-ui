@@ -852,7 +852,7 @@ onBeforeUnmount(() => {
                 >
                   <polyline points="9 18 15 12 9 6" />
                 </svg>
-                <span class="thinking-icon">💭</span>
+                <span class="thinking-icon">AI</span>
                 <span class="thinking-label">
                   {{
                     thinkingStreamingNow
@@ -1017,6 +1017,7 @@ onBeforeUnmount(() => {
 
     .message-bubble {
       background-color: $msg-user-bg;
+      border: 1px solid rgba(var(--accent-info-rgb), 0.42);
       border-radius: 10px;
     }
   }
@@ -1041,6 +1042,7 @@ onBeforeUnmount(() => {
 
     .message-bubble {
       background-color: $msg-assistant-bg;
+      border: 1px solid $border-color;
       border-radius: 10px;
     }
 
@@ -1065,20 +1067,8 @@ onBeforeUnmount(() => {
 
   &.highlight {
     .message-bubble {
-      box-shadow: 0 0 0 1px rgba(var(--accent-primary-rgb), 0.45);
+      box-shadow: 0 0 0 1px rgba(var(--accent-info-rgb), 0.55);
     }
-  }
-}
-
-@keyframes gradient-flow {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
   }
 }
 
@@ -1096,26 +1086,28 @@ onBeforeUnmount(() => {
 }
 
 .message-bubble {
-  padding: 10px 14px;
-  font-size: 14px;
-  line-height: 1.65;
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.5;
   word-break: break-word;
+  border: 1px solid $border-color;
   border-radius: 10px;
   max-width: 100%;
   position: relative;
   box-sizing: border-box;
 
   &.system {
+    border: 1px solid rgba(var(--warning-rgb), 0.38);
     border-left: 3px solid $warning;
-    border-radius: $radius-sm;
+    border-radius: $radius-md;
     max-width: 80%;
     background-color: rgba(var(--warning-rgb), 0.06);
   }
 
   &.command {
     border-left: none;
-    border: 1px solid rgba(var(--accent-primary-rgb), 0.12);
-    background-color: rgba(var(--accent-primary-rgb), 0.04);
+    border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+    background-color: rgba(var(--accent-info-rgb), 0.05);
     color: $text-secondary;
     max-width: min(100%, 960px);
     padding: 8px 10px;
@@ -1141,11 +1133,8 @@ onBeforeUnmount(() => {
   }
 
   &.speech-playing {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-    animation: rainbow-glow 4s linear infinite;
+    border-color: rgba(var(--accent-info-rgb), 0.72);
+    box-shadow: 0 0 16px rgba(var(--accent-info-rgb), 0.18);
   }
 }
 
@@ -1184,9 +1173,9 @@ onBeforeUnmount(() => {
   gap: 4px;
   flex: 0 0 auto;
   padding: 2px 7px;
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
   border-radius: 999px;
-  background: rgba(var(--accent-primary-rgb), 0.035);
+  background: rgba(var(--accent-info-rgb), 0.05);
   line-height: 1.4;
 }
 
@@ -1209,57 +1198,12 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: rgba(var(--accent-primary-rgb), 0.1);
-  color: $accent-primary;
+  background: rgba(var(--accent-info-rgb), 0.1);
+  color: $accent-info;
   font-family: $font-code;
   font-size: 12px;
   line-height: 1;
   margin-top: 2px;
-}
-
-@keyframes rainbow-glow {
-  0% {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-  }
-  16.66% {
-    box-shadow:
-      0 0 0 2px #feca57,
-      0 0 10px rgba(254, 202, 87, 0.4),
-      0 0 20px rgba(254, 202, 87, 0.2);
-  }
-  33.33% {
-    box-shadow:
-      0 0 0 2px #48dbfb,
-      0 0 10px rgba(72, 219, 251, 0.4),
-      0 0 20px rgba(72, 219, 251, 0.2);
-  }
-  50% {
-    box-shadow:
-      0 0 0 2px #ff9ff3,
-      0 0 10px rgba(255, 159, 243, 0.4),
-      0 0 20px rgba(255, 159, 243, 0.2);
-  }
-  66.66% {
-    box-shadow:
-      0 0 0 2px #54a0ff,
-      0 0 10px rgba(84, 160, 255, 0.4),
-      0 0 20px rgba(84, 160, 255, 0.2);
-  }
-  83.33% {
-    box-shadow:
-      0 0 0 2px #5f27cd,
-      0 0 10px rgba(95, 39, 205, 0.4),
-      0 0 20px rgba(95, 39, 205, 0.2);
-  }
-  100% {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-  }
 }
 
 .msg-attachments {
@@ -1402,23 +1346,14 @@ onBeforeUnmount(() => {
   transition: color 0.15s ease, background 0.15s ease;
 
   &:hover {
-    color: $text-secondary;
-    background: rgba(0, 0, 0, 0.06);
-  }
-
-  .dark & {
-    color: #999999;
-
-    &:hover {
-      color: #cccccc;
-      background: rgba(255, 255, 255, 0.1);
-    }
+    color: $accent-info;
+    background: rgba(var(--accent-info-rgb), 0.08);
   }
 }
 
 .speech-bubble-btn {
   &.playing {
-    color: var(--accent-primary);
+    color: var(--accent-info);
     animation: pulse 1.5s ease-in-out infinite;
 
     &.paused {
@@ -1441,10 +1376,6 @@ onBeforeUnmount(() => {
   font-size: 11px;
   color: $text-muted;
   user-select: none;
-
-  .dark & {
-    color: #999999;
-  }
 }
 
 .tool-line {

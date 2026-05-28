@@ -61,13 +61,9 @@ async function handlePasswordLogin() {
 <template>
   <div class="login-view">
     <div class="login-card">
-      <div class="login-logo">
-        <img src="/logo.png" alt="Hermes" width="80" height="80" />
-      </div>
       <div class="login-kicker">Private Command Center</div>
       <h1 class="login-title">Hermes Command Center</h1>
       <p class="login-desc">{{ t("login.description") }}</p>
-      <p class="login-default-hint">{{ t("login.defaultCredentialsHint") }}</p>
 
       <form class="login-form" @submit.prevent="handleLogin">
         <input
@@ -108,9 +104,7 @@ async function handlePasswordLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background:
-    linear-gradient(180deg, rgba(var(--accent-info-rgb), 0.06), transparent 42%),
-    $bg-primary;
+  background: $bg-primary;
   padding: 18px;
 }
 
@@ -122,18 +116,10 @@ async function handlePasswordLogin() {
   border-radius: $radius-lg;
   background: $bg-card;
   text-align: center;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  box-shadow: none;
 
   @media (max-width: $breakpoint-mobile) {
     padding: 32px 24px;
-  }
-}
-
-.login-logo {
-  margin-bottom: 18px;
-
-  img {
-    filter: drop-shadow(0 0 18px rgba(var(--accent-info-rgb), 0.18));
   }
 }
 
@@ -157,15 +143,8 @@ async function handlePasswordLogin() {
 .login-desc {
   font-size: 14px;
   color: $text-muted;
-  margin: 0 0 12px;
-  line-height: 1.6;
-}
-
-.login-default-hint {
   margin: 0 0 28px;
-  font-family: $font-code;
-  font-size: 13px;
-  color: $accent-info;
+  line-height: 1.6;
 }
 
 .login-form {
@@ -192,8 +171,8 @@ async function handlePasswordLogin() {
   }
 
   &:focus {
-    border-color: $accent-primary;
-    box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.12);
+    border-color: $accent-info;
+    box-shadow: none;
   }
 }
 
@@ -237,7 +216,6 @@ async function handlePasswordLogin() {
   &:hover {
     background: $accent-hover;
     border-color: $accent-hover;
-    transform: translateY(-1px);
   }
 
   &:disabled {

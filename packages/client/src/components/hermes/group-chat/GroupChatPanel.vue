@@ -722,12 +722,9 @@ export default defineComponent({ components: { CreateRoomForm } })
     padding: 4px 10px;
     font-size: 12px;
     color: $text-secondary;
-    background-color: $bg-card-hover;
-    border-radius: $radius-sm;
-
-    .dark & {
-        background-color: rgba(255, 255, 255, 0.06);
-    }
+    background-color: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: 999px;
 }
 
 .context-stop-btn {
@@ -745,7 +742,7 @@ export default defineComponent({ components: { CreateRoomForm } })
     transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 
     &:hover {
-        color: #ffffff;
+        color: #060a12;
         background: $error;
         border-color: $error;
     }
@@ -758,7 +755,7 @@ export default defineComponent({ components: { CreateRoomForm } })
     margin: 0 16px 12px;
     padding: 12px;
     border: 1px solid $border-color;
-    border-radius: 8px;
+    border-radius: $radius-md;
     background: $bg-card;
     box-shadow: none;
 }
@@ -769,10 +766,10 @@ export default defineComponent({ components: { CreateRoomForm } })
     flex: 0 0 32px;
     width: 32px;
     height: 32px;
-    color: var(--accent-primary);
-    background: rgba(var(--accent-primary-rgb), 0.12);
-    border: 1px solid rgba(var(--accent-primary-rgb), 0.2);
-    border-radius: 8px;
+    color: var(--accent-info);
+    background: rgba(var(--accent-info-rgb), 0.08);
+    border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+    border-radius: $radius-sm;
 }
 
 .approval-content {

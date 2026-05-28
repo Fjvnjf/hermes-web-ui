@@ -405,15 +405,10 @@ defineExpose({
   margin-top: 16px;
   margin-left: auto;
   padding: 10px;
-  border: 1px solid rgba(var(--accent-info-rgb), 0.22);
-  border-radius: 16px;
-  background: #ffffff;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.14);
-  backdrop-filter: blur(14px);
-
-  .dark & {
-    background: #262626;
-  }
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+  box-shadow: none;
 }
 
 .queue-float-header {
@@ -472,13 +467,10 @@ defineExpose({
   gap: 8px;
   min-height: 34px;
   padding: 7px 8px;
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.68);
+  border-radius: $radius-sm;
+  background: #060a12;
+  border: 1px solid $border-color;
   color: $text-primary;
-
-  .dark & {
-    background: rgba(255, 255, 255, 0.08);
-  }
 }
 
 .queue-index {
@@ -605,6 +597,8 @@ defineExpose({
   justify-content: center;
   color: $text-muted;
   gap: 12px;
+  min-height: 320px;
+  background: #060a12;
 
   .empty-logo {
     width: 48px;
@@ -628,15 +622,10 @@ defineExpose({
 .history-loader-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(0, 0, 0, 0.16);
-  border-top-color: $accent-primary;
+  border: 2px solid rgba(var(--text-muted-rgb), 0.2);
+  border-top-color: $accent-info;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
-
-  .dark & {
-    border-color: rgba(255, 255, 255, 0.18);
-    border-top-color: $accent-primary;
-  }
 }
 
 .fade-enter-active,
@@ -653,12 +642,9 @@ defineExpose({
   align-items: flex-start;
   gap: 12px;
   padding: 4px;
+
   .thinking-video {
-    width: 120px;
-    height: 213px;
-    border-radius: $radius-md;
-    object-fit: contain;
-    flex-shrink: 0;
+    display: none;
   }
 }
 
@@ -668,7 +654,11 @@ defineExpose({
   gap: 4px;
   max-height: 213px;
   overflow-y: auto;
-  padding-top: 4px;
+  min-width: min(460px, 100%);
+  padding: 8px;
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
   scrollbar-width: none;
   -ms-overflow-style: none;
   &::-webkit-scrollbar {
@@ -682,13 +672,10 @@ defineExpose({
   gap: 6px;
   font-size: 11px;
   color: $text-secondary;
-  padding: 3px 8px;
-  background: rgba(0, 0, 0, 0.03);
+  padding: 6px 8px;
+  background: #060a12;
+  border: 1px solid $border-color;
   border-radius: $radius-sm;
-
-  .dark & {
-    background: rgba(255, 255, 255, 0.06);
-  }
 
   &.compression-item {
     color: $text-muted;
@@ -725,7 +712,7 @@ defineExpose({
 }
 
 .tool-call-error-icon {
-  color: #ff4d4f;
+  color: $error;
   flex-shrink: 0;
   margin-left: 6px;
   display: flex;
@@ -742,7 +729,7 @@ defineExpose({
 }
 
 .tool-call-success-icon {
-  color: #52c41a;
+  color: $success;
   flex-shrink: 0;
   margin-left: 6px;
   display: flex;

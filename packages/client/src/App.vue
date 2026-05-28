@@ -73,10 +73,13 @@ useKeyboard()
               <header v-if="!isLoginPage" class="command-topbar">
                 <div class="topbar-title">
                   <span class="topbar-dot" :class="{ online: appStore.connected }"></span>
-                  <span class="topbar-brand">Hermes Command Center</span>
-                  <span class="topbar-pill">Live Ops</span>
+                  <span class="topbar-brand">Private Command Center</span>
+                  <span class="topbar-pill command-name">Hermes Command Center</span>
                 </div>
                 <div class="topbar-meta">
+                  <span class="topbar-pill" :class="{ online: appStore.connected }">
+                    {{ appStore.connected ? 'API Online' : 'API Offline' }}
+                  </span>
                   <span class="topbar-pill subtle">Node {{ appStore.nodeVersion || 'checking' }}</span>
                   <span class="topbar-pill subtle">v{{ appStore.serverVersion || '0.6.4' }}</span>
                 </div>
@@ -109,7 +112,7 @@ useKeyboard()
 .app-main {
   flex: 1;
   overflow-y: auto;
-  background-color: $bg-primary;
+  background-color: #060a12;
   min-width: 0;
 
   .no-sidebar & {
@@ -126,10 +129,9 @@ useKeyboard()
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 18px;
-  background: $bg-shell;
+  padding: 0 16px;
+  background: #080c14;
   border-bottom: 1px solid $border-color;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
 }
 
 .topbar-title,
@@ -167,16 +169,22 @@ useKeyboard()
   display: inline-flex;
   align-items: center;
   min-height: 22px;
-  padding: 3px 9px;
+  padding: 4px 9px;
   border: 1px solid $border-color;
   border-radius: 999px;
   color: $text-muted;
-  background: rgba(19, 26, 40, 0.72);
+  background: transparent;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   white-space: nowrap;
+
+  &.online {
+    color: $success;
+    border-color: rgba(var(--success-rgb), 0.45);
+    background: rgba(var(--success-rgb), 0.08);
+  }
 
   &.subtle {
     font-family: $font-code;
@@ -208,6 +216,10 @@ useKeyboard()
   }
 
   .topbar-meta {
+    display: none;
+  }
+
+  .command-name {
     display: none;
   }
 

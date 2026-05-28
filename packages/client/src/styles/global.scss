@@ -92,9 +92,7 @@ html, body, #app {
 
 body {
   font-family: $font-ui;
-  background:
-    linear-gradient(180deg, rgba(79, 195, 247, 0.035), transparent 220px),
-    $bg-primary;
+  background: $bg-primary;
   color: $text-primary;
   font-size: 14px;
   line-height: 1.6;

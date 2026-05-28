@@ -305,12 +305,8 @@ defineExpose({
   padding: var(--virtual-list-padding);
   display: flex;
   flex-direction: column;
-  background-color: $bg-card;
+  background-color: #060a12;
   position: relative;
-
-  .dark & {
-    background-color: #333333;
-  }
 }
 
 .virtual-spacer {

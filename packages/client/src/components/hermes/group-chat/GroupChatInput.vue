@@ -477,16 +477,18 @@ function isImage(type: string): boolean {
 @use "@/styles/variables" as *;
 
 .chat-input-area {
-    padding: 12px 20px 16px;
+    padding: 12px 16px 16px;
     border-top: 1px solid $border-color;
     flex-shrink: 0;
+    background: #060a12;
 }
 
 .input-top-bar {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 0 0 6px;
+    padding: 0 0 8px;
+    color: $text-muted;
 }
 
 .auto-play-speech-switch {
@@ -503,7 +505,7 @@ function isImage(type: string): boolean {
         justify-content: center;
         width: 16px;
         height: 16px;
-        color: #999999;
+        color: $text-muted;
     }
 }
 
@@ -511,7 +513,7 @@ function isImage(type: string): boolean {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #999999;
+    color: $text-muted;
     width: 24px;
     min-width: 24px;
     height: 22px;
@@ -636,7 +638,7 @@ function isImage(type: string): boolean {
     display: flex;
     align-items: center;
     gap: 10px;
-    background-color: $bg-input;
+    background-color: #060a12;
     border: 1px solid $border-color;
     border-radius: $radius-md;
     padding: 10px 12px;
@@ -644,16 +646,12 @@ function isImage(type: string): boolean {
     transition: border-color $transition-fast, background-color $transition-fast;
 
     &:focus-within {
-        border-color: $accent-primary;
+        border-color: $accent-info;
     }
 
     &.drag-over {
-        border-color: $accent-primary;
-        background-color: rgba($accent-primary, 0.08);
-    }
-
-    .dark & {
-        background-color: #333333;
+        border-color: $accent-info;
+        background-color: rgba(var(--accent-info-rgb), 0.06);
     }
 }
 
@@ -679,7 +677,7 @@ function isImage(type: string): boolean {
     outline: none;
     color: $text-primary;
     font-family: $font-ui;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.5;
     resize: none;
     max-height: 400px;

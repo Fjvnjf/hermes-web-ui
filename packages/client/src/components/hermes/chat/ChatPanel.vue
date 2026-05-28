@@ -166,6 +166,20 @@ const headerTitle = computed(() =>
     ? t("chat.liveSessions")
     : activeSessionTitle.value,
 );
+const activeProfileLabel = computed(() =>
+  chatStore.activeSession?.profile || profilesStore.activeProfileName || "default",
+);
+const activeModelLabel = computed(() => {
+  const session = chatStore.activeSession;
+  const model = session?.model || appStore.selectedModel || "";
+  const provider = session?.provider || appStore.selectedProvider || "";
+  return model ? appStore.displayModelName(model, provider) : "Not selected";
+});
+const activeSourceLabel = computed(() =>
+  (chatStore.activeSession?.source || "web").toUpperCase(),
+);
+const connectionLabel = computed(() => (appStore.connected ? "Online" : "Offline"));
+const messageCountLabel = computed(() => String(chatStore.messages.length));
 
 const activeApproval = computed(() => chatStore.activePendingApproval);
 const visibleApproval = computed(() => activeApproval.value);
@@ -1122,8 +1136,7 @@ async function handleSessionModelCustomSubmit() {
             v-if="chatStore.activeSession?.workspace"
             class="workspace-badge"
             :title="chatStore.activeSession.workspace"
-            >📁
-            {{
+            >WS {{
               chatStore.activeSession.workspace.split("/").pop() ||
               chatStore.activeSession.workspace
             }}</span
@@ -1204,6 +1217,35 @@ async function handleSessionModelCustomSubmit() {
       </header>
 
       <template v-if="currentMode === 'chat'">
+        <section class="command-dashboard-strip" aria-label="Session command status">
+          <div class="command-evidence-strip">
+            <span class="evidence-chip verified">
+              <span class="evidence-dot"></span>
+              {{ appStore.connected ? "API Online" : "API Offline" }}
+            </span>
+            <span class="evidence-chip approved">{{ activeSourceLabel }}</span>
+            <span class="evidence-chip assumption">{{ activeProfileLabel }}</span>
+            <span class="evidence-copy">Hermes Command Center runtime is attached to this session.</span>
+          </div>
+          <div class="command-kpis">
+            <div class="command-kpi">
+              <div class="command-kpi-value">{{ activeProfileLabel }}</div>
+              <div class="command-kpi-label">Active profile</div>
+            </div>
+            <div class="command-kpi">
+              <div class="command-kpi-value">{{ activeModelLabel }}</div>
+              <div class="command-kpi-label">Model route</div>
+            </div>
+            <div class="command-kpi">
+              <div class="command-kpi-value">{{ messageCountLabel }}</div>
+              <div class="command-kpi-label">Messages</div>
+            </div>
+            <div class="command-kpi">
+              <div class="command-kpi-value" :class="{ online: appStore.connected }">{{ connectionLabel }}</div>
+              <div class="command-kpi-label">Gateway</div>
+            </div>
+          </div>
+        </section>
         <div class="chat-content-wrapper">
           <div class="chat-main-content">
             <MessageList ref="messageListRef" />
@@ -1367,6 +1409,8 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   height: 100%;
   position: relative;
+  background: #060a12;
+  color: $text-primary;
 }
 
 .session-model-search {
@@ -1550,11 +1594,12 @@ async function handleSessionModelCustomSubmit() {
 }
 
 .session-list {
-  width: 220px;
+  width: 252px;
   border-right: 1px solid $border-color;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  background: #0f1520;
   transition:
     width $transition-normal,
     opacity $transition-normal;
@@ -1573,8 +1618,8 @@ async function handleSessionModelCustomSubmit() {
     top: 0;
     height: 100%;
     z-index: 120;
-    background: $bg-card;
-    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    background: #0f1520;
+    box-shadow: 18px 0 48px rgba(0, 0, 0, 0.36);
     width: 280px;
 
     &.collapsed {
@@ -1609,7 +1654,8 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid $border-color;
   flex-shrink: 0;
   min-height: 0;
 }
@@ -1648,16 +1694,16 @@ async function handleSessionModelCustomSubmit() {
 }
 
 .session-list-title {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 800;
   color: $text-muted;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
   line-height: 22px;
 }
 
 .session-profile-filter {
-  margin: 0 8px 10px;
+  margin: 10px 10px 10px;
 }
 
 .new-chat-form {
@@ -1688,7 +1734,7 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 10px 4px;
+  padding: 10px 10px 6px;
   cursor: pointer;
   user-select: none;
 }
@@ -1740,8 +1786,8 @@ async function handleSessionModelCustomSubmit() {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 8px 10px;
-  border: none;
+  padding: 9px 10px;
+  border: 1px solid transparent;
   background: none;
   border-radius: $radius-sm;
   cursor: pointer;
@@ -1749,10 +1795,11 @@ async function handleSessionModelCustomSubmit() {
   text-decoration: none;
   color: $text-secondary;
   transition: all $transition-fast;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 
   &:hover {
-    background: rgba($accent-primary, 0.06);
+    background: $bg-card;
+    border-color: rgba(var(--accent-info-rgb), 0.18);
     color: $text-primary;
 
     .session-item-delete {
@@ -1761,13 +1808,14 @@ async function handleSessionModelCustomSubmit() {
   }
 
   &.active {
-    background: rgba(var(--accent-primary-rgb), 0.12);
+    background: rgba(var(--accent-info-rgb), 0.07);
+    border-color: $accent-info;
     color: $text-primary;
     font-weight: 500;
   }
 
   &.active .session-item-title {
-    color: $accent-primary;
+    color: $accent-info;
   }
 
   &.missing-models {
@@ -1888,6 +1936,7 @@ async function handleSessionModelCustomSubmit() {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  background: #060a12;
 }
 
 .chat-content-wrapper {
@@ -1895,6 +1944,9 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   overflow: hidden;
   position: relative;
+  gap: 12px;
+  padding: 0 16px 12px;
+  background: #060a12;
 }
 
 .chat-main-content {
@@ -1903,14 +1955,18 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  background: #060a12;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
 }
 
 .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 21px 20px;
+  padding: 12px 16px;
   border-bottom: 1px solid $border-color;
+  background: #080c14;
   flex-shrink: 0;
 }
 
@@ -1924,9 +1980,11 @@ async function handleSessionModelCustomSubmit() {
 }
 
 .header-session-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: $text-primary;
+  font-size: 15px;
+  font-weight: 800;
+  color: $accent-primary;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1935,9 +1993,10 @@ async function handleSessionModelCustomSubmit() {
 .source-badge {
   font-size: 10px;
   color: $text-muted;
-  background: rgba($text-muted, 0.12);
-  padding: 1px 7px;
-  border-radius: 8px;
+  background: rgba(19, 26, 40, 0.88);
+  border: 1px solid $border-color;
+  padding: 3px 8px;
+  border-radius: 999px;
   flex-shrink: 0;
   white-space: nowrap;
   line-height: 16px;
@@ -1966,14 +2025,121 @@ async function handleSessionModelCustomSubmit() {
 .workspace-badge {
   font-size: 11px;
   color: $text-muted;
-  background: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
-  border-radius: 4px;
+  background: rgba(19, 26, 40, 0.88);
+  border: 1px solid $border-color;
+  padding: 3px 8px;
+  border-radius: 999px;
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
+}
+
+.command-dashboard-strip {
+  padding: 12px 16px 0;
+  background: #060a12;
+  flex: 0 0 auto;
+}
+
+.command-evidence-strip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #09130f;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+}
+
+.evidence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 800;
+  border: 1px solid $border-color;
+  color: $text-muted;
+  background: rgba(19, 26, 40, 0.72);
+
+  &.verified {
+    color: $success;
+    border-color: rgba(var(--success-rgb), 0.45);
+    background: rgba(var(--success-rgb), 0.08);
+  }
+
+  &.approved {
+    color: $accent-info;
+    border-color: rgba(var(--accent-info-rgb), 0.45);
+    background: rgba(var(--accent-info-rgb), 0.07);
+  }
+
+  &.assumption {
+    color: $warning;
+    border-color: rgba(var(--warning-rgb), 0.45);
+    background: rgba(var(--warning-rgb), 0.08);
+  }
+}
+
+.evidence-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.evidence-copy {
+  color: $text-muted;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.command-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.command-kpi {
+  min-width: 0;
+  padding: 14px;
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+}
+
+.command-kpi-value {
+  overflow: hidden;
+  color: $accent-primary;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.online {
+    color: $success;
+  }
+}
+
+.command-kpi-label {
+  margin-top: 6px;
+  color: $text-muted;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 // ─── Drawer button ─────────────────────────────────────────────
@@ -1985,18 +2151,13 @@ async function handleSessionModelCustomSubmit() {
   transform: translateY(-50%);
   z-index: 100;
   background: $bg-card;
-  border-radius: 50%;
-  box-shadow:
-    0 0 10px rgba(255, 107, 107, 0.4),
-    0 0 20px rgba(255, 107, 107, 0.2);
-  animation: rainbow-glow 8s linear infinite;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  box-shadow: none;
   transition: all $transition-fast;
 
   &:hover {
-    animation-play-state: paused;
-    box-shadow:
-      0 0 15px rgba(255, 107, 107, 0.6),
-      0 0 30px rgba(255, 107, 107, 0.3);
+    border-color: $accent-info;
   }
 }
 
@@ -2004,7 +2165,7 @@ async function handleSessionModelCustomSubmit() {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(var(--accent-primary-rgb), 0.1);
+  background: rgba(var(--accent-info-rgb), 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2014,11 +2175,11 @@ async function handleSessionModelCustomSubmit() {
   svg {
     width: 18px;
     height: 18px;
-    color: var(--accent-primary);
+    color: var(--accent-info);
   }
 
   &:hover {
-    transform: scale(1.1);
+    transform: none;
   }
 }
 
@@ -2029,7 +2190,7 @@ async function handleSessionModelCustomSubmit() {
   margin: 0 16px 12px;
   padding: 12px;
   border: 1px solid $border-color;
-  border-radius: 8px;
+  border-radius: $radius-md;
   background: $bg-card;
   box-shadow: none;
 }
@@ -2040,10 +2201,10 @@ async function handleSessionModelCustomSubmit() {
   flex: 0 0 32px;
   width: 32px;
   height: 32px;
-  color: var(--accent-primary);
-  background: rgba(var(--accent-primary-rgb), 0.12);
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.2);
-  border-radius: 8px;
+  color: $accent-info;
+  background: rgba(var(--accent-info-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: $radius-sm;
 }
 
 .approval-content {
@@ -2062,14 +2223,14 @@ async function handleSessionModelCustomSubmit() {
   line-height: 1.2;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent-primary);
+  color: $accent-info;
 }
 
 .approval-title {
   font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
-  color: $text-primary;
+  color: $accent-primary;
 }
 
 .approval-desc {
@@ -2090,7 +2251,7 @@ async function handleSessionModelCustomSubmit() {
   font-size: 11px;
   line-height: 1.45;
   color: $text-primary;
-  background: $bg-secondary;
+  background: $bg-primary;
   border: 1px solid $border-color;
   border-radius: 6px;
   padding: 8px 10px;
@@ -2114,7 +2275,7 @@ async function handleSessionModelCustomSubmit() {
   margin: 0 16px 12px;
   padding: 12px;
   border: 1px solid $border-color;
-  border-radius: 8px;
+  border-radius: $radius-md;
   background: $bg-card;
   box-shadow: none;
 }
@@ -2125,10 +2286,10 @@ async function handleSessionModelCustomSubmit() {
   flex: 0 0 32px;
   width: 32px;
   height: 32px;
-  color: var(--accent-primary);
-  background: rgba(var(--accent-primary-rgb), 0.12);
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.2);
-  border-radius: 8px;
+  color: $accent-info;
+  background: rgba(var(--accent-info-rgb), 0.08);
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: $radius-sm;
 }
 
 .clarify-content {
@@ -2147,14 +2308,14 @@ async function handleSessionModelCustomSubmit() {
   line-height: 1.2;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent-primary);
+  color: $accent-info;
 }
 
 .clarify-title {
   font-size: 14px;
   font-weight: 700;
   line-height: 1.3;
-  color: $text-primary;
+  color: $accent-primary;
 }
 
 .clarify-desc {
@@ -2270,65 +2431,6 @@ async function handleSessionModelCustomSubmit() {
 
   .clarify-actions-open :deep(.n-button) {
     width: 100%;
-  }
-}
-
-@keyframes rainbow-glow {
-  0% {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-    border-color: #ff6b6b;
-    color: #ff6b6b;
-  }
-  16.66% {
-    box-shadow:
-      0 0 0 2px #feca57,
-      0 0 10px rgba(254, 202, 87, 0.4),
-      0 0 20px rgba(254, 202, 87, 0.2);
-    border-color: #feca57;
-    color: #feca57;
-  }
-  33.33% {
-    box-shadow:
-      0 0 0 2px #48dbfb,
-      0 0 10px rgba(72, 219, 251, 0.4),
-      0 0 20px rgba(72, 219, 251, 0.2);
-    border-color: #48dbfb;
-    color: #48dbfb;
-  }
-  50% {
-    box-shadow:
-      0 0 0 2px #ff9ff3,
-      0 0 10px rgba(255, 159, 243, 0.4),
-      0 0 20px rgba(255, 159, 243, 0.2);
-    border-color: #ff9ff3;
-    color: #ff9ff3;
-  }
-  66.66% {
-    box-shadow:
-      0 0 0 2px #54a0ff,
-      0 0 10px rgba(84, 160, 255, 0.4),
-      0 0 20px rgba(84, 160, 255, 0.2);
-    border-color: #54a0ff;
-    color: #54a0ff;
-  }
-  83.33% {
-    box-shadow:
-      0 0 0 2px #5f27cd,
-      0 0 10px rgba(95, 39, 205, 0.4),
-      0 0 20px rgba(95, 39, 205, 0.2);
-    border-color: #5f27cd;
-    color: #5f27cd;
-  }
-  100% {
-    box-shadow:
-      0 0 0 2px #ff6b6b,
-      0 0 10px rgba(255, 107, 107, 0.4),
-      0 0 20px rgba(255, 107, 107, 0.2);
-    border-color: #ff6b6b;
-    color: #ff6b6b;
   }
 }
 
