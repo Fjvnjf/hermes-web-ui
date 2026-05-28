@@ -82,6 +82,50 @@ current_cloudflare_url() {
   done | tail -n 1
 }
 
+print_autologin_url() {
+  local public_url="$1"
+  local webui_home="${HERMES_WEB_UI_HOME:-${HERMES_WEBUI_STATE_DIR:-$HOME/.hermes-web-ui}}"
+
+  PUBLIC_URL="$public_url" WEBUI_HOME="$webui_home" node --input-type=module <<'NODE'
+import { createHmac } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+
+const publicUrl = process.env.PUBLIC_URL || 'http://127.0.0.1:8648'
+const home = process.env.WEBUI_HOME
+const secret = process.env.AUTH_TOKEN || readFileSync(join(home, '.token'), 'utf8').trim()
+const dbPath = join(home, 'hermes-web-ui.db')
+if (!existsSync(dbPath)) throw new Error(`Web UI DB not found: ${dbPath}`)
+
+const db = new DatabaseSync(dbPath, { readOnly: true })
+const user = db.prepare(`
+  SELECT id, username, role
+  FROM users
+  WHERE status = 'active'
+  ORDER BY CASE WHEN role = 'super_admin' THEN 0 ELSE 1 END, id ASC
+  LIMIT 1
+`).get()
+if (!user) throw new Error('No active Web UI user found')
+
+const b64 = value => Buffer.from(JSON.stringify(value)).toString('base64url')
+const iat = Math.floor(Date.now() / 1000)
+const header = b64({ alg: 'HS256', typ: 'JWT' })
+const payload = b64({
+  sub: String(user.id),
+  username: String(user.username),
+  role: String(user.role),
+  type: 'access',
+  aud: 'hermes-web-ui',
+  iat,
+  exp: iat + 60 * 60 * 24 * 30,
+})
+const unsigned = `${header}.${payload}`
+const sig = createHmac('sha256', secret).update(unsigned).digest('base64url')
+console.log(`AUTOLOGIN_URL=${publicUrl}/#/?token=${unsigned}.${sig}`)
+NODE
+}
+
 ensure_cloudflare_tunnel() {
   local cloudflared_bin=""
   local url=""
@@ -103,6 +147,7 @@ ensure_cloudflare_tunnel() {
     echo "CLOUDFLARE_URL=$url"
     verify_served_bundle "$url" "PUBLIC"
     curl -fsSI "$url" | sed -n '1,12p'
+    print_autologin_url "$url"
   else
     echo "CLOUDFLARE_URL=unknown"
   fi
@@ -174,6 +219,10 @@ echo "== Verify local served bundle =="
 verify_served_bundle "http://127.0.0.1:8648" "LOCAL"
 curl -fsS http://127.0.0.1:8642/health || curl -fsS http://127.0.0.1:8642/
 curl -fsSI http://127.0.0.1:8648 | sed -n '1,12p'
+
+if [ -f scripts/verify-command-center-server.sh ]; then
+  bash scripts/verify-command-center-server.sh
+fi
 
 echo "== Verify public tunnel =="
 ensure_cloudflare_tunnel
