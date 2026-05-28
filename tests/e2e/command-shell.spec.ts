@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { authenticate, mockHermesApi, mockTerminalWebSocket } from './fixtures'
+import { authenticate, mockChatSocket, mockHermesApi, mockTerminalWebSocket } from './fixtures'
 
 const requiredSidebarItems = [
   'Chat',
@@ -37,6 +37,27 @@ const requiredEmptyShortcuts = [
   { label: 'Terminal', href: '#/hermes/terminal' },
   { label: 'Models', href: '#/hermes/models' },
   { label: 'Jobs', href: '#/hermes/jobs' },
+]
+const commandRoutes = [
+  { path: '/#/hermes/chat', selector: '.chat-view' },
+  { path: '/#/hermes/history', selector: '.history-panel' },
+  { path: '/#/hermes/jobs', selector: '.jobs-view' },
+  { path: '/#/hermes/kanban', selector: '.kanban-view' },
+  { path: '/#/hermes/models', selector: '.models-view' },
+  { path: '/#/hermes/profiles', selector: '.profiles-view' },
+  { path: '/#/hermes/logs', selector: '.logs-view' },
+  { path: '/#/hermes/usage', selector: '.usage-view' },
+  { path: '/#/hermes/performance', selector: '.performance-view' },
+  { path: '/#/hermes/skills-usage', selector: '.skills-usage-view' },
+  { path: '/#/hermes/skills', selector: '.skills-view' },
+  { path: '/#/hermes/plugins', selector: '.plugins-view' },
+  { path: '/#/hermes/memory', selector: '.memory-view' },
+  { path: '/#/hermes/settings', selector: '.settings-view' },
+  { path: '/#/hermes/channels', selector: '.channels-view' },
+  { path: '/#/hermes/terminal', selector: '.terminal-panel' },
+  { path: '/#/hermes/group-chat', selector: '.group-chat-view' },
+  { path: '/#/hermes/files', selector: '.files-view' },
+  { path: '/#/hermes/version-preview', selector: '.version-preview-view' },
 ]
 
 async function expectNoHorizontalViewportOverflow(page: Page) {
@@ -109,4 +130,34 @@ test('mobile command shell uses the drawer and keeps navigation usable', async (
   expect(navTexts).toContain('Files')
   expect(navTexts).toContain('Terminal')
   await expectNoHorizontalViewportOverflow(page)
+})
+
+test('all command center routes mount inside the redesigned shell on desktop and mobile', async ({ page }) => {
+  await authenticate(page)
+  await mockChatSocket(page)
+  await mockTerminalWebSocket(page)
+  const api = await mockHermesApi(page)
+
+  const pageErrors: string[] = []
+  page.on('pageerror', error => pageErrors.push(error.message))
+
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport)
+
+    for (const route of commandRoutes) {
+      await page.goto(route.path)
+      await expect(page.locator('.topbar-brand')).toHaveText('Hermes Command Center', { timeout: shellLoadTimeout })
+      await expect(page.locator(route.selector)).toBeVisible()
+      await expect(page.getByText('Private Command Center')).toHaveCount(0)
+      await expect(page.getByPlaceholder('Username')).toHaveCount(0)
+      await expect(page.getByPlaceholder('Password')).toHaveCount(0)
+      await expectNoHorizontalViewportOverflow(page)
+    }
+  }
+
+  expect(pageErrors).toEqual([])
+  expect(api.unexpectedRequests).toEqual([])
 })

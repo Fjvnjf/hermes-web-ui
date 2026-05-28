@@ -2,7 +2,7 @@ export default {
   // Login
   login: {
     title: 'Hermes Web UI',
-    description: 'Enter your username and password to continue.',
+    description: 'Open Hermes with a valid access token to continue.',
     placeholder: 'Access token',
     submit: 'Login',
     tokenRequired: 'Please enter your access token',

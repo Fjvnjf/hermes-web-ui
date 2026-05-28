@@ -85,7 +85,6 @@ function openChangelog() {
         <span class="logo-title">Hermes Command Center</span>
         <span class="logo-subtitle">Private dashboard</span>
       </span>
-      <!-- <video class="logo-dance" :src="isDark ? danceVideoDark : danceVideoLight" autoplay loop muted playsinline /> -->
     </RouteLinkItem>
 
     <button class="collapse-btn" @click="appStore.toggleSidebarCollapsed()" :title="appStore.sidebarCollapsed ? t('sidebar.expand') : t('sidebar.collapse')">
@@ -443,18 +442,6 @@ function openChangelog() {
     text-transform: none;
   }
 
-  .logo-dance {
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    height: 100px;
-    border-radius: $radius-md;
-    object-fit: contain;
-    flex-shrink: 0;
-    width: auto;
-    pointer-events: none;
-  }
 }
 
 .sidebar-nav {
@@ -891,10 +878,6 @@ function openChangelog() {
 }
 
 @media (max-width: $breakpoint-mobile) {
-  .logo-dance {
-    display: none;
-  }
-
   .status-row {
     flex-direction: column;
     align-items: flex-start;

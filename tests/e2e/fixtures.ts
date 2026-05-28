@@ -55,6 +55,120 @@ const sampleJob = {
   last_delivery_error: null,
 }
 
+const sampleBoard = {
+  slug: 'default',
+  name: 'Default',
+  description: 'Primary command board',
+  icon: '',
+  color: '#4fc3f7',
+  created_at: null,
+  archived: false,
+  counts: {},
+  total: 0,
+}
+
+const emptyUsageStats = {
+  total_input_tokens: 0,
+  total_output_tokens: 0,
+  total_cache_read_tokens: 0,
+  total_cache_write_tokens: 0,
+  total_reasoning_tokens: 0,
+  total_sessions: 0,
+  total_cost: 0,
+  total_api_calls: 0,
+  period_days: 30,
+  model_usage: [],
+  daily_usage: [],
+}
+
+const emptySkillUsageStats = {
+  period_days: 7,
+  summary: {
+    total_skill_loads: 0,
+    total_skill_edits: 0,
+    total_skill_actions: 0,
+    distinct_skills_used: 0,
+  },
+  by_day: [],
+  top_skills: [],
+}
+
+const samplePerformanceSnapshot = {
+  timestamp: Date.now(),
+  system: {
+    platform: 'darwin',
+    arch: 'arm64',
+    uptimeSeconds: 3600,
+    cpuCount: 8,
+    cpuPercent: 12.5,
+    loadAverage: [1.2, 1.1, 1],
+    totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+    freeMemoryBytes: 8 * 1024 * 1024 * 1024,
+    usedMemoryBytes: 8 * 1024 * 1024 * 1024,
+    memoryPercent: 50,
+  },
+  web: {
+    pid: 4242,
+    uptimeSeconds: 120,
+    memory: { rss: 128 * 1024 * 1024 },
+    cpuPercent: 2.4,
+  },
+  bridge: {
+    endpoint: '/tmp/hermes-agent-bridge.sock',
+    reachable: true,
+    broker: {
+      running: true,
+      ready: true,
+      pid: 31337,
+      process: {
+        pid: 31337,
+        role: 'broker',
+        running: true,
+        cpuPercent: 1.1,
+        memoryRssBytes: 96 * 1024 * 1024,
+      },
+      restartScheduled: false,
+      restartAttempts: 0,
+    },
+    workers: [],
+    totalWorkerMemoryRssBytes: 0,
+  },
+  sessions: {
+    active: 0,
+    running: 0,
+    byProfile: {},
+  },
+}
+
+const previewStatus = {
+  preview_dir: '/tmp/hermes-preview',
+  exists: false,
+  has_package: false,
+  installed: false,
+  running: false,
+  pid: null,
+  current_tag: '',
+  frontend_url: '',
+  agent_bridge_endpoint: '',
+  log_path: '',
+  webui_home: '',
+  action_log_path: '',
+  dev_log_path: '',
+  action_log: '',
+  dev_log: '',
+}
+
+const sampleProfileDetail = {
+  name: 'research',
+  path: '/tmp/hermes/profiles/research',
+  model: 'test-model',
+  provider: 'test-provider',
+  skills: 0,
+  hasEnv: false,
+  hasSoulMd: false,
+  avatar: null,
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return {
     status,
@@ -125,7 +239,25 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
           created_at: 0,
           updated_at: 0,
           last_login_at: 0,
+          requiresCredentialChange: false,
         },
+      }))
+      return
+    }
+
+    if (pathname === '/api/auth/users') {
+      await route.fulfill(jsonResponse({
+        users: [
+          {
+            id: 1,
+            username: 'playwright',
+            role: 'super_admin',
+            status: 'active',
+            created_at: 0,
+            updated_at: 0,
+            last_login_at: 0,
+          },
+        ],
       }))
       return
     }
@@ -147,6 +279,24 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
 
     if (pathname === '/api/hermes/files/list') {
       await route.fulfill(jsonResponse({ entries: [], path: '' }))
+      return
+    }
+
+    if (pathname === '/api/hermes/config/models') {
+      await route.fulfill(jsonResponse({
+        default: 'test-model',
+        groups: [{ provider: 'test-provider', models: [{ id: 'test-model', label: 'test-model' }] }],
+      }))
+      return
+    }
+
+    if (pathname === '/api/hermes/update/preview') {
+      await route.fulfill(jsonResponse(previewStatus))
+      return
+    }
+
+    if (pathname === '/api/hermes/update/preview/tags') {
+      await route.fulfill(jsonResponse({ tags: [{ name: 'v0.6.4', sha: 'test-sha' }] }))
       return
     }
 
@@ -180,8 +330,8 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
     if (pathname === '/api/hermes/profiles') {
       await route.fulfill(jsonResponse({
         profiles: [
-          { name: 'default', active: activeProfileName === 'default', model: 'test-model', gateway: 'test', alias: 'Default' },
-          { name: 'research', active: activeProfileName === 'research', model: 'test-model', gateway: 'test', alias: 'Research' },
+          { name: 'default', active: activeProfileName === 'default', model: 'test-model', gateway: 'test', alias: 'Default', avatar: null },
+          { name: 'research', active: activeProfileName === 'research', model: 'test-model', gateway: 'test', alias: 'Research', avatar: null },
         ],
       }))
       return
@@ -229,14 +379,32 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
+    if (request.method() === 'GET' && /^\/api\/hermes\/profiles\/[^/]+$/.test(pathname)) {
+      const name = decodeURIComponent(pathname.split('/').pop() || 'research')
+      await route.fulfill(jsonResponse({ profile: { ...sampleProfileDetail, name } }))
+      return
+    }
+
     if (pathname === '/api/hermes/config') {
       await route.fulfill(jsonResponse({
         display: { streaming: true, show_reasoning: true, show_cost: true },
         agent: {},
         memory: {},
+        compression: {},
         session_reset: {},
         privacy: {},
         approvals: {},
+        telegram: {},
+        discord: {},
+        slack: {},
+        whatsapp: {},
+        matrix: {},
+        wecom: {},
+        feishu: {},
+        dingtalk: {},
+        qqbot: {},
+        weixin: {},
+        platforms: {},
       }))
       return
     }
@@ -248,6 +416,101 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
 
     if (pathname === '/api/cron-history') {
       await route.fulfill(jsonResponse({ runs: [] }))
+      return
+    }
+
+    if (pathname === '/api/hermes/kanban/boards') {
+      await route.fulfill(jsonResponse({ boards: [sampleBoard] }))
+      return
+    }
+
+    if (pathname === '/api/hermes/kanban/capabilities') {
+      await route.fulfill(jsonResponse({
+        capabilities: {
+          source: 'hermes-cli',
+          supports: { events: false },
+          missing: ['events'],
+          capabilities: [{ key: 'events', status: 'missing', requiresBoard: true }],
+        },
+      }))
+      return
+    }
+
+    if (pathname === '/api/hermes/kanban') {
+      await route.fulfill(jsonResponse({ tasks: [] }))
+      return
+    }
+
+    if (pathname === '/api/hermes/kanban/stats') {
+      await route.fulfill(jsonResponse({ stats: { by_status: {}, by_assignee: {}, total: 0 } }))
+      return
+    }
+
+    if (pathname === '/api/hermes/kanban/assignees') {
+      await route.fulfill(jsonResponse({ assignees: [] }))
+      return
+    }
+
+    if (pathname === '/api/hermes/logs') {
+      await route.fulfill(jsonResponse({ files: [] }))
+      return
+    }
+
+    if (pathname.startsWith('/api/hermes/logs/')) {
+      await route.fulfill(jsonResponse({ entries: [] }))
+      return
+    }
+
+    if (pathname === '/api/hermes/usage/stats') {
+      const period = Number(url.searchParams.get('days') || 30)
+      await route.fulfill(jsonResponse({ ...emptyUsageStats, period_days: period }))
+      return
+    }
+
+    if (pathname === '/api/hermes/performance/runtime') {
+      await route.fulfill(jsonResponse(samplePerformanceSnapshot))
+      return
+    }
+
+    if (pathname === '/api/hermes/skills/usage/stats') {
+      const period = Number(url.searchParams.get('days') || 7)
+      await route.fulfill(jsonResponse({ ...emptySkillUsageStats, period_days: period }))
+      return
+    }
+
+    if (pathname === '/api/hermes/skills') {
+      await route.fulfill(jsonResponse({ categories: [], archived: [] }))
+      return
+    }
+
+    if (pathname === '/api/hermes/plugins') {
+      await route.fulfill(jsonResponse({
+        plugins: [],
+        warnings: [],
+        metadata: {
+          hermesAgentRoot: '/tmp/hermes-agent',
+          pythonExecutable: '/usr/bin/python3',
+          cwd: '/tmp/hermes',
+          projectPluginsEnabled: false,
+        },
+      }))
+      return
+    }
+
+    if (pathname === '/api/hermes/memory') {
+      await route.fulfill(jsonResponse({
+        memory: '',
+        user: '',
+        soul: '',
+        memory_mtime: null,
+        user_mtime: null,
+        soul_mtime: null,
+      }))
+      return
+    }
+
+    if (pathname === '/api/hermes/group-chat/rooms') {
+      await route.fulfill(jsonResponse({ rooms: [] }))
       return
     }
 
