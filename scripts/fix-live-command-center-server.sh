@@ -87,10 +87,44 @@ print_autologin_url() {
   local webui_home="${HERMES_WEB_UI_HOME:-${HERMES_WEBUI_STATE_DIR:-$HOME/.hermes-web-ui}}"
 
   PUBLIC_URL="$public_url" WEBUI_HOME="$webui_home" node --input-type=module <<'NODE'
-import { createHmac } from 'node:crypto'
+import { createHmac, randomBytes, scryptSync } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+
+function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex')
+  const hash = scryptSync(password, salt, 64).toString('hex')
+  return `scrypt:${salt}:${hash}`
+}
+
+function ensureAuthUser(db) {
+  const active = db.prepare(`
+    SELECT id, username, role
+    FROM users
+    WHERE status = 'active'
+    ORDER BY CASE WHEN role = 'super_admin' THEN 0 ELSE 1 END, id ASC
+    LIMIT 1
+  `).get()
+  if (active) return active
+
+  const total = db.prepare('SELECT COUNT(*) AS count FROM users').get()?.count || 0
+  if (Number(total) > 0) throw new Error('No active Web UI user found')
+
+  const now = Date.now()
+  const username = 'command_center_admin'
+  const randomPassword = randomBytes(32).toString('hex')
+  db.prepare(`
+    INSERT INTO users (username, password_hash, role, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(username, hashPassword(randomPassword), 'super_admin', 'active', now, now)
+  const created = db.prepare('SELECT id, username, role FROM users WHERE username = ?').get(username)
+  db.prepare(`
+    INSERT INTO user_profiles (user_id, profile_name, is_default, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(created.id, 'default', 1, now)
+  return created
+}
 
 const publicUrl = process.env.PUBLIC_URL || 'http://127.0.0.1:8648'
 const home = process.env.WEBUI_HOME
@@ -98,15 +132,9 @@ const secret = process.env.AUTH_TOKEN || readFileSync(join(home, '.token'), 'utf
 const dbPath = join(home, 'hermes-web-ui.db')
 if (!existsSync(dbPath)) throw new Error(`Web UI DB not found: ${dbPath}`)
 
-const db = new DatabaseSync(dbPath, { readOnly: true })
-const user = db.prepare(`
-  SELECT id, username, role
-  FROM users
-  WHERE status = 'active'
-  ORDER BY CASE WHEN role = 'super_admin' THEN 0 ELSE 1 END, id ASC
-  LIMIT 1
-`).get()
-if (!user) throw new Error('No active Web UI user found')
+const db = new DatabaseSync(dbPath)
+db.exec('PRAGMA busy_timeout=5000')
+const user = ensureAuthUser(db)
 
 const b64 = value => Buffer.from(JSON.stringify(value)).toString('base64url')
 const iat = Math.floor(Date.now() / 1000)
