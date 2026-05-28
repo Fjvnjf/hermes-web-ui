@@ -100,6 +100,54 @@ function flushPendingToolMarkupToAssistant(
   return pendingMarkup
 }
 
+function appendBridgeFinalOutputToAssistant(
+  state: SessionState,
+  sessionId: string,
+  runMarker: string,
+  runId: string,
+  finalOutput: string,
+  emit: (event: string, payload: any) => void,
+): boolean {
+  if (!finalOutput.trim()) return false
+
+  const currentOutput = state.bridgeOutput || ''
+  let delta = ''
+  if (!currentOutput) {
+    delta = finalOutput
+  } else if (finalOutput.startsWith(currentOutput) && finalOutput.length > currentOutput.length) {
+    delta = finalOutput.slice(currentOutput.length)
+  }
+  if (!delta) return false
+
+  state.bridgeOutput = currentOutput + delta
+  state.bridgePendingAssistantContent = (state.bridgePendingAssistantContent || '') + delta
+
+  const last = findOpenAssistantMessage(state, runMarker)
+  if (last) {
+    last.content += delta
+    syncBridgeReasoningToMessage(last, state.bridgePendingReasoningContent)
+  } else {
+    state.messages.push({
+      id: state.messages.length + 1,
+      session_id: sessionId,
+      runMarker,
+      role: 'assistant',
+      content: delta,
+      reasoning: state.bridgePendingReasoningContent || null,
+      reasoning_content: state.bridgePendingReasoningContent || null,
+      timestamp: Math.floor(Date.now() / 1000),
+    })
+  }
+
+  emit('message.delta', {
+    event: 'message.delta',
+    run_id: runId,
+    delta,
+    output: state.bridgeOutput,
+  })
+  return true
+}
+
 function finiteToken(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
     ? Math.floor(value)
@@ -883,6 +931,11 @@ async function applyBridgeChunkAsync(
   // it (which the line below was doing implicitly) silently drops the
   // final characters of the assistant message.
   flushPendingToolMarkupToAssistant(state, runMarker, chunk.run_id, emit)
+  const terminalError = bridgeTerminalError(chunk)
+  const finalOutput = terminalError ? (chunk.output || state.bridgeOutput || '') : bridgeFinalResponse(chunk, state)
+  if (!terminalError) {
+    appendBridgeFinalOutputToAssistant(state, sessionId, runMarker, chunk.run_id, finalOutput, emit)
+  }
   flushBridgePendingToDb(state, sessionId)
   state.bridgePendingToolCallMarkup = undefined
   updateSessionStats(sessionId)
@@ -904,7 +957,6 @@ async function applyBridgeChunkAsync(
     outputTokens: usage.outputTokens,
     profile: state.profile,
   })
-  const terminalError = bridgeTerminalError(chunk)
   const hadQueuedRunBeforeGoalEvaluation = state.queue.length > 0
   state.isWorking = hadQueuedRunBeforeGoalEvaluation
   state.isAborting = false
@@ -917,7 +969,7 @@ async function applyBridgeChunkAsync(
   const payload = {
     event: eventName,
     run_id: chunk.run_id,
-    output: chunk.output || state.bridgeOutput || '',
+    output: finalOutput || '',
     result: chunk.result,
     error: terminalError || chunk.error,
     inputTokens: usage.inputTokens,
@@ -938,7 +990,7 @@ async function applyBridgeChunkAsync(
       modelContext,
       modelGroups,
       instructions,
-      finalResponse: bridgeFinalResponse(chunk, state),
+      finalResponse: finalOutput,
     })
   }
 

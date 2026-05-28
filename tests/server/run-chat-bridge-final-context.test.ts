@@ -196,6 +196,64 @@ describe('bridge run final context usage', () => {
     }))
   })
 
+  it('uses bridge final_response as assistant output when no deltas stream', async () => {
+    const emit = vi.fn()
+    const nsp = makeNamespace(emit)
+    const socket = makeSocket()
+    const state = makeState()
+    const persistedContent: string[] = []
+    flushBridgePendingToDbMock.mockImplementation((targetState: any) => {
+      persistedContent.push(targetState.bridgePendingAssistantContent || '')
+      targetState.bridgePendingAssistantContent = ''
+    })
+    const sessionMap = new Map([['session-1', state]])
+    const bridge = {
+      chat: vi.fn().mockResolvedValue({ run_id: 'run-1', status: 'started' }),
+      contextEstimate: vi.fn().mockResolvedValue({
+        token_count: 12345,
+        fixed_context_tokens: 12327,
+        message_count: 2,
+        tool_count: 4,
+        system_prompt_chars: 13,
+      }),
+      streamOutput: vi.fn(async function* () {
+        yield {
+          run_id: 'run-1',
+          done: true,
+          status: 'completed',
+          output: '',
+          result: { final_response: 'OK', completed: true },
+        }
+      }),
+    } as any
+
+    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    await handleBridgeRun(
+      nsp,
+      socket,
+      { input: 'hello', session_id: 'session-1' },
+      'default',
+      sessionMap,
+      bridge,
+      false,
+      vi.fn(),
+      vi.fn(),
+    )
+
+    expect(emit).toHaveBeenCalledWith('message.delta', expect.objectContaining({
+      delta: 'OK',
+      output: 'OK',
+    }))
+    expect(emit).toHaveBeenCalledWith('run.completed', expect.objectContaining({
+      output: 'OK',
+      result: { final_response: 'OK', completed: true },
+    }))
+    expect(persistedContent).toContain('OK')
+    expect(state.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant', content: 'OK' }),
+    ]))
+  })
+
   it('evaluates active goals after a successful bridge run and queues continuation prompts', async () => {
     const emit = vi.fn()
     const nsp = makeNamespace(emit)
