@@ -105,13 +105,13 @@ describe('API Client', () => {
       expect(options.headers.Authorization).toBeUndefined()
     })
 
-    it('clears token and redirects on 401 for local BFF endpoints', async () => {
+    it('clears token without redirecting on 401 for local BFF endpoints', async () => {
       setApiKey('secret-key')
       mockFetch.mockResolvedValue({ ok: false, status: 401 })
 
       await expect(request('/api/hermes/sessions')).rejects.toThrow('Unauthorized')
       expect(hasApiKey()).toBe(false)
-      expect(router.replace).toHaveBeenCalledWith({ name: 'login' })
+      expect(router.replace).not.toHaveBeenCalled()
     })
 
     it('emits a global auth notice on local 403 responses', async () => {
@@ -126,7 +126,7 @@ describe('API Client', () => {
       window.removeEventListener('hermes-auth-notice', listener)
     })
 
-    it('clears token and redirects when the JWT user no longer exists', async () => {
+    it('clears token without redirecting when the JWT user no longer exists', async () => {
       setApiKey('stale-jwt')
       mockFetch.mockResolvedValue({
         ok: false,
@@ -137,7 +137,7 @@ describe('API Client', () => {
       await expect(request('/api/hermes/profiles')).rejects.toThrow('API Error 403')
 
       expect(hasApiKey()).toBe(false)
-      expect(router.replace).toHaveBeenCalledWith({ name: 'login' })
+      expect(router.replace).not.toHaveBeenCalled()
     })
 
     it('does NOT clear token on 401 for proxied v1 endpoints', async () => {

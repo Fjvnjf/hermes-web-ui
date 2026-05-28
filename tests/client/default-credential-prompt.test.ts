@@ -84,9 +84,8 @@ describe('DefaultCredentialPrompt', () => {
     expect(mockPush).toHaveBeenCalledWith({ name: 'hermes.settings', query: { tab: 'account' } })
   })
 
-  it('does not prompt on the login route', async () => {
-    routeState.fullPath = '/'
-    routeState.name = 'login'
+  it('does not prompt without an auth token', async () => {
+    mockGetApiKey.mockReturnValue('')
 
     mount(DefaultCredentialPrompt)
     await Promise.resolve()

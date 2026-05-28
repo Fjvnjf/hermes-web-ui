@@ -20,11 +20,6 @@ function dismissalKey(userId: number): string {
 }
 
 async function checkDefaultCredentials() {
-  if (route.name === "login") {
-    show.value = false;
-    return;
-  }
-
   const token = getApiKey();
   if (!token || token === checkedToken.value) return;
   checkedToken.value = token;

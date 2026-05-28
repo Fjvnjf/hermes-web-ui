@@ -1,5 +1,3 @@
-import router from '@/router'
-
 const DEFAULT_BASE_URL = ''
 
 function getBaseUrl(): string {
@@ -109,7 +107,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
 
   const res = await fetch(url, { ...options, headers })
 
-  // Global 401 handler — only redirect to login for local BFF endpoints
+  // Global 401 handler — clear local auth for BFF endpoints without leaving the dashboard shell.
   // Proxied gateway requests should not trigger logout
   const isLocalBff = !path.startsWith('/api/hermes/v1/') &&
     !path.startsWith('/v1/')
@@ -117,9 +115,6 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   if (res.status === 401 && isLocalBff) {
     clearApiKey()
     emitAuthNotice('expired')
-    if (router.currentRoute.value.name !== 'login') {
-      router.replace({ name: 'login' })
-    }
     throw new Error('Unauthorized')
   }
 
@@ -129,9 +124,6 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
       if (text.includes('User is disabled or does not exist')) {
         clearApiKey()
         emitAuthNotice('expired')
-        if (router.currentRoute.value.name !== 'login') {
-          router.replace({ name: 'login' })
-        }
       } else {
         emitAuthNotice('forbidden')
       }

@@ -24,7 +24,6 @@ export function useKeyboard() {
     }
 
     if (mod && e.key.toLowerCase() === 'k') {
-      if (router.currentRoute.value.name === 'login') return
       e.preventDefault()
       openSessionSearch()
       return

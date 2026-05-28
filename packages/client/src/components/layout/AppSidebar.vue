@@ -67,7 +67,7 @@ function handleReloadClient() {
 
 function handleLogout() {
   localStorage.clear();
-  router.replace({ name: 'login' });
+  router.replace({ name: 'hermes.chat' });
 }
 
 // Changelog

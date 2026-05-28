@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { darkTheme, NConfigProvider, NMessageProvider, NDialogProvider, NNotificationProvider } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { getThemeOverrides } from '@/styles/theme'
@@ -15,14 +15,11 @@ import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.v
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
 const appStore = useAppStore()
-const route = useRoute()
 const router = useRouter()
 const ready = ref(false)
 
 const themeOverrides = computed(() => getThemeOverrides(isDark.value, isComic.value))
 const naiveTheme = computed(() => darkTheme)
-
-const isLoginPage = computed(() => route.name === 'login')
 
 const nodeVersionLow = computed(() => {
   const v = appStore.nodeVersion
@@ -31,7 +28,7 @@ const nodeVersionLow = computed(() => {
 })
 
 // Close mobile sidebar on route change
-watch(() => route.path, () => {
+watch(() => router.currentRoute.value.path, () => {
   appStore.closeSidebar()
 })
 
@@ -41,10 +38,8 @@ router.isReady().then(() => {
 })
 
 onMounted(() => {
-  if (!isLoginPage.value) {
-    appStore.loadModels()
-    appStore.startHealthPolling()
-  }
+  appStore.loadModels()
+  appStore.startHealthPolling()
 })
 
 onUnmounted(() => {
@@ -63,14 +58,14 @@ useKeyboard()
           <div v-if="nodeVersionLow && ready" class="node-warning-bar">
             {{ t('sidebar.nodeVersionWarning', { version: appStore.nodeVersion }) }}
           </div>
-          <div v-if="ready" class="app-layout" :class="{ 'no-sidebar': isLoginPage }">
-            <button v-if="!isLoginPage" class="hamburger-btn" @click="appStore.toggleSidebar">
+          <div v-if="ready" class="app-layout">
+            <button class="hamburger-btn" @click="appStore.toggleSidebar">
               <img src="/logo.png" alt="Menu" style="width: 24px; height: 24px;" />
             </button>
-            <div v-if="!isLoginPage && appStore.sidebarOpen" class="mobile-backdrop" @click="appStore.closeSidebar" />
-            <AppSidebar v-if="!isLoginPage" />
+            <div v-if="appStore.sidebarOpen" class="mobile-backdrop" @click="appStore.closeSidebar" />
+            <AppSidebar />
             <main class="app-main">
-              <header v-if="!isLoginPage" class="command-topbar">
+              <header class="command-topbar">
                 <div class="topbar-title">
                   <span class="topbar-dot" :class="{ online: appStore.connected }"></span>
                   <span class="topbar-brand">Private Command Center</span>
@@ -103,10 +98,6 @@ useKeyboard()
   height: calc(100 * var(--vh));
   width: 100vw;
   overflow: hidden;
-
-  &.no-sidebar {
-    display: block;
-  }
 }
 
 .app-main {
@@ -114,10 +105,6 @@ useKeyboard()
   overflow-y: auto;
   background-color: #060a12;
   min-width: 0;
-
-  .no-sidebar & {
-    height: calc(100 * var(--vh));
-  }
 }
 
 .command-topbar {
