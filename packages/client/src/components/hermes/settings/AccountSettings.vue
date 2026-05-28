@@ -211,7 +211,7 @@ onMounted(() => { loadLockedIps(); });
 @use "@/styles/variables" as *;
 
 .account-settings {
-  padding: 8px 0;
+  padding: 0;
 }
 
 .section-desc {
@@ -229,13 +229,16 @@ onMounted(() => { loadLockedIps(); });
 }
 
 .action-label {
+  min-width: 0;
   font-size: 14px;
   color: $text-secondary;
+  overflow-wrap: anywhere;
 }
 
 .action-buttons {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
@@ -247,8 +250,10 @@ onMounted(() => { loadLockedIps(); });
 
 .section-title {
   font-size: 15px;
-  font-weight: 600;
-  color: $text-primary;
+  font-weight: 800;
+  color: $accent-primary;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   margin: 0 0 16px;
 }
 
@@ -297,5 +302,37 @@ onMounted(() => { loadLockedIps(); });
   font-size: 13px;
   color: $text-muted;
   margin: 0;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .section-desc {
+    margin-bottom: 16px;
+  }
+
+  .action-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .action-buttons {
+    width: 100%;
+
+    :deep(.n-button) {
+      flex: 1 1 150px;
+      min-width: 0;
+    }
+  }
+
+  .locked-ips-section {
+    margin-top: 24px;
+    padding-top: 18px;
+  }
+
+  .locked-item,
+  .locked-info {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

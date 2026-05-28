@@ -2,8 +2,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
-  NTabs,
-  NTabPane,
   NSpin,
 } from "naive-ui";
 import { useI18n } from "vue-i18n";
@@ -26,8 +24,7 @@ const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const activeTab = ref("account");
-
-const validTabs = computed(() => new Set([
+const tabNames = [
   "account",
   "users",
   "display",
@@ -38,7 +35,16 @@ const validTabs = computed(() => new Set([
   "privacy",
   "models",
   "voice",
-]));
+] as const;
+
+const settingsTabs = computed(() =>
+  tabNames.map(name => ({
+    name,
+    label: t(`settings.tabs.${name}`),
+  })),
+);
+
+const validTabs = computed(() => new Set<string>(tabNames));
 
 function normalizeTab(value: unknown): string {
   const tab = typeof value === "string" ? value : "";
@@ -83,38 +89,40 @@ onMounted(() => {
         size="large"
         :description="t('common.loading')"
       >
-        <NTabs v-model:value="activeTab" type="line" animated @update:value="handleTabUpdate">
-          <NTabPane name="account" :tab="t('settings.tabs.account')">
-            <AccountSettings />
-          </NTabPane>
-          <NTabPane name="users" :tab="t('settings.tabs.users')">
-            <UserManagementSettings />
-          </NTabPane>
-          <NTabPane name="display" :tab="t('settings.tabs.display')">
-            <DisplaySettings />
-          </NTabPane>
-          <NTabPane name="agent" :tab="t('settings.tabs.agent')">
-            <AgentSettings />
-          </NTabPane>
-          <NTabPane name="memory" :tab="t('settings.tabs.memory')">
-            <MemorySettings />
-          </NTabPane>
-          <NTabPane name="compression" :tab="t('settings.tabs.compression')">
-            <CompressionSettings />
-          </NTabPane>
-          <NTabPane name="session" :tab="t('settings.tabs.session')">
-            <SessionSettings />
-          </NTabPane>
-          <NTabPane name="privacy" :tab="t('settings.tabs.privacy')">
-            <PrivacySettings />
-          </NTabPane>
-          <NTabPane name="models" :tab="t('settings.tabs.models')">
-            <ModelSettings />
-          </NTabPane>
-          <NTabPane name="voice" :tab="t('settings.tabs.voice')">
-            <VoiceSettings />
-          </NTabPane>
-        </NTabs>
+        <div class="settings-command-tabs" role="tablist" aria-label="Settings sections">
+          <button
+            v-for="tab in settingsTabs"
+            :id="`settings-tab-${tab.name}`"
+            :key="tab.name"
+            class="settings-tab"
+            :class="{ active: activeTab === tab.name }"
+            type="button"
+            role="tab"
+            :aria-selected="activeTab === tab.name"
+            :aria-controls="`settings-panel-${tab.name}`"
+            @click="handleTabUpdate(tab.name)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <section
+          :id="`settings-panel-${activeTab}`"
+          class="settings-panel"
+          role="tabpanel"
+          :aria-labelledby="`settings-tab-${activeTab}`"
+        >
+          <AccountSettings v-if="activeTab === 'account'" />
+          <UserManagementSettings v-else-if="activeTab === 'users'" />
+          <DisplaySettings v-else-if="activeTab === 'display'" />
+          <AgentSettings v-else-if="activeTab === 'agent'" />
+          <MemorySettings v-else-if="activeTab === 'memory'" />
+          <CompressionSettings v-else-if="activeTab === 'compression'" />
+          <SessionSettings v-else-if="activeTab === 'session'" />
+          <PrivacySettings v-else-if="activeTab === 'privacy'" />
+          <ModelSettings v-else-if="activeTab === 'models'" />
+          <VoiceSettings v-else-if="activeTab === 'voice'" />
+        </section>
       </NSpin>
     </div>
   </div>
@@ -132,6 +140,78 @@ onMounted(() => {
 .settings-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 18px;
+}
+
+.settings-command-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: #09130f;
+}
+
+.settings-tab {
+  min-width: 0;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  background: $bg-card;
+  color: $text-secondary;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  transition: color $transition-fast, border-color $transition-fast, background $transition-fast;
+
+  &:hover {
+    border-color: rgba(var(--accent-primary-rgb), 0.65);
+    color: $accent-primary;
+    background: $bg-card-hover;
+  }
+
+  &.active {
+    border-color: rgba(var(--accent-info-rgb), 0.72);
+    background: rgba(var(--accent-info-rgb), 0.1);
+    color: $accent-info;
+  }
+}
+
+.settings-panel {
+  padding: 16px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .settings-content {
+    padding: 12px;
+  }
+
+  .settings-command-tabs {
+    position: static;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .settings-tab {
+    min-height: 34px;
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+
+  .settings-panel {
+    padding: 14px;
+  }
 }
 </style>

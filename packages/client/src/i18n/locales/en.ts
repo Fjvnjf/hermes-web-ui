@@ -36,7 +36,7 @@ export default {
     newUsername: 'New Username',
     usernameChanged: 'Username changed successfully',
     usernameTooShort: 'Username must be at least 2 characters',
-    setupDescription: 'Manage the username and password used to sign in.',
+    setupDescription: 'Manage local account controls and lockout recovery.',
     removeConfirm: 'Password login is required for user accounts.',
     passwordLoginNotConfigured: 'Password login is not configured',
     passwordLoginConfigured: 'Current account: {username}',
