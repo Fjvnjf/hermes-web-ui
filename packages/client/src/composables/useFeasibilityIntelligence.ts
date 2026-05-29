@@ -51,12 +51,31 @@ export interface ResearchJobRecord {
   createdAt: string
 }
 
+export type ResearchReviewStatus = 'Pending Review' | 'Approved' | 'Rejected' | 'To Verify'
+
+export interface ResearchReviewFinding {
+  id: string
+  summary: string
+  keyClaim: string
+  area: EvidenceArea
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence: 'low' | 'medium' | 'high'
+  source?: SourceReference | null
+  suggestedTask?: string
+  suggestedInvestorMaterial?: string
+  riskNote?: string
+  status: ResearchReviewStatus
+  createdAt: string
+  reviewedAt?: string
+}
+
 export interface FeasibilityIntelligenceState {
   evidenceItems: FeasibilityEvidenceItem[]
   marketClaims: MarketClaim[]
   competitors: CompetitorIntelligenceRecord[]
   presentationMaterials: PresentationMaterial[]
   researchJobs: ResearchJobRecord[]
+  researchFindings: ResearchReviewFinding[]
 }
 
 const STORAGE_KEY = 'hermes.feasibilityIntelligence.v1'
@@ -127,6 +146,7 @@ function emptyState(): FeasibilityIntelligenceState {
     competitors: [],
     presentationMaterials: [],
     researchJobs: [],
+    researchFindings: [],
   }
 }
 
@@ -154,6 +174,7 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
     competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
     presentationMaterials: Array.isArray(raw.presentationMaterials) ? raw.presentationMaterials : [],
     researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
+    researchFindings: Array.isArray(raw.researchFindings) ? raw.researchFindings : [],
   }
 }
 
@@ -200,6 +221,9 @@ export function useFeasibilityIntelligence() {
     state.value.presentationMaterials.filter(item =>
       item.evidenceStatus === 'Verified' || item.evidenceStatus === 'User Approved' || item.evidenceStatus === 'Approved Assumption',
     ).length,
+  )
+  const pendingResearchFindings = computed(() =>
+    state.value.researchFindings.filter(item => item.status === 'Pending Review' || item.status === 'To Verify'),
   )
 
   function updateEvidenceStatus(id: EvidenceArea, evidenceStatus: IntelligenceEvidenceStatus, source?: SourceReference | null) {
@@ -263,6 +287,88 @@ export function useFeasibilityIntelligence() {
     return saved
   }
 
+  function addResearchFinding(finding: Omit<ResearchReviewFinding, 'id' | 'createdAt' | 'status'> & { status?: ResearchReviewStatus }) {
+    const evidenceStatus = finding.evidenceStatus === 'Verified' && !sourceIsUsable(finding.source)
+      ? 'To Verify'
+      : finding.evidenceStatus
+    const saved: ResearchReviewFinding = {
+      ...finding,
+      id: idFrom('finding', finding.keyClaim || finding.summary),
+      evidenceStatus,
+      status: finding.status || 'Pending Review',
+      createdAt: nowIso(),
+    }
+    state.value.researchFindings = [saved, ...state.value.researchFindings]
+    persist()
+    return saved
+  }
+
+  function approveResearchFinding(
+    id: string,
+    options: {
+      evidenceStatus?: IntelligenceEvidenceStatus
+      updateReadiness?: boolean
+      addToPresentation?: boolean
+    } = {},
+  ): ResearchReviewFinding | null {
+    const index = state.value.researchFindings.findIndex(item => item.id === id)
+    if (index === -1) return null
+    const current = state.value.researchFindings[index]
+    const requestedStatus = options.evidenceStatus || current.evidenceStatus
+    const evidenceStatus = requestedStatus === 'Verified' && !sourceIsUsable(current.source)
+      ? 'To Verify'
+      : requestedStatus
+    const approved: ResearchReviewFinding = {
+      ...current,
+      evidenceStatus,
+      status: evidenceStatus === 'Missing' || evidenceStatus === 'To Verify' ? 'To Verify' : 'Approved',
+      reviewedAt: nowIso(),
+    }
+    state.value.researchFindings = [
+      ...state.value.researchFindings.slice(0, index),
+      approved,
+      ...state.value.researchFindings.slice(index + 1),
+    ]
+    if (options.updateReadiness) {
+      updateEvidenceStatus(approved.area, approved.evidenceStatus, approved.source || null)
+    }
+    if (
+      options.addToPresentation &&
+      approved.suggestedInvestorMaterial?.trim() &&
+      (approved.evidenceStatus === 'Verified' ||
+        approved.evidenceStatus === 'User Approved' ||
+        approved.evidenceStatus === 'Approved Assumption' ||
+        approved.evidenceStatus === 'Assumption')
+    ) {
+      addPresentationMaterial({
+        section: approved.keyClaim || approved.area,
+        content: approved.suggestedInvestorMaterial,
+        evidenceStatus: approved.evidenceStatus === 'Assumption' ? 'Approved Assumption' : approved.evidenceStatus,
+        source: approved.source || null,
+      })
+      updateEvidenceStatus('presentation', 'User Approved')
+    }
+    persist()
+    return approved
+  }
+
+  function rejectResearchFinding(id: string): ResearchReviewFinding | null {
+    const index = state.value.researchFindings.findIndex(item => item.id === id)
+    if (index === -1) return null
+    const rejected: ResearchReviewFinding = {
+      ...state.value.researchFindings[index],
+      status: 'Rejected',
+      reviewedAt: nowIso(),
+    }
+    state.value.researchFindings = [
+      ...state.value.researchFindings.slice(0, index),
+      rejected,
+      ...state.value.researchFindings.slice(index + 1),
+    ]
+    persist()
+    return rejected
+  }
+
   function resetFeasibilityIntelligenceForTests() {
     state.value = emptyState()
     loaded = true
@@ -275,11 +381,15 @@ export function useFeasibilityIntelligence() {
     evidenceGaps,
     verifiedClaimCount,
     approvedPresentationCount,
+    pendingResearchFindings,
     updateEvidenceStatus,
     addMarketClaim,
     addCompetitor,
     addPresentationMaterial,
     addResearchJob,
+    addResearchFinding,
+    approveResearchFinding,
+    rejectResearchFinding,
     resetFeasibilityIntelligenceForTests,
   }
 }

@@ -13,6 +13,7 @@ import {
   type SelectOption,
 } from 'naive-ui'
 import { fetchMemory, saveMemory } from '@/api/hermes/skills'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import {
   captureContextOptions,
   categoryLabel,
@@ -54,6 +55,7 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const intelligence = useFeasibilityIntelligence()
 const selectedContext = ref<CaptureContextId>(props.initialContext)
 const draft = ref<SessionCaptureDraft | null>(null)
 const selectedIds = ref<Set<string>>(new Set())
@@ -287,6 +289,12 @@ async function createResearchTask(item: DeepResearchSuggestion) {
       priority: researchPriorityNumber(item.priority),
       tenant: contextLabel(selectedContext.value),
     })
+    intelligence.addResearchJob({
+      title: item.title,
+      question: item.researchQuestion,
+      context: contextLabel(selectedContext.value),
+      status: 'Task Created',
+    })
     researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: 'Created as a Kanban research task.' }
     message.success('Research task created in Kanban')
   } catch (err) {
@@ -302,6 +310,18 @@ async function createResearchTask(item: DeepResearchSuggestion) {
   } finally {
     creatingResearchTaskId.value = null
   }
+}
+
+function deferResearchSuggestion(item: DeepResearchSuggestion) {
+  intelligence.addResearchJob({
+    title: item.title,
+    question: item.researchQuestion,
+    context: contextLabel(selectedContext.value),
+    status: 'Later',
+  })
+  researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: 'Saved for later review.' }
+  hideResearchSuggestion(item)
+  message.info('Research suggestion saved for later')
 }
 
 function hideResearchSuggestion(item: DeepResearchSuggestion) {
@@ -443,7 +463,7 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
                 Yes, create research task
               </NButton>
               <NButton size="tiny" secondary @click="createResearchTask(item)">Create task instead</NButton>
-              <NButton size="tiny" quaternary @click="hideResearchSuggestion(item)">Later</NButton>
+              <NButton size="tiny" quaternary @click="deferResearchSuggestion(item)">Later</NButton>
               <NButton size="tiny" quaternary @click="hideResearchSuggestion(item)">No</NButton>
             </div>
           </article>

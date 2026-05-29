@@ -9,6 +9,7 @@ import {
   saveSessionCaptureSelection,
   shouldPromptForCapture,
 } from '@/composables/useSessionCapture'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import type { Message } from '@/stores/hermes/chat'
 
 const createTaskMock = vi.hoisted(() => vi.fn())
@@ -95,6 +96,7 @@ function testMessages(): Message[] {
 describe('Session Capture Assistant', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
     createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
     fetchBoardsMock.mockReset().mockResolvedValue(undefined)
     setSelectedBoardMock.mockReset()
@@ -197,5 +199,26 @@ describe('Session Capture Assistant', () => {
 
     expect(fetchBoardsMock).toHaveBeenCalled()
     expect(createTaskMock).toHaveBeenCalled()
+  })
+
+  it('records created deep research tasks in the shared feasibility intelligence queue', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(SessionCaptureDrawer, {
+      props: {
+        show: true,
+        sessionId: 'session-1',
+        sessionTitle: 'Chemicon feasibility',
+        messages: testMessages(),
+        initialContext: 'chemicon',
+      },
+    })
+
+    const researchButton = wrapper.findAll('button').find(button => button.text().includes('Yes, create research task'))
+    expect(researchButton).toBeTruthy()
+    await researchButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalled()
+    expect(intelligence.state.value.researchJobs.some(job => job.title.includes('DMS regulation'))).toBe(true)
   })
 })

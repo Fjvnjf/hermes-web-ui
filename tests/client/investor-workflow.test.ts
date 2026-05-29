@@ -59,6 +59,7 @@ vi.mock('vue-router', async (importOriginal) => {
 
 import InvestorReadinessView from '@/views/hermes/InvestorReadinessView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
+import ResearchResultReviewView from '@/views/hermes/ResearchResultReviewView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -206,6 +207,61 @@ describe('investor feasibility workflow utilities', () => {
     expect(saved.evidenceStatus).toBe('To Verify')
     expect(formatMarketShare(saved.marketShare)).toBe('To Verify')
   })
+
+  it('keeps unsourced verified research findings pending as To Verify', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    const saved = intelligence.addResearchFinding({
+      summary: 'A research output mentioned a market claim without a usable source.',
+      keyClaim: 'Unsourced market claim',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'high',
+      source: null,
+      suggestedInvestorMaterial: 'Unsupported investor claim',
+    })
+
+    expect(saved.evidenceStatus).toBe('To Verify')
+    expect(saved.status).toBe('Pending Review')
+    expect(intelligence.pendingResearchFindings.value).toHaveLength(1)
+  })
+
+  it('approves source-backed research findings into readiness and presentation material', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const source = { title: 'Supplier interview', date: '2026-05-30' }
+    const saved = intelligence.addResearchFinding({
+      summary: 'Supplier provided a source-backed product evidence note.',
+      keyClaim: 'Product evidence source exists',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source,
+      suggestedInvestorMaterial: 'Product evidence has a supplier-backed source and should be cited in the appendix.',
+    })
+
+    const approved = intelligence.approveResearchFinding(saved.id, {
+      updateReadiness: true,
+      addToPresentation: true,
+    })
+
+    expect(approved?.status).toBe('Approved')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')?.evidenceStatus).toBe('Verified')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(1)
+  })
+
+  it('records research jobs from capture/intelligence pages in shared state', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    const saved = intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Task Created',
+    })
+
+    expect(saved.status).toBe('Task Created')
+    expect(intelligence.state.value.researchJobs[0].title).toContain('DMS')
+  })
 })
 
 describe('investor readiness pages', () => {
@@ -226,5 +282,31 @@ describe('investor readiness pages', () => {
 
     expect(wrapper.text()).toContain('Evidence-Backed Competitor Tracking')
     expect(wrapper.text()).toContain('To Verify')
+  })
+
+  it('renders staged research jobs and findings in Research Result Review', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Task Created',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Research finding summary awaiting approval.',
+      keyClaim: 'DMS regulation source needed',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+    })
+
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Approve Research Before It Changes Anything')
+    expect(wrapper.text()).toContain('DMS regulation in China')
+    expect(wrapper.text()).toContain('DMS regulation source needed')
   })
 })
