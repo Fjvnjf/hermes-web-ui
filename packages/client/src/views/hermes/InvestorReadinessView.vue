@@ -31,6 +31,7 @@ const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingKey = ref('')
 const creatingDataRoomTask = ref('')
+const stagingDataRoomSourceId = ref('')
 const evidenceForm = ref({
   area: 'companyLegal' as EvidenceArea,
   evidenceStatus: 'User Provided' as IntelligenceEvidenceStatus,
@@ -185,6 +186,55 @@ function dataRoomTaskBody(item: DataRoomItem): string {
     '',
     'Do not mark this investor-ready until source evidence is attached or the user explicitly approves a labeled assumption.',
   ].join('\n')
+}
+
+function dataRoomSourceSummary(record: DataRoomSourceRecord): string {
+  return [
+    `Data-room checklist item: ${record.checklistLabel}`,
+    `Evidence area: ${evidenceAreaOptions.find(area => area.value === record.area)?.label || record.area}`,
+    `Evidence status: ${record.evidenceStatus}`,
+    `Source trace: ${record.source ? formatSource(record.source) : 'Source missing'}`,
+    record.notes ? `Review note: ${record.notes}` : '',
+    'Source page: Investor Readiness Center / Source Register',
+    'This source record must be reviewed before it changes investor material.',
+  ].filter(Boolean).join('\n')
+}
+
+function dataRoomInvestorMaterialCandidate(record: DataRoomSourceRecord): string {
+  if (!isStageableForInvestorDraft(record.evidenceStatus)) return ''
+  return [
+    `Data-room source registered for ${record.checklistLabel}: ${record.source ? formatSource(record.source) : 'source missing'}.`,
+    record.notes ? `Review note: ${record.notes}` : '',
+    `Evidence status: ${record.evidenceStatus}.`,
+  ].filter(Boolean).join('\n')
+}
+
+function stageDataRoomSourceForReview(record: DataRoomSourceRecord) {
+  stagingDataRoomSourceId.value = record.id
+  try {
+    const saved = intelligence.addResearchFinding({
+      summary: dataRoomSourceSummary(record),
+      keyClaim: `Data-room source: ${record.checklistLabel}`,
+      area: record.area,
+      evidenceStatus: record.evidenceStatus,
+      confidence: record.evidenceStatus === 'Verified' ? 'high' : 'medium',
+      source: record.source || null,
+      suggestedTask: record.evidenceStatus === 'Missing' || record.evidenceStatus === 'To Verify'
+        ? `Verify source evidence for ${record.checklistLabel}`
+        : '',
+      suggestedInvestorMaterial: dataRoomInvestorMaterialCandidate(record),
+      riskNote: record.evidenceStatus === 'Verified'
+        ? 'Confirm the source supports the exact claim before using it in investor material.'
+        : 'Keep this item labeled until source quality and claim scope are reviewed.',
+    })
+    if (record.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+      message.warning('Source staged as To Verify because verified review items need usable source evidence')
+    } else {
+      message.success('Data-room source staged for Research Result Review')
+    }
+  } finally {
+    stagingDataRoomSourceId.value = ''
+  }
 }
 
 async function createEvidenceTask(item: ReadinessSection) {
@@ -581,6 +631,14 @@ defineExpose({
           </div>
           <div class="data-room-actions">
             <span :class="sourceClass({ status: record.evidenceStatus })">{{ record.evidenceStatus }}</span>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="stagingDataRoomSourceId === record.id"
+              @click="stageDataRoomSourceForReview(record)"
+            >
+              Stage for review
+            </NButton>
             <NButton size="tiny" quaternary type="error" @click="removeDataRoomSource(record)">
               Remove
             </NButton>

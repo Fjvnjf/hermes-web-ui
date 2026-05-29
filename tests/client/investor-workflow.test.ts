@@ -603,6 +603,29 @@ describe('investor feasibility workflow utilities', () => {
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(1)
   })
 
+  it('turns user-provided reviewed findings into user-approved investor draft material', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addResearchFinding({
+      summary: 'User supplied a data-room source note for product evidence.',
+      keyClaim: 'Product source packet',
+      area: 'product',
+      evidenceStatus: 'User Provided',
+      confidence: 'medium',
+      source: { title: 'User supplied source packet', date: '2026-05-30' },
+      suggestedInvestorMaterial: 'User supplied product evidence packet is available for review in the data room.',
+    })
+
+    intelligence.approveResearchFinding(saved.id, {
+      addToPresentation: true,
+      updateReadiness: true,
+    })
+
+    const material = intelligence.state.value.presentationMaterials[0]
+    expect(material.evidenceStatus).toBe('User Approved')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(1)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')?.evidenceStatus).toBe('User Provided')
+  })
+
   it('maps approved research investor material into the fixed slide outline', () => {
     const intelligence = useFeasibilityIntelligence()
     const saved = intelligence.addResearchFinding({
@@ -974,6 +997,32 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('SDS source reviewed for investor data room.')
   })
 
+  it('stages saved data-room sources for research review without updating investor draft material', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Product TDS/SDS and CAS evidence',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      source: { title: 'CWAS SDS source', date: '2026-05-30' },
+      notes: 'SDS source reviewed for investor data room.',
+    })
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const stageButton = wrapper.findAll('button').find(button => button.text() === 'Stage for review')
+
+    expect(stageButton).toBeTruthy()
+    await stageButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    expect(finding.keyClaim).toBe('Data-room source: Product TDS/SDS and CAS evidence')
+    expect(finding.evidenceStatus).toBe('Verified')
+    expect(finding.source?.title).toBe('CWAS SDS source')
+    expect(finding.suggestedInvestorMaterial).toContain('CWAS SDS source')
+    expect(finding.summary).toContain('This source record must be reviewed')
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+  })
+
   it('keeps verified data-room sources To Verify without usable source evidence', async () => {
     const intelligence = useFeasibilityIntelligence()
     const wrapper = mount(InvestorReadinessView, {
@@ -991,6 +1040,29 @@ describe('investor readiness pages', () => {
     expect(factory?.evidenceStatus).toBe('To Verify')
     expect(intelligence.state.value.dataRoomSources[0].evidenceStatus).toBe('To Verify')
     expect(wrapper.text()).toContain('Factory permit note without date')
+  })
+
+  it('stages unsourced data-room sources as To Verify without investor material candidates', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Factory/rent/permit evidence',
+      area: 'factory',
+      evidenceStatus: 'Verified',
+      source: { title: 'Factory permit note without date' },
+      notes: 'Needs source date or URL before investor use.',
+    })
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const stageButton = wrapper.findAll('button').find(button => button.text() === 'Stage for review')
+
+    expect(stageButton).toBeTruthy()
+    await stageButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    expect(finding.keyClaim).toBe('Data-room source: Factory/rent/permit evidence')
+    expect(finding.evidenceStatus).toBe('To Verify')
+    expect(finding.suggestedInvestorMaterial).toBe('')
   })
 
   it('shows saved evidence sources in readiness cards and data-room checklist', () => {

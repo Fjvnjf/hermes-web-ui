@@ -516,6 +516,7 @@ export function useFeasibilityIntelligence() {
       options.addToPresentation &&
       approved.suggestedInvestorMaterial?.trim() &&
       (approved.evidenceStatus === 'Verified' ||
+        approved.evidenceStatus === 'User Provided' ||
         approved.evidenceStatus === 'User Approved' ||
         approved.evidenceStatus === 'Approved Assumption' ||
         approved.evidenceStatus === 'Assumption')
@@ -526,7 +527,11 @@ export function useFeasibilityIntelligence() {
           `${approved.keyClaim} ${approved.summary} ${approved.suggestedInvestorMaterial}`,
         ),
         content: approved.suggestedInvestorMaterial,
-        evidenceStatus: approved.evidenceStatus === 'Assumption' ? 'Approved Assumption' : approved.evidenceStatus,
+        evidenceStatus: approved.evidenceStatus === 'Assumption'
+          ? 'Approved Assumption'
+          : approved.evidenceStatus === 'User Provided'
+            ? 'User Approved'
+            : approved.evidenceStatus,
         source: approved.source || null,
       })
       updateEvidenceStatus('presentation', 'User Approved')
