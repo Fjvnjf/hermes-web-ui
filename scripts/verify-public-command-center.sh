@@ -3,6 +3,8 @@ set -euo pipefail
 
 PUBLIC_URL="${PUBLIC_URL:-${1:-}}"
 JWT="${JWT:-}"
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-10}"
+CURL_MAX_TIME="${CURL_MAX_TIME:-60}"
 
 if [ -z "$PUBLIC_URL" ]; then
   echo "Usage: PUBLIC_URL=https://example.trycloudflare.com $0" >&2
@@ -24,7 +26,7 @@ http_get() {
   local url="$2"
   local output="$tmp_dir/${label//[^a-zA-Z0-9]/_}.out"
   local code
-  code="$(curl -fsS -o "$output" -w '%{http_code}' "$url")" || fail "$label request failed"
+  code="$(curl --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -fsS -o "$output" -w '%{http_code}' "$url")" || fail "$label request failed"
   [ "$code" = "200" ] || fail "$label returned HTTP $code"
   echo "$output"
 }
@@ -63,7 +65,7 @@ echo "PUBLIC_VERIFY_OK old-login-removed"
 
 if [ -n "$JWT" ]; then
   auth_file="$tmp_dir/auth_me.json"
-  code="$(curl -fsS -H "Authorization: Bearer $JWT" -o "$auth_file" -w '%{http_code}' "$PUBLIC_URL/api/auth/me")" \
+  code="$(curl --connect-timeout "$CURL_CONNECT_TIMEOUT" --max-time "$CURL_MAX_TIME" -fsS -H "Authorization: Bearer $JWT" -o "$auth_file" -w '%{http_code}' "$PUBLIC_URL/api/auth/me")" \
     || fail "auth-me request failed"
   [ "$code" = "200" ] || fail "auth-me returned HTTP $code"
   node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$auth_file" \
