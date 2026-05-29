@@ -257,6 +257,48 @@ describe('investor feasibility workflow utilities', () => {
     expect(draft[0].section).toBe('Use of Funds')
   })
 
+  it('updates staged investor material while enforcing source-backed verification', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Market evidence note awaiting source.',
+      evidenceStatus: 'User Approved',
+    })
+
+    const unsourced = intelligence.updatePresentationMaterial(saved.id!, {
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+    const sourced = intelligence.updatePresentationMaterial(saved.id!, {
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+
+    expect(unsourced?.evidenceStatus).toBe('To Verify')
+    expect(sourced?.evidenceStatus).toBe('Verified')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(1)
+  })
+
+  it('removes staged investor material without changing research review history', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addPresentationMaterial({
+      section: 'Use of Funds',
+      content: 'Material to remove from investor draft.',
+      evidenceStatus: 'User Approved',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Original reviewed finding should remain after deck cleanup.',
+      keyClaim: 'Use of funds note',
+      area: 'presentation',
+      evidenceStatus: 'User Approved',
+      confidence: 'medium',
+    })
+
+    expect(intelligence.removePresentationMaterial(saved.id!)).toBe(true)
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+    expect(intelligence.state.value.researchFindings).toHaveLength(1)
+  })
+
   it('allows assumption-labeled derived financial outputs in investor drafts', () => {
     const draft = buildInvestorPresentationDraft([
       {
@@ -869,5 +911,63 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Source missing')
     expect(wrapper.text()).toContain('Marked To Verify')
     expect(wrapper.text()).toContain('Missing / To Verify')
+  })
+
+  it('lets the presentation builder edit weak material into source-backed investor material', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Distributor pricing note awaiting source.',
+      evidenceStatus: 'To Verify',
+      source: null,
+    })
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const editButton = wrapper.findAll('button').find(button => button.text() === 'Edit evidence')
+
+    expect(editButton).toBeTruthy()
+    await editButton!.trigger('click')
+    const editForm = wrapper.find('.managed-edit')
+    const selects = editForm.findAll('select')
+    const inputs = editForm.findAll('input')
+    await selects[1].setValue('Verified')
+    await inputs[0].setValue('Distributor interview')
+    await inputs[2].setValue('2026-05-30')
+    await editForm.find('textarea').setValue('Source-backed distributor pricing note.')
+    const saveButton = editForm.findAll('button').find(button => button.text() === 'Save material')
+    await saveButton!.trigger('click')
+
+    const material = intelligence.state.value.presentationMaterials[0]
+    expect(material.evidenceStatus).toBe('Verified')
+    expect(material.source?.title).toBe('Distributor interview')
+    expect(wrapper.text()).toContain('Evidence: Verified / Distributor interview (2026-05-30)')
+    expect(wrapper.text()).not.toContain('Needs Evidence Before Investor Use')
+  })
+
+  it('removes staged investor material from the presentation builder without deleting findings', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Executive Summary',
+      content: 'Draft material to remove.',
+      evidenceStatus: 'User Approved',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Keep research finding after deck material is removed.',
+      keyClaim: 'Executive summary note',
+      area: 'presentation',
+      evidenceStatus: 'User Approved',
+      confidence: 'medium',
+    })
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const removeButton = wrapper.findAll('button').find(button => button.text() === 'Remove')
+
+    expect(removeButton).toBeTruthy()
+    await removeButton!.trigger('click')
+
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+    expect(intelligence.state.value.researchFindings).toHaveLength(1)
   })
 })

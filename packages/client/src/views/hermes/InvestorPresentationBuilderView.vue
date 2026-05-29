@@ -40,10 +40,28 @@ const kanbanStore = useKanbanStore()
 const copiedDraft = ref(false)
 const creatingTaskSection = ref('')
 
-const materialForm = ref({
+interface MaterialFormState {
+  section: string
+  content: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  sourceTitle: string
+  sourceUrl: string
+  sourceDate: string
+}
+
+const materialForm = ref<MaterialFormState>({
   section: 'Executive Summary',
   content: '',
-  evidenceStatus: 'User Approved' as IntelligenceEvidenceStatus,
+  evidenceStatus: 'User Approved',
+  sourceTitle: '',
+  sourceUrl: '',
+  sourceDate: '',
+})
+const editingMaterialId = ref('')
+const editMaterialForm = ref<MaterialFormState>({
+  section: 'Executive Summary',
+  content: '',
+  evidenceStatus: 'User Approved',
   sourceTitle: '',
   sourceUrl: '',
   sourceDate: '',
@@ -72,31 +90,17 @@ function materialExclusionReason(material: PresentationMaterial): string {
   return `Marked ${material.evidenceStatus}; keep it out of investor slides until it is user-approved, source-backed, or clearly assumption-labeled.`
 }
 
-function saveMaterial() {
-  const content = materialForm.value.content.trim()
-  if (!content) {
-    message.warning('Add draft text before staging material')
-    return
-  }
-  const source = materialForm.value.sourceTitle.trim()
+function formSource(form: MaterialFormState): PresentationMaterial['source'] {
+  return form.sourceTitle.trim()
     ? {
-        title: materialForm.value.sourceTitle.trim(),
-        url: materialForm.value.sourceUrl.trim() || undefined,
-        date: materialForm.value.sourceDate.trim() || undefined,
+        title: form.sourceTitle.trim(),
+        url: form.sourceUrl.trim() || undefined,
+        date: form.sourceDate.trim() || undefined,
       }
     : null
-  const saved: PresentationMaterial = intelligence.addPresentationMaterial({
-    section: materialForm.value.section,
-    content,
-    evidenceStatus: materialForm.value.evidenceStatus,
-    source,
-  })
-  if (materialForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Material saved as To Verify because verified claims need usable source evidence')
-  } else {
-    intelligence.updateEvidenceStatus('presentation', 'User Approved')
-    message.success('Approved material staged for investor draft')
-  }
+}
+
+function resetMaterialForm() {
   materialForm.value = {
     section: 'Executive Summary',
     content: '',
@@ -104,6 +108,81 @@ function saveMaterial() {
     sourceTitle: '',
     sourceUrl: '',
     sourceDate: '',
+  }
+}
+
+function startEditMaterial(material: PresentationMaterial) {
+  if (!material.id) return
+  editingMaterialId.value = material.id
+  editMaterialForm.value = {
+    section: material.section,
+    content: material.content,
+    evidenceStatus: material.evidenceStatus,
+    sourceTitle: material.source?.title || '',
+    sourceUrl: material.source?.url || '',
+    sourceDate: material.source?.date || '',
+  }
+}
+
+function cancelEditMaterial() {
+  editingMaterialId.value = ''
+}
+
+function saveMaterial() {
+  const content = materialForm.value.content.trim()
+  if (!content) {
+    message.warning('Add draft text before staging material')
+    return
+  }
+  const saved: PresentationMaterial = intelligence.addPresentationMaterial({
+    section: materialForm.value.section,
+    content,
+    evidenceStatus: materialForm.value.evidenceStatus,
+    source: formSource(materialForm.value),
+  })
+  if (materialForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Material saved as To Verify because verified claims need usable source evidence')
+  } else {
+    intelligence.updateEvidenceStatus('presentation', 'User Approved')
+    message.success('Approved material staged for investor draft')
+  }
+  resetMaterialForm()
+}
+
+function saveEditedMaterial() {
+  const content = editMaterialForm.value.content.trim()
+  if (!editingMaterialId.value || !content) {
+    message.warning('Add draft text before saving material')
+    return
+  }
+  const requestedStatus = editMaterialForm.value.evidenceStatus
+  const saved = intelligence.updatePresentationMaterial(editingMaterialId.value, {
+    section: editMaterialForm.value.section,
+    content,
+    evidenceStatus: requestedStatus,
+    source: formSource(editMaterialForm.value),
+  })
+  if (!saved) {
+    message.error('Could not find staged material to update')
+    return
+  }
+  if (requestedStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Material kept as To Verify because verified claims need usable source evidence')
+  } else {
+    message.success('Investor material updated')
+  }
+  editingMaterialId.value = ''
+}
+
+function removeMaterial(material: PresentationMaterial) {
+  if (!material.id) return
+  const ok = window.confirm('Remove this staged investor material? This does not delete chat history, files, or research notes.')
+  if (!ok) return
+  if (intelligence.removePresentationMaterial(material.id)) {
+    if (editingMaterialId.value === material.id) editingMaterialId.value = ''
+    message.success('Staged investor material removed')
+  } else {
+    message.error('Could not remove staged material')
   }
 }
 
@@ -240,6 +319,70 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
       <button type="button" @click="saveMaterial">Stage material</button>
     </section>
 
+    <section v-if="approvedMaterials.length" class="material-manager" aria-label="Manage staged investor material">
+      <div class="manager-head">
+        <div>
+          <h3>Manage staged investor material</h3>
+          <p>
+            Correct source details, change evidence labels, or remove weak material before it reaches the investor draft.
+          </p>
+        </div>
+      </div>
+      <article v-for="material in approvedMaterials" :key="material.id || `${material.section}-${material.content}`" class="managed-material">
+        <div v-if="editingMaterialId !== material.id" class="managed-read">
+          <div class="material-meta">
+            <strong>{{ material.section }}</strong>
+            <span>{{ material.evidenceStatus }}</span>
+          </div>
+          <p>{{ material.content }}</p>
+          <small>{{ materialSourceTrace(material) }}</small>
+          <em v-if="!isPresentationMaterialAllowed(material)">{{ materialExclusionReason(material) }}</em>
+          <div class="manager-actions">
+            <button type="button" @click="startEditMaterial(material)">Edit evidence</button>
+            <button type="button" class="danger" @click="removeMaterial(material)">Remove</button>
+          </div>
+        </div>
+
+        <div v-else class="managed-edit">
+          <label>
+            Slide section
+            <select v-model="editMaterialForm.section">
+              <option v-for="section in slideSections" :key="section">{{ section }}</option>
+            </select>
+          </label>
+          <label>
+            Evidence status
+            <select v-model="editMaterialForm.evidenceStatus">
+              <option>User Approved</option>
+              <option>Approved Assumption</option>
+              <option>Verified</option>
+              <option>To Verify</option>
+            </select>
+          </label>
+          <label>
+            Source title
+            <input v-model="editMaterialForm.sourceTitle" type="text" placeholder="Required for Verified" />
+          </label>
+          <label>
+            Source URL
+            <input v-model="editMaterialForm.sourceUrl" type="url" placeholder="https://..." />
+          </label>
+          <label>
+            Source date
+            <input v-model="editMaterialForm.sourceDate" type="text" placeholder="YYYY-MM-DD or source date" />
+          </label>
+          <label class="wide">
+            Draft text
+            <textarea v-model="editMaterialForm.content" rows="4" placeholder="Approved text for the investor draft"></textarea>
+          </label>
+          <div class="manager-actions wide">
+            <button type="button" @click="saveEditedMaterial">Save material</button>
+            <button type="button" @click="cancelEditMaterial">Cancel</button>
+          </div>
+        </div>
+      </article>
+    </section>
+
     <section class="slide-grid">
       <article v-for="slide in slideDrafts" :key="slide.section" class="slide-card" :class="{ ready: slide.status === 'Ready' }">
         <div class="slide-head">
@@ -283,6 +426,8 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
 .readiness-warning,
 .draft-status,
 .material-form,
+.material-manager,
+.managed-material,
 .slide-card {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
@@ -454,6 +599,93 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
     padding: 9px 12px;
     font-weight: 900;
     cursor: pointer;
+  }
+}
+
+.material-manager {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 16px;
+
+  h3 {
+    margin: 0 0 8px;
+    color: $text-primary;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.managed-material {
+  padding: 12px;
+}
+
+.managed-read {
+  display: grid;
+  gap: 7px;
+
+  small,
+  em {
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.managed-edit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 8px 10px;
+    text-transform: none;
+  }
+}
+
+.manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  button {
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: transparent;
+    padding: 6px 9px;
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .danger {
+    border-color: rgba(var(--error-rgb), 0.35);
+    color: $error;
   }
 }
 

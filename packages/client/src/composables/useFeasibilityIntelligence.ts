@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import {
   calculateInvestorReadinessScore,
+  isPresentationMaterialAllowed,
   normalizedMarketClaimStatus,
   type IntelligenceEvidenceStatus,
   type MarketClaim,
@@ -197,7 +198,9 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
         }))
       : [],
     competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
-    presentationMaterials: Array.isArray(raw.presentationMaterials) ? raw.presentationMaterials : [],
+    presentationMaterials: Array.isArray(raw.presentationMaterials)
+      ? raw.presentationMaterials.map((material, index) => normalizePresentationMaterial(material, index))
+      : [],
     researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
     researchFindings: Array.isArray(raw.researchFindings) ? raw.researchFindings : [],
     financialModels: Array.isArray(raw.financialModels) ? raw.financialModels : [],
@@ -233,6 +236,18 @@ function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
 
+function normalizePresentationMaterial(material: PresentationMaterial, index = 0): PresentationMaterial {
+  return {
+    ...material,
+    id: material.id || idFrom('deck', `${material.section || 'material'}-${index}`),
+    evidenceStatus: material.evidenceStatus === 'Verified' && !sourceIsUsable(material.source)
+      ? 'To Verify'
+      : material.evidenceStatus,
+    source: material.source || null,
+    updatedAt: material.updatedAt || nowIso(),
+  }
+}
+
 export function useFeasibilityIntelligence() {
   ensureLoaded()
 
@@ -244,9 +259,7 @@ export function useFeasibilityIntelligence() {
     state.value.marketClaims.filter(item => normalizedMarketClaimStatus(item) === 'Verified').length,
   )
   const approvedPresentationCount = computed(() =>
-    state.value.presentationMaterials.filter(item =>
-      item.evidenceStatus === 'Verified' || item.evidenceStatus === 'User Approved' || item.evidenceStatus === 'Approved Assumption',
-    ).length,
+    state.value.presentationMaterials.filter(isPresentationMaterialAllowed).length,
   )
   const pendingResearchFindings = computed(() =>
     state.value.researchFindings.filter(item => item.status === 'Pending Review' || item.status === 'To Verify'),
@@ -359,15 +372,36 @@ export function useFeasibilityIntelligence() {
   }
 
   function addPresentationMaterial(material: PresentationMaterial) {
-    const saved: PresentationMaterial = {
-      ...material,
-      evidenceStatus: material.evidenceStatus === 'Verified' && !sourceIsUsable(material.source)
-        ? 'To Verify'
-        : material.evidenceStatus,
-    }
+    const saved = normalizePresentationMaterial(material)
     state.value.presentationMaterials = [saved, ...state.value.presentationMaterials]
     persist()
     return saved
+  }
+
+  function updatePresentationMaterial(id: string, patch: Partial<Omit<PresentationMaterial, 'id'>>): PresentationMaterial | null {
+    const index = state.value.presentationMaterials.findIndex(item => item.id === id)
+    if (index === -1) return null
+    const updated = normalizePresentationMaterial({
+      ...state.value.presentationMaterials[index],
+      ...patch,
+      id,
+      updatedAt: nowIso(),
+    }, index)
+    state.value.presentationMaterials = [
+      ...state.value.presentationMaterials.slice(0, index),
+      updated,
+      ...state.value.presentationMaterials.slice(index + 1),
+    ]
+    persist()
+    return updated
+  }
+
+  function removePresentationMaterial(id: string): boolean {
+    const before = state.value.presentationMaterials.length
+    state.value.presentationMaterials = state.value.presentationMaterials.filter(item => item.id !== id)
+    const removed = state.value.presentationMaterials.length !== before
+    if (removed) persist()
+    return removed
   }
 
   function addResearchJob(job: Omit<ResearchJobRecord, 'id' | 'createdAt'>) {
@@ -497,6 +531,8 @@ export function useFeasibilityIntelligence() {
     updateCompetitor,
     removeCompetitor,
     addPresentationMaterial,
+    updatePresentationMaterial,
+    removePresentationMaterial,
     addResearchJob,
     addResearchFinding,
     approveResearchFinding,

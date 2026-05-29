@@ -27,10 +27,12 @@ export interface MarketClaim {
 }
 
 export interface PresentationMaterial {
+  id?: string
   section: string
   content: string
   evidenceStatus: IntelligenceEvidenceStatus
   source?: SourceReference | null
+  updatedAt?: string
 }
 
 export interface ReadinessItem {
