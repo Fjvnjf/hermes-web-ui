@@ -10,9 +10,11 @@ import {
 } from '@/utils/investmentCalculator'
 import {
   buildInvestorPresentationDraft,
+  buildInvestorSlideOutline,
   calculateInvestorReadinessScore,
   canMarkMarketClaimVerified,
   formatMarketShare,
+  formatInvestorPresentationOutline,
 } from '@/utils/investorIntelligence'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 
@@ -61,11 +63,12 @@ vi.mock('vue-router', async (importOriginal) => {
 import InvestorReadinessView from '@/views/hermes/InvestorReadinessView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
 import ResearchResultReviewView from '@/views/hermes/ResearchResultReviewView.vue'
+import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentationBuilderView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
   useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
-  createTaskMock.mockClear()
+  createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
 })
 
 describe('investor feasibility workflow utilities', () => {
@@ -215,6 +218,28 @@ describe('investor feasibility workflow utilities', () => {
     expect(draft[0].sourceLabel).toBe('Derived from assumptions')
   })
 
+  it('builds a slide outline only from approved investor material', () => {
+    const slides = buildInvestorSlideOutline(['Executive Summary', 'Market Evidence'], [
+      {
+        section: 'Executive Summary',
+        content: 'Approved executive summary.',
+        evidenceStatus: 'User Approved',
+      },
+      {
+        section: 'Market Evidence',
+        content: 'Unsupported market claim.',
+        evidenceStatus: 'Verified',
+        source: null,
+      },
+    ])
+    const outline = formatInvestorPresentationOutline(slides)
+
+    expect(slides[0].status).toBe('Ready')
+    expect(slides[1].status).toBe('Missing / To Verify')
+    expect(outline).toContain('Ready slides: 1/2')
+    expect(outline).not.toContain('Unsupported market claim')
+  })
+
   it('downgrades verified competitor records without source evidence', () => {
     const intelligence = useFeasibilityIntelligence()
 
@@ -359,5 +384,28 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Approve Research Before It Changes Anything')
     expect(wrapper.text()).toContain('DMS regulation in China')
     expect(wrapper.text()).toContain('DMS regulation source needed')
+  })
+
+  it('renders approved investor material and creates missing-proof tasks from presentation builder', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Executive Summary',
+      content: 'Approved feasibility summary for investor draft.',
+      evidenceStatus: 'User Approved',
+    })
+
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Draft From Approved Material Only')
+    expect(wrapper.text()).toContain('Approved feasibility summary for investor draft')
+    expect(wrapper.text()).toContain('Missing / To Verify')
+
+    const taskButton = wrapper.findAll('button').find(button => button.text().includes('Create task for missing proof') && !button.attributes('disabled'))
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+
+    expect(createTaskMock).toHaveBeenCalled()
   })
 })

@@ -45,6 +45,14 @@ export interface PresentationDraftSection {
   sourceLabel: string
 }
 
+export interface InvestorSlideDraft {
+  section: string
+  status: 'Ready' | 'Missing / To Verify'
+  materials: PresentationDraftSection[]
+  content: string
+  missingAction: string
+}
+
 export function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
@@ -85,6 +93,44 @@ export function buildInvestorPresentationDraft(materials: PresentationMaterial[]
             ? 'Derived from assumptions'
             : 'User approved'),
     }))
+}
+
+export function buildInvestorSlideOutline(slideSections: string[], materials: PresentationMaterial[]): InvestorSlideDraft[] {
+  const approved = buildInvestorPresentationDraft(materials)
+  return slideSections.map(section => {
+    const sectionMaterials = approved.filter(item => item.section === section)
+    return {
+      section,
+      status: sectionMaterials.length > 0 ? 'Ready' : 'Missing / To Verify',
+      materials: sectionMaterials,
+      content: sectionMaterials.map(item => item.content).join('\n\n'),
+      missingAction: `Add verified, user-approved, or assumption-labeled material for ${section}.`,
+    }
+  })
+}
+
+export function formatInvestorPresentationOutline(slides: InvestorSlideDraft[]): string {
+  const readySlides = slides.filter(slide => slide.status === 'Ready')
+  const missingSlides = slides.filter(slide => slide.status !== 'Ready')
+  return [
+    '# Investor Presentation Draft',
+    '',
+    'Generated from approved material only. This is draft text, not final truth.',
+    `Ready slides: ${readySlides.length}/${slides.length}`,
+    missingSlides.length ? `Missing / To Verify slides: ${missingSlides.map(slide => slide.section).join(', ')}` : 'Missing / To Verify slides: none',
+    '',
+    ...slides.map(slide => [
+      `## ${slide.section}`,
+      `Status: ${slide.status}`,
+      slide.materials.length
+        ? slide.materials.map(item => [
+            item.content,
+            `Evidence status: ${item.evidenceStatus}`,
+            `Source: ${item.sourceLabel}`,
+          ].join('\n')).join('\n\n')
+        : slide.missingAction,
+    ].join('\n\n')),
+  ].join('\n\n---\n\n')
 }
 
 export function calculateInvestorReadinessScore(items: ReadinessItem[]): number {

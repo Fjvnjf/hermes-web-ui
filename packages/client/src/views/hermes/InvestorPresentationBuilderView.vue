@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useMessage } from 'naive-ui'
+import { NButton, useMessage } from 'naive-ui'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
   buildInvestorPresentationDraft,
+  buildInvestorSlideOutline,
+  formatInvestorPresentationOutline,
+  type InvestorSlideDraft,
   type IntelligenceEvidenceStatus,
   type PresentationMaterial,
 } from '@/utils/investorIntelligence'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const slideSections = [
   'Cover',
@@ -29,6 +34,9 @@ const slideSections = [
 
 const message = useMessage()
 const intelligence = useFeasibilityIntelligence()
+const kanbanStore = useKanbanStore()
+const copiedDraft = ref(false)
+const creatingTaskSection = ref('')
 
 const materialForm = ref({
   section: 'Executive Summary',
@@ -41,16 +49,11 @@ const materialForm = ref({
 
 const approvedMaterials = computed(() => intelligence.state.value.presentationMaterials)
 const draftSections = computed(() => buildInvestorPresentationDraft(approvedMaterials.value))
-
-const actions = [
-  'Improve this slide',
-  'Add evidence',
-  'Create task for missing proof',
-  'Do deeper research',
-  'Rewrite for investor',
-  'Mark risky claim',
-  'Remove unsupported claim',
-]
+const slideDrafts = computed(() => buildInvestorSlideOutline(slideSections, approvedMaterials.value))
+const readySlideCount = computed(() => slideDrafts.value.filter(slide => slide.status === 'Ready').length)
+const missingSlideCount = computed(() => slideDrafts.value.length - readySlideCount.value)
+const readinessScore = intelligence.readinessScore
+const investorReady = computed(() => readinessScore.value >= 70 && missingSlideCount.value <= 2)
 
 function saveMaterial() {
   const content = materialForm.value.content.trim()
@@ -86,6 +89,42 @@ function saveMaterial() {
     sourceDate: '',
   }
 }
+
+async function copyApprovedDraft() {
+  const text = formatInvestorPresentationOutline(slideDrafts.value)
+  copiedDraft.value = await copyToClipboard(text)
+  if (copiedDraft.value) message.success('Approved investor draft copied')
+  else message.warning('Clipboard blocked. Use the visible slide outline for manual copy.')
+}
+
+async function createMissingProofTask(slide: InvestorSlideDraft) {
+  creatingTaskSection.value = slide.section
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Investor deck evidence: ${slide.section}`,
+      body: [
+        `Missing investor presentation material: ${slide.section}`,
+        `Current status: ${slide.status}`,
+        `Recommended action: ${slide.missingAction}`,
+        'Source page: Investor Presentation Builder',
+        'Tags: Investor Presentation, Evidence Gap, Chemicon China Feasibility',
+        '',
+        'Do not add unsupported claims. Use only verified, user-approved, or clearly assumption-labeled material.',
+      ].join('\n'),
+      priority: 2,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Missing-proof task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create task: ${detail}`)
+  } finally {
+    creatingTaskSection.value = ''
+  }
+}
 </script>
 
 <template>
@@ -100,13 +139,19 @@ function saveMaterial() {
         </p>
       </div>
       <div class="readiness-warning">
-        <strong>Not investor-ready yet</strong>
-        <span>Missing evidence should appear as risk or appendix items.</span>
+        <strong>{{ investorReady ? 'Draft pack improving' : 'Not investor-ready yet' }}</strong>
+        <span>{{ readinessScore }}% readiness / {{ readySlideCount }} of {{ slideSections.length }} slides have approved material.</span>
       </div>
     </header>
 
     <section class="draft-status">
-      <h3>Approved material currently available</h3>
+      <div class="draft-status-head">
+        <div>
+          <h3>Approved material currently available</h3>
+          <p>{{ missingSlideCount }} slides still need source-backed or user-approved material.</p>
+        </div>
+        <NButton secondary type="primary" @click="copyApprovedDraft">{{ copiedDraft ? 'Copied' : 'Copy approved draft' }}</NButton>
+      </div>
       <p v-if="draftSections.length === 0">
         No verified, user-approved, or approved-assumption material has been staged for deck generation yet.
       </p>
@@ -157,13 +202,30 @@ function saveMaterial() {
     </section>
 
     <section class="slide-grid">
-      <article v-for="section in slideSections" :key="section" class="slide-card">
-        <h3>{{ section }}</h3>
-        <p>Missing / To Verify until approved source-backed material is added.</p>
+      <article v-for="slide in slideDrafts" :key="slide.section" class="slide-card" :class="{ ready: slide.status === 'Ready' }">
+        <div class="slide-head">
+          <h3>{{ slide.section }}</h3>
+          <span>{{ slide.status }}</span>
+        </div>
+        <p v-if="slide.status !== 'Ready'">{{ slide.missingAction }}</p>
+        <div v-else class="slide-materials">
+          <div v-for="item in slide.materials" :key="`${item.section}-${item.content}`" class="slide-material">
+            <p>{{ item.content }}</p>
+            <small>{{ item.evidenceStatus }} / {{ item.sourceLabel }}</small>
+          </div>
+        </div>
         <div class="action-list">
-          <RouterLink v-for="action in actions" :key="action" :to="{ name: action.includes('task') ? 'hermes.kanban' : 'hermes.chat', query: { captureContext: 'investment-research' } }">
-            {{ action }}
-          </RouterLink>
+          <RouterLink :to="{ name: 'hermes.chat', query: { captureContext: 'investment-research' } }">Improve this slide</RouterLink>
+          <RouterLink :to="{ name: 'hermes.files' }">Add evidence</RouterLink>
+          <button
+            type="button"
+            :disabled="slide.status === 'Ready' || creatingTaskSection === slide.section"
+            @click="createMissingProofTask(slide)"
+          >
+            {{ creatingTaskSection === slide.section ? 'Creating task' : 'Create task for missing proof' }}
+          </button>
+          <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review research</RouterLink>
+          <RouterLink :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
         </div>
       </article>
     </section>
@@ -233,6 +295,14 @@ function saveMaterial() {
   }
 }
 
+.draft-status-head {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
 .material-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -291,6 +361,43 @@ function saveMaterial() {
     margin: 0 0 8px;
     color: $text-primary;
   }
+
+  &.ready {
+    border-color: rgba(var(--success-rgb), 0.35);
+  }
+}
+
+.slide-head {
+  display: flex;
+  gap: 8px;
+  align-items: start;
+  justify-content: space-between;
+
+  span {
+    border: 1px solid $border-color;
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: $accent-primary;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.slide-materials {
+  display: grid;
+  gap: 8px;
+}
+
+.slide-material {
+  border-top: 1px solid $border-color;
+  padding-top: 8px;
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 800;
+  }
 }
 
 .action-list {
@@ -298,14 +405,22 @@ function saveMaterial() {
   flex-wrap: wrap;
   gap: 8px;
 
-  a {
+  a,
+  button {
     border: 1px solid $border-color;
     border-radius: $radius-sm;
+    background: transparent;
     padding: 5px 8px;
     color: $accent-info;
     font-size: 12px;
     font-weight: 800;
     text-decoration: none;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
   }
 }
 
