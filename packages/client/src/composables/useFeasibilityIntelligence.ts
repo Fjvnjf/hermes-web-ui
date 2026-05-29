@@ -190,7 +190,12 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
   }
   return {
     evidenceItems: Array.from(evidenceById.values()),
-    marketClaims: Array.isArray(raw.marketClaims) ? raw.marketClaims : [],
+    marketClaims: Array.isArray(raw.marketClaims)
+      ? raw.marketClaims.map((claim, index) => ({
+          ...claim,
+          id: (claim as MarketClaim).id || idFrom('market', `${(claim as MarketClaim).label || 'claim'}-${index}`),
+        }))
+      : [],
     competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
     presentationMaterials: Array.isArray(raw.presentationMaterials) ? raw.presentationMaterials : [],
     researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
@@ -265,12 +270,21 @@ export function useFeasibilityIntelligence() {
   function addMarketClaim(claim: Omit<MarketClaim, 'lastChecked'> & { lastChecked?: string }) {
     const normalized: MarketClaim = {
       ...claim,
+      id: claim.id || idFrom('market', claim.label || 'claim'),
       evidenceStatus: normalizedMarketClaimStatus(claim),
       lastChecked: claim.lastChecked || nowIso().slice(0, 10),
     }
     state.value.marketClaims = [normalized, ...state.value.marketClaims]
     persist()
     return normalized
+  }
+
+  function removeMarketClaim(id: string): boolean {
+    const before = state.value.marketClaims.length
+    state.value.marketClaims = state.value.marketClaims.filter(item => item.id !== id)
+    const removed = state.value.marketClaims.length !== before
+    if (removed) persist()
+    return removed
   }
 
   function addCompetitor(record: Omit<CompetitorIntelligenceRecord, 'id' | 'updatedAt'>) {
@@ -284,6 +298,14 @@ export function useFeasibilityIntelligence() {
     state.value.competitors = [saved, ...state.value.competitors]
     persist()
     return saved
+  }
+
+  function removeCompetitor(id: string): boolean {
+    const before = state.value.competitors.length
+    state.value.competitors = state.value.competitors.filter(item => item.id !== id)
+    const removed = state.value.competitors.length !== before
+    if (removed) persist()
+    return removed
   }
 
   function addPresentationMaterial(material: PresentationMaterial) {
@@ -419,7 +441,9 @@ export function useFeasibilityIntelligence() {
     latestFinancialModel,
     updateEvidenceStatus,
     addMarketClaim,
+    removeMarketClaim,
     addCompetitor,
+    removeCompetitor,
     addPresentationMaterial,
     addResearchJob,
     addResearchFinding,

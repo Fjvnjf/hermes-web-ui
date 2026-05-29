@@ -75,12 +75,14 @@ vi.mock('vue-router', async (importOriginal) => {
 })
 
 import InvestorReadinessView from '@/views/hermes/InvestorReadinessView.vue'
+import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
 import ResearchResultReviewView from '@/views/hermes/ResearchResultReviewView.vue'
 import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentationBuilderView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
+  Object.defineProperty(window, 'confirm', { value: vi.fn(() => true), writable: true })
   useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
   createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
 })
@@ -443,6 +445,29 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).not.toContain('Product TDS/SDS and CAS evidence Missing / To Verify')
   })
 
+  it('removes a market claim without silently changing readiness evidence', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const source = { title: 'Distributor interview', date: '2026-05-30' }
+    const claim = intelligence.addMarketClaim({
+      label: 'CWAS price validation note',
+      value: 'Source-backed user note',
+      evidenceStatus: 'Verified',
+      source,
+      confidence: 'medium',
+    })
+    intelligence.updateEvidenceStatus('market', claim.evidenceStatus, source)
+    const wrapper = mount(MarketIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const removeButton = wrapper.findAll('button').find(button => button.text().includes('Remove claim'))
+
+    expect(removeButton).toBeTruthy()
+    await removeButton!.trigger('click')
+
+    expect(intelligence.state.value.marketClaims).toHaveLength(0)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Verified')
+  })
+
   it('keeps verified readiness evidence To Verify when source is missing', async () => {
     const intelligence = useFeasibilityIntelligence()
     const wrapper = mount(InvestorReadinessView, {
@@ -528,6 +553,42 @@ describe('investor readiness pages', () => {
     expect(finding.evidenceStatus).toBe('To Verify')
     expect(finding.source).toBeNull()
     expect(finding.suggestedInvestorMaterial).toBe('')
+  })
+
+  it('removes a competitor record without silently removing staged review findings', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const competitor = intelligence.addCompetitor({
+      companyName: 'Removable competitor',
+      countryRegion: 'China',
+      productEquivalent: 'CWMS equivalent',
+      activeContent: 'To Verify',
+      pricingEvidence: 'Distributor note',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '',
+      evidenceStatus: 'User Approved',
+      source: { title: 'User interview note', date: '2026-05-30' },
+      notes: 'Keep review trail after deleting source record.',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Competitor evidence was staged before source record cleanup.',
+      keyClaim: `Competitor evidence: ${competitor.companyName}`,
+      area: 'market',
+      evidenceStatus: competitor.evidenceStatus,
+      confidence: 'medium',
+      source: competitor.source,
+    })
+    const wrapper = mount(CompetitorIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const removeButton = wrapper.findAll('button').find(button => button.text() === 'Remove')
+
+    expect(removeButton).toBeTruthy()
+    await removeButton!.trigger('click')
+
+    expect(intelligence.state.value.competitors).toHaveLength(0)
+    expect(intelligence.state.value.researchFindings).toHaveLength(1)
+    expect(intelligence.state.value.researchFindings[0].keyClaim).toBe('Competitor evidence: Removable competitor')
   })
 
   it('renders staged research jobs and findings in Research Result Review', () => {

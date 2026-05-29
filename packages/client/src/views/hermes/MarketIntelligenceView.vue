@@ -108,6 +108,17 @@ function addClaimToInvestorReview(claim: MarketClaim) {
   if (status === 'Verified') message.success('Market evidence marked verified for investor readiness')
   else message.info('Market evidence remains To Verify until value and source are complete')
 }
+
+function removeClaim(claim: MarketClaim) {
+  if (!claim.id) {
+    message.error('This older claim cannot be removed until the page is refreshed')
+    return
+  }
+  if (!window.confirm(`Remove market claim "${claim.label}" from this browser workspace?`)) return
+  const removed = intelligence.removeMarketClaim(claim.id)
+  if (removed) message.success('Market claim removed from this browser workspace')
+  else message.error('Market claim was not found')
+}
 </script>
 
 <template>
@@ -195,14 +206,15 @@ function addClaimToInvestorReview(claim: MarketClaim) {
       <p v-if="claims.length === 0" class="empty-state">
         No market claims saved yet. Add source-backed claims here, or create research tasks from the cards above.
       </p>
-      <div v-for="claim in claims" :key="claim.label" class="claim-row">
+      <div v-for="claim in claims" :key="claim.id || claim.label" class="claim-row">
         <span>{{ claim.label }}</span>
         <span>{{ claim.value || 'To Verify' }}</span>
         <span>{{ claim.source?.title || 'Source missing' }}</span>
         <span>{{ normalizedMarketClaimStatus(claim) }}</span>
         <span>{{ claim.lastChecked || 'Not checked' }}</span>
-        <span>
+        <span class="row-actions">
           <button type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
+          <button type="button" class="danger-link" @click="removeClaim(claim)">Remove claim</button>
         </span>
       </div>
     </section>
@@ -329,7 +341,7 @@ function addClaimToInvestorReview(claim: MarketClaim) {
 
 .claim-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr 130px 130px 150px;
+  grid-template-columns: 1.2fr 1fr 1fr 130px 130px 170px;
   gap: 10px;
   padding: 10px 0;
   border-top: 1px solid $border-color;
@@ -352,6 +364,15 @@ function addClaimToInvestorReview(claim: MarketClaim) {
     font-weight: 800;
     cursor: pointer;
   }
+
+  .danger-link {
+    color: $error;
+  }
+}
+
+.row-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .empty-state {

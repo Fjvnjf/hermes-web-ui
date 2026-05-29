@@ -17,6 +17,7 @@ export interface SourceReference {
 }
 
 export interface MarketClaim {
+  id?: string
   label: string
   value?: string
   source?: SourceReference | null

@@ -102,6 +102,13 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
   }
 }
 
+function removeCompetitor(competitor: CompetitorIntelligenceRecord) {
+  if (!window.confirm(`Remove competitor record "${competitor.companyName}" from this browser workspace?`)) return
+  const removed = intelligence.removeCompetitor(competitor.id)
+  if (removed) message.success('Competitor record removed from this browser workspace')
+  else message.error('Competitor record was not found')
+}
+
 function addCompetitor() {
   const companyName = competitorForm.value.companyName.trim()
   if (!companyName) {
@@ -216,6 +223,9 @@ function addCompetitor() {
           </NButton>
           <NButton size="tiny" secondary type="primary" :loading="creating === competitor.companyName" @click="createResearchTask(competitor)">
             Research competitor
+          </NButton>
+          <NButton size="tiny" quaternary type="error" @click="removeCompetitor(competitor)">
+            Remove
           </NButton>
         </span>
       </div>
