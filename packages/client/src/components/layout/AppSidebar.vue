@@ -126,7 +126,7 @@ function openChangelog() {
       <CommandGlyph class="logo-mark" :size="30" />
       <span class="logo-copy">
         <span class="logo-title">Hermes Command Center</span>
-        <span class="logo-subtitle">Private dashboard</span>
+        <span class="logo-subtitle">Live operations</span>
       </span>
     </RouteLinkItem>
 

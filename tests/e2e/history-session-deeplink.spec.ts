@@ -103,6 +103,20 @@ async function mockHistoryApi(page: Page) {
 
     if (pathname === '/health') return json({ status: 'ok' })
     if (pathname === '/api/auth/status') return json({ hasPasswordLogin: false, username: null })
+    if (pathname === '/api/auth/me') {
+      return json({
+        user: {
+          id: 1,
+          username: 'playwright',
+          role: 'super_admin',
+          status: 'active',
+          created_at: 0,
+          updated_at: 0,
+          last_login_at: 0,
+          requiresCredentialChange: false,
+        },
+      })
+    }
     if (pathname === '/api/hermes/available-models') return json({ default: 'test-model', default_provider: 'test-provider', groups: [], allProviders: [], model_aliases: {}, model_visibility: {} })
     if (pathname === '/api/hermes/profiles') return json({ profiles: [{ name: 'default', active: true, model: 'test-model', gateway: 'test' }] })
     if (pathname === '/api/hermes/sessions/hermes') return json({ sessions: historySessions })

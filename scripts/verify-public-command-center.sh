@@ -56,7 +56,7 @@ grep -Eq "Checking Secure Session|Validating your private command center link|Se
   || fail "bundle missing auth token gate"
 echo "PUBLIC_VERIFY_OK auth-token-gate"
 
-if grep -Eq "Enter your username and password|Private Command Center" "$js_file"; then
+if grep -Eq "Enter your username and password|Private Command Center|Private dashboard" "$js_file"; then
   fail "bundle still contains removed login copy"
 fi
 echo "PUBLIC_VERIFY_OK old-login-removed"

@@ -84,7 +84,7 @@ npm run build
 echo "== Sanity check built UI =="
 search_text "Hermes Command Center" dist/client dist/server
 search_text "Checking Secure Session|Validating your private command center link|Secure Link Required" dist/client dist/server
-if search_text "Enter your username and password|Private Command Center" dist/client dist/server; then
+if search_text "Enter your username and password|Private Command Center|Private dashboard" dist/client dist/server; then
   echo "Old login copy found in built assets" >&2
   exit 1
 fi

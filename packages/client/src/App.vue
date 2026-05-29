@@ -10,7 +10,6 @@ import { useKeyboard } from '@/composables/useKeyboard'
 import { useAppStore } from '@/stores/hermes/app'
 import SessionSearchModal from '@/components/hermes/chat/SessionSearchModal.vue'
 import AuthEventListener from '@/components/auth/AuthEventListener.vue'
-import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.vue'
 import { useSessionSearch } from '@/composables/useSessionSearch'
 import CommandGlyph from '@/components/common/CommandGlyph.vue'
 import { clearApiKey, getApiKey, getBaseUrlValue, hasApiKey } from '@/api/client'
@@ -214,7 +213,6 @@ useKeyboard()
             </main>
           </div>
           <SessionSearchModal v-if="authReady" />
-          <DefaultCredentialPrompt v-if="authReady" />
         </NNotificationProvider>
       </NDialogProvider>
     </NMessageProvider>

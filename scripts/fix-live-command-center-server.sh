@@ -74,7 +74,7 @@ verify_served_bundle() {
     exit 1
   }
 
-  if grep -q "Enter your username and password to continue" "$js_file"; then
+  if grep -Eq "Enter your username and password|Private Command Center|Private dashboard" "$js_file"; then
     echo "${label}_STILL_SERVES_OLD_LOGIN" >&2
     exit 1
   fi
@@ -240,7 +240,7 @@ grep -RE "Checking Secure Session|Validating your private command center link|Se
   exit 1
 }
 
-if grep -R "Enter your username and password to continue" dist/client >/dev/null; then
+if grep -RE "Enter your username and password|Private Command Center|Private dashboard" dist/client >/dev/null; then
   echo "DIST_STILL_HAS_OLD_LOGIN" >&2
   exit 1
 fi

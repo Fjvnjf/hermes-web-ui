@@ -141,7 +141,7 @@ check_http "hermes-api-health" "$API_URL/health"
 
 check_contains "built-command-center-branding" "Hermes Command Center" dist/client dist/server
 check_contains "built-auth-token-gate" "Checking Secure Session|Validating your private command center link|Secure Link Required" dist/client dist/server
-check_not_contains "old-login-copy-removed" "Enter your username and password|Private Command Center" dist/client dist/server
+check_not_contains "old-login-copy-removed" "Enter your username and password|Private Command Center|Private dashboard" dist/client dist/server
 
 curl -fsS "$BASE_URL/socket.io/?EIO=4&transport=polling&t=$(date +%s)" | head -c 1 | grep -q '0' \
   || fail "Socket.IO polling handshake failed"
