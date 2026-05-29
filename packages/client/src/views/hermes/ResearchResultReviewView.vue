@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import {
   type EvidenceArea,
+  type ResearchJobRecord,
   type ResearchReviewFinding,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
@@ -71,6 +72,46 @@ function resetForm() {
 
 function areaLabel(area: EvidenceArea): string {
   return areaOptions.find(item => item.value === area)?.label || area
+}
+
+function inferAreaFromResearchJob(job: ResearchJobRecord): EvidenceArea {
+  const text = `${job.title} ${job.question} ${job.context}`.toLowerCase()
+  if (text.includes('company') || text.includes('legal') || text.includes('business license') || text.includes('bank') || text.includes('import/export')) {
+    return 'companyLegal'
+  }
+  if (text.includes('product') || text.includes('cwas') || text.includes('cwms') || text.includes('sds') || text.includes('tds') || text.includes('cas')) {
+    return 'product'
+  }
+  if (text.includes('factory') || text.includes('plant') || text.includes('manufacturing') || text.includes('machine') || text.includes('capacity') || text.includes('location')) {
+    return 'factory'
+  }
+  if (text.includes('regulatory') || text.includes('dms') || text.includes('permission') || text.includes('permit')) {
+    return 'regulatory'
+  }
+  if (text.includes('finance') || text.includes('financial') || text.includes('investment') || text.includes('investor') || text.includes('irr') || text.includes('npv')) {
+    return 'financial'
+  }
+  if (text.includes('presentation') || text.includes('deck') || text.includes('report')) {
+    return 'presentation'
+  }
+  return 'market'
+}
+
+function useJobAsFindingDraft(job: ResearchJobRecord) {
+  findingForm.value = {
+    summary: `Research job request: ${job.question}`,
+    keyClaim: job.title,
+    area: inferAreaFromResearchJob(job),
+    evidenceStatus: 'To Verify',
+    confidence: 'medium',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+    suggestedTask: `Complete research and attach sources: ${job.title}`,
+    suggestedInvestorMaterial: '',
+    riskNote: 'Do not approve this finding until source-backed research results are reviewed.',
+  }
+  message.info('Research job copied into the review form as To Verify')
 }
 
 function stageFinding() {
@@ -202,9 +243,14 @@ async function createTask(item: ResearchReviewFinding) {
         No research jobs saved yet. Use Review & Capture in Chat or the intelligence pages to create research tasks.
       </p>
       <div v-for="job in researchJobs.slice(0, 6)" :key="job.id" class="job-row">
-        <strong>{{ job.title }}</strong>
-        <span>{{ job.status }} / {{ job.context }}</span>
-        <small>{{ job.question }}</small>
+        <div>
+          <strong>{{ job.title }}</strong>
+          <span>{{ job.status }} / {{ job.context }}</span>
+          <small>{{ job.question }}</small>
+        </div>
+        <NButton size="tiny" secondary @click="useJobAsFindingDraft(job)">
+          Use as finding draft
+        </NButton>
       </div>
     </section>
 
@@ -420,9 +466,17 @@ async function createTask(item: ResearchReviewFinding) {
 
 .job-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 5px;
+  align-items: center;
   padding: 10px 0;
   border-top: 1px solid $border-color;
+
+  > div {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
 
   strong {
     color: $text-primary;
@@ -553,6 +607,11 @@ async function createTask(item: ResearchReviewFinding) {
   .finding-actions {
     max-width: none;
     justify-content: flex-start;
+  }
+
+  .job-row {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
   }
 }
 </style>

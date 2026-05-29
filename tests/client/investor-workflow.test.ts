@@ -429,6 +429,33 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('DMS regulation source needed')
   })
 
+  it('prefills a To Verify finding draft from a research job without approving it', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Task Created',
+    })
+
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const draftButton = wrapper.findAll('button').find(button => button.text().includes('Use as finding draft'))
+    expect(draftButton).toBeTruthy()
+
+    await draftButton!.trigger('click')
+    const textareas = wrapper.findAll('textarea')
+    const inputs = wrapper.findAll('input')
+    const selects = wrapper.findAll('select')
+
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Research job request: Verify DMS regulatory status')
+    expect((inputs[0].element as HTMLInputElement).value).toBe('DMS regulation in China')
+    expect((selects[0].element as HTMLSelectElement).value).toBe('regulatory')
+    expect((selects[1].element as HTMLSelectElement).value).toBe('To Verify')
+    expect(intelligence.state.value.researchFindings).toHaveLength(0)
+  })
+
   it('renders approved investor material and creates missing-proof tasks from presentation builder', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addPresentationMaterial({
