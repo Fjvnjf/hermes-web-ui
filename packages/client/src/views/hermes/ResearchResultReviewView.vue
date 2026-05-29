@@ -17,6 +17,7 @@ const intelligence = useFeasibilityIntelligence()
 const creatingTaskId = ref('')
 const creatingJobTaskId = ref('')
 const savingMemoryId = ref('')
+const savingMarketClaimId = ref('')
 
 const areaOptions: Array<{ value: EvidenceArea; label: string }> = [
   { value: 'companyLegal', label: 'Company / Legal' },
@@ -220,6 +221,27 @@ function markToVerify(item: ResearchReviewFinding) {
 function rejectFinding(item: ResearchReviewFinding) {
   intelligence.rejectResearchFinding(item.id)
   message.info('Research finding rejected')
+}
+
+function saveAsMarketClaim(item: ResearchReviewFinding) {
+  savingMarketClaimId.value = item.id
+  try {
+    const saved = intelligence.addMarketClaim({
+      label: item.keyClaim,
+      value: item.summary,
+      evidenceStatus: item.evidenceStatus,
+      confidence: item.confidence,
+      source: item.source || null,
+      lastChecked: new Date().toISOString().slice(0, 10),
+    })
+    if (item.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+      message.warning('Market claim saved as To Verify because verified claims need a usable source and value')
+    } else {
+      message.success('Research finding saved as Market Intelligence evidence')
+    }
+  } finally {
+    savingMarketClaimId.value = ''
+  }
 }
 
 function formatResearchNoteMemory(item: ResearchReviewFinding): string {
@@ -450,6 +472,15 @@ async function createTask(item: ResearchReviewFinding) {
           </NButton>
           <NButton size="tiny" secondary :loading="savingMemoryId === item.id" @click="saveFindingToMemory(item)">
             Save research note
+          </NButton>
+          <NButton
+            v-if="item.area === 'market'"
+            size="tiny"
+            secondary
+            :loading="savingMarketClaimId === item.id"
+            @click="saveAsMarketClaim(item)"
+          >
+            Save as market claim
           </NButton>
           <NButton size="tiny" quaternary @click="markToVerify(item)">Mark To Verify</NButton>
           <NButton size="tiny" quaternary @click="rejectFinding(item)">Reject</NButton>

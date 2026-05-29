@@ -1063,6 +1063,56 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
   })
 
+  it('saves reviewed market research as a structured Market Intelligence claim', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Distributor interview supports CWAS price validation note.',
+      keyClaim: 'CWAS price validation evidence',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+      suggestedInvestorMaterial: 'Source-backed distributor note for market evidence.',
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save as market claim')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    const claim = intelligence.state.value.marketClaims[0]
+    expect(claim.label).toBe('CWAS price validation evidence')
+    expect(claim.value).toContain('Distributor interview supports')
+    expect(claim.evidenceStatus).toBe('Verified')
+    expect(claim.source?.title).toBe('Distributor interview')
+  })
+
+  it('keeps unsourced reviewed market research To Verify when saved as a market claim', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'A session mentioned competitor price evidence, but no source was attached.',
+      keyClaim: 'Unsourced competitor price evidence',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'high',
+      source: null,
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save as market claim')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    const claim = intelligence.state.value.marketClaims[0]
+    expect(claim.label).toBe('Unsourced competitor price evidence')
+    expect(claim.evidenceStatus).toBe('To Verify')
+    expect(claim.source).toBeNull()
+  })
+
   it('prefills a To Verify finding draft from a research job without approving it', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchJob({
