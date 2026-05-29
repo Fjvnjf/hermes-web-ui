@@ -1136,7 +1136,7 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Distributor interview')
   })
 
-  it('surfaces approved report material and financial snapshots in Reports Hub', () => {
+  it('surfaces approved report material and financial snapshots in Reports Hub', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addPresentationMaterial({
       section: 'Market Evidence',
@@ -1192,6 +1192,19 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Pricing input is still To Verify.')
     expect(wrapper.text()).toContain('DMS source needed')
     expect(wrapper.text()).not.toContain('Unsupported competitor claim should remain follow-up only.')
+
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create task')
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Report input evidence: DMS source needed',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source page: Reports Hub / Before Investor Use')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not use this in investor material')
   })
 
   it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {

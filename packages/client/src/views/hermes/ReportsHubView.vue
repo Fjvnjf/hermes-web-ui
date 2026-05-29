@@ -10,10 +10,21 @@ import {
   type IntelligenceEvidenceStatus,
 } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
+import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+
+interface MissingOutputInput {
+  id: string
+  title: string
+  status: IntelligenceEvidenceStatus | 'Missing / To Verify'
+  detail: string
+  to: { name: string }
+}
 
 const message = useMessage()
 const intelligence = useFeasibilityIntelligence()
+const kanbanStore = useKanbanStore()
 const copiedOutline = ref(false)
+const creatingMissingTaskId = ref('')
 
 const sections = [
   {
@@ -97,7 +108,7 @@ const outputStats = computed(() => [
   },
 ])
 
-const missingOutputInputs = computed(() => [
+const missingOutputInputs = computed<MissingOutputInput[]>(() => [
   ...pendingResearchFindings.value.slice(0, 3).map(item => ({
     id: `finding-${item.id}`,
     title: item.keyClaim,
@@ -146,6 +157,44 @@ async function copyApprovedOutline() {
   if (copiedOutline.value) message.success('Approved investor outline copied')
   else message.warning('Clipboard blocked. Use Presentation Builder for manual copy.')
 }
+
+function missingInputTaskBody(item: MissingOutputInput): string {
+  return [
+    `Report / investor output missing input: ${item.title}`,
+    `Current evidence status: ${item.status}`,
+    `Recommended action: ${item.detail}`,
+    `Source page: Reports Hub / Before Investor Use`,
+    'Tags: Reports Hub, Investor Output, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not use this in investor material until the source evidence is attached, the finding is reviewed, or the assumption is explicitly approved and labeled.',
+  ].join('\n')
+}
+
+function priorityForMissingInput(item: MissingOutputInput): number {
+  if (item.status === 'Missing' || item.status === 'To Verify' || item.status === 'Missing / To Verify' || item.status === 'Hypothesis') return 3
+  return 2
+}
+
+async function createMissingInputTask(item: MissingOutputInput) {
+  creatingMissingTaskId.value = item.id
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Report input evidence: ${item.title}`,
+      body: missingInputTaskBody(item),
+      priority: priorityForMissingInput(item),
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Report input task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create report input task: ${detail}`)
+  } finally {
+    creatingMissingTaskId.value = ''
+  }
+}
 </script>
 
 <template>
@@ -190,7 +239,7 @@ async function copyApprovedOutline() {
               <p>{{ item.content }}</p>
               <small>{{ item.sourceDetail }}</small>
             </div>
-            <span :class="statusClass(item.evidenceStatus)">{{ item.evidenceStatus }}</span>
+            <span class="record-status" :class="statusClass(item.evidenceStatus)">{{ item.evidenceStatus }}</span>
           </article>
         </div>
         <p v-else class="empty-state">
@@ -209,13 +258,23 @@ async function copyApprovedOutline() {
           <RouterLink class="shell-link" :to="{ name: 'hermes.investorReadiness' }">Readiness</RouterLink>
         </div>
         <div v-if="missingOutputInputs.length" class="record-list">
-          <RouterLink v-for="item in missingOutputInputs" :key="item.id" class="record-row" :to="item.to">
-            <div>
+          <article v-for="item in missingOutputInputs" :key="item.id" class="record-row action-row">
+            <RouterLink class="record-main" :to="item.to">
               <strong>{{ item.title }}</strong>
               <p>{{ item.detail }}</p>
+            </RouterLink>
+            <div class="record-actions">
+              <span class="record-status" :class="statusClass(item.status)">{{ item.status }}</span>
+              <NButton
+                size="tiny"
+                secondary
+                :loading="creatingMissingTaskId === item.id"
+                @click="createMissingInputTask(item)"
+              >
+                Create task
+              </NButton>
             </div>
-            <span :class="statusClass(item.status)">{{ item.status }}</span>
-          </RouterLink>
+          </article>
         </div>
         <p v-else class="empty-state">No missing report inputs found in the current local intelligence state.</p>
       </article>
@@ -413,8 +472,22 @@ async function copyApprovedOutline() {
   small {
     color: $text-muted;
   }
+}
 
-  > span {
+.record-main {
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.record-status {
     border: 1px solid $border-color;
     border-radius: 999px;
     padding: 3px 8px;
@@ -437,7 +510,6 @@ async function copyApprovedOutline() {
       color: $error;
       border-color: rgba(var(--error-rgb), 0.35);
     }
-  }
 }
 
 .empty-state {
