@@ -13,6 +13,7 @@ import AuthEventListener from '@/components/auth/AuthEventListener.vue'
 import { useSessionSearch } from '@/composables/useSessionSearch'
 import CommandGlyph from '@/components/common/CommandGlyph.vue'
 import { clearApiKey, getApiKey, getBaseUrlValue, hasApiKey } from '@/api/client'
+import CommandLogin from '@/components/auth/CommandLogin.vue'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
@@ -113,6 +114,10 @@ function handleStorage(event: StorageEvent) {
   }
 }
 
+function handleAuthenticated() {
+  void refreshAuthState({ validate: true })
+}
+
 function navigateTo(name: string) {
   void router.push({ name })
 }
@@ -138,12 +143,13 @@ useKeyboard()
             {{ t('sidebar.nodeVersionWarning', { version: appStore.nodeVersion }) }}
           </div>
           <div v-if="ready && (authChecking || !authReady)" class="auth-gate">
-            <div class="auth-gate-panel">
+            <div v-if="authChecking" class="auth-gate-panel">
               <CommandGlyph :size="34" />
               <p class="auth-gate-kicker">Hermes Command Center</p>
-              <h1>{{ authChecking ? 'Checking Secure Session' : 'Secure Link Required' }}</h1>
-              <p>{{ authChecking ? 'Validating your private command center link.' : t('login.sessionExpired') }}</p>
+              <h1>Checking Secure Session</h1>
+              <p>Validating your private command center link.</p>
             </div>
+            <CommandLogin v-else @authenticated="handleAuthenticated" />
           </div>
           <div v-else-if="ready" class="app-layout">
             <button class="hamburger-btn" aria-label="Open command menu" @click="appStore.toggleSidebar">
