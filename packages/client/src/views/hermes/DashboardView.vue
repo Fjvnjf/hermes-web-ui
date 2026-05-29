@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { NButton, useMessage } from 'naive-ui'
 import { fetchPerformanceRuntime, type PerformanceRuntimeSnapshot } from '@/api/hermes/performance-monitor'
 import { fetchSessions, type SessionSummary } from '@/api/hermes/sessions'
 import { listJobs, type Job } from '@/api/hermes/jobs'
 import { getActiveProfileName, hasApiKey } from '@/api/client'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
-import { buildInvestorNextActions, isPresentationMaterialAllowed, type PresentationMaterial } from '@/utils/investorIntelligence'
+import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import {
+  buildInvestorNextActions,
+  isPresentationMaterialAllowed,
+  type InvestorNextAction,
+  type PresentationMaterial,
+} from '@/utils/investorIntelligence'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
+const kanbanStore = useKanbanStore()
+const message = useMessage()
 
 const loading = ref(false)
 const loadWarning = ref('')
@@ -20,6 +29,7 @@ const runtime = ref<PerformanceRuntimeSnapshot | null>(null)
 const tokenReady = ref(false)
 const activeProfileName = ref('default')
 const lastUpdated = ref('')
+const creatingActionTaskId = ref('')
 
 const enabledJobs = computed(() => jobs.value.filter(job => job.enabled).length)
 const activeSessions = computed(() => runtime.value?.sessions.active ?? sessions.value.length)
@@ -133,6 +143,46 @@ const deckMaterialsNeedingEvidence = computed(() =>
 function materialStatusLabel(material: PresentationMaterial): string {
   if (material.evidenceStatus === 'Verified') return 'Source required'
   return material.evidenceStatus
+}
+
+function nextActionTaskPriority(action: InvestorNextAction): number {
+  if (action.priority === 'high') return 3
+  if (action.priority === 'medium') return 2
+  return 1
+}
+
+function nextActionTaskBody(action: InvestorNextAction): string {
+  return [
+    `Next best action: ${action.title}`,
+    `Reason: ${action.reason}`,
+    `Evidence status: ${action.evidenceStatus}`,
+    `Recommended workspace: ${action.routeLabel}`,
+    'Source page: Home / Next Best Actions',
+    'Tags: Next Best Action, Investor Readiness, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not mark this investor-ready until the evidence, assumption label, or source review is completed in the linked workspace.',
+  ].join('\n')
+}
+
+async function createNextActionTask(action: InvestorNextAction) {
+  creatingActionTaskId.value = action.id
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: action.title,
+      body: nextActionTaskBody(action),
+      priority: nextActionTaskPriority(action),
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Next-action task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create next-action task: ${detail}`)
+  } finally {
+    creatingActionTaskId.value = ''
+  }
 }
 
 const workspaceActions = [
@@ -366,21 +416,30 @@ onMounted(() => {
           <RouterLink :to="{ name: 'hermes.investorReadiness' }">Readiness</RouterLink>
         </div>
         <div class="next-actions-list">
-          <RouterLink
+          <article
             v-for="action in nextBestActions"
             :key="action.id"
             class="next-action-row"
             :class="action.priority"
-            :to="{ name: action.routeName }"
           >
-            <span class="action-priority">{{ action.priority }}</span>
-            <span class="action-body">
-              <strong>{{ action.title }}</strong>
-              <small>{{ action.reason }}</small>
-            </span>
-            <span class="action-status">{{ action.evidenceStatus }}</span>
-            <span class="action-route">{{ action.routeLabel }}</span>
-          </RouterLink>
+            <RouterLink class="next-action-main" :to="{ name: action.routeName }">
+              <span class="action-priority">{{ action.priority }}</span>
+              <span class="action-body">
+                <strong>{{ action.title }}</strong>
+                <small>{{ action.reason }}</small>
+              </span>
+              <span class="action-status">{{ action.evidenceStatus }}</span>
+              <span class="action-route">{{ action.routeLabel }}</span>
+            </RouterLink>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="creatingActionTaskId === action.id"
+              @click="createNextActionTask(action)"
+            >
+              Create task
+            </NButton>
+          </article>
         </div>
       </section>
 
@@ -788,7 +847,7 @@ onMounted(() => {
 
 .next-action-row {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) max-content max-content;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 62px;
@@ -797,7 +856,6 @@ onMounted(() => {
   border-radius: $radius-sm;
   background: rgba(255, 255, 255, 0.02);
   color: $text-primary;
-  text-decoration: none;
 
   &:hover {
     border-color: $accent-info;
@@ -815,6 +873,16 @@ onMounted(() => {
   &.low {
     border-color: rgba(var(--accent-info-rgb), 0.28);
   }
+}
+
+.next-action-main {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) max-content max-content;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  color: $text-primary;
+  text-decoration: none;
 }
 
 .action-priority,
@@ -1095,6 +1163,11 @@ onMounted(() => {
   .next-action-row {
     grid-template-columns: 1fr;
     align-items: flex-start;
+  }
+
+  .next-action-main {
+    grid-template-columns: 1fr;
+    width: 100%;
   }
 
   .action-priority,

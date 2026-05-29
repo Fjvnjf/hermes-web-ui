@@ -1611,6 +1611,19 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Unsupported market evidence needs source')
     expect(wrapper.text()).not.toContain('market share is')
     expect(wrapper.text()).not.toContain('CAGR')
+
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create task')
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Resolve Regulatory evidence',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source page: Home / Next Best Actions')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not mark this investor-ready')
   })
 
   it('shows shared feasibility intelligence inside Feasibility Studio', async () => {
