@@ -74,9 +74,16 @@ export interface InvestmentScenarioResult {
   yearly: YearlyInvestmentResult[]
   cashFlows: number[]
   capexTotal: number
+  totalFunding: number
+  fundingGap: number
   npv: number
   irr: number | null
   mirr: number | null
+  investorExitValue: number | null
+  investorExitProceeds: number | null
+  investorMoic: number | null
+  investorIrr: number | null
+  investorCashFlows: number[]
   paybackYear: number | null
   breakEvenVolumeTon: number | null
   finalCumulativeCashFlow: number
@@ -291,6 +298,13 @@ function workingCapitalRequirement(
   return Math.max(0, rawInventory + finishedGoods + receivables - payables + safeNumber(assumptions.safetyCashBuffer.value))
 }
 
+function normalizeEquityShare(value: number): number {
+  const safe = safeNumber(value)
+  if (safe <= 0) return 0
+  if (safe > 1) return Math.min(safe / 100, 1)
+  return Math.min(safe, 1)
+}
+
 function cloneScenarioWithFactors(input: InvestmentScenarioInput, priceFactor: number, costFactor: number): InvestmentScenarioInput {
   return {
     ...input,
@@ -364,6 +378,29 @@ function calculateCore(input: InvestmentScenarioInput, includeSensitivity: boole
   const projectNpv = npv(discountRate, cashFlows)
   const projectIrr = irr(cashFlows)
   const projectMirr = mirr(cashFlows, discountRate, discountRate)
+  const investorAmount = safeNumber(input.funding.investorAmount.value)
+  const founderContribution = safeNumber(input.funding.founderContribution.value)
+  const totalFunding = investorAmount + founderContribution
+  const fundingGap = Math.max(0, capexTotal - totalFunding)
+  const investorEquityShare = normalizeEquityShare(input.funding.investorEquityPercent.value)
+  const requestedExitYear = Math.floor(safeNumber(input.funding.exitYear.value))
+  const exitYear = requestedExitYear > 0 ? Math.min(requestedExitYear, years) : null
+  const exitMultiple = safeNumber(input.funding.exitMultiple.value)
+  const investorCashFlows = Array.from({ length: years + 1 }, () => 0)
+  let investorExitValue: number | null = null
+  let investorExitProceeds: number | null = null
+  let investorMoic: number | null = null
+  let investorReturnIrr: number | null = null
+
+  if (investorAmount > 0 && investorEquityShare > 0 && exitYear && exitMultiple > 0) {
+    const exitRow = yearly[exitYear - 1]
+    investorExitValue = Math.max(0, safeNumber(exitRow?.ebitda) * exitMultiple)
+    investorExitProceeds = investorExitValue * investorEquityShare
+    investorMoic = investorExitProceeds / investorAmount
+    investorCashFlows[0] = -investorAmount
+    investorCashFlows[exitYear] = investorExitProceeds
+    investorReturnIrr = irr(investorCashFlows)
+  }
   const paybackYear = yearly.find(item => item.cumulativeCashFlow >= 0)?.year ?? null
   const firstYear = yearly[0]
   const averageSellingPrice = firstYear && firstYear.volumeTon > 0 ? firstYear.revenue / firstYear.volumeTon : 0
@@ -376,6 +413,10 @@ function calculateCore(input: InvestmentScenarioInput, includeSensitivity: boole
   if (yearly.every(item => item.revenue <= 0)) warnings.push('Revenue assumptions are missing.')
   if (weakEvidence > 0) warnings.push('Outputs are derived from assumptions or unverified inputs.')
   if (projectIrr == null) warnings.push('IRR cannot be calculated unless cash flows include at least one negative and one positive value.')
+  if (totalFunding > 0 && fundingGap > 0) warnings.push('Funding assumptions do not cover modeled capex.')
+  if ((investorAmount > 0 || investorEquityShare > 0 || requestedExitYear > 0 || exitMultiple > 0) && investorReturnIrr == null) {
+    warnings.push('Investor return needs investor amount, equity percentage, exit year, exit multiple, and positive exit value.')
+  }
 
   const sensitivity = includeSensitivity
     ? [
@@ -398,9 +439,16 @@ function calculateCore(input: InvestmentScenarioInput, includeSensitivity: boole
     yearly,
     cashFlows,
     capexTotal,
+    totalFunding,
+    fundingGap,
     npv: projectNpv,
     irr: projectIrr,
     mirr: projectMirr,
+    investorExitValue,
+    investorExitProceeds,
+    investorMoic,
+    investorIrr: investorReturnIrr,
+    investorCashFlows,
     paybackYear,
     breakEvenVolumeTon,
     finalCumulativeCashFlow: cumulativeCashFlow,

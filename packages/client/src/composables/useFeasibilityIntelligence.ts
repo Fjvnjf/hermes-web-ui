@@ -79,6 +79,10 @@ export interface FinancialModelSnapshot {
   npv: number
   irr: number | null
   mirr: number | null
+  investorIrr?: number | null
+  investorMoic?: number | null
+  investorExitProceeds?: number | null
+  fundingGap?: number
   paybackYear: number | null
   breakEvenVolumeTon: number | null
   capexTotal: number

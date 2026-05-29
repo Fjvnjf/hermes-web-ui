@@ -170,6 +170,40 @@ describe('investor feasibility workflow utilities', () => {
     expect(result.irr).not.toBeNull()
   })
 
+  it('calculates investor return lens from funding and exit assumptions', () => {
+    const scenario = createEmptyInvestmentScenario()
+    scenario.capex.machinery.value = 1000
+    scenario.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    scenario.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    scenario.variableCostPerTon.rawMaterials.value = 20
+    scenario.funding.investorAmount.value = 500
+    scenario.funding.investorEquityPercent.value = 25
+    scenario.funding.exitYear.value = 3
+    scenario.funding.exitMultiple.value = 5
+
+    const result = calculateInvestmentScenario(scenario)
+
+    expect(result.investorExitValue).toBe(4000)
+    expect(result.investorExitProceeds).toBe(1000)
+    expect(result.investorMoic).toBe(2)
+    expect(result.investorCashFlows[0]).toBe(-500)
+    expect(result.investorCashFlows[3]).toBe(1000)
+    expect(result.investorIrr).toBeCloseTo(0.26, 2)
+  })
+
+  it('warns when funding assumptions do not cover modeled capex', () => {
+    const scenario = createEmptyInvestmentScenario()
+    scenario.capex.machinery.value = 1000
+    scenario.funding.investorAmount.value = 200
+    scenario.funding.founderContribution.value = 300
+
+    const result = calculateInvestmentScenario(scenario)
+
+    expect(result.totalFunding).toBe(500)
+    expect(result.fundingGap).toBe(500)
+    expect(result.warnings).toContain('Funding assumptions do not cover modeled capex.')
+  })
+
   it('summarizes investment evidence statuses for financial readiness', () => {
     const scenario = createEmptyInvestmentScenario()
     scenario.capex.machinery.evidenceStatus = 'Verified'
@@ -597,6 +631,9 @@ describe('investor readiness pages', () => {
     expect(wrapper.find('select[aria-label="Investor amount evidence status"]').exists()).toBe(true)
     expect(wrapper.find('select[aria-label="Customer credit days evidence status"]').exists()).toBe(true)
     expect(wrapper.find('select[aria-label="Revenue assumptions evidence status"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Investor Return Lens')
+    expect(wrapper.text()).toContain('Funding gap')
+    expect(wrapper.text()).toContain('Investor IRR')
   })
 
   it('renders the investor readiness shell without fake readiness data', () => {

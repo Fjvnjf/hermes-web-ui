@@ -109,6 +109,11 @@ function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+function formatMultiple(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return 'Not calculable'
+  return `${value.toFixed(2)}x`
+}
+
 function formatDate(value?: string): string {
   if (!value) return 'Not saved yet'
   return new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
@@ -132,8 +137,12 @@ function financialSummaryText(): string {
     `NPV: ${formatCurrency(result.value.npv)}`,
     `IRR: ${formatPercent(result.value.irr)}`,
     `MIRR: ${formatPercent(result.value.mirr)}`,
+    `Investor IRR: ${formatPercent(result.value.investorIrr)}`,
+    `Investor MOIC: ${formatMultiple(result.value.investorMoic)}`,
+    `Investor exit proceeds: ${result.value.investorExitProceeds == null ? 'Not calculable' : formatCurrency(result.value.investorExitProceeds)}`,
     `Payback: ${result.value.paybackYear ? `Year ${result.value.paybackYear}` : 'Not reached'}`,
     `Capex: ${formatCurrency(result.value.capexTotal)}`,
+    `Funding gap: ${formatCurrency(result.value.fundingGap)}`,
     `Year 1 revenue: ${formatCurrency(result.value.yearly[0]?.revenue || 0)}`,
     '',
     result.value.warnings.length ? `Warnings:\n- ${result.value.warnings.join('\n- ')}` : 'Warnings: none from calculator completeness checks',
@@ -151,6 +160,10 @@ function saveFinancialSnapshot() {
     npv: result.value.npv,
     irr: result.value.irr,
     mirr: result.value.mirr,
+    investorIrr: result.value.investorIrr,
+    investorMoic: result.value.investorMoic,
+    investorExitProceeds: result.value.investorExitProceeds,
+    fundingGap: result.value.fundingGap,
     paybackYear: result.value.paybackYear,
     breakEvenVolumeTon: result.value.breakEvenVolumeTon,
     capexTotal: result.value.capexTotal,
@@ -178,6 +191,10 @@ function addFinancialSummaryToDraft() {
     npv: result.value.npv,
     irr: result.value.irr,
     mirr: result.value.mirr,
+    investorIrr: result.value.investorIrr,
+    investorMoic: result.value.investorMoic,
+    investorExitProceeds: result.value.investorExitProceeds,
+    fundingGap: result.value.fundingGap,
     paybackYear: result.value.paybackYear,
     breakEvenVolumeTon: result.value.breakEvenVolumeTon,
     capexTotal: result.value.capexTotal,
@@ -441,6 +458,40 @@ function addFinancialSummaryToDraft() {
       <article class="metric-card"><span>Working capital Y1</span><strong>{{ formatCurrency(result.yearly[0]?.workingCapitalRequirement || 0) }}</strong></article>
     </section>
 
+    <section class="investor-return-panel" aria-label="Investor return lens">
+      <div class="panel-heading">
+        <div>
+          <h3>Investor Return Lens</h3>
+          <p>
+            Uses only the funding assumptions above. Investor IRR is not a claim unless investor amount, equity,
+            exit year, exit multiple, and source evidence are user-approved.
+          </p>
+        </div>
+      </div>
+      <div class="outputs investor-outputs">
+        <article class="metric-card">
+          <span>Total funding</span>
+          <strong>{{ formatCurrency(result.totalFunding) }}</strong>
+        </article>
+        <article class="metric-card">
+          <span>Funding gap</span>
+          <strong>{{ formatCurrency(result.fundingGap) }}</strong>
+        </article>
+        <article class="metric-card">
+          <span>Exit proceeds</span>
+          <strong>{{ result.investorExitProceeds == null ? 'Not calculable' : formatCurrency(result.investorExitProceeds) }}</strong>
+        </article>
+        <article class="metric-card">
+          <span>Investor MOIC</span>
+          <strong>{{ formatMultiple(result.investorMoic) }}</strong>
+        </article>
+        <article class="metric-card">
+          <span>Investor IRR</span>
+          <strong>{{ formatPercent(result.investorIrr) }}</strong>
+        </article>
+      </div>
+    </section>
+
     <section class="cashflow-panel">
       <div class="panel-heading">
         <h3>Yearly Cash Flow</h3>
@@ -488,6 +539,7 @@ function addFinancialSummaryToDraft() {
 .page-header,
 .input-panel,
 .metric-card,
+.investor-return-panel,
 .cashflow-panel {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
@@ -550,6 +602,21 @@ function addFinancialSummaryToDraft() {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
   margin: 14px 0;
+}
+
+.investor-return-panel {
+  margin: 14px 0;
+  padding: 16px;
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.investor-outputs {
+  margin-bottom: 0;
 }
 
 .model-status-grid {
