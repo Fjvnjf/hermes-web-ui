@@ -5,7 +5,7 @@ APP_DIR="${APP_DIR:-/home/ubuntu/.hermes/hermes-web-ui}"
 REMOTE_NAME="${REMOTE_NAME:-command-center}"
 REMOTE_URL="${REMOTE_URL:-https://github.com/Fjvnjf/hermes-web-ui.git}"
 BRANCH="${BRANCH:-chemicon-redesign}"
-MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-657da8a67208810801799bc209b14f65e63fc5f9}"
+MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-bf6f445fe50453e826e41d824de0301cb6c5c6e9}"
 LOG_FILE="${LOG_FILE:-/tmp/hermes-web-ui-command-center.log}"
 CLOUDFLARED_LOG="${CLOUDFLARED_LOG:-/tmp/hermes-cloudflared.log}"
 
@@ -180,6 +180,9 @@ ensure_cloudflare_tunnel() {
   if [ -n "$url" ]; then
     echo "CLOUDFLARE_URL=$url"
     verify_served_bundle "$url" "PUBLIC"
+    if [ -x scripts/verify-public-command-center.sh ]; then
+      PUBLIC_URL="$url" bash scripts/verify-public-command-center.sh
+    fi
     curl -fsSI "$url" | sed -n '1,12p'
     print_autologin_url "$url"
   else
