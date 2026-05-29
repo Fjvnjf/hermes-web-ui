@@ -13,7 +13,7 @@ import AuthEventListener from '@/components/auth/AuthEventListener.vue'
 import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.vue'
 import { useSessionSearch } from '@/composables/useSessionSearch'
 import CommandGlyph from '@/components/common/CommandGlyph.vue'
-import { hasApiKey } from '@/api/client'
+import { clearApiKey, getApiKey, getBaseUrlValue, hasApiKey } from '@/api/client'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
@@ -21,7 +21,8 @@ const appStore = useAppStore()
 const router = useRouter()
 const { openSessionSearch } = useSessionSearch()
 const ready = ref(false)
-const authReady = ref(hasApiKey())
+const authReady = ref(false)
+const authChecking = ref(true)
 
 const themeOverrides = computed(() => getThemeOverrides(isDark.value, isComic.value))
 const naiveTheme = computed(() => darkTheme)
@@ -43,11 +44,9 @@ router.isReady().then(() => {
 })
 
 onMounted(() => {
-  authReady.value = hasApiKey()
-  if (authReady.value) appStore.loadModels()
-  appStore.startHealthPolling()
   window.addEventListener('hermes-auth-notice', handleAuthNotice)
   window.addEventListener('storage', handleStorage)
+  void initializeCommandCenter()
 })
 
 onUnmounted(() => {
@@ -60,16 +59,58 @@ watch(authReady, (value, previous) => {
   if (value && !previous) appStore.loadModels()
 })
 
+async function initializeCommandCenter() {
+  await refreshAuthState({ validate: true })
+  appStore.startHealthPolling()
+}
+
+async function refreshAuthState(options: { validate?: boolean } = {}): Promise<boolean> {
+  const token = getApiKey()
+  if (!token) {
+    authReady.value = false
+    authChecking.value = false
+    return false
+  }
+
+  if (!options.validate) {
+    authReady.value = true
+    authChecking.value = false
+    return true
+  }
+
+  authChecking.value = true
+  const valid = await validateStoredToken(token)
+  authReady.value = valid
+  authChecking.value = false
+  return valid
+}
+
+async function validateStoredToken(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getBaseUrlValue()}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) return true
+    if (res.status === 401 || res.status === 403) clearApiKey()
+    return false
+  } catch {
+    // If the backend is temporarily unreachable, keep the existing token and
+    // let the app shell show its normal offline state once the user is inside.
+    return hasApiKey()
+  }
+}
+
 function handleAuthNotice(event: Event) {
   const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
   if (kind === 'expired' || kind === 'forbidden') {
     authReady.value = false
+    authChecking.value = false
   }
 }
 
 function handleStorage(event: StorageEvent) {
   if (event.key === 'hermes_api_key') {
-    authReady.value = hasApiKey()
+    void refreshAuthState({ validate: true })
   }
 }
 
@@ -78,8 +119,7 @@ function navigateTo(name: string) {
 }
 
 async function refreshCommandCenter() {
-  authReady.value = hasApiKey()
-  if (!authReady.value) return
+  if (!await refreshAuthState()) return
   await Promise.all([
     appStore.checkConnection(),
     appStore.reloadModels(),
@@ -98,12 +138,12 @@ useKeyboard()
           <div v-if="nodeVersionLow && ready" class="node-warning-bar">
             {{ t('sidebar.nodeVersionWarning', { version: appStore.nodeVersion }) }}
           </div>
-          <div v-if="ready && !authReady" class="auth-gate">
+          <div v-if="ready && (authChecking || !authReady)" class="auth-gate">
             <div class="auth-gate-panel">
               <CommandGlyph :size="34" />
               <p class="auth-gate-kicker">Hermes Command Center</p>
-              <h1>Secure Link Required</h1>
-              <p>{{ t('login.sessionExpired') }}</p>
+              <h1>{{ authChecking ? 'Checking Secure Session' : 'Secure Link Required' }}</h1>
+              <p>{{ authChecking ? 'Validating your private command center link.' : t('login.sessionExpired') }}</p>
             </div>
           </div>
           <div v-else-if="ready" class="app-layout">
