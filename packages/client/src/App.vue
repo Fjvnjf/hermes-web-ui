@@ -13,6 +13,7 @@ import AuthEventListener from '@/components/auth/AuthEventListener.vue'
 import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.vue'
 import { useSessionSearch } from '@/composables/useSessionSearch'
 import CommandGlyph from '@/components/common/CommandGlyph.vue'
+import { hasApiKey } from '@/api/client'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
@@ -20,6 +21,7 @@ const appStore = useAppStore()
 const router = useRouter()
 const { openSessionSearch } = useSessionSearch()
 const ready = ref(false)
+const authReady = ref(hasApiKey())
 
 const themeOverrides = computed(() => getThemeOverrides(isDark.value, isComic.value))
 const naiveTheme = computed(() => darkTheme)
@@ -41,19 +43,43 @@ router.isReady().then(() => {
 })
 
 onMounted(() => {
-  appStore.loadModels()
+  authReady.value = hasApiKey()
+  if (authReady.value) appStore.loadModels()
   appStore.startHealthPolling()
+  window.addEventListener('hermes-auth-notice', handleAuthNotice)
+  window.addEventListener('storage', handleStorage)
 })
 
 onUnmounted(() => {
   appStore.stopHealthPolling()
+  window.removeEventListener('hermes-auth-notice', handleAuthNotice)
+  window.removeEventListener('storage', handleStorage)
 })
+
+watch(authReady, (value, previous) => {
+  if (value && !previous) appStore.loadModels()
+})
+
+function handleAuthNotice(event: Event) {
+  const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+  if (kind === 'expired' || kind === 'forbidden') {
+    authReady.value = false
+  }
+}
+
+function handleStorage(event: StorageEvent) {
+  if (event.key === 'hermes_api_key') {
+    authReady.value = hasApiKey()
+  }
+}
 
 function navigateTo(name: string) {
   void router.push({ name })
 }
 
 async function refreshCommandCenter() {
+  authReady.value = hasApiKey()
+  if (!authReady.value) return
   await Promise.all([
     appStore.checkConnection(),
     appStore.reloadModels(),
@@ -72,7 +98,15 @@ useKeyboard()
           <div v-if="nodeVersionLow && ready" class="node-warning-bar">
             {{ t('sidebar.nodeVersionWarning', { version: appStore.nodeVersion }) }}
           </div>
-          <div v-if="ready" class="app-layout">
+          <div v-if="ready && !authReady" class="auth-gate">
+            <div class="auth-gate-panel">
+              <CommandGlyph :size="34" />
+              <p class="auth-gate-kicker">Hermes Command Center</p>
+              <h1>Secure Link Required</h1>
+              <p>{{ t('login.sessionExpired') }}</p>
+            </div>
+          </div>
+          <div v-else-if="ready" class="app-layout">
             <button class="hamburger-btn" aria-label="Open command menu" @click="appStore.toggleSidebar">
               <CommandGlyph :size="24" />
             </button>
@@ -139,8 +173,8 @@ useKeyboard()
               <router-view />
             </main>
           </div>
-          <SessionSearchModal />
-          <DefaultCredentialPrompt />
+          <SessionSearchModal v-if="authReady" />
+          <DefaultCredentialPrompt v-if="authReady" />
         </NNotificationProvider>
       </NDialogProvider>
     </NMessageProvider>
@@ -155,6 +189,46 @@ useKeyboard()
   height: calc(100 * var(--vh));
   width: 100vw;
   overflow: hidden;
+}
+
+.auth-gate {
+  min-height: calc(100 * var(--vh));
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #060a12;
+  color: $text-primary;
+}
+
+.auth-gate-panel {
+  width: min(460px, 100%);
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  padding: 28px;
+  background: $bg-card;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+}
+
+.auth-gate-kicker {
+  margin: 16px 0 8px;
+  color: $accent-primary;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-gate-panel h1 {
+  margin: 0 0 10px;
+  color: $accent-primary;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.auth-gate-panel p {
+  margin: 0;
+  color: $text-secondary;
+  line-height: 1.6;
 }
 
 .app-main {
