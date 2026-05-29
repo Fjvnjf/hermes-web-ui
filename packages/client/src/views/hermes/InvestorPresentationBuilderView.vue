@@ -8,6 +8,7 @@ import {
   buildInvestorSlideOutline,
   formatSourceReference,
   formatInvestorPresentationOutline,
+  INVESTOR_PRESENTATION_SECTIONS,
   isPresentationMaterialAllowed,
   type InvestorSlideDraft,
   type IntelligenceEvidenceStatus,
@@ -15,24 +16,7 @@ import {
 } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 
-const slideSections = [
-  'Cover',
-  'Executive Summary',
-  'Problem / Opportunity',
-  'Chemicon Background',
-  'Product Plan',
-  'China Feasibility',
-  'Market Evidence',
-  'Competitor Landscape',
-  'Manufacturing Plan',
-  'Regulatory Plan',
-  'Financial Model',
-  'IRR / Investor Return',
-  'Use of Funds',
-  'Risk & Mitigation',
-  'Evidence / Data Room',
-  'Next Steps',
-]
+const slideSections = INVESTOR_PRESENTATION_SECTIONS
 
 const message = useMessage()
 const intelligence = useFeasibilityIntelligence()

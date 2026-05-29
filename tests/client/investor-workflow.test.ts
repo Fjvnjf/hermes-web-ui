@@ -16,6 +16,7 @@ import {
   canMarkMarketClaimVerified,
   formatMarketShare,
   formatInvestorPresentationOutline,
+  presentationSectionForEvidence,
 } from '@/utils/investorIntelligence'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import type { EvidenceArea } from '@/composables/useFeasibilityIntelligence'
@@ -523,6 +524,47 @@ describe('investor feasibility workflow utilities', () => {
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(1)
   })
 
+  it('maps approved research investor material into the fixed slide outline', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addResearchFinding({
+      summary: 'A distributor interview supports a market pricing validation note.',
+      keyClaim: 'Market claim: CWAS pricing evidence',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+      suggestedInvestorMaterial: 'Distributor interview supports a source-backed pricing validation note.',
+    })
+
+    intelligence.approveResearchFinding(saved.id, {
+      addToPresentation: true,
+      updateReadiness: true,
+    })
+    const slides = buildInvestorSlideOutline(['Market Evidence'], intelligence.state.value.presentationMaterials)
+
+    expect(intelligence.state.value.presentationMaterials[0].section).toBe('Market Evidence')
+    expect(slides[0].status).toBe('Ready')
+    expect(slides[0].content).toContain('Distributor interview supports')
+  })
+
+  it('maps readiness draft material into a fixed investor slide section', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.updateEvidenceStatus('product', 'Verified', {
+      title: 'CWAS SDS source',
+      date: '2026-05-30',
+    })
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const addButtons = wrapper.findAll('button').filter(button => button.text() === 'Add to investor draft')
+
+    expect(addButtons.length).toBeGreaterThan(1)
+    await addButtons[1].trigger('click')
+
+    expect(intelligence.state.value.presentationMaterials[0].section).toBe('Product Plan')
+    expect(buildInvestorSlideOutline(['Product Plan'], intelligence.state.value.presentationMaterials)[0].status).toBe('Ready')
+  })
+
   it('records research jobs from capture/intelligence pages in shared state', () => {
     const intelligence = useFeasibilityIntelligence()
 
@@ -562,6 +604,13 @@ describe('investor feasibility workflow utilities', () => {
     expect(actions.some(action => action.title === 'Collect source-backed market evidence')).toBe(true)
     expect(actions.some(action => action.title === 'Stage approved investor material')).toBe(true)
     expect(actions.every(action => !action.reason.includes('market share is'))).toBe(true)
+  })
+
+  it('maps evidence areas and text hints to investor presentation sections', () => {
+    expect(presentationSectionForEvidence('companyLegal', 'business license')).toBe('Chemicon Background')
+    expect(presentationSectionForEvidence('market', 'competitor pricing proof')).toBe('Competitor Landscape')
+    expect(presentationSectionForEvidence('financial', 'investor IRR and NPV')).toBe('IRR / Investor Return')
+    expect(presentationSectionForEvidence('regulatory', 'DMS permission risk')).toBe('Risk & Mitigation')
   })
 
   it('points next actions to research review and financial review when data exists', () => {

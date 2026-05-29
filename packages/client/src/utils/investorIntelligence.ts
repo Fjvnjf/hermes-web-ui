@@ -104,6 +104,25 @@ export interface InvestorNextActionSource {
   financialModels: NextActionFinancialModel[]
 }
 
+export const INVESTOR_PRESENTATION_SECTIONS = [
+  'Cover',
+  'Executive Summary',
+  'Problem / Opportunity',
+  'Chemicon Background',
+  'Product Plan',
+  'China Feasibility',
+  'Market Evidence',
+  'Competitor Landscape',
+  'Manufacturing Plan',
+  'Regulatory Plan',
+  'Financial Model',
+  'IRR / Investor Return',
+  'Use of Funds',
+  'Risk & Mitigation',
+  'Evidence / Data Room',
+  'Next Steps',
+]
+
 export function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
@@ -123,6 +142,30 @@ export function normalizedMarketClaimStatus(claim: MarketClaim): IntelligenceEvi
   if (claim.evidenceStatus === 'Verified' && !canMarkMarketClaimVerified(claim)) return 'To Verify'
   if (!claim.value?.trim()) return 'To Verify'
   return claim.evidenceStatus
+}
+
+export function presentationSectionForEvidence(area?: string, text = ''): string {
+  const normalizedArea = (area || '').toLowerCase()
+  const lower = `${normalizedArea} ${text}`.toLowerCase()
+
+  if (lower.includes('competitor')) return 'Competitor Landscape'
+  if (lower.includes('use of funds') || lower.includes('funding')) return 'Use of Funds'
+  if (lower.includes('risk') || lower.includes('mitigation')) return 'Risk & Mitigation'
+  if (lower.includes('irr') || lower.includes('npv') || lower.includes('payback') || lower.includes('return')) return 'IRR / Investor Return'
+  if (lower.includes('data room') || lower.includes('source document') || lower.includes('evidence room')) return 'Evidence / Data Room'
+  if (lower.includes('market') || lower.includes('customer') || lower.includes('demand') || lower.includes('price')) return 'Market Evidence'
+  if (lower.includes('regulatory') || lower.includes('dms') || lower.includes('permit') || lower.includes('permission')) return 'Regulatory Plan'
+  if (lower.includes('factory') || lower.includes('plant') || lower.includes('manufacturing') || lower.includes('machine')) return 'Manufacturing Plan'
+  if (lower.includes('product') || lower.includes('cwas') || lower.includes('cwms') || lower.includes('sds') || lower.includes('tds') || lower.includes('cas')) return 'Product Plan'
+  if (lower.includes('company') || lower.includes('legal') || lower.includes('license') || normalizedArea === 'companylegal') return 'Chemicon Background'
+
+  if (normalizedArea === 'product') return 'Product Plan'
+  if (normalizedArea === 'factory') return 'Manufacturing Plan'
+  if (normalizedArea === 'regulatory') return 'Regulatory Plan'
+  if (normalizedArea === 'market') return 'Market Evidence'
+  if (normalizedArea === 'financial') return 'IRR / Investor Return'
+  if (normalizedArea === 'presentation') return 'Evidence / Data Room'
+  return 'Executive Summary'
 }
 
 export function formatMarketShare(value?: string | null): string {

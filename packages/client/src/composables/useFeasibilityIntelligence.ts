@@ -3,6 +3,7 @@ import {
   calculateInvestorReadinessScore,
   isPresentationMaterialAllowed,
   normalizedMarketClaimStatus,
+  presentationSectionForEvidence,
   type IntelligenceEvidenceStatus,
   type MarketClaim,
   type PresentationMaterial,
@@ -489,7 +490,10 @@ export function useFeasibilityIntelligence() {
         approved.evidenceStatus === 'Assumption')
     ) {
       addPresentationMaterial({
-        section: approved.keyClaim || approved.area,
+        section: presentationSectionForEvidence(
+          approved.area,
+          `${approved.keyClaim} ${approved.summary} ${approved.suggestedInvestorMaterial}`,
+        ),
         content: approved.suggestedInvestorMaterial,
         evidenceStatus: approved.evidenceStatus === 'Assumption' ? 'Approved Assumption' : approved.evidenceStatus,
         source: approved.source || null,

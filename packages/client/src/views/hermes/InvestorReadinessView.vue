@@ -7,7 +7,7 @@ import {
   type FeasibilityEvidenceItem,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
-import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
+import { presentationSectionForEvidence, type IntelligenceEvidenceStatus, type SourceReference } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 
 interface ReadinessSection extends FeasibilityEvidenceItem {
@@ -212,7 +212,7 @@ function addToInvestorDraft(item: ReadinessSection) {
     return
   }
   intelligence.addPresentationMaterial({
-    section: item.label,
+    section: presentationSectionForEvidence(item.id, `${item.label} ${item.description} ${item.nextAction}`),
     content: `${item.description}\n\nInvestor readiness note: ${item.nextAction}`,
     evidenceStatus: item.evidenceStatus === 'Verified' ? 'Verified' : item.evidenceStatus === 'Assumption' ? 'Approved Assumption' : item.evidenceStatus,
     source: item.source || null,
