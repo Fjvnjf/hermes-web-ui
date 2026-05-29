@@ -383,6 +383,23 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
     </section>
 
+    <section class="capture-chat-section" aria-labelledby="capture-chat-title">
+      <div>
+        <p class="eyebrow">Session capture</p>
+        <h3 id="capture-chat-title">Capture from Chat</h3>
+        <p>
+          After discussing feasibility with Hermes, use Review & Capture in Chat to turn useful points into tasks,
+          evidence gaps, notes, and report snippets. Hermes suggests; you approve before anything is saved.
+        </p>
+      </div>
+      <div class="capture-chat-actions">
+        <RouterLink class="primary-link" :to="{ name: 'hermes.chat', query: { captureContext: 'chemicon' } }">Open Chat</RouterLink>
+        <RouterLink class="shell-link compact" :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
+        <RouterLink class="shell-link compact" :to="{ name: 'hermes.memory' }">Open Memory</RouterLink>
+        <RouterLink class="shell-link compact" :to="{ name: 'hermes.files' }">Open Documents</RouterLink>
+      </div>
+    </section>
+
     <section class="guidance-section" aria-labelledby="task-guidance-title">
       <div class="guidance-card">
         <div>
@@ -521,6 +538,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 
 .studio-hero,
 .workflow-section,
+.capture-chat-section,
 .guidance-section,
 .checklist-section,
 .evidence-section,
@@ -530,6 +548,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 
 .studio-hero,
 .workflow-section,
+.capture-chat-section,
 .guidance-card,
 .checklist-group,
 .evidence-section,
@@ -545,6 +564,34 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   gap: 18px;
   align-items: start;
   padding: 18px;
+}
+
+.capture-chat-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 16px;
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 18px;
+  }
+
+  p {
+    max-width: 780px;
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.capture-chat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .eyebrow {
@@ -990,6 +1037,14 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
     grid-template-columns: 1fr;
   }
 
+  .capture-chat-section {
+    grid-template-columns: 1fr;
+  }
+
+  .capture-chat-actions {
+    justify-content: flex-start;
+  }
+
   .quick-actions {
     justify-content: flex-start;
   }
@@ -1002,6 +1057,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 
   .studio-hero,
   .workflow-section,
+  .capture-chat-section,
   .guidance-card,
   .checklist-section,
   .evidence-section,

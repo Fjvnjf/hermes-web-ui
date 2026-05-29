@@ -31,6 +31,13 @@ const links = [
   { label: 'Memory', to: { name: 'hermes.memory' } },
   { label: 'Documents', to: { name: 'hermes.files' } },
 ]
+
+const captureLinks = [
+  { label: 'Open Chat', to: { name: 'hermes.chat', query: { captureContext: 'general-research' } }, primary: true },
+  { label: 'Open History', to: { name: 'hermes.history' } },
+  { label: 'Open Memory', to: { name: 'hermes.memory' } },
+  { label: 'Open Documents', to: { name: 'hermes.files' } },
+]
 </script>
 
 <template>
@@ -45,6 +52,27 @@ const links = [
         <RouterLink v-for="link in links" :key="link.label" class="shell-link" :to="link.to">{{ link.label }}</RouterLink>
       </div>
     </header>
+
+    <section class="capture-research-section" aria-labelledby="capture-research-title">
+      <div>
+        <p class="eyebrow">Session capture</p>
+        <h3 id="capture-research-title">Capture Research Sessions</h3>
+        <p>
+          Use Review & Capture after research conversations to save notes, questions, and tasks. Suggestions stay
+          approval-first and reuse Chat, History, Memory, and Documents instead of creating a new storage system.
+        </p>
+      </div>
+      <div class="capture-actions">
+        <RouterLink
+          v-for="link in captureLinks"
+          :key="link.label"
+          :class="link.primary ? 'shell-link primary' : 'shell-link'"
+          :to="link.to"
+        >
+          {{ link.label }}
+        </RouterLink>
+      </div>
+    </section>
 
     <section class="section-grid" aria-label="Research library sections">
       <article v-for="section in sections" :key="section.title" class="workspace-card">
@@ -92,6 +120,38 @@ const links = [
   gap: 8px;
 }
 
+.capture-research-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-card;
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 18px;
+  }
+
+  p {
+    max-width: 760px;
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.capture-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .shell-link {
   display: inline-flex;
   min-height: 34px;
@@ -107,6 +167,18 @@ const links = [
     border-color: $accent-info;
     color: $accent-info-hover;
     background: rgba(var(--accent-info-rgb), 0.08);
+  }
+
+  &.primary {
+    color: $bg-primary;
+    background: $accent-primary;
+    border-color: $accent-primary;
+
+    &:hover {
+      color: $bg-primary;
+      background: $accent-hover;
+      border-color: $accent-hover;
+    }
   }
 }
 
@@ -141,7 +213,15 @@ const links = [
     grid-template-columns: 1fr;
   }
 
+  .capture-research-section {
+    grid-template-columns: 1fr;
+  }
+
   .quick-actions {
+    justify-content: flex-start;
+  }
+
+  .capture-actions {
     justify-content: flex-start;
   }
 }

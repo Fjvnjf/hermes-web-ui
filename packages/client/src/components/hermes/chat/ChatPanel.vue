@@ -16,9 +16,14 @@ import {
   type DropdownOption,
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { copyToClipboard } from "@/utils/clipboard";
+import {
+  inferCaptureContext,
+  shouldPromptForCapture,
+  type CaptureContextId,
+} from "@/composables/useSessionCapture";
 import FolderPicker from "./FolderPicker.vue";
 import ChatInput from "./ChatInput.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
@@ -26,16 +31,19 @@ import MessageList from "./MessageList.vue";
 import SessionListItem from "./SessionListItem.vue";
 import DrawerPanel from "./DrawerPanel.vue";
 import OutlinePanel from "./OutlinePanel.vue";
+import SessionCaptureDrawer from "@/components/session-capture/SessionCaptureDrawer.vue";
 
 const chatStore = useChatStore();
 const appStore = useAppStore();
 const profilesStore = useProfilesStore();
 const sessionBrowserPrefsStore = useSessionBrowserPrefsStore();
 const router = useRouter();
+const route = useRoute();
 const message = useMessage();
 const { t } = useI18n();
 
 const showDrawer = ref(false);
+const showCaptureDrawer = ref(false);
 const drawerActiveTab = ref<"terminal" | "files">("files");
 const showOutline = ref(false);
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null);
@@ -78,6 +86,7 @@ function handleOutlineNavigate(target: { messageId: string; anchorId: string }) 
 }
 
 async function handleSessionClick(sessionId: string) {
+  if (sessionId !== chatStore.activeSessionId && maybePromptCaptureBeforeLeaving()) return;
   await router.push({
     name: "hermes.session",
     params: { sessionId },
@@ -180,6 +189,16 @@ const activeSourceLabel = computed(() =>
 );
 const connectionLabel = computed(() => (appStore.connected ? "Online" : "Offline"));
 const messageCountLabel = computed(() => String(chatStore.messages.length));
+const routeCaptureContext = computed(() => {
+  const value = route.query.captureContext;
+  return typeof value === "string" ? value : null;
+});
+const sessionCaptureContext = computed<CaptureContextId>(() =>
+  inferCaptureContext(chatStore.messages, activeSessionTitle.value, routeCaptureContext.value),
+);
+const canReviewCapture = computed(() =>
+  Boolean(chatStore.activeSessionId && chatStore.messages.length > 0),
+);
 
 const activeApproval = computed(() => chatStore.activePendingApproval);
 const visibleApproval = computed(() => activeApproval.value);
@@ -261,6 +280,7 @@ function syncNewChatModelSelection() {
 }
 
 async function openNewChatModal() {
+  if (maybePromptCaptureBeforeLeaving()) return;
   showNewChatModal.value = true;
   newChatLoading.value = true;
   try {
@@ -277,6 +297,18 @@ async function openNewChatModal() {
   } finally {
     newChatLoading.value = false;
   }
+}
+
+function maybePromptCaptureBeforeLeaving(): boolean {
+  if (shouldPromptForCapture(chatStore.activeSessionId, chatStore.messages)) {
+    showCaptureDrawer.value = true;
+    return true;
+  }
+  return false;
+}
+
+function openSessionCapture() {
+  showCaptureDrawer.value = true;
 }
 
 function handleNewChatProfileChange(value: string) {
@@ -1213,6 +1245,37 @@ async function handleSessionModelCustomSubmit() {
               </template>
               {{ t("chat.copySessionId") }}
             </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  size="small"
+                  secondary
+                  :circle="isMobile"
+                  :disabled="!canReviewCapture"
+                  aria-label="Review & Capture"
+                  title="Review & Capture"
+                  @click="openSessionCapture"
+                >
+                  <template #icon>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M9 11l3 3L22 4" />
+                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </svg>
+                  </template>
+                  <template v-if="!isMobile">Review & Capture</template>
+                </NButton>
+              </template>
+              Review useful tasks, notes, evidence gaps, and report snippets from this session
+            </NTooltip>
             <NButton size="small" :circle="isMobile" @click="openNewChatModal">
               <template #icon>
                 <svg
@@ -1485,6 +1548,13 @@ async function handleSessionModelCustomSubmit() {
     </div>
 
     <DrawerPanel v-model:show="showDrawer" :active-tab="drawerActiveTab" />
+    <SessionCaptureDrawer
+      v-model:show="showCaptureDrawer"
+      :session-id="chatStore.activeSessionId"
+      :session-title="activeSessionTitle"
+      :messages="chatStore.messages"
+      :initial-context="sessionCaptureContext"
+    />
   </div>
 </template>
 
