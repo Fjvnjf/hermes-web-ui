@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { NButton, useMessage } from 'naive-ui'
+import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+
 type RouteName =
   | 'hermes.chat'
   | 'hermes.files'
@@ -45,6 +49,14 @@ interface ReportDraft {
   title: string
   description: string
 }
+
+const message = useMessage()
+const kanbanStore = useKanbanStore()
+const creatingTaskKey = ref<string | null>(null)
+const taskErrors = ref<Record<string, string>>({})
+const createdTasks = ref<Record<string, string>>({})
+const manualTaskText = ref('')
+const boardLoading = ref(false)
 
 const workspaceLinks: WorkspaceLink[] = [
   {
@@ -224,6 +236,108 @@ const reportDrafts: ReportDraft[] = [
 ]
 
 const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().replace(/\s+/g, '-')}`
+
+const selectedKanbanBoardLabel = computed(() => {
+  const selected = kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD
+  const board = kanbanStore.activeBoards.find(item => item.slug === selected)
+  if (!board) return selected
+  return board.name && board.name !== board.slug ? `${board.name} (${board.slug})` : board.slug
+})
+
+onMounted(async () => {
+  boardLoading.value = true
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+  } finally {
+    boardLoading.value = false
+  }
+})
+
+function itemKey(group: ChecklistGroup, item: ChecklistItem): string {
+  return `${group.code}:${item.label}`
+}
+
+function priorityForItem(group: ChecklistGroup, item: ChecklistItem): number {
+  const criticalTerms = ['business scope', 'import/export', 'regulatory', 'factory approval', 'DMS regulatory']
+  const isCriticalCategory = ['C', 'D', 'F'].includes(group.code)
+  const isCriticalItem = criticalTerms.some(term => item.label.toLowerCase().includes(term.toLowerCase()))
+  return isCriticalCategory || isCriticalItem ? 3 : 2
+}
+
+function priorityLabel(priority: number): string {
+  return priority >= 3 ? 'High' : 'Medium'
+}
+
+function taskBody(group: ChecklistGroup, item: ChecklistItem): string {
+  const priority = priorityForItem(group, item)
+  return [
+    `Project: Chemicon China Feasibility`,
+    `Planning scope: Year 1 15,000 MT feasibility`,
+    `Category: ${group.code}. ${group.title}`,
+    `Checklist item: ${item.label}`,
+    `Current evidence status: ${item.status}`,
+    `Recommended next action: ${item.nextAction}`,
+    `Source page: Feasibility Studio`,
+    `Suggested initial column: Triage / To Verify`,
+    `Priority guidance: ${priorityLabel(priority)}`,
+    `Tags: Chemicon China Feasibility, Feasibility, Evidence Gap`,
+    '',
+    'Note: This task was created from a static checklist item. Checklist status is not persistent yet; the Kanban task is persistent after the API confirms creation.',
+  ].join('\n')
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message
+  return 'Unknown error'
+}
+
+async function createChecklistTask(group: ChecklistGroup, item: ChecklistItem) {
+  const key = itemKey(group, item)
+  taskErrors.value = { ...taskErrors.value, [key]: '' }
+  const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+  if (!board) {
+    taskErrors.value = {
+      ...taskErrors.value,
+      [key]: 'Open Tasks/Kanban and create/select a board first.',
+    }
+    return
+  }
+
+  creatingTaskKey.value = key
+  try {
+    kanbanStore.setSelectedBoard(board)
+    const task = await kanbanStore.createTask({
+      title: item.label,
+      body: taskBody(group, item),
+      priority: priorityForItem(group, item),
+      tenant: 'Chemicon China Feasibility',
+    })
+    createdTasks.value = { ...createdTasks.value, [key]: task.id }
+    message.success(`Created Kanban task: ${item.label}`)
+  } catch (err) {
+    const detail = errorMessage(err)
+    taskErrors.value = {
+      ...taskErrors.value,
+      [key]: `${detail}. Open Tasks/Kanban and create/select a board first if the current board is unavailable.`,
+    }
+    message.error('Could not create Kanban task')
+  } finally {
+    creatingTaskKey.value = null
+  }
+}
+
+async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
+  const text = [`Title: ${item.label}`, '', taskBody(group, item)].join('\n')
+  manualTaskText.value = text
+  try {
+    await navigator.clipboard.writeText(text)
+    message.success('Task text copied')
+  } catch {
+    message.warning('Copy is blocked in this browser. The task text is shown below.')
+  }
+}
 </script>
 
 <template>
@@ -275,11 +389,22 @@ const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().
           <p class="eyebrow">Manual task bridge</p>
           <h3 id="task-guidance-title">Quick Create Task Guidance</h3>
           <p>
-            Direct task creation is intentionally not wired here yet. Use the suggested text below, open Tasks, then
-            create the Kanban item in the real Hermes task board.
+            Checklist actions now create real Kanban tasks using the existing Hermes Tasks API. Created tasks are
+            persistent after the API confirms creation. Checklist status on this page is still not persistent.
+          </p>
+          <p class="board-note">
+            Current Kanban board: <strong>{{ selectedKanbanBoardLabel }}</strong>
+            <span v-if="boardLoading">checking...</span>
           </p>
         </div>
         <RouterLink class="primary-link" :to="{ name: 'hermes.kanban' }">Create in Tasks</RouterLink>
+      </div>
+      <div v-if="manualTaskText" class="fallback-copy-panel" aria-live="polite">
+        <div>
+          <strong>Fallback task text</strong>
+          <p>Copy this into Tasks if the browser blocks clipboard access or task creation is unavailable.</p>
+        </div>
+        <textarea :value="manualTaskText" readonly rows="7" />
       </div>
       <div class="task-copy-list" aria-label="Suggested task text">
         <article v-for="task in suggestedTasks" :key="task" class="task-copy-card">
@@ -312,8 +437,34 @@ const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().
               </div>
               <div class="item-actions">
                 <span class="status-pill" :class="statusClass(item.status)">{{ item.status }}</span>
+                <NButton
+                  size="tiny"
+                  class="create-task-button"
+                  :loading="creatingTaskKey === itemKey(group, item)"
+                  @click="createChecklistTask(group, item)"
+                >
+                  Create Task
+                </NButton>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  class="copy-task-button"
+                  @click="copyTaskText(group, item)"
+                >
+                  Copy Text
+                </NButton>
                 <RouterLink class="mini-link" :to="{ name: item.routeName }">{{ item.routeLabel }}</RouterLink>
+                <RouterLink
+                  v-if="createdTasks[itemKey(group, item)]"
+                  class="created-link"
+                  :to="{ name: 'hermes.kanban' }"
+                >
+                  Task created
+                </RouterLink>
               </div>
+              <p v-if="taskErrors[itemKey(group, item)]" class="task-error">
+                {{ taskErrors[itemKey(group, item)] }}
+              </p>
             </div>
           </div>
         </article>
@@ -582,6 +733,52 @@ const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().
   }
 }
 
+.board-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+
+  strong {
+    color: $accent-info;
+  }
+}
+
+.fallback-copy-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.35);
+  border-radius: $radius-sm;
+  background: $bg-panel;
+
+  strong {
+    color: $text-primary;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+
+  textarea {
+    width: 100%;
+    resize: vertical;
+    padding: 10px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    color: $text-primary;
+    background: $bg-input;
+    font-family: $font-code;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
 .task-copy-list {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   margin-top: 12px;
@@ -680,6 +877,7 @@ const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().
   gap: 8px;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .status-pill {
@@ -718,6 +916,32 @@ const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().
     color: $accent-primary;
     border-color: rgba(var(--accent-primary-rgb), 0.45);
   }
+}
+
+.create-task-button,
+.copy-task-button {
+  font-weight: 800;
+}
+
+.created-link {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(var(--success-rgb), 0.45);
+  border-radius: 999px;
+  color: $success;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.task-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: $error;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .evidence-section,
@@ -799,6 +1023,10 @@ const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().
 
   .guidance-card {
     align-items: stretch;
+  }
+
+  .fallback-copy-panel {
+    grid-template-columns: 1fr;
   }
 
   .item-actions {
