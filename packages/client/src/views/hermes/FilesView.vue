@@ -11,6 +11,7 @@ import FileEditor from '@/components/hermes/files/FileEditor.vue'
 import FilePreview from '@/components/hermes/files/FilePreview.vue'
 import FileUploadModal from '@/components/hermes/files/FileUploadModal.vue'
 import FileRenameModal from '@/components/hermes/files/FileRenameModal.vue'
+import FileEvidenceIntakePanel from '@/components/hermes/files/FileEvidenceIntakePanel.vue'
 import type { FileEntry } from '@/api/hermes/files'
 
 const filesStore = useFilesStore()
@@ -71,6 +72,10 @@ onMounted(() => {
         @show-upload="showUpload = true"
       />
       <FileBreadcrumb />
+      <FileEvidenceIntakePanel
+        :entries="filesStore.entries"
+        :current-path="filesStore.currentPath"
+      />
       <div class="files-content">
         <FileEditor v-if="filesStore.editingFile" />
         <FilePreview v-else-if="filesStore.previewFile" />
