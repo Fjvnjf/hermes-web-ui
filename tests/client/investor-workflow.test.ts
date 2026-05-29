@@ -17,6 +17,7 @@ import {
   calculateInvestorReadinessScore,
   canMarkMarketClaimVerified,
   formatMarketShare,
+  formatSourcedMarketShare,
   formatInvestorPresentationOutline,
   presentationSectionForEvidence,
 } from '@/utils/investorIntelligence'
@@ -275,6 +276,14 @@ describe('investor feasibility workflow utilities', () => {
   it('displays unknown competitor market share as To Verify', () => {
     expect(formatMarketShare('')).toBe('To Verify')
     expect(formatMarketShare(null)).toBe('To Verify')
+  })
+
+  it('does not display competitor market share as fact without source-backed evidence', () => {
+    expect(formatSourcedMarketShare('12%', null, 'Verified')).toBe('To Verify')
+    expect(formatSourcedMarketShare('12%', { title: 'Distributor quote' }, 'Verified')).toBe('To Verify')
+    expect(formatSourcedMarketShare('12%', { title: 'Industry report', date: '2026-05-30' }, 'To Verify')).toBe('To Verify')
+    expect(formatSourcedMarketShare('12%', { title: 'Industry report', date: '2026-05-30' }, 'Verified')).toBe('12%')
+    expect(formatSourcedMarketShare('12%', null, 'Assumption')).toBe('Assumption: 12%')
   })
 
   it('excludes unsupported investor presentation claims', () => {
@@ -1060,6 +1069,31 @@ describe('investor readiness pages', () => {
 
     expect(wrapper.text()).toContain('Evidence-Backed Competitor Tracking')
     expect(wrapper.text()).toContain('To Verify')
+  })
+
+  it('hides unsourced competitor market share values behind To Verify in the workspace UI', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'Unsourced share competitor',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: '90% active content',
+      pricingEvidence: 'Claimed quote without source',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '12%',
+      evidenceStatus: 'Verified',
+      source: null,
+      notes: 'Market share claim has no usable source.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Unsourced share competitor')
+    expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).not.toContain('12%')
   })
 
   it('stages source-backed competitor evidence for research review without updating readiness', async () => {

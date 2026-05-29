@@ -6,7 +6,7 @@ import {
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
-import { formatMarketShare, sourceIsUsable, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import { formatSourcedMarketShare, sourceIsUsable, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
@@ -32,6 +32,10 @@ const competitorForm = ref({
 
 const competitors = computed(() => intelligence.state.value.competitors)
 const competitorSubmitLabel = computed(() => editingCompetitorId.value ? 'Update competitor' : 'Save competitor')
+
+function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
+  return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
+}
 
 function resetCompetitorForm() {
   competitorForm.value = {
@@ -95,7 +99,7 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       `Pricing evidence: ${competitor.pricingEvidence}`,
       `Certifications: ${competitor.certifications}`,
       `Distribution presence: ${competitor.distributionPresence}`,
-      `Market share: ${formatMarketShare(competitor.marketShare)}`,
+      `Market share: ${competitorMarketShareLabel(competitor)}`,
       `Notes: ${competitor.notes}`,
     ].join('\n'),
     keyClaim: `Competitor evidence: ${competitor.companyName}`,
@@ -109,7 +113,7 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       ? `Review competitor evidence for ${competitor.companyName} before using it in investor material.`
       : `Collect usable source evidence for ${competitor.companyName}.`,
     suggestedInvestorMaterial: usableSource
-      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${competitor.pricingEvidence}. Market share: ${formatMarketShare(competitor.marketShare)}.`
+      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${competitor.pricingEvidence}. Market share: ${competitorMarketShareLabel(competitor)}.`
       : '',
     riskNote: usableSource
       ? 'Review source quality before approving this competitor evidence for investor use.'
@@ -249,7 +253,7 @@ function addCompetitor() {
         <span>{{ competitor.productEquivalent }}</span>
         <span>{{ competitor.pricingEvidence }}</span>
         <span>{{ competitor.source?.title || 'Source missing' }}</span>
-        <span>{{ formatMarketShare(competitor.marketShare) }}</span>
+        <span>{{ competitorMarketShareLabel(competitor) }}</span>
         <span>{{ competitor.evidenceStatus }}</span>
         <span class="row-actions">
           <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">

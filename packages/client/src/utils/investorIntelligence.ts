@@ -172,6 +172,18 @@ export function formatMarketShare(value?: string | null): string {
   return value?.trim() ? value.trim() : 'To Verify'
 }
 
+export function formatSourcedMarketShare(
+  value: string | null | undefined,
+  source: SourceReference | null | undefined,
+  evidenceStatus: IntelligenceEvidenceStatus,
+): string {
+  const trimmed = value?.trim() || ''
+  if (!trimmed) return 'To Verify'
+  if (evidenceStatus === 'Assumption' || evidenceStatus === 'Approved Assumption') return `Assumption: ${trimmed}`
+  if ((evidenceStatus === 'Verified' || evidenceStatus === 'User Approved') && sourceIsUsable(source)) return trimmed
+  return 'To Verify'
+}
+
 export function isPresentationMaterialAllowed(material: PresentationMaterial): boolean {
   if (!material.content.trim()) return false
   if (material.evidenceStatus === 'Verified') return sourceIsUsable(material.source)

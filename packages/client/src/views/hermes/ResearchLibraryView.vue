@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
-import { formatMarketShare, formatSourceReference, normalizedMarketClaimStatus } from '@/utils/investorIntelligence'
+import { formatSourcedMarketShare, formatSourceReference, normalizedMarketClaimStatus } from '@/utils/investorIntelligence'
 
 const intelligence = useFeasibilityIntelligence()
 
@@ -115,7 +115,7 @@ const evidenceRecords = computed(() => [
   ...competitors.value.map(item => ({
     id: item.id,
     title: item.companyName,
-    detail: `${item.productEquivalent || 'Product To Verify'} / market share: ${formatMarketShare(item.marketShare)}`,
+    detail: `${item.productEquivalent || 'Product To Verify'} / market share: ${formatSourcedMarketShare(item.marketShare, item.source, item.evidenceStatus)}`,
     status: item.evidenceStatus,
     source: formatSourceReference(item.source),
     to: { name: 'hermes.competitorIntelligence' },
