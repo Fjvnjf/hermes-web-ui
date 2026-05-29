@@ -5,6 +5,7 @@ import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntellig
 import {
   calculateInvestmentScenario,
   createEmptyInvestmentScenario,
+  hasUsableInvestmentOutputs,
   summarizeInvestmentEvidence,
   type EvidenceStatus,
   type InvestmentScenarioInput,
@@ -42,6 +43,7 @@ const scenarios = reactive(loadScenarios())
 const scenario = computed(() => scenarios[activeScenario.value])
 const result = computed(() => calculateInvestmentScenario(scenario.value))
 const evidenceSummary = computed(() => summarizeInvestmentEvidence(scenario.value))
+const draftableFinancialOutputs = computed(() => hasUsableInvestmentOutputs(result.value))
 const financialEvidenceStatus = computed<IntelligenceEvidenceStatus>(() => {
   if (result.value.incomplete || evidenceSummary.value.toVerify > 0) return 'To Verify'
   if (evidenceSummary.value.assumptions > 0) return 'Derived from Assumptions'
@@ -179,8 +181,8 @@ function saveFinancialSnapshot() {
 }
 
 function addFinancialSummaryToDraft() {
-  if (result.value.incomplete) {
-    message.warning('Complete the model before adding financial output to investor draft material')
+  if (!draftableFinancialOutputs.value) {
+    message.warning('Add capex, revenue, and calculable cash flows before staging financial output')
     return
   }
   const saved = intelligence.saveFinancialModelSnapshot({
@@ -268,6 +270,12 @@ function addFinancialSummaryToDraft() {
         <NButton secondary type="primary" @click="saveFinancialSnapshot">Save financial snapshot</NButton>
         <NButton secondary @click="addFinancialSummaryToDraft">Add assumption-labeled draft</NButton>
         <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>
+        <small v-if="draftableFinancialOutputs">
+          Can stage as investor draft text, but weak inputs stay labeled as assumptions or To Verify.
+        </small>
+        <small v-else>
+          Add capex and revenue until NPV/IRR are calculable before staging output.
+        </small>
       </article>
     </section>
 
@@ -671,6 +679,12 @@ function addFinancialSummaryToDraft() {
     font-size: 12px;
     font-weight: 900;
     text-decoration: none;
+  }
+
+  small {
+    flex-basis: 100%;
+    color: $text-secondary;
+    line-height: 1.45;
   }
 }
 

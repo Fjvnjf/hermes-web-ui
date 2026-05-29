@@ -461,3 +461,10 @@ function calculateCore(input: InvestmentScenarioInput, includeSensitivity: boole
 export function calculateInvestmentScenario(input: InvestmentScenarioInput): InvestmentScenarioResult {
   return calculateCore(input, true)
 }
+
+export function hasUsableInvestmentOutputs(result: InvestmentScenarioResult): boolean {
+  return result.capexTotal > 0 &&
+    result.yearly.some(item => item.revenue > 0) &&
+    result.irr !== null &&
+    Number.isFinite(result.npv)
+}

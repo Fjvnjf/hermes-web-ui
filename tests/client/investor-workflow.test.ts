@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   calculateInvestmentScenario,
   createEmptyInvestmentScenario,
+  hasUsableInvestmentOutputs,
   irr,
   npv,
   summarizeInvestmentEvidence,
@@ -169,6 +170,20 @@ describe('investor feasibility workflow utilities', () => {
     expect(result.cashFlows[0]).toBe(-1000)
     expect(result.yearly[0].revenue).toBe(1000)
     expect(result.irr).not.toBeNull()
+  })
+
+  it('separates usable financial outputs from weak assumption evidence', () => {
+    const scenario = createEmptyInvestmentScenario()
+    scenario.capex.machinery.value = 1000
+    scenario.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    scenario.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    scenario.variableCostPerTon.rawMaterials.value = 20
+
+    const result = calculateInvestmentScenario(scenario)
+
+    expect(result.incomplete).toBe(true)
+    expect(result.warnings).toContain('Outputs are derived from assumptions or unverified inputs.')
+    expect(hasUsableInvestmentOutputs(result)).toBe(true)
   })
 
   it('calculates investor return lens from funding and exit assumptions', () => {
@@ -683,6 +698,36 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Investor Return Lens')
     expect(wrapper.text()).toContain('Funding gap')
     expect(wrapper.text()).toContain('Investor IRR')
+  })
+
+  it('stages calculable financial outputs as assumption-labeled investor material', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    base.capex.machinery.value = 1000
+    base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    base.variableCostPerTon.rawMaterials.value = 20
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const addButton = wrapper.findAll('button').find(button => button.text() === 'Add assumption-labeled draft')
+
+    expect(wrapper.text()).toContain('Can stage as investor draft text')
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+
+    expect(intelligence.state.value.presentationMaterials[0].section).toBe('IRR / Investor Return')
+    expect(intelligence.state.value.presentationMaterials[0].evidenceStatus).toBe('Derived from Assumptions')
+    expect(intelligence.state.value.presentationMaterials[0].content).toContain('All outputs are derived from assumptions')
+    const draft = buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)
+    expect(draft.length).toBeGreaterThan(0)
+    expect(draft.every(item => item.evidenceStatus === 'Derived from Assumptions')).toBe(true)
   })
 
   it('renders the investor readiness shell without fake readiness data', () => {
