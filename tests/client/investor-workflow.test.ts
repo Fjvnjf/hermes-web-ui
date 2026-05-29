@@ -123,6 +123,7 @@ import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceVie
 import ResearchResultReviewView from '@/views/hermes/ResearchResultReviewView.vue'
 import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentationBuilderView.vue'
 import DashboardView from '@/views/hermes/DashboardView.vue'
+import FeasibilityStudioView from '@/views/hermes/FeasibilityStudioView.vue'
 import InvestmentCalculatorView from '@/views/hermes/InvestmentCalculatorView.vue'
 
 beforeEach(() => {
@@ -1312,6 +1313,59 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Market Evidence')
     expect(wrapper.text()).toContain('Unsupported market evidence needs source')
     expect(wrapper.text()).not.toContain('market share is')
+    expect(wrapper.text()).not.toContain('CAGR')
+  })
+
+  it('shows shared feasibility intelligence inside Feasibility Studio', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'DMS source review is waiting for approval.',
+      keyClaim: 'DMS regulation source review',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+    })
+    intelligence.addResearchJob({
+      title: 'CWAS competitor price proof',
+      question: 'Find source-backed price evidence only.',
+      context: 'Chemicon China Feasibility',
+      status: 'Manual Research Job',
+    })
+    intelligence.saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Derived from Assumptions',
+      npv: 100,
+      irr: 0.12,
+      mirr: 0.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 1200,
+      capexTotal: 1000,
+      yearOneRevenue: 500,
+      warnings: ['Pricing input is still To Verify.'],
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported market evidence needs source.',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+
+    const wrapper = mount(FeasibilityStudioView, {
+      global: { stubs: { RouterLink: { props: ['to'], template: '<a><slot /></a>' } } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Current Investor-Readiness State')
+    expect(wrapper.text()).toContain('Financial model')
+    expect(wrapper.text()).toContain('Base')
+    expect(wrapper.text()).toContain('DMS regulation source review')
+    expect(wrapper.text()).toContain('CWAS competitor price proof')
+    expect(wrapper.text()).toContain('Deck Material Needing Evidence')
+    expect(wrapper.text()).toContain('Unsupported market evidence needs source')
+    expect(wrapper.text()).toContain('Chemicon Feasibility Checklist')
     expect(wrapper.text()).not.toContain('CAGR')
   })
 })

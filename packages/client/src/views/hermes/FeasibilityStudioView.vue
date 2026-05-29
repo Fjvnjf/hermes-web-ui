@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
+import { useFeasibilityIntelligence, type FeasibilityEvidenceItem } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import { isPresentationMaterialAllowed, type PresentationMaterial } from '@/utils/investorIntelligence'
 
 type RouteName =
   | 'hermes.chat'
@@ -14,6 +16,7 @@ type RouteName =
   | 'hermes.investmentCalculator'
   | 'hermes.marketIntelligence'
   | 'hermes.competitorIntelligence'
+  | 'hermes.researchResultReview'
   | 'hermes.investorPresentation'
 
 type ChecklistStatus =
@@ -57,6 +60,7 @@ interface ReportDraft {
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const intelligence = useFeasibilityIntelligence()
 const creatingTaskKey = ref<string | null>(null)
 const taskErrors = ref<Record<string, string>>({})
 const createdTasks = ref<Record<string, string>>({})
@@ -244,6 +248,43 @@ const investorWorkflowLinks = [
   { label: 'Competitor Intelligence', routeName: 'hermes.competitorIntelligence' as const, description: 'Track competitors without invented market share.' },
   { label: 'Presentation Builder', routeName: 'hermes.investorPresentation' as const, description: 'Draft from approved material only.' },
 ]
+
+const readinessScore = intelligence.readinessScore
+const topLiveEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
+const pendingResearchReview = computed(() =>
+  intelligence.state.value.researchFindings
+    .filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
+    .slice(0, 3),
+)
+const openResearchJobs = computed(() =>
+  intelligence.state.value.researchJobs
+    .filter(job => job.status === 'Task Created' || job.status === 'Manual Research Job' || job.status === 'Later')
+    .slice(0, 3),
+)
+const latestFinancialModel = intelligence.latestFinancialModel
+const deckMaterialsNeedingEvidence = computed(() =>
+  intelligence.state.value.presentationMaterials
+    .filter(material => !isPresentationMaterialAllowed(material))
+    .slice(0, 3),
+)
+
+function routeForEvidenceGap(gap: FeasibilityEvidenceItem): RouteName {
+  if (gap.id === 'market') return 'hermes.marketIntelligence'
+  if (gap.id === 'financial') return 'hermes.investmentCalculator'
+  if (gap.id === 'presentation') return 'hermes.investorPresentation'
+  return 'hermes.investorReadiness'
+}
+
+function materialStatusLabel(material: PresentationMaterial): string {
+  if (material.evidenceStatus === 'Verified') return 'Source required'
+  return material.evidenceStatus
+}
+
+function financialStatusText(): string {
+  if (!latestFinancialModel.value) return 'No saved IRR snapshot yet'
+  const warnings = latestFinancialModel.value.warnings.length
+  return `${latestFinancialModel.value.evidenceStatus} / ${warnings} warning${warnings === 1 ? '' : 's'}`
+}
 
 const reportDrafts: ReportDraft[] = [
   {
@@ -433,6 +474,108 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
     </section>
 
+    <section class="live-intelligence-section" aria-labelledby="live-intelligence-title">
+      <div class="section-heading">
+        <p class="eyebrow">Live feasibility intelligence</p>
+        <h3 id="live-intelligence-title">Current Investor-Readiness State</h3>
+        <p>
+          This panel reads the shared feasibility intelligence workspace. It is real local workspace state, not static
+          checklist text, and it never marks a claim verified without evidence.
+        </p>
+      </div>
+
+      <div class="live-summary-grid">
+        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investorReadiness' }">
+          <span>Readiness score</span>
+          <strong>{{ readinessScore }}%</strong>
+          <small>Evidence-status only</small>
+        </RouterLink>
+        <RouterLink class="live-summary-card" :to="{ name: 'hermes.researchResultReview' }">
+          <span>Research review</span>
+          <strong>{{ pendingResearchReview.length + openResearchJobs.length }}</strong>
+          <small>pending findings / research jobs</small>
+        </RouterLink>
+        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investmentCalculator' }">
+          <span>Financial model</span>
+          <strong>{{ latestFinancialModel?.scenarioName || 'None' }}</strong>
+          <small>{{ financialStatusText() }}</small>
+        </RouterLink>
+        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investorPresentation' }">
+          <span>Deck evidence</span>
+          <strong>{{ deckMaterialsNeedingEvidence.length }}</strong>
+          <small>items need review</small>
+        </RouterLink>
+      </div>
+
+      <div class="live-intelligence-grid">
+        <article class="live-panel">
+          <div class="mini-panel-head">
+            <h4>Top Evidence Gaps</h4>
+            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Open readiness</RouterLink>
+          </div>
+          <div v-if="topLiveEvidenceGaps.length" class="live-list">
+            <RouterLink
+              v-for="gap in topLiveEvidenceGaps"
+              :key="gap.id"
+              class="live-row"
+              :to="{ name: routeForEvidenceGap(gap) }"
+            >
+              <strong>{{ gap.label }}</strong>
+              <span>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</span>
+            </RouterLink>
+          </div>
+          <p v-else class="live-empty">No missing readiness areas in the current workspace state.</p>
+        </article>
+
+        <article class="live-panel">
+          <div class="mini-panel-head">
+            <h4>Research and Review Queue</h4>
+            <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
+          </div>
+          <div v-if="pendingResearchReview.length || openResearchJobs.length" class="live-list">
+            <RouterLink
+              v-for="finding in pendingResearchReview"
+              :key="finding.id"
+              class="live-row"
+              :to="{ name: 'hermes.researchResultReview' }"
+            >
+              <strong>{{ finding.keyClaim || finding.summary }}</strong>
+              <span>{{ finding.status }} / {{ finding.evidenceStatus }}</span>
+            </RouterLink>
+            <RouterLink
+              v-for="job in openResearchJobs"
+              :key="job.id"
+              class="live-row"
+              :to="{ name: 'hermes.researchResultReview' }"
+            >
+              <strong>{{ job.title }}</strong>
+              <span>{{ job.status }} / {{ job.context }}</span>
+            </RouterLink>
+          </div>
+          <p v-else class="live-empty">No pending research findings or saved research jobs.</p>
+        </article>
+
+        <article class="live-panel">
+          <div class="mini-panel-head">
+            <h4>Deck Material Needing Evidence</h4>
+            <RouterLink :to="{ name: 'hermes.investorPresentation' }">Open deck</RouterLink>
+          </div>
+          <div v-if="deckMaterialsNeedingEvidence.length" class="live-list">
+            <RouterLink
+              v-for="material in deckMaterialsNeedingEvidence"
+              :key="material.id || `${material.section}-${material.content}`"
+              class="live-row"
+              :to="{ name: 'hermes.investorPresentation' }"
+            >
+              <strong>{{ material.section }}</strong>
+              <span>{{ materialStatusLabel(material) }} / {{ material.content }}</span>
+            </RouterLink>
+          </div>
+          <p v-else class="live-empty">No unsupported investor draft material is staged right now.</p>
+        </article>
+      </div>
+    </section>
+
     <section class="guidance-section" aria-labelledby="task-guidance-title">
       <div class="guidance-card">
         <div>
@@ -589,6 +732,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 .studio-hero,
 .workflow-section,
 .capture-chat-section,
+.live-intelligence-section,
 .guidance-section,
 .checklist-section,
 .evidence-section,
@@ -600,6 +744,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 .studio-hero,
 .workflow-section,
 .capture-chat-section,
+.live-intelligence-section,
 .guidance-card,
 .checklist-group,
 .evidence-section,
@@ -616,6 +761,133 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   gap: 18px;
   align-items: start;
   padding: 18px;
+}
+
+.live-intelligence-section {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.live-summary-grid,
+.live-intelligence-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.live-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.live-intelligence-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.live-summary-card,
+.live-panel {
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-primary;
+}
+
+.live-summary-card {
+  display: grid;
+  gap: 7px;
+  min-height: 106px;
+  padding: 14px;
+  color: $text-primary;
+  text-decoration: none;
+
+  &:hover {
+    border-color: $accent-info;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 24px;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.4;
+  }
+}
+
+.live-panel {
+  display: grid;
+  align-content: start;
+  min-height: 230px;
+  padding: 14px;
+}
+
+.mini-panel-head {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  a {
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
+  }
+}
+
+.live-list {
+  display: grid;
+  gap: 8px;
+}
+
+.live-row {
+  display: grid;
+  gap: 4px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-card;
+  padding: 10px;
+  color: $text-primary;
+  text-decoration: none;
+
+  &:hover {
+    border-color: $accent-info;
+  }
+
+  strong {
+    overflow: hidden;
+    color: $text-primary;
+    font-size: 13px;
+    text-overflow: ellipsis;
+  }
+
+  span {
+    display: -webkit-box;
+    overflow: hidden;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
+.live-empty {
+  margin: 0;
+  color: $text-secondary;
+  line-height: 1.55;
 }
 
 .capture-chat-section {
@@ -1125,6 +1397,10 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
     grid-template-columns: 1fr;
   }
 
+  .live-intelligence-grid {
+    grid-template-columns: 1fr;
+  }
+
   .capture-chat-section {
     grid-template-columns: 1fr;
   }
@@ -1146,6 +1422,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   .studio-hero,
   .workflow-section,
   .capture-chat-section,
+  .live-intelligence-section,
   .guidance-card,
   .checklist-section,
   .evidence-section,
