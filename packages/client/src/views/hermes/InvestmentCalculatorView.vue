@@ -260,28 +260,112 @@ function addFinancialSummaryToDraft() {
         <label>Project name <NInput v-model:value="scenario.projectName" /></label>
         <label>Currency <NInput v-model:value="scenario.currency" /></label>
         <label>Operating years <NInputNumber v-model:value="scenario.operatingYears" :min="1" :max="20" @update:value="ensureYears" /></label>
-        <label>Setup months <NInputNumber v-model:value="scenario.setupMonths.value" :min="0" /></label>
-        <label>Discount rate <NInputNumber v-model:value="scenario.discountRate.value" :step="0.01" :min="0" /></label>
-        <label>Tax rate <NInputNumber v-model:value="scenario.taxRate.value" :step="0.01" :min="0" /></label>
-        <label>Terminal / salvage value <NInputNumber v-model:value="scenario.salvageValue.value" :min="0" /></label>
+        <label>
+          Setup months
+          <NInputNumber v-model:value="scenario.setupMonths.value" :min="0" />
+          <select v-model="scenario.setupMonths.evidenceStatus" aria-label="Setup months evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Discount rate
+          <NInputNumber v-model:value="scenario.discountRate.value" :step="0.01" :min="0" />
+          <select v-model="scenario.discountRate.evidenceStatus" aria-label="Discount rate evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Tax rate
+          <NInputNumber v-model:value="scenario.taxRate.value" :step="0.01" :min="0" />
+          <select v-model="scenario.taxRate.evidenceStatus" aria-label="Tax rate evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Terminal / salvage value
+          <NInputNumber v-model:value="scenario.salvageValue.value" :min="0" />
+          <select v-model="scenario.salvageValue.evidenceStatus" aria-label="Terminal value evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
       </article>
 
       <article class="input-panel">
         <h3>Funding</h3>
-        <label>Investor amount <NInputNumber v-model:value="scenario.funding.investorAmount.value" :min="0" /></label>
-        <label>Founder contribution <NInputNumber v-model:value="scenario.funding.founderContribution.value" :min="0" /></label>
-        <label>Investor equity % <NInputNumber v-model:value="scenario.funding.investorEquityPercent.value" :step="0.01" :min="0" /></label>
-        <label>Exit year <NInputNumber v-model:value="scenario.funding.exitYear.value" :min="0" /></label>
-        <label>Exit multiple <NInputNumber v-model:value="scenario.funding.exitMultiple.value" :min="0" /></label>
+        <label>
+          Investor amount
+          <NInputNumber v-model:value="scenario.funding.investorAmount.value" :min="0" />
+          <select v-model="scenario.funding.investorAmount.evidenceStatus" aria-label="Investor amount evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Founder contribution
+          <NInputNumber v-model:value="scenario.funding.founderContribution.value" :min="0" />
+          <select v-model="scenario.funding.founderContribution.evidenceStatus" aria-label="Founder contribution evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Investor equity %
+          <NInputNumber v-model:value="scenario.funding.investorEquityPercent.value" :step="0.01" :min="0" />
+          <select v-model="scenario.funding.investorEquityPercent.evidenceStatus" aria-label="Investor equity evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Exit year
+          <NInputNumber v-model:value="scenario.funding.exitYear.value" :min="0" />
+          <select v-model="scenario.funding.exitYear.evidenceStatus" aria-label="Exit year evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Exit multiple
+          <NInputNumber v-model:value="scenario.funding.exitMultiple.value" :min="0" />
+          <select v-model="scenario.funding.exitMultiple.evidenceStatus" aria-label="Exit multiple evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
       </article>
 
       <article class="input-panel">
         <h3>Working Capital</h3>
-        <label>Raw material inventory days <NInputNumber v-model:value="scenario.workingCapital.rawMaterialInventoryDays.value" :min="0" /></label>
-        <label>Finished goods inventory days <NInputNumber v-model:value="scenario.workingCapital.finishedGoodsInventoryDays.value" :min="0" /></label>
-        <label>Customer credit days / DSO <NInputNumber v-model:value="scenario.workingCapital.customerCreditDays.value" :min="0" /></label>
-        <label>Supplier credit days / DPO <NInputNumber v-model:value="scenario.workingCapital.supplierCreditDays.value" :min="0" /></label>
-        <label>Safety cash buffer <NInputNumber v-model:value="scenario.workingCapital.safetyCashBuffer.value" :min="0" /></label>
+        <label>
+          Raw material inventory days
+          <NInputNumber v-model:value="scenario.workingCapital.rawMaterialInventoryDays.value" :min="0" />
+          <select v-model="scenario.workingCapital.rawMaterialInventoryDays.evidenceStatus" aria-label="Raw material inventory evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Finished goods inventory days
+          <NInputNumber v-model:value="scenario.workingCapital.finishedGoodsInventoryDays.value" :min="0" />
+          <select v-model="scenario.workingCapital.finishedGoodsInventoryDays.evidenceStatus" aria-label="Finished goods inventory evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Customer credit days / DSO
+          <NInputNumber v-model:value="scenario.workingCapital.customerCreditDays.value" :min="0" />
+          <select v-model="scenario.workingCapital.customerCreditDays.evidenceStatus" aria-label="Customer credit days evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Supplier credit days / DPO
+          <NInputNumber v-model:value="scenario.workingCapital.supplierCreditDays.value" :min="0" />
+          <select v-model="scenario.workingCapital.supplierCreditDays.evidenceStatus" aria-label="Supplier credit days evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
+        <label>
+          Safety cash buffer
+          <NInputNumber v-model:value="scenario.workingCapital.safetyCashBuffer.value" :min="0" />
+          <select v-model="scenario.workingCapital.safetyCashBuffer.evidenceStatus" aria-label="Safety cash buffer evidence status">
+            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          </select>
+        </label>
       </article>
     </section>
 
@@ -291,6 +375,12 @@ function addFinancialSummaryToDraft() {
         <span :class="statusClass(scenario.products[0].evidenceStatus)">{{ scenario.products[0].evidenceStatus }}</span>
       </div>
       <label>Product list / mix <NInput v-model:value="scenario.products[0].name" /></label>
+      <label>
+        Revenue evidence status
+        <select v-model="scenario.products[0].evidenceStatus" aria-label="Revenue assumptions evidence status">
+          <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+        </select>
+      </label>
       <div class="year-table">
         <div class="year-row head">
           <span>Year</span>

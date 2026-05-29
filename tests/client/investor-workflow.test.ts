@@ -121,6 +121,7 @@ import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceVie
 import ResearchResultReviewView from '@/views/hermes/ResearchResultReviewView.vue'
 import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentationBuilderView.vue'
 import DashboardView from '@/views/hermes/DashboardView.vue'
+import InvestmentCalculatorView from '@/views/hermes/InvestmentCalculatorView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -584,6 +585,20 @@ describe('investor feasibility workflow utilities', () => {
 })
 
 describe('investor readiness pages', () => {
+  it('lets non-cost investment assumptions carry editable evidence status', () => {
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.find('select[aria-label="Setup months evidence status"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Discount rate evidence status"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Tax rate evidence status"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Terminal value evidence status"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Investor amount evidence status"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Customer credit days evidence status"]').exists()).toBe(true)
+    expect(wrapper.find('select[aria-label="Revenue assumptions evidence status"]').exists()).toBe(true)
+  })
+
   it('renders the investor readiness shell without fake readiness data', () => {
     const wrapper = mount(InvestorReadinessView, {
       global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
