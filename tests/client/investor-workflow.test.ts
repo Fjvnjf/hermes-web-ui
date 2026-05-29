@@ -126,6 +126,7 @@ import DashboardView from '@/views/hermes/DashboardView.vue'
 import FeasibilityStudioView from '@/views/hermes/FeasibilityStudioView.vue'
 import InvestmentCalculatorView from '@/views/hermes/InvestmentCalculatorView.vue'
 import ResearchLibraryView from '@/views/hermes/ResearchLibraryView.vue'
+import ReportsHubView from '@/views/hermes/ReportsHubView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -1133,6 +1134,64 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Example Softener Co')
     expect(wrapper.text()).toContain('market share: To Verify')
     expect(wrapper.text()).toContain('Distributor interview')
+  })
+
+  it('surfaces approved report material and financial snapshots in Reports Hub', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Approved distributor interview narrative for investor output.',
+      evidenceStatus: 'User Approved',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Competitor Landscape',
+      content: 'Unsupported competitor claim should remain follow-up only.',
+      evidenceStatus: 'To Verify',
+      source: null,
+    })
+    intelligence.saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Derived from Assumptions',
+      npv: 1000000,
+      irr: 0.24,
+      mirr: 0.18,
+      investorIrr: 0.21,
+      investorMoic: 2.4,
+      investorExitProceeds: 2400000,
+      fundingGap: 250000,
+      paybackYear: 3,
+      breakEvenVolumeTon: 4500,
+      capexTotal: 1500000,
+      yearOneRevenue: 8000000,
+      warnings: ['Pricing input is still To Verify.'],
+      source: { title: 'IRR calculator Base scenario', date: '2026-05-30' },
+    })
+    intelligence.addResearchFinding({
+      summary: 'DMS regulatory evidence needs source review.',
+      keyClaim: 'DMS source needed',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+    })
+
+    const wrapper = mount(ReportsHubView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Live output hub')
+    expect(wrapper.text()).toContain('Approved distributor interview narrative')
+    expect(wrapper.text()).toContain('Distributor interview')
+    expect(wrapper.text()).toContain('Deck sections ready')
+    expect(wrapper.text()).toContain('1/16')
+    expect(wrapper.text()).toContain('Base')
+    expect(wrapper.text()).toContain('Derived from Assumptions')
+    expect(wrapper.text()).toContain('Pricing input is still To Verify.')
+    expect(wrapper.text()).toContain('DMS source needed')
+    expect(wrapper.text()).not.toContain('Unsupported competitor claim should remain follow-up only.')
   })
 
   it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {
