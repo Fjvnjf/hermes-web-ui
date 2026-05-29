@@ -5,7 +5,7 @@ APP_DIR="${APP_DIR:-/home/ubuntu/.hermes/hermes-web-ui}"
 REMOTE_NAME="${REMOTE_NAME:-command-center}"
 REMOTE_URL="${REMOTE_URL:-https://github.com/Fjvnjf/hermes-web-ui.git}"
 BRANCH="${BRANCH:-chemicon-redesign}"
-MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-bf6f445fe50453e826e41d824de0301cb6c5c6e9}"
+MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-5da6c9658c0a14cbaf8e90a9f6413b95cd6b4a40}"
 LOG_FILE="${LOG_FILE:-/tmp/hermes-web-ui-command-center.log}"
 CLOUDFLARED_LOG="${CLOUDFLARED_LOG:-/tmp/hermes-cloudflared.log}"
 
