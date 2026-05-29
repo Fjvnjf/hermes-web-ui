@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/home/ubuntu/.hermes/hermes-web-ui}"
 REMOTE_NAME="${REMOTE_NAME:-command-center}"
 REMOTE_URL="${REMOTE_URL:-https://github.com/Fjvnjf/hermes-web-ui.git}"
 BRANCH="${BRANCH:-chemicon-redesign}"
+MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-657da8a67208810801799bc209b14f65e63fc5f9}"
 LOG_FILE="${LOG_FILE:-/tmp/hermes-web-ui-command-center.log}"
 CLOUDFLARED_LOG="${CLOUDFLARED_LOG:-/tmp/hermes-cloudflared.log}"
 
@@ -65,6 +66,11 @@ verify_served_bundle() {
 
   grep -q "Hermes Command Center" "$js_file" || {
     echo "${label}_MISSING_COMMAND_CENTER" >&2
+    exit 1
+  }
+
+  grep -Eq "Checking Secure Session|Validating your private command center link|Secure Link Required" "$js_file" || {
+    echo "${label}_MISSING_AUTH_TOKEN_GATE" >&2
     exit 1
   }
 
@@ -215,6 +221,7 @@ git remote set-url "$REMOTE_NAME" "$REMOTE_URL"
 git fetch "$REMOTE_NAME" "$BRANCH"
 git checkout -B "$BRANCH" "$REMOTE_NAME/$BRANCH"
 git reset --hard "$REMOTE_NAME/$BRANCH"
+git merge-base --is-ancestor "$MIN_REQUIRED_COMMIT" HEAD
 echo "CHECKED_OUT_COMMIT=$(git rev-parse HEAD)"
 
 npm install
@@ -222,6 +229,11 @@ npm run build
 
 grep -R "Hermes Command Center" dist/client >/dev/null || {
   echo "DIST_MISSING_COMMAND_CENTER" >&2
+  exit 1
+}
+
+grep -RE "Checking Secure Session|Validating your private command center link|Secure Link Required" dist/client >/dev/null || {
+  echo "DIST_MISSING_AUTH_TOKEN_GATE" >&2
   exit 1
 }
 
