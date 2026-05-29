@@ -23,6 +23,7 @@ const intelligence = useFeasibilityIntelligence()
 const kanbanStore = useKanbanStore()
 const copiedDraft = ref(false)
 const creatingTaskSection = ref('')
+const creatingMaterialTaskId = ref('')
 
 interface MaterialFormState {
   section: string
@@ -72,6 +73,10 @@ function materialExclusionReason(material: PresentationMaterial): string {
   if (!material.content.trim()) return 'Empty draft text is ignored.'
   if (material.evidenceStatus === 'Verified') return 'Verified claims need a source title plus a source URL or source date.'
   return `Marked ${material.evidenceStatus}; keep it out of investor slides until it is user-approved, source-backed, or clearly assumption-labeled.`
+}
+
+function materialTaskKey(material: PresentationMaterial): string {
+  return material.id || `${material.section}-${material.content}`.slice(0, 120)
 }
 
 function formSource(form: MaterialFormState): PresentationMaterial['source'] {
@@ -205,6 +210,42 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
     creatingTaskSection.value = ''
   }
 }
+
+async function createMaterialEvidenceTask(material: PresentationMaterial) {
+  const key = materialTaskKey(material)
+  creatingMaterialTaskId.value = key
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Verify investor material: ${material.section}`,
+      body: [
+        `Investor material needing evidence: ${material.section}`,
+        `Current evidence status: ${material.evidenceStatus}`,
+        `Current source trace: ${materialSourceTrace(material)}`,
+        `Why excluded: ${materialExclusionReason(material)}`,
+        '',
+        'Draft text needing review:',
+        material.content || 'No draft text provided.',
+        '',
+        'Recommended action: attach source evidence, approve a labeled assumption, or remove the unsupported claim before using it in investor material.',
+        'Source page: Investor Presentation Builder',
+        'Tags: Investor Presentation, Evidence Gap, Chemicon China Feasibility',
+        '',
+        'Do not mark this investor-ready until the source/evidence status is corrected in the Presentation Builder.',
+      ].join('\n'),
+      priority: material.evidenceStatus === 'Missing' || material.evidenceStatus === 'To Verify' ? 3 : 2,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Evidence task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create evidence task: ${detail}`)
+  } finally {
+    creatingMaterialTaskId.value = ''
+  }
+}
 </script>
 
 <template>
@@ -261,6 +302,19 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
         <p>{{ material.content || 'No draft text provided.' }}</p>
         <small>{{ materialSourceTrace(material) }}</small>
         <em>{{ materialExclusionReason(material) }}</em>
+        <div class="excluded-actions">
+          <NButton
+            size="tiny"
+            secondary
+            type="primary"
+            :loading="creatingMaterialTaskId === materialTaskKey(material)"
+            @click="createMaterialEvidenceTask(material)"
+          >
+            Create evidence task
+          </NButton>
+          <RouterLink :to="{ name: 'hermes.files' }">Add source document</RouterLink>
+          <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review source</RouterLink>
+        </div>
       </article>
     </section>
 
@@ -323,6 +377,14 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
           <em v-if="!isPresentationMaterialAllowed(material)">{{ materialExclusionReason(material) }}</em>
           <div class="manager-actions">
             <button type="button" @click="startEditMaterial(material)">Edit evidence</button>
+            <button
+              v-if="!isPresentationMaterialAllowed(material)"
+              type="button"
+              :disabled="creatingMaterialTaskId === materialTaskKey(material)"
+              @click="createMaterialEvidenceTask(material)"
+            >
+              {{ creatingMaterialTaskId === materialTaskKey(material) ? 'Creating task' : 'Create evidence task' }}
+            </button>
             <button type="button" class="danger" @click="removeMaterial(material)">Remove</button>
           </div>
         </div>
@@ -515,6 +577,22 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
   font-size: 12px;
   font-weight: 900;
   text-decoration: none;
+}
+
+.excluded-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  a {
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    padding: 5px 8px;
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
+  }
 }
 
 .material-meta {

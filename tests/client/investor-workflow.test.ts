@@ -1097,6 +1097,33 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Missing / To Verify')
   })
 
+  it('creates a Kanban evidence task from unsupported investor material without approving it', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported market evidence captured from a session.',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create evidence task')
+
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Verify investor material: Market Evidence',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Unsupported market evidence captured from a session')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not mark this investor-ready')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
+  })
+
   it('lets the presentation builder edit weak material into source-backed investor material', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addPresentationMaterial({
