@@ -7,6 +7,7 @@ import {
   type ResearchReviewFinding,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
+import { fetchMemory, saveMemory } from '@/api/hermes/skills'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
@@ -14,6 +15,7 @@ const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingTaskId = ref('')
+const savingMemoryId = ref('')
 
 const areaOptions: Array<{ value: EvidenceArea; label: string }> = [
   { value: 'companyLegal', label: 'Company / Legal' },
@@ -177,6 +179,44 @@ function markToVerify(item: ResearchReviewFinding) {
 function rejectFinding(item: ResearchReviewFinding) {
   intelligence.rejectResearchFinding(item.id)
   message.info('Research finding rejected')
+}
+
+function formatResearchNoteMemory(item: ResearchReviewFinding): string {
+  return [
+    `## Research Review Note - ${item.keyClaim}`,
+    '',
+    'Source: Research Result Review',
+    `Captured at: ${new Date().toLocaleString()}`,
+    `Area: ${areaLabel(item.area)}`,
+    `Evidence status: ${item.evidenceStatus}`,
+    `Review status: ${item.status}`,
+    `Confidence: ${item.confidence}`,
+    `Source evidence: ${item.source?.title || 'Source missing'}${item.source?.url ? ` (${item.source.url})` : ''}${item.source?.date ? ` / ${item.source.date}` : ''}`,
+    'Tags: Research Review, Feasibility Intelligence, Chemicon China Feasibility',
+    '',
+    'Note: This memory entry is a labeled research note. Do not treat it as verified fact unless the evidence status and source support it.',
+    '',
+    item.summary,
+    item.suggestedTask ? `\nSuggested task: ${item.suggestedTask}` : '',
+    item.suggestedInvestorMaterial ? `\nInvestor material candidate: ${item.suggestedInvestorMaterial}` : '',
+    item.riskNote ? `\nRisk note: ${item.riskNote}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+async function saveFindingToMemory(item: ResearchReviewFinding) {
+  savingMemoryId.value = item.id
+  try {
+    const current = await fetchMemory()
+    const existing = current.memory?.trim() || ''
+    const addition = formatResearchNoteMemory(item)
+    await saveMemory('memory', existing ? `${existing}\n\n${addition}` : addition)
+    message.success('Research note saved to Memory')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown memory save error'
+    message.error(`Could not save research note: ${detail}`)
+  } finally {
+    savingMemoryId.value = ''
+  }
 }
 
 async function createTask(item: ResearchReviewFinding) {
@@ -355,6 +395,9 @@ async function createTask(item: ResearchReviewFinding) {
           </NButton>
           <NButton size="tiny" secondary :loading="creatingTaskId === item.id" @click="createTask(item)">
             Create task
+          </NButton>
+          <NButton size="tiny" secondary :loading="savingMemoryId === item.id" @click="saveFindingToMemory(item)">
+            Save research note
           </NButton>
           <NButton size="tiny" quaternary @click="markToVerify(item)">Mark To Verify</NButton>
           <NButton size="tiny" quaternary @click="rejectFinding(item)">Reject</NButton>

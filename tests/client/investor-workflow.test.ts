@@ -33,6 +33,8 @@ interface InvestorReadinessTestVm {
 }
 
 const createTaskMock = vi.hoisted(() => vi.fn())
+const fetchMemoryMock = vi.hoisted(() => vi.fn())
+const saveMemoryMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/stores/hermes/kanban', () => ({
   DEFAULT_KANBAN_BOARD: 'default',
@@ -48,6 +50,11 @@ vi.mock('@/stores/hermes/kanban', () => ({
 
 vi.mock('@/utils/clipboard', () => ({
   copyToClipboard: vi.fn().mockResolvedValue(true),
+}))
+
+vi.mock('@/api/hermes/skills', () => ({
+  fetchMemory: fetchMemoryMock,
+  saveMemory: saveMemoryMock,
 }))
 
 vi.mock('naive-ui', () => ({
@@ -85,6 +92,8 @@ beforeEach(() => {
   Object.defineProperty(window, 'confirm', { value: vi.fn(() => true), writable: true })
   useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
   createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
+  fetchMemoryMock.mockReset().mockResolvedValue({ memory: 'Existing memory' })
+  saveMemoryMock.mockReset().mockResolvedValue(undefined)
 })
 
 describe('investor feasibility workflow utilities', () => {
@@ -725,6 +734,39 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Approve Research Before It Changes Anything')
     expect(wrapper.text()).toContain('DMS regulation in China')
     expect(wrapper.text()).toContain('DMS regulation source needed')
+  })
+
+  it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Market evidence needs distributor source review before investor use.',
+      keyClaim: 'CWAS distributor evidence note',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+      suggestedTask: 'Collect distributor source for CWAS evidence',
+      riskNote: 'Do not use in investor material until sourced.',
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save research note')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    expect(fetchMemoryMock).toHaveBeenCalled()
+    expect(saveMemoryMock).toHaveBeenCalledWith(
+      'memory',
+      expect.stringContaining('## Research Review Note - CWAS distributor evidence note'),
+    )
+    expect(saveMemoryMock.mock.calls[0][1]).toContain('Existing memory')
+    expect(saveMemoryMock.mock.calls[0][1]).toContain('Evidence status: To Verify')
+    expect(saveMemoryMock.mock.calls[0][1]).toContain('Source evidence: Source missing')
+    expect(saveMemoryMock.mock.calls[0][1]).toContain('Do not treat it as verified fact')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('To Verify')
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
   })
 
   it('prefills a To Verify finding draft from a research job without approving it', async () => {
