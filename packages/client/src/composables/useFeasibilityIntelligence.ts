@@ -69,6 +69,24 @@ export interface ResearchReviewFinding {
   reviewedAt?: string
 }
 
+export interface FinancialModelSnapshot {
+  id: string
+  scenarioName: string
+  projectName: string
+  currency: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  npv: number
+  irr: number | null
+  mirr: number | null
+  paybackYear: number | null
+  breakEvenVolumeTon: number | null
+  capexTotal: number
+  yearOneRevenue: number
+  warnings: string[]
+  source?: SourceReference | null
+  createdAt: string
+}
+
 export interface FeasibilityIntelligenceState {
   evidenceItems: FeasibilityEvidenceItem[]
   marketClaims: MarketClaim[]
@@ -76,6 +94,7 @@ export interface FeasibilityIntelligenceState {
   presentationMaterials: PresentationMaterial[]
   researchJobs: ResearchJobRecord[]
   researchFindings: ResearchReviewFinding[]
+  financialModels: FinancialModelSnapshot[]
 }
 
 const STORAGE_KEY = 'hermes.feasibilityIntelligence.v1'
@@ -147,6 +166,7 @@ function emptyState(): FeasibilityIntelligenceState {
     presentationMaterials: [],
     researchJobs: [],
     researchFindings: [],
+    financialModels: [],
   }
 }
 
@@ -175,6 +195,7 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
     presentationMaterials: Array.isArray(raw.presentationMaterials) ? raw.presentationMaterials : [],
     researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
     researchFindings: Array.isArray(raw.researchFindings) ? raw.researchFindings : [],
+    financialModels: Array.isArray(raw.financialModels) ? raw.financialModels : [],
   }
 }
 
@@ -225,6 +246,7 @@ export function useFeasibilityIntelligence() {
   const pendingResearchFindings = computed(() =>
     state.value.researchFindings.filter(item => item.status === 'Pending Review' || item.status === 'To Verify'),
   )
+  const latestFinancialModel = computed(() => state.value.financialModels[0] || null)
 
   function updateEvidenceStatus(id: EvidenceArea, evidenceStatus: IntelligenceEvidenceStatus, source?: SourceReference | null) {
     state.value.evidenceItems = state.value.evidenceItems.map(item => {
@@ -369,6 +391,18 @@ export function useFeasibilityIntelligence() {
     return rejected
   }
 
+  function saveFinancialModelSnapshot(snapshot: Omit<FinancialModelSnapshot, 'id' | 'createdAt'>) {
+    const saved: FinancialModelSnapshot = {
+      ...snapshot,
+      id: idFrom('financial', `${snapshot.scenarioName}-${snapshot.projectName}`),
+      createdAt: nowIso(),
+    }
+    state.value.financialModels = [saved, ...state.value.financialModels].slice(0, 12)
+    updateEvidenceStatus('financial', saved.evidenceStatus, saved.source || null)
+    persist()
+    return saved
+  }
+
   function resetFeasibilityIntelligenceForTests() {
     state.value = emptyState()
     loaded = true
@@ -382,6 +416,7 @@ export function useFeasibilityIntelligence() {
     verifiedClaimCount,
     approvedPresentationCount,
     pendingResearchFindings,
+    latestFinancialModel,
     updateEvidenceStatus,
     addMarketClaim,
     addCompetitor,
@@ -390,6 +425,7 @@ export function useFeasibilityIntelligence() {
     addResearchFinding,
     approveResearchFinding,
     rejectResearchFinding,
+    saveFinancialModelSnapshot,
     resetFeasibilityIntelligenceForTests,
   }
 }

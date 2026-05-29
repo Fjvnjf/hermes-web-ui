@@ -95,6 +95,13 @@ const investorSnapshot = computed(() => [
     to: { name: 'hermes.researchResultReview' },
   },
   {
+    label: 'Financial Model',
+    value: intelligence.latestFinancialModel.value?.scenarioName || 'None',
+    note: intelligence.latestFinancialModel.value?.evidenceStatus || 'No saved snapshot',
+    tone: intelligence.latestFinancialModel.value ? 'info' : 'warn',
+    to: { name: 'hermes.investmentCalculator' },
+  },
+  {
     label: 'Deck Materials',
     value: String(intelligence.approvedPresentationCount.value),
     note: 'Approved for draft only',

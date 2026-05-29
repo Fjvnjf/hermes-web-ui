@@ -85,6 +85,15 @@ export interface InvestmentScenarioResult {
   incomplete: boolean
 }
 
+export interface InvestmentEvidenceSummary {
+  total: number
+  verified: number
+  userProvided: number
+  assumptions: number
+  toVerify: number
+  weak: number
+}
+
 const VARIABLE_COST_LABELS = [
   'rawMaterials',
   'packaging',
@@ -242,6 +251,27 @@ function statusValues(input: InvestmentScenarioInput): EvidenceStatus[] {
     ...Object.values(input.workingCapital).map(item => item.evidenceStatus),
     ...Object.values(input.funding).map(item => item.evidenceStatus),
   ]
+}
+
+export function summarizeInvestmentEvidence(input: InvestmentScenarioInput): InvestmentEvidenceSummary {
+  const statuses = statusValues(input)
+  const summary = statuses.reduce<InvestmentEvidenceSummary>((acc, status) => {
+    acc.total += 1
+    if (status === 'Verified') acc.verified += 1
+    if (status === 'User Provided') acc.userProvided += 1
+    if (status === 'Assumption') acc.assumptions += 1
+    if (status === 'To Verify') acc.toVerify += 1
+    if (isWeakEvidence(status)) acc.weak += 1
+    return acc
+  }, {
+    total: 0,
+    verified: 0,
+    userProvided: 0,
+    assumptions: 0,
+    toVerify: 0,
+    weak: 0,
+  })
+  return summary
 }
 
 function isWeakEvidence(status: EvidenceStatus): boolean {

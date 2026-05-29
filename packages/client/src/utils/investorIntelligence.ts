@@ -2,6 +2,10 @@ export type IntelligenceEvidenceStatus =
   | 'Missing'
   | 'To Verify'
   | 'Assumption'
+  | 'Derived from Assumptions'
+  | 'Hypothesis'
+  | 'Reference Only'
+  | 'User Provided'
   | 'User Approved'
   | 'Approved Assumption'
   | 'Verified'
@@ -62,7 +66,9 @@ export function formatMarketShare(value?: string | null): string {
 export function isPresentationMaterialAllowed(material: PresentationMaterial): boolean {
   if (!material.content.trim()) return false
   if (material.evidenceStatus === 'Verified') return sourceIsUsable(material.source)
-  return material.evidenceStatus === 'User Approved' || material.evidenceStatus === 'Approved Assumption'
+  return material.evidenceStatus === 'User Approved' ||
+    material.evidenceStatus === 'Approved Assumption' ||
+    material.evidenceStatus === 'Derived from Assumptions'
 }
 
 export function buildInvestorPresentationDraft(materials: PresentationMaterial[]): PresentationDraftSection[] {
@@ -72,7 +78,12 @@ export function buildInvestorPresentationDraft(materials: PresentationMaterial[]
       section: material.section,
       content: material.content,
       evidenceStatus: material.evidenceStatus,
-      sourceLabel: material.source?.title || (material.evidenceStatus === 'Approved Assumption' ? 'Approved assumption' : 'User approved'),
+      sourceLabel: material.source?.title ||
+        (material.evidenceStatus === 'Approved Assumption'
+          ? 'Approved assumption'
+          : material.evidenceStatus === 'Derived from Assumptions'
+            ? 'Derived from assumptions'
+            : 'User approved'),
     }))
 }
 
@@ -82,8 +93,9 @@ export function calculateInvestorReadinessScore(items: ReadinessItem[]): number 
   const earned = items.reduce((sum, item) => {
     const weight = item.weight || 1
     if (item.evidenceStatus === 'Verified') return sum + weight
-    if (item.evidenceStatus === 'User Approved' || item.evidenceStatus === 'Approved Assumption') return sum + weight * 0.6
-    if (item.evidenceStatus === 'Assumption') return sum + weight * 0.25
+    if (item.evidenceStatus === 'User Approved' || item.evidenceStatus === 'User Provided' || item.evidenceStatus === 'Approved Assumption') return sum + weight * 0.6
+    if (item.evidenceStatus === 'Derived from Assumptions') return sum + weight * 0.4
+    if (item.evidenceStatus === 'Assumption' || item.evidenceStatus === 'Reference Only') return sum + weight * 0.25
     return sum
   }, 0)
   return Math.round((earned / totalWeight) * 100)

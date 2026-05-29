@@ -1,17 +1,22 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { NAlert, NButton, NInput, NInputNumber } from 'naive-ui'
+import { NAlert, NButton, NInput, NInputNumber, useMessage } from 'naive-ui'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import {
   calculateInvestmentScenario,
   createEmptyInvestmentScenario,
+  summarizeInvestmentEvidence,
   type EvidenceStatus,
   type InvestmentScenarioInput,
 } from '@/utils/investmentCalculator'
+import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 
 type ScenarioKey = 'Lean' | 'Base' | 'Conservative' | 'Aggressive'
 
 const STORAGE_KEY = 'hermes.investmentCalculator.scenarios.v1'
+const message = useMessage()
+const intelligence = useFeasibilityIntelligence()
 const scenarioKeys: ScenarioKey[] = ['Lean', 'Base', 'Conservative', 'Aggressive']
 const activeScenario = ref<ScenarioKey>('Base')
 const copied = ref(false)
@@ -36,6 +41,13 @@ function loadScenarios(): Record<ScenarioKey, InvestmentScenarioInput> {
 const scenarios = reactive(loadScenarios())
 const scenario = computed(() => scenarios[activeScenario.value])
 const result = computed(() => calculateInvestmentScenario(scenario.value))
+const evidenceSummary = computed(() => summarizeInvestmentEvidence(scenario.value))
+const financialEvidenceStatus = computed<IntelligenceEvidenceStatus>(() => {
+  if (result.value.incomplete || evidenceSummary.value.toVerify > 0) return 'To Verify'
+  if (evidenceSummary.value.assumptions > 0) return 'Derived from Assumptions'
+  return 'User Approved'
+})
+const latestFinancialModel = intelligence.latestFinancialModel
 
 const evidenceOptions: EvidenceStatus[] = ['Assumption', 'User Provided', 'To Verify', 'Verified']
 const costRows = [
@@ -97,23 +109,97 @@ function formatPercent(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+function formatDate(value?: string): string {
+  if (!value) return 'Not saved yet'
+  return new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 function statusClass(status: EvidenceStatus): string {
   return `status-${status.toLowerCase().replace(/\s+/g, '-')}`
 }
 
 async function copySummary() {
-  const text = [
+  const text = financialSummaryText()
+  copied.value = await copyToClipboard(text)
+}
+
+function financialSummaryText(): string {
+  return [
     `Project: ${scenario.value.projectName}`,
     `Scenario: ${activeScenario.value}`,
+    `Evidence status: ${financialEvidenceStatus.value}`,
     `Evidence warning: ${result.value.incomplete ? 'Incomplete or unverified assumptions' : 'Inputs marked ready'}`,
     `NPV: ${formatCurrency(result.value.npv)}`,
     `IRR: ${formatPercent(result.value.irr)}`,
     `MIRR: ${formatPercent(result.value.mirr)}`,
     `Payback: ${result.value.paybackYear ? `Year ${result.value.paybackYear}` : 'Not reached'}`,
+    `Capex: ${formatCurrency(result.value.capexTotal)}`,
+    `Year 1 revenue: ${formatCurrency(result.value.yearly[0]?.revenue || 0)}`,
+    '',
+    result.value.warnings.length ? `Warnings:\n- ${result.value.warnings.join('\n- ')}` : 'Warnings: none from calculator completeness checks',
     '',
     'All outputs are derived from assumptions and must not be treated as verified investor claims without source evidence.',
   ].join('\n')
-  copied.value = await copyToClipboard(text)
+}
+
+function saveFinancialSnapshot() {
+  const saved = intelligence.saveFinancialModelSnapshot({
+    scenarioName: activeScenario.value,
+    projectName: scenario.value.projectName,
+    currency: scenario.value.currency,
+    evidenceStatus: financialEvidenceStatus.value,
+    npv: result.value.npv,
+    irr: result.value.irr,
+    mirr: result.value.mirr,
+    paybackYear: result.value.paybackYear,
+    breakEvenVolumeTon: result.value.breakEvenVolumeTon,
+    capexTotal: result.value.capexTotal,
+    yearOneRevenue: result.value.yearly[0]?.revenue || 0,
+    warnings: result.value.warnings,
+    source: {
+      title: `IRR calculator ${activeScenario.value} scenario`,
+      date: new Date().toISOString().slice(0, 10),
+    },
+  })
+  void saved
+  message.success('Financial model snapshot saved to Investor Readiness')
+}
+
+function addFinancialSummaryToDraft() {
+  if (result.value.incomplete) {
+    message.warning('Complete the model before adding financial output to investor draft material')
+    return
+  }
+  const saved = intelligence.saveFinancialModelSnapshot({
+    scenarioName: activeScenario.value,
+    projectName: scenario.value.projectName,
+    currency: scenario.value.currency,
+    evidenceStatus: financialEvidenceStatus.value,
+    npv: result.value.npv,
+    irr: result.value.irr,
+    mirr: result.value.mirr,
+    paybackYear: result.value.paybackYear,
+    breakEvenVolumeTon: result.value.breakEvenVolumeTon,
+    capexTotal: result.value.capexTotal,
+    yearOneRevenue: result.value.yearly[0]?.revenue || 0,
+    warnings: result.value.warnings,
+    source: {
+      title: `IRR calculator ${activeScenario.value} scenario`,
+      date: new Date().toISOString().slice(0, 10),
+    },
+  })
+  void saved
+  intelligence.addPresentationMaterial({
+    section: 'IRR / Investor Return',
+    content: financialSummaryText(),
+    evidenceStatus: financialEvidenceStatus.value === 'User Approved' ? 'User Approved' : 'Derived from Assumptions',
+    source: {
+      title: `IRR calculator ${activeScenario.value} scenario`,
+      date: new Date().toISOString().slice(0, 10),
+    },
+  })
+  intelligence.updateEvidenceStatus('presentation', 'User Approved')
+  message.success('Assumption-labeled financial summary staged for investor draft')
 }
 </script>
 
@@ -144,6 +230,29 @@ async function copySummary() {
     <NAlert v-if="result.incomplete" type="warning" :bordered="false" class="model-warning">
       IRR is calculated from incomplete or unverified data. Use this for planning only until source evidence is attached.
     </NAlert>
+
+    <section class="model-status-grid" aria-label="Financial model readiness">
+      <article class="status-card">
+        <span>Financial evidence status</span>
+        <strong>{{ financialEvidenceStatus }}</strong>
+        <small>Outputs are never treated as verified facts automatically.</small>
+      </article>
+      <article class="status-card">
+        <span>Input evidence</span>
+        <strong>{{ evidenceSummary.weak }} weak / {{ evidenceSummary.total }} total</strong>
+        <small>{{ evidenceSummary.toVerify }} to verify, {{ evidenceSummary.assumptions }} assumptions, {{ evidenceSummary.verified }} verified.</small>
+      </article>
+      <article class="status-card">
+        <span>Latest saved model</span>
+        <strong>{{ latestFinancialModel?.scenarioName || 'None' }}</strong>
+        <small>{{ formatDate(latestFinancialModel?.createdAt) }}</small>
+      </article>
+      <article class="status-actions">
+        <NButton secondary type="primary" @click="saveFinancialSnapshot">Save financial snapshot</NButton>
+        <NButton secondary @click="addFinancialSummaryToDraft">Add assumption-labeled draft</NButton>
+        <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>
+      </article>
+    </section>
 
     <section class="input-grid">
       <article class="input-panel">
@@ -344,12 +453,68 @@ async function copySummary() {
 }
 
 .input-grid,
+.model-status-grid,
 .assumption-grid,
 .outputs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
   margin: 14px 0;
+}
+
+.model-status-grid {
+  margin: 14px 0;
+}
+
+.status-card,
+.status-actions {
+  min-height: 120px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-card;
+  padding: 14px;
+}
+
+.status-card {
+  display: grid;
+  gap: 8px;
+
+  span {
+    color: $text-muted;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 18px;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: center;
+
+  a {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    padding: 0 10px;
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
+  }
 }
 
 .input-panel,

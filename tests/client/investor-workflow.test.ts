@@ -6,6 +6,7 @@ import {
   createEmptyInvestmentScenario,
   irr,
   npv,
+  summarizeInvestmentEvidence,
 } from '@/utils/investmentCalculator'
 import {
   buildInvestorPresentationDraft,
@@ -95,6 +96,20 @@ describe('investor feasibility workflow utilities', () => {
     expect(result.cashFlows[0]).toBe(-1000)
     expect(result.yearly[0].revenue).toBe(1000)
     expect(result.irr).not.toBeNull()
+  })
+
+  it('summarizes investment evidence statuses for financial readiness', () => {
+    const scenario = createEmptyInvestmentScenario()
+    scenario.capex.machinery.evidenceStatus = 'Verified'
+    scenario.products[0].evidenceStatus = 'User Provided'
+    scenario.discountRate.evidenceStatus = 'Assumption'
+
+    const summary = summarizeInvestmentEvidence(scenario)
+
+    expect(summary.total).toBeGreaterThan(0)
+    expect(summary.verified).toBeGreaterThan(0)
+    expect(summary.userProvided).toBeGreaterThan(0)
+    expect(summary.weak).toBeGreaterThan(0)
   })
 
   it('blocks verified market claims without a source', () => {
@@ -187,6 +202,19 @@ describe('investor feasibility workflow utilities', () => {
     expect(draft[0].section).toBe('Use of Funds')
   })
 
+  it('allows assumption-labeled derived financial outputs in investor drafts', () => {
+    const draft = buildInvestorPresentationDraft([
+      {
+        section: 'IRR / Investor Return',
+        content: 'NPV and IRR summary labeled as derived from assumptions.',
+        evidenceStatus: 'Derived from Assumptions',
+      },
+    ])
+
+    expect(draft).toHaveLength(1)
+    expect(draft[0].sourceLabel).toBe('Derived from assumptions')
+  })
+
   it('downgrades verified competitor records without source evidence', () => {
     const intelligence = useFeasibilityIntelligence()
 
@@ -261,6 +289,29 @@ describe('investor feasibility workflow utilities', () => {
 
     expect(saved.status).toBe('Task Created')
     expect(intelligence.state.value.researchJobs[0].title).toContain('DMS')
+  })
+
+  it('saves financial model snapshots and updates financial readiness status', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    const saved = intelligence.saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Derived from Assumptions',
+      npv: 1000,
+      irr: 0.18,
+      mirr: 0.15,
+      paybackYear: 3,
+      breakEvenVolumeTon: 1200,
+      capexTotal: 5000,
+      yearOneRevenue: 9000,
+      warnings: ['Outputs are derived from assumptions or unverified inputs.'],
+    })
+
+    expect(saved.evidenceStatus).toBe('Derived from Assumptions')
+    expect(intelligence.latestFinancialModel.value?.scenarioName).toBe('Base')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'financial')?.evidenceStatus).toBe('Derived from Assumptions')
   })
 })
 
