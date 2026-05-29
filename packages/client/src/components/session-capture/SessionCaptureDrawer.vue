@@ -19,6 +19,8 @@ import {
   contextLabel,
   flattenCaptureDraft,
   formatCaptureSuggestionText,
+  formatResearchSuggestionTask,
+  generateDeepResearchSuggestions,
   generateSessionCaptureDraft,
   markCaptureReviewed,
   markCaptureSkipped,
@@ -26,6 +28,7 @@ import {
   type CaptureCategory,
   type CaptureContextId,
   type CaptureSuggestion,
+  type DeepResearchSuggestion,
   type SessionCaptureDraft,
 } from '@/composables/useSessionCapture'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
@@ -57,6 +60,11 @@ const selectedIds = ref<Set<string>>(new Set())
 const saving = ref(false)
 const fallbackText = ref('')
 const saveErrors = ref<string[]>([])
+const saveSessionSummary = ref(false)
+const saveFullTranscript = ref(false)
+const hiddenResearchSuggestions = ref<Set<string>>(new Set())
+const creatingResearchTaskId = ref<string | null>(null)
+const researchTaskStatus = ref<Record<string, string>>({})
 
 const captureGroups = computed(() => {
   if (!draft.value) return []
@@ -103,6 +111,10 @@ const captureContextSelectOptions = computed<SelectOption[]>(() =>
 )
 const sourceSessionLabel = computed(() => props.sessionId ? props.sessionId.slice(0, 10) : 'current session')
 const hasSuggestions = computed(() => allSuggestions.value.length > 0)
+const deepResearchSuggestions = computed(() =>
+  generateDeepResearchSuggestions(props.messages, selectedContext.value)
+    .filter(item => !hiddenResearchSuggestions.value.has(item.id)),
+)
 
 watch(
   () => props.show,
@@ -128,6 +140,10 @@ function resetDraft(resetContext = true) {
   if (resetContext) selectedContext.value = props.initialContext
   fallbackText.value = ''
   saveErrors.value = []
+  saveSessionSummary.value = false
+  saveFullTranscript.value = false
+  hiddenResearchSuggestions.value = new Set()
+  researchTaskStatus.value = {}
   draft.value = generateSessionCaptureDraft(props.messages, {
     context: selectedContext.value,
     sessionTitle: props.sessionTitle,
@@ -192,8 +208,8 @@ function handleSkip() {
 }
 
 async function addSelected() {
-  if (!draft.value || selectedIds.value.size === 0) {
-    message.warning('Select at least one item to save or copy.')
+  if (!draft.value || (selectedIds.value.size === 0 && !saveSessionSummary.value && !saveFullTranscript.value)) {
+    message.warning('Select at least one item, summary, or transcript option to save or copy.')
     return
   }
   saving.value = true
@@ -218,10 +234,17 @@ async function addSelected() {
         saveMemory,
         copyText: copyToClipboard,
       },
+      {
+        saveSessionSummary: saveSessionSummary.value,
+        saveFullTranscript: saveFullTranscript.value,
+        transcriptMessages: props.messages,
+        memoryTags: ['Session Capture', contextLabel(selectedContext.value), draft.value.context],
+        summaryEvidenceStatus: draft.value.context === 'feasibility' ? 'Research Note' : 'To Verify',
+      },
     )
     fallbackText.value = result.fallbackText.trim()
     saveErrors.value = result.errors
-    const savedCount = result.createdTasks + result.savedMemoryItems + result.copiedItems
+    const savedCount = result.createdTasks + result.savedMemoryItems + result.copiedItems + (result.savedSessionSummary ? 1 : 0) + (result.savedFullTranscript ? 1 : 0)
     if (savedCount > 0 || result.errors.length === 0) {
       if (props.sessionId) markCaptureReviewed(props.sessionId)
       emit('saved')
@@ -238,6 +261,53 @@ async function addSelected() {
   } finally {
     saving.value = false
   }
+}
+
+function researchPriorityNumber(priority: string): number {
+  if (priority === 'high') return 3
+  if (priority === 'medium') return 2
+  return 1
+}
+
+async function createResearchTask(item: DeepResearchSuggestion) {
+  creatingResearchTaskId.value = item.id
+  researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: '' }
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Research: ${item.title}`,
+      body: formatResearchSuggestionTask(item, {
+        sessionId: props.sessionId || 'current',
+        sessionTitle: props.sessionTitle,
+        contextLabel: contextLabel(selectedContext.value),
+        capturedAt: new Date(),
+      }),
+      priority: researchPriorityNumber(item.priority),
+      tenant: contextLabel(selectedContext.value),
+    })
+    researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: 'Created as a Kanban research task.' }
+    message.success('Research task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown research task error'
+    researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: `Could not create task: ${detail}` }
+    fallbackText.value = formatResearchSuggestionTask(item, {
+      sessionId: props.sessionId || 'current',
+      sessionTitle: props.sessionTitle,
+      contextLabel: contextLabel(selectedContext.value),
+      capturedAt: new Date(),
+    })
+    message.warning('Research task needs manual copy fallback.')
+  } finally {
+    creatingResearchTaskId.value = null
+  }
+}
+
+function hideResearchSuggestion(item: DeepResearchSuggestion) {
+  const next = new Set(hiddenResearchSuggestions.value)
+  next.add(item.id)
+  hiddenResearchSuggestions.value = next
 }
 </script>
 
@@ -281,6 +351,25 @@ async function addSelected() {
           Suggestions are generated from the current active session only. Nothing is saved until you select items and approve them.
           Tasks and evidence gaps save to real Kanban tasks; research notes and memory candidates append to Memory; report snippets are copied for now.
         </NAlert>
+
+        <section class="memory-pipeline" aria-labelledby="memory-pipeline-title">
+          <div>
+            <h3 id="memory-pipeline-title">Conversation Memory Pipeline</h3>
+            <p>
+              History keeps the raw conversation. Memory should keep only curated summaries and approved durable facts.
+            </p>
+          </div>
+          <div class="memory-options">
+            <label>
+              <NCheckbox v-model:checked="saveSessionSummary" />
+              <span>Save concise session summary to Memory</span>
+            </label>
+            <label>
+              <NCheckbox v-model:checked="saveFullTranscript" />
+              <span>Save full transcript, not recommended</span>
+            </label>
+          </div>
+        </section>
 
         <div v-if="!hasSuggestions" class="empty-capture">
           <strong>No strong capture suggestions yet.</strong>
@@ -327,6 +416,35 @@ async function addSelected() {
                 <span>Source: {{ sourceSessionLabel }}</span>
               </div>
               <small>{{ item.recommendedAction }}</small>
+            </div>
+          </article>
+        </section>
+
+        <section v-if="deepResearchSuggestions.length" class="deep-research">
+          <header>
+            <div>
+              <h3>Do deeper research?</h3>
+              <p>These suggestions become manual Kanban research tasks unless a real scheduled Jobs integration is added later.</p>
+            </div>
+            <NTag size="small" round>{{ deepResearchSuggestions.length }} suggested</NTag>
+          </header>
+
+          <article v-for="item in deepResearchSuggestions" :key="item.id" class="research-item">
+            <div>
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.researchQuestion }}</p>
+              <small>{{ item.scope }}</small>
+              <div v-if="researchTaskStatus[item.id]" class="research-status">
+                {{ researchTaskStatus[item.id] }}
+              </div>
+            </div>
+            <div class="research-actions">
+              <NButton size="tiny" secondary type="primary" :loading="creatingResearchTaskId === item.id" @click="createResearchTask(item)">
+                Yes, create research task
+              </NButton>
+              <NButton size="tiny" secondary @click="createResearchTask(item)">Create task instead</NButton>
+              <NButton size="tiny" quaternary @click="hideResearchSuggestion(item)">Later</NButton>
+              <NButton size="tiny" quaternary @click="hideResearchSuggestion(item)">No</NButton>
             </div>
           </article>
         </section>
@@ -474,6 +592,83 @@ async function addSelected() {
       font-size: 12px;
     }
   }
+}
+
+.memory-pipeline,
+.deep-research {
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-info-rgb), 0.05);
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 15px;
+  }
+
+  p {
+    margin: 6px 0 0;
+  }
+}
+
+.memory-options {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+
+  label {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    color: $text-secondary;
+    font-weight: 800;
+  }
+}
+
+.deep-research {
+  header,
+  .research-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+  }
+
+  header {
+    margin-bottom: 10px;
+  }
+}
+
+.research-item {
+  padding: 12px 0;
+  border-top: 1px solid $border-color;
+
+  strong {
+    color: $text-primary;
+  }
+
+  p {
+    margin: 6px 0;
+  }
+
+  small {
+    color: $text-muted;
+  }
+}
+
+.research-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.research-status {
+  margin-top: 8px;
+  color: $accent-primary;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .capture-empty-row {

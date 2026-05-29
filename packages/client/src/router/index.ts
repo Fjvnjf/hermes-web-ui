@@ -38,6 +38,36 @@ const router = createRouter({
       component: () => import('@/views/hermes/ReportsHubView.vue'),
     },
     {
+      path: '/hermes/investor-readiness',
+      name: 'hermes.investorReadiness',
+      component: () => import('@/views/hermes/InvestorReadinessView.vue'),
+    },
+    {
+      path: '/hermes/investment-calculator',
+      name: 'hermes.investmentCalculator',
+      component: () => import('@/views/hermes/InvestmentCalculatorView.vue'),
+    },
+    {
+      path: '/hermes/market-intelligence',
+      name: 'hermes.marketIntelligence',
+      component: () => import('@/views/hermes/MarketIntelligenceView.vue'),
+    },
+    {
+      path: '/hermes/competitor-intelligence',
+      name: 'hermes.competitorIntelligence',
+      component: () => import('@/views/hermes/CompetitorIntelligenceView.vue'),
+    },
+    {
+      path: '/hermes/investor-presentation',
+      name: 'hermes.investorPresentation',
+      component: () => import('@/views/hermes/InvestorPresentationBuilderView.vue'),
+    },
+    {
+      path: '/hermes/research-review',
+      name: 'hermes.researchResultReview',
+      component: () => import('@/views/hermes/ResearchResultReviewView.vue'),
+    },
+    {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
       component: () => import('@/views/hermes/ChatView.vue'),

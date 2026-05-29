@@ -72,10 +72,33 @@ export interface SaveCaptureDeps {
 
 export interface SaveCaptureResult {
   createdTasks: number
+  createdResearchTasks: number
   savedMemoryItems: number
+  savedSessionSummary: boolean
+  savedFullTranscript: boolean
   copiedItems: number
   fallbackText: string
   errors: string[]
+}
+
+export interface SaveSessionCaptureOptions {
+  saveSessionSummary?: boolean
+  saveFullTranscript?: boolean
+  transcriptMessages?: Message[]
+  memoryTags?: string[]
+  summaryEvidenceStatus?: CaptureEvidenceStatus
+}
+
+export interface DeepResearchSuggestion {
+  id: string
+  title: string
+  researchQuestion: string
+  scope: string
+  expectedOutput: string
+  sourceRequirements: string
+  priority: CapturePriority
+  contextLabel: string
+  schedulePreference: 'Tonight' | 'Tomorrow morning' | 'Custom'
 }
 
 const CAPTURE_STATE_KEY = 'hermes.sessionCapture.state.v1'
@@ -332,6 +355,34 @@ export function isMeaningfulCaptureSession(messages: Message[]): boolean {
   return visible.length >= 3 || textLength >= 600
 }
 
+export function generateConciseSessionSummary(messages: Message[], sessionTitle = ''): string {
+  const candidates = sentenceCandidates(messages)
+  const userGoal = candidates.find(item => item.message.role === 'user')?.text
+  const assistantOutcome = candidates.find(item => item.message.role === 'assistant')?.text
+  const taskLine = candidates.find(item => includesAny(item.text, taskTerms))?.text
+  const evidenceLine = candidates.find(item => includesAny(item.text, evidenceTerms))?.text
+  const parts = [
+    sessionTitle ? `Session: ${truncate(sessionTitle, 80)}` : '',
+    userGoal ? `User focus: ${truncate(userGoal, 160)}` : '',
+    assistantOutcome ? `Useful outcome: ${truncate(assistantOutcome, 180)}` : '',
+    taskLine ? `Potential next action: ${truncate(taskLine, 140)}` : '',
+    evidenceLine && evidenceLine !== taskLine ? `Evidence note: ${truncate(evidenceLine, 140)}` : '',
+  ].filter(Boolean)
+  if (parts.length > 0) return parts.join('\n')
+  return 'No concise summary could be generated from the current active session yet.'
+}
+
+export function formatFullTranscript(messages: Message[]): string {
+  return messages
+    .filter(message => message.role === 'user' || message.role === 'assistant')
+    .map(message => {
+      const role = message.role === 'assistant' ? 'Hermes' : 'User'
+      return `### ${role}\n${textFromMessage(message)}`
+    })
+    .filter(block => block.trim().length > 10)
+    .join('\n\n')
+}
+
 export function generateSessionCaptureDraft(
   messages: Message[],
   options: { context?: CaptureContextId; sessionTitle?: string } = {},
@@ -441,6 +492,36 @@ function sourceLabel(source: SessionCaptureSource): string {
   ].join('\n')
 }
 
+export function formatSessionSummaryMemory(
+  summary: string,
+  source: SessionCaptureSource,
+  options: Pick<SaveSessionCaptureOptions, 'memoryTags' | 'summaryEvidenceStatus'> = {},
+): string {
+  return [
+    `## Session Summary - ${source.contextLabel}`,
+    '',
+    sourceLabel(source),
+    `Evidence status: ${options.summaryEvidenceStatus || 'Research Note'}`,
+    `Tags: ${(options.memoryTags?.length ? options.memoryTags : ['Session Capture', source.contextLabel]).join(', ')}`,
+    '',
+    summary,
+  ].join('\n')
+}
+
+export function formatFullTranscriptMemory(messages: Message[], source: SessionCaptureSource): string {
+  return [
+    `## Full Session Transcript - ${source.contextLabel}`,
+    '',
+    sourceLabel(source),
+    'Evidence status: Research Note',
+    'Tags: Session Capture, Full Transcript, Not Recommended',
+    '',
+    'Note: Full transcript was saved only because the user explicitly selected this option.',
+    '',
+    formatFullTranscript(messages),
+  ].join('\n')
+}
+
 export function formatCaptureSuggestionText(item: CaptureSuggestion, source: SessionCaptureSource): string {
   const base = [
     `Title: ${item.title}`,
@@ -477,11 +558,15 @@ export async function saveSessionCaptureSelection(
   selectedIds: Set<string>,
   source: SessionCaptureSource,
   deps: SaveCaptureDeps,
+  options: SaveSessionCaptureOptions = {},
 ): Promise<SaveCaptureResult> {
   const selected = flattenCaptureDraft(draft).filter(item => selectedIds.has(item.id))
   const result: SaveCaptureResult = {
     createdTasks: 0,
+    createdResearchTasks: 0,
     savedMemoryItems: 0,
+    savedSessionSummary: false,
+    savedFullTranscript: false,
     copiedItems: 0,
     fallbackText: '',
     errors: [],
@@ -511,32 +596,53 @@ export async function saveSessionCaptureSelection(
     }
   }
 
-  if (memoryItems.length > 0) {
+  const needsMemorySave = memoryItems.length > 0 || options.saveSessionSummary || options.saveFullTranscript
+  if (needsMemorySave) {
     if (!deps.fetchMemory || !deps.saveMemory) {
       result.errors.push('Memory save is unavailable in this runtime. Use Copy all instead.')
       result.fallbackText += memoryItems.map(item => formatCaptureSuggestionText(item, source)).join('\n\n')
+      if (options.saveSessionSummary) result.fallbackText += `${formatSessionSummaryMemory(draft.sessionSummary, source, options)}\n\n`
+      if (options.saveFullTranscript && options.transcriptMessages) {
+        result.fallbackText += `${formatFullTranscriptMemory(options.transcriptMessages, source)}\n\n`
+      }
     } else {
       try {
         const current = await deps.fetchMemory()
         const existing = current.memory?.trim() || ''
-        const addition = [
-          `## Session Capture - ${source.contextLabel}`,
-          '',
-          sourceLabel(source),
-          '',
-          ...memoryItems.map(item => [
-            `### ${item.title}`,
-            `Evidence status: ${item.evidenceStatus}`,
-            item.description,
-            `Recommended action: ${item.recommendedAction}`,
-          ].join('\n')),
-        ].join('\n\n')
+        const memoryBlocks: string[] = []
+        if (options.saveSessionSummary) {
+          memoryBlocks.push(formatSessionSummaryMemory(draft.sessionSummary, source, options))
+          result.savedSessionSummary = true
+        }
+        if (memoryItems.length > 0) {
+          memoryBlocks.push([
+            `## Session Capture - ${source.contextLabel}`,
+            '',
+            sourceLabel(source),
+            '',
+            ...memoryItems.map(item => [
+              `### ${item.title}`,
+              `Evidence status: ${item.evidenceStatus}`,
+              item.description,
+              `Recommended action: ${item.recommendedAction}`,
+            ].join('\n')),
+          ].join('\n\n'))
+        }
+        if (options.saveFullTranscript && options.transcriptMessages) {
+          memoryBlocks.push(formatFullTranscriptMemory(options.transcriptMessages, source))
+          result.savedFullTranscript = true
+        }
+        const addition = memoryBlocks.join('\n\n')
         await deps.saveMemory('memory', existing ? `${existing}\n\n${addition}` : addition)
         result.savedMemoryItems = memoryItems.length
       } catch (err) {
         const detail = err instanceof Error ? err.message : 'Unknown memory save error'
         result.errors.push(`Memory save failed: ${detail}`)
         result.fallbackText += memoryItems.map(item => formatCaptureSuggestionText(item, source)).join('\n\n')
+        if (options.saveSessionSummary) result.fallbackText += `${formatSessionSummaryMemory(draft.sessionSummary, source, options)}\n\n`
+        if (options.saveFullTranscript && options.transcriptMessages) {
+          result.fallbackText += `${formatFullTranscriptMemory(options.transcriptMessages, source)}\n\n`
+        }
       }
     }
   }
@@ -555,6 +661,111 @@ export async function saveSessionCaptureSelection(
   }
 
   return result
+}
+
+function suggestionFromTopic(
+  id: string,
+  title: string,
+  researchQuestion: string,
+  scope: string,
+  contextLabelValue: string,
+  priority: CapturePriority = 'medium',
+): DeepResearchSuggestion {
+  return {
+    id,
+    title,
+    researchQuestion,
+    scope,
+    expectedOutput: 'Source-backed research note with key findings, citations/source links, open questions, and recommended follow-up tasks.',
+    sourceRequirements: 'Use current, citable sources. Separate verified facts, assumptions, and items still to verify.',
+    priority,
+    contextLabel: contextLabelValue,
+    schedulePreference: 'Tonight',
+  }
+}
+
+export function generateDeepResearchSuggestions(
+  messages: Message[],
+  context: CaptureContextId,
+): DeepResearchSuggestion[] {
+  const text = messages.map(textFromMessage).join(' ').toLowerCase()
+  const label = contextLabel(context)
+  const suggestions: DeepResearchSuggestion[] = []
+  const add = (item: DeepResearchSuggestion) => {
+    if (!suggestions.some(existing => existing.id === item.id)) suggestions.push(item)
+  }
+
+  if (text.includes('dms') || text.includes('regulatory') || text.includes('permission')) {
+    add(suggestionFromTopic(
+      'dms-regulation',
+      'DMS regulation in China',
+      'What is the current regulatory status, handling requirement, import/manufacturing restriction, and source evidence for DMS in China?',
+      'Regulatory classification, permits, SDS requirements, transport/storage, and evidence gaps.',
+      label,
+      'high',
+    ))
+  }
+  if (text.includes('cwas') || text.includes('cwms') || text.includes('esterquat') || text.includes('textile')) {
+    add(suggestionFromTopic(
+      'cwas-cwms-market',
+      'CWAS/CWMS market and product evidence',
+      'What source-backed evidence exists for demand, product equivalents, customer segments, and pricing validation for CWAS/CWMS?',
+      'Product demand, comparable products, textile softener use cases, and source-backed pricing evidence only.',
+      label,
+      'medium',
+    ))
+  }
+  if (text.includes('competitor') || text.includes('price') || text.includes('supplier')) {
+    add(suggestionFromTopic(
+      'competitor-pricing',
+      'Competitor and supplier price evidence',
+      'Which competitors or suppliers can be verified with source-backed product, certification, distribution, and pricing evidence?',
+      'Competitor names, product equivalents, active content, quote/screenshots/source evidence, and unknown market share labels.',
+      label,
+      'medium',
+    ))
+  }
+  if (text.includes('investor') || text.includes('investment') || text.includes('finance') || text.includes('irr')) {
+    add(suggestionFromTopic(
+      'investor-risk',
+      'Investor risk and return evidence',
+      'Which assumptions are still weak for investor review, and what evidence is required before preparing an investor-ready return story?',
+      'Evidence gaps, financial model completeness, use of funds, risk register, and source-backed assumptions.',
+      label,
+      'high',
+    ))
+  }
+
+  if (suggestions.length === 0 && isMeaningfulCaptureSession(messages)) {
+    add(suggestionFromTopic(
+      'general-research-followup',
+      'Follow-up research from this session',
+      'What deeper research would turn this conversation into source-backed tasks, notes, and investor-safe evidence?',
+      'Session-specific open questions, missing sources, and next useful research tasks.',
+      label,
+      'low',
+    ))
+  }
+
+  return suggestions.slice(0, 5)
+}
+
+export function formatResearchSuggestionTask(item: DeepResearchSuggestion, source: SessionCaptureSource): string {
+  return [
+    `Research question: ${item.researchQuestion}`,
+    `Scope: ${item.scope}`,
+    `Expected output: ${item.expectedOutput}`,
+    `Source requirements: ${item.sourceRequirements}`,
+    `Project/context: ${item.contextLabel}`,
+    `Priority: ${item.priority}`,
+    `Schedule preference: ${item.schedulePreference}`,
+    'Saved as: Manual research job task',
+    'Tags: Research Job, Session Capture, Evidence Gap',
+    '',
+    sourceLabel(source),
+    '',
+    'Note: This is a Kanban research task, not an automatically scheduled job.',
+  ].join('\n')
 }
 
 function isStringRecord(value: unknown): value is Record<string, unknown> {

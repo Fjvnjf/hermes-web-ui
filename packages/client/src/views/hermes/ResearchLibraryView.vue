@@ -30,6 +30,9 @@ const links = [
   { label: 'History', to: { name: 'hermes.history' } },
   { label: 'Memory', to: { name: 'hermes.memory' } },
   { label: 'Documents', to: { name: 'hermes.files' } },
+  { label: 'Market', to: { name: 'hermes.marketIntelligence' } },
+  { label: 'Competitors', to: { name: 'hermes.competitorIntelligence' } },
+  { label: 'Review Results', to: { name: 'hermes.researchResultReview' } },
 ]
 
 const captureLinks = [

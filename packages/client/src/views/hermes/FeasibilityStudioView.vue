@@ -10,6 +10,11 @@ type RouteName =
   | 'hermes.memory'
   | 'hermes.history'
   | 'hermes.reportsHub'
+  | 'hermes.investorReadiness'
+  | 'hermes.investmentCalculator'
+  | 'hermes.marketIntelligence'
+  | 'hermes.competitorIntelligence'
+  | 'hermes.investorPresentation'
 
 type ChecklistStatus =
   | 'To Verify'
@@ -88,6 +93,26 @@ const workspaceLinks: WorkspaceLink[] = [
     label: 'Reports Hub',
     routeName: 'hermes.reportsHub',
     note: 'opens report workspace shell',
+  },
+  {
+    label: 'Investor Readiness',
+    routeName: 'hermes.investorReadiness',
+    note: 'checks investor evidence gaps',
+  },
+  {
+    label: 'IRR Calculator',
+    routeName: 'hermes.investmentCalculator',
+    note: 'models investment assumptions',
+  },
+  {
+    label: 'Market Intel',
+    routeName: 'hermes.marketIntelligence',
+    note: 'tracks sourced market claims',
+  },
+  {
+    label: 'Competitors',
+    routeName: 'hermes.competitorIntelligence',
+    note: 'tracks evidence-backed competitors',
   },
 ]
 
@@ -210,6 +235,14 @@ const evidenceGuidance = [
   'Store durable confirmed facts in Memory so Hermes can reuse them across sessions.',
   'Track missing proof as Tasks in Kanban instead of leaving gaps inside chat.',
   'Use Reports Hub and Files for prepared outputs until automatic report generation is added.',
+]
+
+const investorWorkflowLinks = [
+  { label: 'Investor Readiness', routeName: 'hermes.investorReadiness' as const, description: 'See what is missing before investor material is safe.' },
+  { label: 'IRR Calculator', routeName: 'hermes.investmentCalculator' as const, description: 'Model NPV, IRR, MIRR, payback, working capital, and sensitivity.' },
+  { label: 'Market Intelligence', routeName: 'hermes.marketIntelligence' as const, description: 'Collect market claims only with source evidence.' },
+  { label: 'Competitor Intelligence', routeName: 'hermes.competitorIntelligence' as const, description: 'Track competitors without invented market share.' },
+  { label: 'Presentation Builder', routeName: 'hermes.investorPresentation' as const, description: 'Draft from approved material only.' },
 ]
 
 const reportDrafts: ReportDraft[] = [
@@ -506,6 +539,23 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
     </section>
 
+    <section class="investor-section" aria-labelledby="investor-title">
+      <div class="section-heading">
+        <p class="eyebrow">Investor workflow</p>
+        <h3 id="investor-title">Feasibility Intelligence Next Steps</h3>
+        <p>
+          Use these connected workspaces to move from feasibility checklist gaps into source-backed investor preparation.
+          Missing items stay To Verify until you approve evidence.
+        </p>
+      </div>
+      <div class="investor-link-grid">
+        <RouterLink v-for="link in investorWorkflowLinks" :key="link.label" :to="{ name: link.routeName }">
+          <strong>{{ link.label }}</strong>
+          <span>{{ link.description }}</span>
+        </RouterLink>
+      </div>
+    </section>
+
     <section class="report-section" aria-labelledby="report-title">
       <div class="section-heading">
         <p class="eyebrow">File-based drafts</p>
@@ -542,6 +592,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 .guidance-section,
 .checklist-section,
 .evidence-section,
+.investor-section,
 .report-section {
   margin-bottom: 18px;
 }
@@ -552,6 +603,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 .guidance-card,
 .checklist-group,
 .evidence-section,
+.investor-section,
 .report-section {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
@@ -992,8 +1044,44 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 }
 
 .evidence-section,
+.investor-section,
 .report-section {
   padding-bottom: 16px;
+}
+
+.investor-section {
+  padding: 16px;
+}
+
+.investor-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+
+  a {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    color: $text-primary;
+    text-decoration: none;
+
+    &:hover {
+      border-color: $accent-info;
+      background: rgba(var(--accent-info-rgb), 0.06);
+    }
+  }
+
+  strong {
+    color: $accent-primary;
+  }
+
+  span {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
 }
 
 .evidence-grid {

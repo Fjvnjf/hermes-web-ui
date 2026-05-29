@@ -191,6 +191,23 @@ function openChangelog() {
             </svg>
             <span>Feasibility Studio<span class="beta-tag">main</span></span>
           </RouteLinkItem>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.investorReadiness' }" :active="selectedKey === 'hermes.investorReadiness'" title="Investor readiness preparation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14" />
+              <path d="M8 9h8" />
+              <path d="M8 13h5" />
+              <path d="M6 21h12" />
+            </svg>
+            <span>Investor Readiness</span>
+          </RouteLinkItem>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.investmentCalculator' }" :active="selectedKey === 'hermes.investmentCalculator'" title="IRR and investment calculator">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19V5" />
+              <path d="M4 19h16" />
+              <path d="M8 15l3-3 3 2 5-7" />
+            </svg>
+            <span>IRR Calculator</span>
+          </RouteLinkItem>
           <RouteLinkItem class="nav-item" :to="{ name: 'hermes.projects' }" :active="selectedKey === 'hermes.projects'" title="Project workspaces">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -247,6 +264,29 @@ function openChangelog() {
             </svg>
             <span>{{ t("sidebar.search") }}</span>
           </button>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.marketIntelligence' }" :active="selectedKey === 'hermes.marketIntelligence'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="M21 21l-4.3-4.3" />
+              <path d="M8 11h6" />
+            </svg>
+            <span>Market Intelligence</span>
+          </RouteLinkItem>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.competitorIntelligence' }" :active="selectedKey === 'hermes.competitorIntelligence'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 20h18" />
+              <path d="M6 20V8h4v12" />
+              <path d="M14 20V4h4v16" />
+            </svg>
+            <span>Competitors</span>
+          </RouteLinkItem>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.researchResultReview' }" :active="selectedKey === 'hermes.researchResultReview'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+            <span>Research Review</span>
+          </RouteLinkItem>
         </div>
       </div>
 
@@ -267,6 +307,16 @@ function openChangelog() {
               <path d="M8 17h5" />
             </svg>
             <span>Reports Hub</span>
+          </RouteLinkItem>
+          <RouteLinkItem class="nav-item" :to="{ name: 'hermes.investorPresentation' }" :active="selectedKey === 'hermes.investorPresentation'">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="14" rx="2" />
+              <path d="M8 21h8" />
+              <path d="M12 18v3" />
+              <path d="M8 9h8" />
+              <path d="M8 13h5" />
+            </svg>
+            <span>Presentation Builder</span>
           </RouteLinkItem>
           <RouteLinkItem class="nav-item" :to="{ name: 'hermes.usage' }" :active="selectedKey === 'hermes.usage'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

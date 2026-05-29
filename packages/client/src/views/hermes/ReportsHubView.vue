@@ -23,6 +23,9 @@ const sections = [
 ]
 
 const links = [
+  { label: 'Investor Readiness', to: { name: 'hermes.investorReadiness' } },
+  { label: 'IRR Calculator', to: { name: 'hermes.investmentCalculator' } },
+  { label: 'Presentation Builder', to: { name: 'hermes.investorPresentation' } },
   { label: 'Usage', to: { name: 'hermes.usage' } },
   { label: 'Skills Usage', to: { name: 'hermes.skillsUsage' } },
   { label: 'Documents', to: { name: 'hermes.files' } },

@@ -82,6 +82,16 @@ const workspaceActions = [
     to: { name: 'hermes.feasibility' },
   },
   {
+    label: 'Open Investor Readiness',
+    detail: 'Check evidence gaps, risks, and investor-safe preparation status.',
+    to: { name: 'hermes.investorReadiness' },
+  },
+  {
+    label: 'Open IRR Calculator',
+    detail: 'Model assumptions, NPV, IRR, MIRR, payback, and sensitivity.',
+    to: { name: 'hermes.investmentCalculator' },
+  },
+  {
     label: 'Open Projects',
     detail: 'Choose the research or feasibility workspace to continue.',
     to: { name: 'hermes.projects' },
@@ -121,6 +131,8 @@ const workstreams = [
     to: { name: 'hermes.feasibility' },
     links: [
       { label: 'Studio', to: { name: 'hermes.feasibility' } },
+      { label: 'Investor Readiness', to: { name: 'hermes.investorReadiness' } },
+      { label: 'IRR', to: { name: 'hermes.investmentCalculator' } },
       { label: 'Chat', to: { name: 'hermes.chat' } },
       { label: 'Tasks', to: { name: 'hermes.kanban' } },
     ],
@@ -132,6 +144,8 @@ const workstreams = [
     to: { name: 'hermes.research' },
     links: [
       { label: 'Library', to: { name: 'hermes.research' } },
+      { label: 'Market', to: { name: 'hermes.marketIntelligence' } },
+      { label: 'Competitors', to: { name: 'hermes.competitorIntelligence' } },
       { label: 'History', to: { name: 'hermes.history' } },
       { label: 'Memory', to: { name: 'hermes.memory' } },
     ],

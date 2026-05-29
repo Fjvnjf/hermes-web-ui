@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   generateSessionCaptureDraft,
+  generateDeepResearchSuggestions,
   markCaptureSkipped,
   parseSessionCaptureJson,
   saveSessionCaptureSelection,
@@ -146,6 +147,33 @@ describe('Session Capture Assistant', () => {
     expect(result.createdTasks).toBe(0)
     expect(result.errors[0]).toContain('board unavailable')
     expect(result.fallbackText).toContain(task.title)
+  })
+
+  it('saves approved session summary to Memory without saving the full transcript by default', async () => {
+    const draft = generateSessionCaptureDraft(testMessages(), { context: 'chemicon' })
+
+    const result = await saveSessionCaptureSelection(
+      draft,
+      new Set(),
+      { sessionId: 's1', contextLabel: 'Chemicon China Feasibility', capturedAt: new Date('2026-05-29T00:00:00Z') },
+      { createTask: createTaskMock, fetchMemory: fetchMemoryMock, saveMemory: saveMemoryMock },
+      { saveSessionSummary: true, transcriptMessages: testMessages(), memoryTags: ['Session Capture', 'Feasibility'] },
+    )
+
+    expect(result.savedSessionSummary).toBe(true)
+    expect(result.savedFullTranscript).toBe(false)
+    expect(saveMemoryMock).toHaveBeenCalledWith(
+      'memory',
+      expect.stringContaining('## Session Summary - Chemicon China Feasibility'),
+    )
+    expect(saveMemoryMock.mock.calls[0][1]).not.toContain('Full Session Transcript')
+  })
+
+  it('generates deeper research suggestions that can be saved as manual research tasks', () => {
+    const suggestions = generateDeepResearchSuggestions(testMessages(), 'chemicon')
+
+    expect(suggestions.some(item => item.title.includes('DMS regulation'))).toBe(true)
+    expect(suggestions[0].expectedOutput).toContain('Source-backed')
   })
 
   it('renders the capture drawer and saves selected Kanban tasks through the existing store', async () => {
