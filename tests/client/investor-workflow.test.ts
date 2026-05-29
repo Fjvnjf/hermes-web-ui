@@ -125,6 +125,7 @@ import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentation
 import DashboardView from '@/views/hermes/DashboardView.vue'
 import FeasibilityStudioView from '@/views/hermes/FeasibilityStudioView.vue'
 import InvestmentCalculatorView from '@/views/hermes/InvestmentCalculatorView.vue'
+import ResearchLibraryView from '@/views/hermes/ResearchLibraryView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -1081,6 +1082,57 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Approve Research Before It Changes Anything')
     expect(wrapper.text()).toContain('DMS regulation in China')
     expect(wrapper.text()).toContain('DMS regulation source needed')
+  })
+
+  it('surfaces real research intelligence records in Research Library', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Task Created',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Research finding summary awaiting approval.',
+      keyClaim: 'DMS regulation source needed',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+    })
+    intelligence.addMarketClaim({
+      label: 'CWAS price validation evidence',
+      value: 'Distributor interview supports a pricing note.',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+    intelligence.addCompetitor({
+      companyName: 'Example Softener Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: '90% active content',
+      pricingEvidence: 'Distributor quote note',
+      certifications: 'To Verify',
+      distributionPresence: 'Distributor in China',
+      marketShare: '',
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor quote', date: '2026-05-30' },
+      notes: 'Pricing source needs investor review before use.',
+    })
+
+    const wrapper = mount(ResearchLibraryView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Live research hub')
+    expect(wrapper.text()).toContain('Research Waiting for Approval')
+    expect(wrapper.text()).toContain('DMS regulation source needed')
+    expect(wrapper.text()).toContain('DMS regulation in China')
+    expect(wrapper.text()).toContain('CWAS price validation evidence')
+    expect(wrapper.text()).toContain('Example Softener Co')
+    expect(wrapper.text()).toContain('market share: To Verify')
+    expect(wrapper.text()).toContain('Distributor interview')
   })
 
   it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {
