@@ -68,6 +68,12 @@ export interface SaveCaptureDeps {
   fetchMemory?: () => Promise<{ memory?: string }>
   saveMemory?: (section: 'memory' | 'user' | 'soul', content: string) => Promise<void>
   copyText?: (text: string) => Promise<boolean>
+  stagePresentationMaterial?: (material: {
+    section: string
+    content: string
+    evidenceStatus: 'To Verify'
+    source?: { title: string; date?: string } | null
+  }) => unknown
 }
 
 export interface SaveCaptureResult {
@@ -76,6 +82,7 @@ export interface SaveCaptureResult {
   savedMemoryItems: number
   savedSessionSummary: boolean
   savedFullTranscript: boolean
+  stagedPresentationItems: number
   copiedItems: number
   fallbackText: string
   errors: string[]
@@ -538,6 +545,45 @@ export function formatCaptureSuggestionText(item: CaptureSuggestion, source: Ses
   return base.join('\n')
 }
 
+export function sectionForReportSnippet(item: CaptureSuggestion): string {
+  const text = `${item.title} ${item.description}`.toLowerCase()
+  if (text.includes('competitor')) return 'Competitor Landscape'
+  if (text.includes('market') || text.includes('customer') || text.includes('demand') || text.includes('price')) return 'Market Evidence'
+  if (text.includes('regulatory') || text.includes('dms') || text.includes('permission') || text.includes('license')) return 'Regulatory Plan'
+  if (text.includes('factory') || text.includes('manufacturing') || text.includes('plant') || text.includes('machine')) return 'Manufacturing Plan'
+  if (text.includes('product') || text.includes('cwas') || text.includes('cwms') || text.includes('sds') || text.includes('tds')) return 'Product Plan'
+  if (text.includes('irr') || text.includes('npv') || text.includes('return') || text.includes('financial')) return 'IRR / Investor Return'
+  if (text.includes('risk')) return 'Risk & Mitigation'
+  if (text.includes('fund')) return 'Use of Funds'
+  return 'Executive Summary'
+}
+
+export function formatReportSnippetMaterial(item: CaptureSuggestion, source: SessionCaptureSource): {
+  section: string
+  content: string
+  evidenceStatus: 'To Verify'
+  source: { title: string; date?: string }
+} {
+  const capturedAt = source.capturedAt || new Date()
+  return {
+    section: sectionForReportSnippet(item),
+    content: [
+      item.description,
+      '',
+      `Source session: ${source.sessionId || 'current'}`,
+      `Context/project: ${source.contextLabel}`,
+      'Captured by Session Capture Assistant',
+      'Evidence status: To Verify',
+      'Review required before investor use.',
+    ].join('\n'),
+    evidenceStatus: 'To Verify',
+    source: {
+      title: `Session Capture${source.sessionTitle ? ` - ${source.sessionTitle}` : ''}`,
+      date: capturedAt.toISOString().slice(0, 10),
+    },
+  }
+}
+
 export function categoryLabel(category: CaptureCategory): string {
   switch (category) {
     case 'tasks':
@@ -567,6 +613,7 @@ export async function saveSessionCaptureSelection(
     savedMemoryItems: 0,
     savedSessionSummary: false,
     savedFullTranscript: false,
+    stagedPresentationItems: 0,
     copiedItems: 0,
     fallbackText: '',
     errors: [],
@@ -592,7 +639,18 @@ export async function saveSessionCaptureSelection(
     } else if (item.target === 'memory') {
       memoryItems.push(item)
     } else {
-      copyItems.push(item)
+      if (item.category === 'reportSnippets' && deps.stagePresentationMaterial) {
+        try {
+          deps.stagePresentationMaterial(formatReportSnippetMaterial(item, source))
+          result.stagedPresentationItems += 1
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : 'Unknown presentation staging error'
+          result.errors.push(`${item.title}: ${detail}`)
+          result.fallbackText += `${formatCaptureSuggestionText(item, source)}\n\n`
+        }
+      } else {
+        copyItems.push(item)
+      }
     }
   }
 

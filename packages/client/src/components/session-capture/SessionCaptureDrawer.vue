@@ -98,7 +98,7 @@ const captureGroups = computed(() => {
     {
       key: 'reportSnippets' as const,
       title: 'E. Report Snippets',
-      description: 'Prepared text for future drafts. This step copies snippets; it does not generate report files yet.',
+      description: 'Prepared text for future drafts. Selected snippets stage as To Verify material in Presentation Builder.',
       items: draft.value.reportSnippets,
     },
   ]
@@ -171,6 +171,7 @@ function setChecked(item: CaptureSuggestion, checked: boolean) {
 function targetLabel(item: CaptureSuggestion): string {
   if (item.target === 'kanban') return 'Tasks/Kanban'
   if (item.target === 'memory') return 'Memory'
+  if (item.category === 'reportSnippets') return 'Presentation Builder (To Verify)'
   return 'Copy / Reports draft'
 }
 
@@ -235,6 +236,7 @@ async function addSelected() {
         fetchMemory,
         saveMemory,
         copyText: copyToClipboard,
+        stagePresentationMaterial: material => intelligence.addPresentationMaterial(material),
       },
       {
         saveSessionSummary: saveSessionSummary.value,
@@ -246,7 +248,7 @@ async function addSelected() {
     )
     fallbackText.value = result.fallbackText.trim()
     saveErrors.value = result.errors
-    const savedCount = result.createdTasks + result.savedMemoryItems + result.copiedItems + (result.savedSessionSummary ? 1 : 0) + (result.savedFullTranscript ? 1 : 0)
+    const savedCount = result.createdTasks + result.savedMemoryItems + result.stagedPresentationItems + result.copiedItems + (result.savedSessionSummary ? 1 : 0) + (result.savedFullTranscript ? 1 : 0)
     if (savedCount > 0 || result.errors.length === 0) {
       if (props.sessionId) markCaptureReviewed(props.sessionId)
       emit('saved')
@@ -369,7 +371,7 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
 
         <NAlert type="info" :bordered="false" class="capture-honesty">
           Suggestions are generated from the current active session only. Nothing is saved until you select items and approve them.
-          Tasks and evidence gaps save to real Kanban tasks; research notes and memory candidates append to Memory; report snippets are copied for now.
+          Tasks and evidence gaps save to real Kanban tasks; research notes and memory candidates append to Memory; report snippets stage as To Verify investor material until reviewed.
         </NAlert>
 
         <section class="memory-pipeline" aria-labelledby="memory-pipeline-title">

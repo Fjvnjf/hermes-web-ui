@@ -2,6 +2,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  buildInvestorPresentationDraft,
+} from '@/utils/investorIntelligence'
+import {
   generateSessionCaptureDraft,
   generateDeepResearchSuggestions,
   markCaptureSkipped,
@@ -170,6 +173,44 @@ describe('Session Capture Assistant', () => {
       expect.stringContaining('## Session Summary - Chemicon China Feasibility'),
     )
     expect(saveMemoryMock.mock.calls[0][1]).not.toContain('Full Session Transcript')
+  })
+
+  it('stages approved report snippets as To Verify presentation material', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const messages: Message[] = [
+      {
+        id: 'u-report',
+        role: 'user',
+        content: 'Prepare a report section for the Chemicon investor presentation about CWAS/CWMS product plan.',
+        timestamp: Date.now(),
+      },
+      {
+        id: 'a-report',
+        role: 'assistant',
+        content: 'Report section: Product Plan should explain CWAS/CWMS launch products, but SDS/TDS evidence is still To Verify before investor use.',
+        timestamp: Date.now(),
+      },
+    ]
+    const draft = generateSessionCaptureDraft(messages, { context: 'chemicon' })
+    const snippet = draft.reportSnippets[0]
+
+    const result = await saveSessionCaptureSelection(
+      draft,
+      new Set([snippet.id]),
+      { sessionId: 'report-session', sessionTitle: 'Product plan report', contextLabel: 'Chemicon China Feasibility', capturedAt: new Date('2026-05-29T00:00:00Z') },
+      {
+        createTask: createTaskMock,
+        stagePresentationMaterial: material => intelligence.addPresentationMaterial(material),
+        copyText: copyToClipboardMock,
+      },
+    )
+
+    expect(result.stagedPresentationItems).toBe(1)
+    expect(result.copiedItems).toBe(0)
+    expect(intelligence.state.value.presentationMaterials[0].section).toBe('Product Plan')
+    expect(intelligence.state.value.presentationMaterials[0].evidenceStatus).toBe('To Verify')
+    expect(intelligence.state.value.presentationMaterials[0].content).toContain('Review required before investor use')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
   })
 
   it('generates deeper research suggestions that can be saved as manual research tasks', () => {
