@@ -199,6 +199,33 @@ describe('investor feasibility workflow utilities', () => {
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Verified')
   })
 
+  it('updates market claims while enforcing source-backed verification', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addMarketClaim({
+      label: 'CWAS price validation note',
+      value: '',
+      evidenceStatus: 'To Verify',
+      source: null,
+      confidence: 'low',
+    })
+
+    const unsourced = intelligence.updateMarketClaim(saved.id!, {
+      value: 'Sourced value still missing source reference',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+    const sourced = intelligence.updateMarketClaim(saved.id!, {
+      value: 'User-provided sourced validation note',
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+      confidence: 'medium',
+    })
+
+    expect(unsourced?.evidenceStatus).toBe('To Verify')
+    expect(sourced?.evidenceStatus).toBe('Verified')
+    expect(sourced?.source?.title).toBe('Distributor interview')
+  })
+
   it('stores approved investor material while excluding unsupported draft claims', () => {
     const intelligence = useFeasibilityIntelligence()
 
@@ -275,6 +302,40 @@ describe('investor feasibility workflow utilities', () => {
 
     expect(saved.evidenceStatus).toBe('To Verify')
     expect(formatMarketShare(saved.marketShare)).toBe('To Verify')
+  })
+
+  it('updates competitor records while enforcing source-backed verification', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addCompetitor({
+      companyName: 'Editable competitor',
+      countryRegion: 'China',
+      productEquivalent: 'To Verify',
+      activeContent: 'To Verify',
+      pricingEvidence: 'Missing',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '',
+      evidenceStatus: 'To Verify',
+      source: null,
+      notes: 'No source yet.',
+    })
+
+    const unsourced = intelligence.updateCompetitor(saved.id, {
+      pricingEvidence: 'Claimed quote without source',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+    const sourced = intelligence.updateCompetitor(saved.id, {
+      pricingEvidence: 'Distributor quote note',
+      productEquivalent: 'CWAS equivalent',
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor quote', date: '2026-05-30' },
+    })
+
+    expect(unsourced?.evidenceStatus).toBe('To Verify')
+    expect(sourced?.evidenceStatus).toBe('Verified')
+    expect(sourced?.pricingEvidence).toBe('Distributor quote note')
+    expect(sourced?.source?.title).toBe('Distributor quote')
   })
 
   it('keeps unsourced verified research findings pending as To Verify', () => {

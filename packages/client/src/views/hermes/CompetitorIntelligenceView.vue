@@ -12,6 +12,7 @@ const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
+const editingCompetitorId = ref<string | null>(null)
 
 const competitorForm = ref({
   companyName: '',
@@ -30,6 +31,26 @@ const competitorForm = ref({
 })
 
 const competitors = computed(() => intelligence.state.value.competitors)
+const competitorSubmitLabel = computed(() => editingCompetitorId.value ? 'Update competitor' : 'Save competitor')
+
+function resetCompetitorForm() {
+  competitorForm.value = {
+    companyName: '',
+    countryRegion: '',
+    productEquivalent: '',
+    activeContent: '',
+    pricingEvidence: '',
+    certifications: '',
+    distributionPresence: '',
+    marketShare: '',
+    evidenceStatus: 'To Verify',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+    notes: '',
+  }
+  editingCompetitorId.value = null
+}
 
 async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
   creating.value = competitor.companyName
@@ -109,6 +130,25 @@ function removeCompetitor(competitor: CompetitorIntelligenceRecord) {
   else message.error('Competitor record was not found')
 }
 
+function startEditCompetitor(competitor: CompetitorIntelligenceRecord) {
+  editingCompetitorId.value = competitor.id
+  competitorForm.value = {
+    companyName: competitor.companyName,
+    countryRegion: competitor.countryRegion,
+    productEquivalent: competitor.productEquivalent,
+    activeContent: competitor.activeContent,
+    pricingEvidence: competitor.pricingEvidence,
+    certifications: competitor.certifications,
+    distributionPresence: competitor.distributionPresence,
+    marketShare: competitor.marketShare || '',
+    evidenceStatus: competitor.evidenceStatus,
+    sourceTitle: competitor.source?.title || '',
+    sourceUrl: competitor.source?.url || '',
+    sourceDate: competitor.source?.date || '',
+    notes: competitor.notes,
+  }
+}
+
 function addCompetitor() {
   const companyName = competitorForm.value.companyName.trim()
   if (!companyName) {
@@ -122,7 +162,7 @@ function addCompetitor() {
         date: competitorForm.value.sourceDate.trim() || undefined,
       }
     : null
-  const saved = intelligence.addCompetitor({
+  const payload = {
     companyName,
     countryRegion: competitorForm.value.countryRegion.trim() || 'To Verify',
     productEquivalent: competitorForm.value.productEquivalent.trim() || 'To Verify',
@@ -134,27 +174,20 @@ function addCompetitor() {
     evidenceStatus: competitorForm.value.evidenceStatus,
     source,
     notes: competitorForm.value.notes.trim() || 'No competitor claim should be treated as real until source evidence is attached.',
-  })
+  }
+  const saved = editingCompetitorId.value
+    ? intelligence.updateCompetitor(editingCompetitorId.value, payload)
+    : intelligence.addCompetitor(payload)
+  if (!saved) {
+    message.error('Competitor record was not found')
+    return
+  }
   if (competitorForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
     message.warning('Competitor saved as To Verify because verified records need usable source evidence')
   } else {
-    message.success('Competitor record saved in this browser workspace')
+    message.success(editingCompetitorId.value ? 'Competitor record updated' : 'Competitor record saved in this browser workspace')
   }
-  competitorForm.value = {
-    companyName: '',
-    countryRegion: '',
-    productEquivalent: '',
-    activeContent: '',
-    pricingEvidence: '',
-    certifications: '',
-    distributionPresence: '',
-    marketShare: '',
-    evidenceStatus: 'To Verify',
-    sourceTitle: '',
-    sourceUrl: '',
-    sourceDate: '',
-    notes: '',
-  }
+  resetCompetitorForm()
 }
 </script>
 
@@ -199,7 +232,8 @@ function addCompetitor() {
       <label>Source URL<input v-model="competitorForm.sourceUrl" type="url" placeholder="https://..." /></label>
       <label>Source date<input v-model="competitorForm.sourceDate" type="date" /></label>
       <label class="wide">Notes<input v-model="competitorForm.notes" type="text" placeholder="Evidence notes" /></label>
-      <NButton secondary type="primary" @click="addCompetitor">Save competitor</NButton>
+      <NButton secondary type="primary" @click="addCompetitor">{{ competitorSubmitLabel }}</NButton>
+      <NButton v-if="editingCompetitorId" secondary @click="resetCompetitorForm">Cancel edit</NButton>
     </section>
 
     <section class="competitor-table" aria-label="Competitor list">
@@ -209,7 +243,7 @@ function addCompetitor() {
       <p v-if="competitors.length === 0" class="empty-state">
         No competitor records saved yet. Add sourced records above, or create research tasks for unknown competitors.
       </p>
-      <div v-for="competitor in competitors" :key="competitor.companyName" class="competitor-row">
+      <div v-for="competitor in competitors" :key="competitor.id" class="competitor-row">
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
         <span>{{ competitor.productEquivalent }}</span>
@@ -218,6 +252,9 @@ function addCompetitor() {
         <span>{{ formatMarketShare(competitor.marketShare) }}</span>
         <span>{{ competitor.evidenceStatus }}</span>
         <span class="row-actions">
+          <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">
+            Edit
+          </NButton>
           <NButton size="tiny" secondary @click="stageCompetitorForReview(competitor)">
             Stage for review
           </NButton>

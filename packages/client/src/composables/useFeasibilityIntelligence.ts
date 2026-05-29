@@ -287,6 +287,28 @@ export function useFeasibilityIntelligence() {
     return removed
   }
 
+  function updateMarketClaim(id: string, patch: Partial<Omit<MarketClaim, 'id'>>): MarketClaim | null {
+    const index = state.value.marketClaims.findIndex(item => item.id === id)
+    if (index === -1) return null
+    const merged: MarketClaim = {
+      ...state.value.marketClaims[index],
+      ...patch,
+      id,
+      lastChecked: patch.lastChecked || nowIso().slice(0, 10),
+    }
+    const updated: MarketClaim = {
+      ...merged,
+      evidenceStatus: normalizedMarketClaimStatus(merged),
+    }
+    state.value.marketClaims = [
+      ...state.value.marketClaims.slice(0, index),
+      updated,
+      ...state.value.marketClaims.slice(index + 1),
+    ]
+    persist()
+    return updated
+  }
+
   function addCompetitor(record: Omit<CompetitorIntelligenceRecord, 'id' | 'updatedAt'>) {
     const saved: CompetitorIntelligenceRecord = {
       ...record,
@@ -298,6 +320,34 @@ export function useFeasibilityIntelligence() {
     state.value.competitors = [saved, ...state.value.competitors]
     persist()
     return saved
+  }
+
+  function updateCompetitor(
+    id: string,
+    patch: Partial<Omit<CompetitorIntelligenceRecord, 'id' | 'updatedAt'>>,
+  ): CompetitorIntelligenceRecord | null {
+    const index = state.value.competitors.findIndex(item => item.id === id)
+    if (index === -1) return null
+    const merged: CompetitorIntelligenceRecord = {
+      ...state.value.competitors[index],
+      ...patch,
+      id,
+      marketShare: patch.marketShare?.trim() ?? state.value.competitors[index].marketShare,
+      updatedAt: nowIso(),
+    }
+    const updated: CompetitorIntelligenceRecord = {
+      ...merged,
+      evidenceStatus: merged.evidenceStatus === 'Verified' && !sourceIsUsable(merged.source)
+        ? 'To Verify'
+        : merged.evidenceStatus,
+    }
+    state.value.competitors = [
+      ...state.value.competitors.slice(0, index),
+      updated,
+      ...state.value.competitors.slice(index + 1),
+    ]
+    persist()
+    return updated
   }
 
   function removeCompetitor(id: string): boolean {
@@ -441,8 +491,10 @@ export function useFeasibilityIntelligence() {
     latestFinancialModel,
     updateEvidenceStatus,
     addMarketClaim,
+    updateMarketClaim,
     removeMarketClaim,
     addCompetitor,
+    updateCompetitor,
     removeCompetitor,
     addPresentationMaterial,
     addResearchJob,

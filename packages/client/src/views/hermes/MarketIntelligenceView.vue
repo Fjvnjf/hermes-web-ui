@@ -9,6 +9,7 @@ const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
+const editingClaimId = ref<string | null>(null)
 
 const claimForm = ref({
   label: '',
@@ -33,6 +34,20 @@ const sections = [
 
 const claims = computed(() => intelligence.state.value.marketClaims)
 const sourceReadyCount = intelligence.verifiedClaimCount
+const claimSubmitLabel = computed(() => editingClaimId.value ? 'Update claim' : 'Save claim')
+
+function resetClaimForm() {
+  claimForm.value = {
+    label: '',
+    value: '',
+    evidenceStatus: 'To Verify',
+    confidence: 'low',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+  }
+  editingClaimId.value = null
+}
 
 async function createResearchTask(label: string) {
   creating.value = label
@@ -79,26 +94,42 @@ function addClaim() {
         date: claimForm.value.sourceDate.trim() || undefined,
       }
     : null
-  const saved = intelligence.addMarketClaim({
+  const payload = {
     label,
     value: claimForm.value.value.trim(),
     evidenceStatus: claimForm.value.evidenceStatus,
     confidence: claimForm.value.confidence,
     source,
-  })
+  }
+  const saved = editingClaimId.value
+    ? intelligence.updateMarketClaim(editingClaimId.value, payload)
+    : intelligence.addMarketClaim(payload)
+  if (!saved) {
+    message.error('Market claim was not found')
+    return
+  }
   if (claimForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
     message.warning('Claim saved as To Verify because verified claims need a value and usable source')
   } else {
-    message.success('Market claim saved in this browser workspace')
+    message.success(editingClaimId.value ? 'Market claim updated' : 'Market claim saved in this browser workspace')
   }
+  resetClaimForm()
+}
+
+function startEditClaim(claim: MarketClaim) {
+  if (!claim.id) {
+    message.error('This older claim cannot be edited until the page is refreshed')
+    return
+  }
+  editingClaimId.value = claim.id
   claimForm.value = {
-    label: '',
-    value: '',
-    evidenceStatus: 'To Verify',
-    confidence: 'low',
-    sourceTitle: '',
-    sourceUrl: '',
-    sourceDate: '',
+    label: claim.label,
+    value: claim.value || '',
+    evidenceStatus: claim.evidenceStatus,
+    confidence: claim.confidence || 'low',
+    sourceTitle: claim.source?.title || '',
+    sourceUrl: claim.source?.url || '',
+    sourceDate: claim.source?.date || '',
   }
 }
 
@@ -195,7 +226,8 @@ function removeClaim(claim: MarketClaim) {
         Source date
         <input v-model="claimForm.sourceDate" type="text" placeholder="YYYY-MM-DD or publication date" />
       </label>
-      <NButton secondary type="primary" @click="addClaim">Save claim</NButton>
+      <NButton secondary type="primary" @click="addClaim">{{ claimSubmitLabel }}</NButton>
+      <NButton v-if="editingClaimId" secondary @click="resetClaimForm">Cancel edit</NButton>
     </section>
 
     <section class="claims-panel">
@@ -213,6 +245,7 @@ function removeClaim(claim: MarketClaim) {
         <span>{{ normalizedMarketClaimStatus(claim) }}</span>
         <span>{{ claim.lastChecked || 'Not checked' }}</span>
         <span class="row-actions">
+          <button type="button" @click="startEditClaim(claim)">Edit claim</button>
           <button type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
           <button type="button" class="danger-link" @click="removeClaim(claim)">Remove claim</button>
         </span>
