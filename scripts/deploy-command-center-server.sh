@@ -8,6 +8,29 @@ BRANCH="${BRANCH:-chemicon-redesign}"
 MIN_REQUIRED_COMMIT="${MIN_REQUIRED_COMMIT:-5da6c9658c0a14cbaf8e90a9f6413b95cd6b4a40}"
 LOG_FILE="${LOG_FILE:-/tmp/hermes-web-ui.log}"
 
+resolve_hermes_bin() {
+  if [ -n "${HERMES_BIN:-}" ] && [ -x "$HERMES_BIN" ]; then
+    echo "$HERMES_BIN"
+    return 0
+  fi
+  if command -v hermes >/dev/null 2>&1; then
+    command -v hermes
+    return 0
+  fi
+  for candidate in \
+    /home/ubuntu/.local/bin/hermes \
+    /home/ubuntu/.hermes/hermes-agent/venv/bin/hermes \
+    /home/ubuntu/.hermes/hermes-agent/hermes
+  do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "Unable to locate Hermes CLI. Set HERMES_BIN to the hermes executable." >&2
+  return 1
+}
+
 require_command() {
   local command="$1"
   if ! command -v "$command" >/dev/null 2>&1; then
@@ -83,7 +106,7 @@ npm run build
 
 echo "== Sanity check built UI =="
 search_text "Hermes Command Center" dist/client dist/server
-search_text "Checking Secure Session|Validating your private command center link|Secure Link Required" dist/client dist/server
+search_text "Enter Command Center|Sign In" dist/client dist/server
 if search_text "Enter your username and password|Private Command Center|Private dashboard" dist/client dist/server; then
   echo "Old login copy found in built assets" >&2
   exit 1
@@ -98,6 +121,12 @@ print_cloudflare_state
 pkill -f "hermes-web-ui/dist/server" || true
 pkill -f "hermes-web-ui start" || true
 sleep 2
+HERMES_BIN="$(resolve_hermes_bin)"
+export HERMES_BIN
+export HERMES_HOME="${HERMES_HOME:-/home/ubuntu/.hermes}"
+export HERMES_WEB_UI_HOME="${HERMES_WEB_UI_HOME:-/home/ubuntu/.hermes-web-ui}"
+export PATH="$(dirname "$HERMES_BIN"):$PATH"
+echo "HERMES_BIN=$HERMES_BIN"
 nohup hermes-web-ui start > "$LOG_FILE" 2>&1 &
 sleep 6
 

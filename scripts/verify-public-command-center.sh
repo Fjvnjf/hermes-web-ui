@@ -52,9 +52,9 @@ grep -q "Hermes Command Center" "$js_file" \
   || fail "bundle missing Hermes Command Center branding"
 echo "PUBLIC_VERIFY_OK branding"
 
-grep -Eq "Checking Secure Session|Validating your private command center link|Secure Link Required" "$js_file" \
-  || fail "bundle missing auth token gate"
-echo "PUBLIC_VERIFY_OK auth-token-gate"
+grep -Eq "Enter Command Center|Sign In" "$js_file" \
+  || fail "bundle missing command center login"
+echo "PUBLIC_VERIFY_OK command-login"
 
 if grep -Eq "Enter your username and password|Private Command Center|Private dashboard" "$js_file"; then
   fail "bundle still contains removed login copy"

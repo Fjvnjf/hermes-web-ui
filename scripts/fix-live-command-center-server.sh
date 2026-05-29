@@ -29,6 +29,29 @@ find_cloudflared() {
   return 1
 }
 
+resolve_hermes_bin() {
+  if [ -n "${HERMES_BIN:-}" ] && [ -x "$HERMES_BIN" ]; then
+    echo "$HERMES_BIN"
+    return 0
+  fi
+  if command -v hermes >/dev/null 2>&1; then
+    command -v hermes
+    return 0
+  fi
+  for candidate in \
+    /home/ubuntu/.local/bin/hermes \
+    /home/ubuntu/.hermes/hermes-agent/venv/bin/hermes \
+    /home/ubuntu/.hermes/hermes-agent/hermes
+  do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  echo "Unable to locate Hermes CLI. Set HERMES_BIN to the hermes executable." >&2
+  exit 1
+}
+
 wait_for_dashboard() {
   local deadline=$((SECONDS + 45))
   until curl -fsSI http://127.0.0.1:8648 >/dev/null 2>&1; do
@@ -69,8 +92,8 @@ verify_served_bundle() {
     exit 1
   }
 
-  grep -Eq "Checking Secure Session|Validating your private command center link|Secure Link Required" "$js_file" || {
-    echo "${label}_MISSING_AUTH_TOKEN_GATE" >&2
+  grep -Eq "Enter Command Center|Sign In" "$js_file" || {
+    echo "${label}_MISSING_COMMAND_LOGIN" >&2
     exit 1
   }
 
@@ -235,8 +258,8 @@ grep -R "Hermes Command Center" dist/client >/dev/null || {
   exit 1
 }
 
-grep -RE "Checking Secure Session|Validating your private command center link|Secure Link Required" dist/client >/dev/null || {
-  echo "DIST_MISSING_AUTH_TOKEN_GATE" >&2
+grep -RE "Enter Command Center|Sign In" dist/client >/dev/null || {
+  echo "DIST_MISSING_COMMAND_LOGIN" >&2
   exit 1
 }
 
@@ -254,6 +277,12 @@ pkill -f "$APP_DIR/dist/server/index.js" || true
 pkill -f "hermes-web-ui start" || true
 sleep 2
 
+HERMES_BIN="$(resolve_hermes_bin)"
+export HERMES_BIN
+export HERMES_HOME="${HERMES_HOME:-/home/ubuntu/.hermes}"
+export HERMES_WEB_UI_HOME="${HERMES_WEB_UI_HOME:-/home/ubuntu/.hermes-web-ui}"
+export PATH="$(dirname "$HERMES_BIN"):$PATH"
+echo "HERMES_BIN=$HERMES_BIN"
 nohup /usr/bin/node "$APP_DIR/dist/server/index.js" > "$LOG_FILE" 2>&1 &
 sleep 2
 wait_for_dashboard
