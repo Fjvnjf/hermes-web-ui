@@ -75,7 +75,7 @@ vi.mock('@/components/common/RouteLinkItem.vue', () => ({
   default: {
     name: 'RouteLinkItem',
     props: ['to', 'active'],
-    template: '<a class="route-link-item" :class="{ active }" href="#"><slot /></a>',
+    template: '<a class="route-link-item" :class="{ active }" :data-route-name="to && to.name" href="#"><slot /></a>',
   },
 }))
 
@@ -100,6 +100,7 @@ import AppSidebar from '@/components/layout/AppSidebar.vue'
 
 describe('AppSidebar search entry', () => {
   beforeEach(() => {
+    window.localStorage.removeItem('hermes.sidebar.collapsedGroups')
     openSessionSearchMock.mockClear()
     mockAppStore.serverVersion = 'test'
     mockAppStore.latestVersion = ''
@@ -169,17 +170,55 @@ describe('AppSidebar search entry', () => {
 
     expect(wrapper.classes()).toContain('collapsed')
     expect(wrapper.findAll('.nav-group-label span').map(node => node.text())).toEqual([
-      'CONV',
-      'AGT',
-      'MON',
-      'TOOL',
+      'WORK',
+      'LIB',
+      'RPT',
+      'MEM',
       'SYS',
+      'DEV',
+    ])
+    expect(wrapper.findAll('.nav-group-label').map(node => node.attributes('title'))).toEqual([
+      'Research Workspace',
+      'Research Library',
+      'Reports',
+      'Memory',
+      'Hermes System',
+      'Developer Tools',
     ])
 
-    const agentGroup = wrapper.findAll('.nav-group')[1]
-    expect(agentGroup.find('.nav-group-items').attributes('style')).toBeUndefined()
+    const routeNames = wrapper.findAll('.route-link-item').map(node => node.attributes('data-route-name'))
+    expect(routeNames).toEqual(expect.arrayContaining([
+      'hermes.dashboard',
+      'hermes.chat',
+      'hermes.feasibility',
+      'hermes.projects',
+      'hermes.files',
+      'hermes.kanban',
+      'hermes.research',
+      'hermes.history',
+      'hermes.reportsHub',
+      'hermes.usage',
+      'hermes.skillsUsage',
+      'hermes.memory',
+      'hermes.jobs',
+      'hermes.channels',
+      'hermes.skills',
+      'hermes.plugins',
+      'hermes.models',
+      'hermes.profiles',
+      'hermes.settings',
+      'hermes.groupChat',
+      'hermes.terminal',
+      'hermes.logs',
+      'hermes.performance',
+      'hermes.versionPreview',
+    ]))
 
-    await agentGroup.find('.nav-group-label').trigger('click')
-    expect(agentGroup.find('.nav-group-items').attributes('style')).toContain('display: none')
+    const libraryGroup = wrapper.findAll('.nav-group')[1]
+    expect(libraryGroup.text()).toContain('sidebar.search')
+    expect(libraryGroup.find('.nav-group-items').attributes('style')).toBeUndefined()
+
+    await libraryGroup.find('.nav-group-label').trigger('click')
+    expect(libraryGroup.find('.nav-group-items').attributes('style')).toContain('display: none')
   })
 })

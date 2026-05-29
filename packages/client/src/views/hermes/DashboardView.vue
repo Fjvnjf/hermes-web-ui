@@ -70,69 +70,110 @@ const kpis = computed(() => [
   },
 ])
 
+const workspaceActions = [
+  {
+    label: 'Continue Chat',
+    detail: 'Resume Hermes conversation work.',
+    to: { name: 'hermes.chat' },
+  },
+  {
+    label: 'Open Feasibility Studio',
+    detail: 'Work on feasibility drafts, questions, gaps, and outputs.',
+    to: { name: 'hermes.feasibility' },
+  },
+  {
+    label: 'Open Projects',
+    detail: 'Choose the research or feasibility workspace to continue.',
+    to: { name: 'hermes.projects' },
+  },
+  {
+    label: 'Open Research Library',
+    detail: 'Use history, memory, and saved evidence paths.',
+    to: { name: 'hermes.research' },
+  },
+  {
+    label: 'Open Documents',
+    detail: 'Access Hermes files and uploaded evidence.',
+    to: { name: 'hermes.files' },
+  },
+  {
+    label: 'Open Tasks',
+    detail: 'Track work in the existing Kanban board.',
+    to: { name: 'hermes.kanban' },
+  },
+  {
+    label: 'Open Reports',
+    detail: 'Prepare outputs and check existing usage analytics.',
+    to: { name: 'hermes.reportsHub' },
+  },
+  {
+    label: 'Open Memory',
+    detail: 'Review retained Hermes memory.',
+    to: { name: 'hermes.memory' },
+  },
+]
+
 const workstreams = [
   {
-    group: 'Conversation',
-    title: 'Realtime Command Channel',
-    detail: 'Chat, history, group rooms, session search.',
-    to: { name: 'hermes.chat' },
+    group: 'Feasibility',
+    title: 'Chemicon Feasibility Workspace',
+    detail: 'Focus area for feasibility drafts, questions, evidence gaps, documents, tasks, and reports.',
+    to: { name: 'hermes.feasibility' },
     links: [
+      { label: 'Studio', to: { name: 'hermes.feasibility' } },
       { label: 'Chat', to: { name: 'hermes.chat' } },
+      { label: 'Tasks', to: { name: 'hermes.kanban' } },
+    ],
+  },
+  {
+    group: 'Research',
+    title: 'Research Library',
+    detail: 'Use existing Hermes history, memory, and files as the research backbone.',
+    to: { name: 'hermes.research' },
+    links: [
+      { label: 'Library', to: { name: 'hermes.research' } },
       { label: 'History', to: { name: 'hermes.history' } },
-      { label: 'Group Chat', to: { name: 'hermes.groupChat' } },
+      { label: 'Memory', to: { name: 'hermes.memory' } },
     ],
   },
   {
-    group: 'Agent',
-    title: 'Agent Operations',
-    detail: 'Jobs, kanban, skills, plugins, memory, models.',
-    to: { name: 'hermes.jobs' },
-    links: [
-      { label: 'Jobs', to: { name: 'hermes.jobs' } },
-      { label: 'Kanban', to: { name: 'hermes.kanban' } },
-      { label: 'Models', to: { name: 'hermes.models' } },
-    ],
-  },
-  {
-    group: 'Monitoring',
-    title: 'Runtime Telemetry',
-    detail: 'Logs, usage, performance, skills usage.',
-    to: { name: 'hermes.performance' },
-    links: [
-      { label: 'Logs', to: { name: 'hermes.logs' } },
-      { label: 'Usage', to: { name: 'hermes.usage' } },
-      { label: 'Performance', to: { name: 'hermes.performance' } },
-    ],
-  },
-  {
-    group: 'Tools',
-    title: 'Workspace Tools',
-    detail: 'Files, terminal, preview controls.',
+    group: 'Documents',
+    title: 'Evidence and Documents',
+    detail: 'Open the original Files area for documents, uploads, and working evidence.',
     to: { name: 'hermes.files' },
     links: [
-      { label: 'Files', to: { name: 'hermes.files' } },
-      { label: 'Terminal', to: { name: 'hermes.terminal' } },
-      { label: 'Preview', to: { name: 'hermes.versionPreview' } },
+      { label: 'Documents', to: { name: 'hermes.files' } },
+      { label: 'Projects', to: { name: 'hermes.projects' } },
+      { label: 'Reports', to: { name: 'hermes.reportsHub' } },
     ],
   },
   {
-    group: 'System',
-    title: 'Control Plane',
-    detail: 'Profiles, settings, channels, credentials.',
+    group: 'Hermes',
+    title: 'System Control Links',
+    detail: 'Keep the original Hermes system controls reachable without crowding daily work.',
     to: { name: 'hermes.settings' },
     links: [
-      { label: 'Profiles', to: { name: 'hermes.profiles' } },
       { label: 'Settings', to: { name: 'hermes.settings' } },
-      { label: 'Channels', to: { name: 'hermes.channels' } },
+      { label: 'Models', to: { name: 'hermes.models' } },
+      { label: 'Terminal', to: { name: 'hermes.terminal' } },
     ],
   },
 ]
 
 const commandLinks = [
+  { label: 'Settings', to: { name: 'hermes.settings' } },
+  { label: 'Models', to: { name: 'hermes.models' } },
+  { label: 'Profiles', to: { name: 'hermes.profiles' } },
+  { label: 'Jobs', to: { name: 'hermes.jobs' } },
+  { label: 'Channels', to: { name: 'hermes.channels' } },
   { label: 'Skills', to: { name: 'hermes.skills' } },
   { label: 'Plugins', to: { name: 'hermes.plugins' } },
-  { label: 'Memory', to: { name: 'hermes.memory' } },
+  { label: 'Logs', to: { name: 'hermes.logs' } },
+  { label: 'Performance', to: { name: 'hermes.performance' } },
+  { label: 'Usage', to: { name: 'hermes.usage' } },
   { label: 'Skills Usage', to: { name: 'hermes.skillsUsage' } },
+  { label: 'Version Preview', to: { name: 'hermes.versionPreview' } },
+  { label: 'Group Chat', to: { name: 'hermes.groupChat' } },
 ]
 
 function formatSessionTitle(session: SessionSummary): string {
@@ -202,10 +243,11 @@ onMounted(() => {
     <header class="page-header dashboard-header">
       <div>
         <h2 class="header-title">Hermes Command Center</h2>
-        <div class="header-subtitle">Live operations overview</div>
+        <div class="header-subtitle">Research workspace overview</div>
       </div>
       <div class="dashboard-actions">
-        <RouterLink class="command-btn primary" :to="{ name: 'hermes.chat' }">New Chat</RouterLink>
+        <RouterLink class="command-btn primary" :to="{ name: 'hermes.chat' }">Continue Chat</RouterLink>
+        <RouterLink class="command-btn" :to="{ name: 'hermes.feasibility' }">Feasibility</RouterLink>
         <button class="command-btn" type="button" :disabled="loading" @click="loadDashboard">
           {{ loading ? 'Refreshing' : 'Refresh' }}
         </button>
@@ -219,6 +261,13 @@ onMounted(() => {
         </span>
         <span v-if="lastUpdated" class="status-chip muted">Updated {{ lastUpdated }}</span>
         <span v-if="loadWarning" class="status-chip warn">{{ loadWarning }}</span>
+      </section>
+
+      <section class="workspace-action-grid" aria-label="Research workspace shortcuts">
+        <RouterLink v-for="action in workspaceActions" :key="action.label" class="workspace-action" :to="action.to">
+          <span>{{ action.label }}</span>
+          <small>{{ action.detail }}</small>
+        </RouterLink>
       </section>
 
       <section class="kpi-grid" aria-label="Runtime metrics">
@@ -281,7 +330,7 @@ onMounted(() => {
 
         <article class="ops-panel">
           <div class="panel-title">
-            <h3>Command Links</h3>
+            <h3>Hermes System</h3>
             <RouterLink :to="{ name: 'hermes.settings' }">Settings</RouterLink>
           </div>
           <div class="command-link-grid">
@@ -408,11 +457,45 @@ onMounted(() => {
   }
 }
 
+.workspace-action-grid,
 .kpi-grid,
 .workstream-grid,
 .ops-grid {
   display: grid;
   gap: 12px;
+}
+
+.workspace-action-grid {
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  margin-bottom: 12px;
+}
+
+.workspace-action {
+  display: grid;
+  gap: 8px;
+  min-height: 90px;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+  color: $text-primary;
+
+  &:hover {
+    border-color: $accent-info;
+    background: $bg-card-hover;
+  }
+
+  span {
+    color: $accent-primary;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.45;
+  }
 }
 
 .kpi-grid {

@@ -18,6 +18,26 @@ const router = createRouter({
       component: () => import('@/views/hermes/ChatView.vue'),
     },
     {
+      path: '/hermes/projects',
+      name: 'hermes.projects',
+      component: () => import('@/views/hermes/ProjectsView.vue'),
+    },
+    {
+      path: '/hermes/feasibility',
+      name: 'hermes.feasibility',
+      component: () => import('@/views/hermes/FeasibilityStudioView.vue'),
+    },
+    {
+      path: '/hermes/research',
+      name: 'hermes.research',
+      component: () => import('@/views/hermes/ResearchLibraryView.vue'),
+    },
+    {
+      path: '/hermes/reports',
+      name: 'hermes.reportsHub',
+      component: () => import('@/views/hermes/ReportsHubView.vue'),
+    },
+    {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
       component: () => import('@/views/hermes/ChatView.vue'),
