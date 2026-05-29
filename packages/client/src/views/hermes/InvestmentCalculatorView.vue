@@ -53,10 +53,20 @@ const investmentEvidenceGaps = computed(() => listInvestmentEvidenceGaps(scenari
 const topInvestmentEvidenceGaps = computed(() => investmentEvidenceGaps.value.slice(0, 10))
 const draftableFinancialOutputs = computed(() => hasUsableInvestmentOutputs(result.value))
 const financialEvidenceStatus = computed<IntelligenceEvidenceStatus>(() => {
-  if (result.value.incomplete || evidenceSummary.value.toVerify > 0) return 'To Verify'
+  if (!draftableFinancialOutputs.value || evidenceSummary.value.toVerify > 0) return 'To Verify'
   if (evidenceSummary.value.assumptions > 0) return 'Derived from Assumptions'
   return 'User Approved'
 })
+const financialPresentationEvidenceStatus = computed<IntelligenceEvidenceStatus>(() => {
+  if (financialEvidenceStatus.value === 'User Approved') return 'User Approved'
+  if (financialEvidenceStatus.value === 'Derived from Assumptions') return 'Derived from Assumptions'
+  return 'To Verify'
+})
+const financialDraftButtonLabel = computed(() =>
+  financialPresentationEvidenceStatus.value === 'To Verify'
+    ? 'Stage To Verify finance draft'
+    : 'Add assumption-labeled draft',
+)
 const latestFinancialModel = intelligence.latestFinancialModel
 
 const evidenceOptions: EvidenceStatus[] = ['Assumption', 'User Provided', 'To Verify', 'Verified']
@@ -139,6 +149,11 @@ async function copySummary() {
 }
 
 function financialSummaryText(): string {
+  const safetyLabel = financialEvidenceStatus.value === 'To Verify'
+    ? 'Some outputs depend on To Verify inputs and must not be used as investor claims until evidence is resolved.'
+    : financialEvidenceStatus.value === 'Derived from Assumptions'
+      ? 'All outputs are derived from assumptions and must not be treated as verified investor claims without source evidence.'
+      : 'Outputs are based on user-approved or source-backed inputs, but still require final investor review.'
   return [
     `Project: ${scenario.value.projectName}`,
     `Scenario: ${activeScenario.value}`,
@@ -157,7 +172,7 @@ function financialSummaryText(): string {
     '',
     result.value.warnings.length ? `Warnings:\n- ${result.value.warnings.join('\n- ')}` : 'Warnings: none from calculator completeness checks',
     '',
-    'All outputs are derived from assumptions and must not be treated as verified investor claims without source evidence.',
+    safetyLabel,
   ].join('\n')
 }
 
@@ -305,14 +320,18 @@ function addFinancialSummaryToDraft() {
   intelligence.addPresentationMaterial({
     section: 'IRR / Investor Return',
     content: financialSummaryText(),
-    evidenceStatus: financialEvidenceStatus.value === 'User Approved' ? 'User Approved' : 'Derived from Assumptions',
+    evidenceStatus: financialPresentationEvidenceStatus.value,
     source: {
       title: `IRR calculator ${activeScenario.value} scenario`,
       date: new Date().toISOString().slice(0, 10),
     },
   })
-  intelligence.updateEvidenceStatus('presentation', 'User Approved')
-  message.success('Assumption-labeled financial summary staged for investor draft')
+  if (financialPresentationEvidenceStatus.value === 'To Verify') {
+    message.warning('Financial summary staged as To Verify and excluded from investor slides until weak inputs are resolved')
+  } else {
+    intelligence.updateEvidenceStatus('presentation', 'User Approved')
+    message.success('Assumption-labeled financial summary staged for investor draft')
+  }
 }
 </script>
 
@@ -362,11 +381,11 @@ function addFinancialSummaryToDraft() {
       </article>
       <article class="status-actions">
         <NButton secondary type="primary" @click="saveFinancialSnapshot">Save financial snapshot</NButton>
-        <NButton secondary @click="addFinancialSummaryToDraft">Add assumption-labeled draft</NButton>
+        <NButton secondary @click="addFinancialSummaryToDraft">{{ financialDraftButtonLabel }}</NButton>
         <NButton secondary :loading="creatingFinancialTask" @click="createFinancialEvidenceTask">Create financial evidence task</NButton>
         <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>
         <small v-if="draftableFinancialOutputs">
-          Can stage as investor draft text, but weak inputs stay labeled as assumptions or To Verify.
+          Can stage as draft text. To Verify outputs stay excluded from investor slides; assumption-only outputs stay labeled as derived from assumptions.
         </small>
         <small v-else>
           Add capex and revenue until NPV/IRR are calculable before staging output.

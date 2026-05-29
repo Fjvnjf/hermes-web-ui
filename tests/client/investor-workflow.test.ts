@@ -9,6 +9,7 @@ import {
   listInvestmentEvidenceGaps,
   npv,
   summarizeInvestmentEvidence,
+  type EvidenceStatus,
 } from '@/utils/investmentCalculator'
 import {
   buildInvestorPresentationDraft,
@@ -138,6 +139,31 @@ import FeasibilityStudioView from '@/views/hermes/FeasibilityStudioView.vue'
 import InvestmentCalculatorView from '@/views/hermes/InvestmentCalculatorView.vue'
 import ResearchLibraryView from '@/views/hermes/ResearchLibraryView.vue'
 import ReportsHubView from '@/views/hermes/ReportsHubView.vue'
+
+function markScenarioEvidenceStatus(scenario: ReturnType<typeof createEmptyInvestmentScenario>, evidenceStatus: EvidenceStatus) {
+  scenario.setupMonths.evidenceStatus = evidenceStatus
+  scenario.discountRate.evidenceStatus = evidenceStatus
+  scenario.taxRate.evidenceStatus = evidenceStatus
+  scenario.salvageValue.evidenceStatus = evidenceStatus
+  scenario.products.forEach(product => {
+    product.evidenceStatus = evidenceStatus
+  })
+  Object.values(scenario.variableCostPerTon).forEach(item => {
+    item.evidenceStatus = evidenceStatus
+  })
+  Object.values(scenario.annualFixedCosts).forEach(item => {
+    item.evidenceStatus = evidenceStatus
+  })
+  Object.values(scenario.capex).forEach(item => {
+    item.evidenceStatus = evidenceStatus
+  })
+  Object.values(scenario.workingCapital).forEach(item => {
+    item.evidenceStatus = evidenceStatus
+  })
+  Object.values(scenario.funding).forEach(item => {
+    item.evidenceStatus = evidenceStatus
+  })
+}
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -775,6 +801,7 @@ describe('investor readiness pages', () => {
   it('stages calculable financial outputs as assumption-labeled investor material', async () => {
     const intelligence = useFeasibilityIntelligence()
     const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    markScenarioEvidenceStatus(base, 'Assumption')
     base.capex.machinery.value = 1000
     base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
     base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
@@ -790,7 +817,7 @@ describe('investor readiness pages', () => {
     })
     const addButton = wrapper.findAll('button').find(button => button.text() === 'Add assumption-labeled draft')
 
-    expect(wrapper.text()).toContain('Can stage as investor draft text')
+    expect(wrapper.text()).toContain('assumption-only outputs stay labeled as derived from assumptions')
     expect(addButton).toBeTruthy()
     await addButton!.trigger('click')
 
@@ -800,6 +827,35 @@ describe('investor readiness pages', () => {
     const draft = buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)
     expect(draft.length).toBeGreaterThan(0)
     expect(draft.every(item => item.evidenceStatus === 'Derived from Assumptions')).toBe(true)
+  })
+
+  it('keeps To Verify financial outputs excluded from investor slides even when calculable', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    base.capex.machinery.value = 1000
+    base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    base.variableCostPerTon.rawMaterials.value = 20
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const addButton = wrapper.findAll('button').find(button => button.text() === 'Stage To Verify finance draft')
+
+    expect(wrapper.text()).toContain('To Verify outputs stay excluded from investor slides')
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+
+    expect(intelligence.state.value.presentationMaterials[0].section).toBe('IRR / Investor Return')
+    expect(intelligence.state.value.presentationMaterials[0].evidenceStatus).toBe('To Verify')
+    expect(intelligence.state.value.presentationMaterials[0].content).toContain('Some outputs depend on To Verify inputs')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'presentation')?.evidenceStatus).toBe('Missing')
   })
 
   it('creates a Kanban task for weak financial model evidence without approving outputs', async () => {
