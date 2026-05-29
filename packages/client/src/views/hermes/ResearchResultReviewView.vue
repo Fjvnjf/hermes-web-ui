@@ -18,6 +18,7 @@ const creatingTaskId = ref('')
 const creatingJobTaskId = ref('')
 const savingMemoryId = ref('')
 const savingMarketClaimId = ref('')
+const savingCompetitorId = ref('')
 
 const areaOptions: Array<{ value: EvidenceArea; label: string }> = [
   { value: 'companyLegal', label: 'Company / Legal' },
@@ -241,6 +242,59 @@ function saveAsMarketClaim(item: ResearchReviewFinding) {
     }
   } finally {
     savingMarketClaimId.value = ''
+  }
+}
+
+function reviewLine(item: ResearchReviewFinding, label: string): string {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = item.summary.match(new RegExp(`^${escaped}:\\s*(.+)$`, 'im'))
+  return match?.[1]?.trim() || ''
+}
+
+function competitorNameFromFinding(item: ResearchReviewFinding): string {
+  const structured = reviewLine(item, 'Competitor')
+  if (structured && structured !== 'To Verify') return structured
+  const keyMatch = item.keyClaim.match(/^Competitor(?: evidence| research)?:\s*(.+)$/i)
+  return keyMatch?.[1]?.trim() || item.keyClaim.replace(/^Competitor\s*/i, '').trim() || 'Competitor to verify'
+}
+
+function isCompetitorFinding(item: ResearchReviewFinding): boolean {
+  const text = `${item.keyClaim} ${item.summary}`.toLowerCase()
+  return item.area === 'market' && (text.includes('competitor') || text.includes('market share'))
+}
+
+function normalizedMarketShareValue(value: string): string {
+  const trimmed = value.trim()
+  return trimmed && !['to verify', 'unknown', 'missing'].includes(trimmed.toLowerCase()) ? trimmed : ''
+}
+
+function saveAsCompetitorRecord(item: ResearchReviewFinding) {
+  savingCompetitorId.value = item.id
+  try {
+    const saved = intelligence.addCompetitor({
+      companyName: competitorNameFromFinding(item),
+      countryRegion: reviewLine(item, 'Region') || 'To Verify',
+      productEquivalent: reviewLine(item, 'Product equivalent') || 'To Verify',
+      activeContent: reviewLine(item, 'Active content') || 'To Verify',
+      pricingEvidence: reviewLine(item, 'Pricing evidence') || 'Missing',
+      certifications: reviewLine(item, 'Certifications') || 'To Verify',
+      distributionPresence: reviewLine(item, 'Distribution presence') || 'To Verify',
+      marketShare: normalizedMarketShareValue(reviewLine(item, 'Market share')),
+      evidenceStatus: item.evidenceStatus,
+      source: item.source || null,
+      notes: [
+        reviewLine(item, 'Notes') || item.summary,
+        `Source finding: ${item.keyClaim}`,
+        'Saved from Research Result Review. Do not use in investor material until evidence status and source quality are approved.',
+      ].join('\n'),
+    })
+    if (item.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+      message.warning('Competitor record saved as To Verify because verified records need usable source evidence')
+    } else {
+      message.success('Research finding saved as Competitor Intelligence evidence')
+    }
+  } finally {
+    savingCompetitorId.value = ''
   }
 }
 
@@ -481,6 +535,15 @@ async function createTask(item: ResearchReviewFinding) {
             @click="saveAsMarketClaim(item)"
           >
             Save as market claim
+          </NButton>
+          <NButton
+            v-if="isCompetitorFinding(item)"
+            size="tiny"
+            secondary
+            :loading="savingCompetitorId === item.id"
+            @click="saveAsCompetitorRecord(item)"
+          >
+            Save as competitor record
           </NButton>
           <NButton size="tiny" quaternary @click="markToVerify(item)">Mark To Verify</NButton>
           <NButton size="tiny" quaternary @click="rejectFinding(item)">Reject</NButton>

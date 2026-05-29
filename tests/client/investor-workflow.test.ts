@@ -1113,6 +1113,76 @@ describe('investor readiness pages', () => {
     expect(claim.source).toBeNull()
   })
 
+  it('saves reviewed competitor research as a structured Competitor Intelligence record', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: [
+        'Competitor: Example Softener Co',
+        'Region: China',
+        'Product equivalent: CWAS equivalent',
+        'Active content: 90% active content',
+        'Pricing evidence: Distributor quote note',
+        'Certifications: To Verify',
+        'Distribution presence: Distributor in China',
+        'Market share: To Verify',
+        'Notes: Pricing source needs investor review before use.',
+      ].join('\n'),
+      keyClaim: 'Competitor evidence: Example Softener Co',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source: { title: 'Distributor quote', date: '2026-05-30' },
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save as competitor record')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    const competitor = intelligence.state.value.competitors[0]
+    expect(competitor.companyName).toBe('Example Softener Co')
+    expect(competitor.productEquivalent).toBe('CWAS equivalent')
+    expect(competitor.pricingEvidence).toBe('Distributor quote note')
+    expect(competitor.evidenceStatus).toBe('Verified')
+    expect(competitor.source?.title).toBe('Distributor quote')
+    expect(formatMarketShare(competitor.marketShare)).toBe('To Verify')
+  })
+
+  it('keeps unsourced reviewed competitor research To Verify when saved as a competitor record', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: [
+        'Competitor: Unsourced Competitor',
+        'Region: To Verify',
+        'Product equivalent: To Verify',
+        'Active content: To Verify',
+        'Pricing evidence: Missing',
+        'Market share: 12%',
+        'Notes: No usable source attached.',
+      ].join('\n'),
+      keyClaim: 'Competitor evidence: Unsourced Competitor',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'high',
+      source: null,
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save as competitor record')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    const competitor = intelligence.state.value.competitors[0]
+    expect(competitor.companyName).toBe('Unsourced Competitor')
+    expect(competitor.marketShare).toBe('12%')
+    expect(competitor.evidenceStatus).toBe('To Verify')
+    expect(competitor.source).toBeNull()
+  })
+
   it('prefills a To Verify finding draft from a research job without approving it', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchJob({
