@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
+  type DataRoomSourceRecord,
   type EvidenceArea,
   type FeasibilityEvidenceItem,
   useFeasibilityIntelligence,
@@ -20,6 +21,7 @@ interface DataRoomItem {
   sourceHint: string
   status: IntelligenceEvidenceStatus
   source: SourceReference | null
+  sourceRecord: DataRoomSourceRecord | null
   updatedAt: string
   routeName: string
 }
@@ -35,6 +37,14 @@ const evidenceForm = ref({
   sourceTitle: '',
   sourceUrl: '',
   sourceDate: '',
+})
+const dataRoomSourceForm = ref({
+  checklistLabel: 'Company registration and business scope',
+  evidenceStatus: 'User Provided' as IntelligenceEvidenceStatus,
+  sourceTitle: '',
+  sourceUrl: '',
+  sourceDate: '',
+  notes: '',
 })
 
 const routeByEvidenceId: Record<EvidenceArea, string> = {
@@ -102,18 +112,41 @@ const dataRoomChecklist: Array<{ label: string; area: EvidenceArea; sourceHint: 
 ]
 
 const evidenceByArea = computed(() => new Map(sections.value.map(item => [item.id, item])))
+const latestSourceByChecklist = computed(() => {
+  const map = new Map<string, DataRoomSourceRecord>()
+  for (const record of intelligence.state.value.dataRoomSources) {
+    if (!map.has(record.checklistLabel)) map.set(record.checklistLabel, record)
+  }
+  return map
+})
+const dataRoomSourceRecords = computed(() => intelligence.state.value.dataRoomSources.slice(0, 8))
+const dataRoomSourceCount = computed(() => intelligence.state.value.dataRoomSources.length)
+const dataRoomSourceStatusOptions: IntelligenceEvidenceStatus[] = [
+  'To Verify',
+  'Missing',
+  'Assumption',
+  'User Provided',
+  'User Approved',
+  'Verified',
+]
 
 const dataRoomItems = computed<DataRoomItem[]>(() =>
   dataRoomChecklist.map(item => {
     const evidence = evidenceByArea.value.get(item.area)
+    const sourceRecord = latestSourceByChecklist.value.get(item.label) || null
     return {
       ...item,
-      status: evidence?.evidenceStatus || 'To Verify',
-      source: evidence?.source || null,
-      updatedAt: evidence?.updatedAt || '',
+      status: sourceRecord?.evidenceStatus || evidence?.evidenceStatus || 'To Verify',
+      source: sourceRecord?.source || evidence?.source || null,
+      sourceRecord,
+      updatedAt: sourceRecord?.updatedAt || evidence?.updatedAt || '',
       routeName: evidence?.routeName || routeByEvidenceId[item.area],
     }
   }),
+)
+
+const selectedDataRoomChecklistItem = computed(() =>
+  dataRoomChecklist.find(item => item.label === dataRoomSourceForm.value.checklistLabel) || dataRoomChecklist[0],
 )
 
 function formatSource(source?: SourceReference | null): string {
@@ -232,12 +265,31 @@ function resetEvidenceForm() {
   }
 }
 
+function resetDataRoomSourceForm() {
+  dataRoomSourceForm.value = {
+    checklistLabel: dataRoomSourceForm.value.checklistLabel,
+    evidenceStatus: 'User Provided',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+    notes: '',
+  }
+}
+
 function updateEvidenceArea(event: Event) {
   evidenceForm.value.area = (event.target as HTMLSelectElement).value as EvidenceArea
 }
 
 function updateEvidenceStatus(event: Event) {
   evidenceForm.value.evidenceStatus = (event.target as HTMLSelectElement).value as IntelligenceEvidenceStatus
+}
+
+function updateDataRoomChecklistLabel(event: Event) {
+  dataRoomSourceForm.value.checklistLabel = (event.target as HTMLSelectElement).value
+}
+
+function updateDataRoomSourceStatus(event: Event) {
+  dataRoomSourceForm.value.evidenceStatus = (event.target as HTMLSelectElement).value as IntelligenceEvidenceStatus
 }
 
 function saveEvidenceStatus() {
@@ -251,6 +303,49 @@ function saveEvidenceStatus() {
     message.success('Readiness evidence status saved')
   }
   resetEvidenceForm()
+}
+
+function dataRoomSourceFromForm(): SourceReference | null {
+  const title = dataRoomSourceForm.value.sourceTitle.trim()
+  if (!title) return null
+  return {
+    title,
+    url: dataRoomSourceForm.value.sourceUrl.trim() || undefined,
+    date: dataRoomSourceForm.value.sourceDate.trim() || undefined,
+  }
+}
+
+function saveDataRoomSource() {
+  const checklistItem = selectedDataRoomChecklistItem.value
+  if (!checklistItem) {
+    message.error('Select a data-room checklist item first')
+    return
+  }
+  const source = dataRoomSourceFromForm()
+  const requestedStatus = dataRoomSourceForm.value.evidenceStatus
+  const saved = intelligence.addDataRoomSource({
+    checklistLabel: checklistItem.label,
+    area: checklistItem.area,
+    evidenceStatus: requestedStatus,
+    source,
+    notes: dataRoomSourceForm.value.notes.trim(),
+  })
+  if (requestedStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Data-room source kept To Verify because Verified requires source title plus URL or date')
+  } else {
+    message.success('Data-room source saved and readiness status updated')
+  }
+  resetDataRoomSourceForm()
+}
+
+function removeDataRoomSource(record: DataRoomSourceRecord) {
+  const ok = window.confirm(`Remove source record "${record.checklistLabel}" from this browser workspace?`)
+  if (!ok) return
+  if (intelligence.removeDataRoomSource(record.id)) {
+    message.success('Data-room source removed')
+  } else {
+    message.error('Data-room source was not found')
+  }
 }
 
 function isStageableForInvestorDraft(status: IntelligenceEvidenceStatus): boolean {
@@ -285,7 +380,9 @@ function addToInvestorDraft(item: ReadinessSection) {
 
 defineExpose({
   evidenceForm,
+  dataRoomSourceForm,
   saveEvidenceStatus,
+  saveDataRoomSource,
 })
 </script>
 
@@ -355,6 +452,46 @@ defineExpose({
       <NButton secondary type="primary" @click="saveEvidenceStatus">Save evidence status</NButton>
     </section>
 
+    <section class="evidence-intake data-source-intake" aria-label="Save data-room source">
+      <div>
+        <p class="eyebrow">Data room source register</p>
+        <h3>Attach a source to a specific checklist item</h3>
+        <p>
+          Save documents, quotes, interviews, or reviewed notes against the investor data-room checklist. Verified
+          sources require a source title plus URL or date; otherwise they remain To Verify.
+        </p>
+      </div>
+      <label>
+        Checklist item
+        <select :value="dataRoomSourceForm.checklistLabel" @change="updateDataRoomChecklistLabel">
+          <option v-for="item in dataRoomChecklist" :key="item.label" :value="item.label">{{ item.label }}</option>
+        </select>
+      </label>
+      <label>
+        Evidence status
+        <select :value="dataRoomSourceForm.evidenceStatus" @change="updateDataRoomSourceStatus">
+          <option v-for="status in dataRoomSourceStatusOptions" :key="status" :value="status">{{ status }}</option>
+        </select>
+      </label>
+      <label>
+        Source title
+        <input v-model="dataRoomSourceForm.sourceTitle" type="text" placeholder="Document, quote, source, or reviewed note" />
+      </label>
+      <label>
+        Source URL
+        <input v-model="dataRoomSourceForm.sourceUrl" type="url" placeholder="https://... or leave blank" />
+      </label>
+      <label>
+        Source date
+        <input v-model="dataRoomSourceForm.sourceDate" type="text" placeholder="YYYY-MM-DD or source date" />
+      </label>
+      <label class="wide">
+        Notes
+        <input v-model="dataRoomSourceForm.notes" type="text" placeholder="Why this source matters, or what still needs checking" />
+      </label>
+      <NButton secondary type="primary" @click="saveDataRoomSource">Save data-room source</NButton>
+    </section>
+
     <section class="readiness-grid" aria-label="Investor readiness sections">
       <article v-for="item in sections" :key="item.label" class="readiness-card">
         <div class="card-head">
@@ -411,6 +548,8 @@ defineExpose({
           <div>
             <strong>{{ item.label }}</strong>
             <small>{{ item.source ? formatSource(item.source) : item.sourceHint }}</small>
+            <small v-if="item.sourceRecord?.notes" class="source-note">{{ item.sourceRecord.notes }}</small>
+            <small v-if="item.updatedAt" class="source-note">Updated {{ new Date(item.updatedAt).toLocaleString() }}</small>
           </div>
           <div class="data-room-actions">
             <span :class="sourceClass(item)">{{ item.status }}</span>
@@ -426,6 +565,32 @@ defineExpose({
           </div>
         </li>
       </ul>
+    </section>
+
+    <section class="data-room source-register">
+      <div>
+        <p class="eyebrow">Source register</p>
+        <h3>{{ dataRoomSourceCount }} Saved Data-Room Source{{ dataRoomSourceCount === 1 ? '' : 's' }}</h3>
+      </div>
+      <ul v-if="dataRoomSourceRecords.length">
+        <li v-for="record in dataRoomSourceRecords" :key="record.id">
+          <div>
+            <strong>{{ record.checklistLabel }}</strong>
+            <small>{{ record.source ? formatSource(record.source) : 'Source missing' }}</small>
+            <small v-if="record.notes" class="source-note">{{ record.notes }}</small>
+          </div>
+          <div class="data-room-actions">
+            <span :class="sourceClass({ status: record.evidenceStatus })">{{ record.evidenceStatus }}</span>
+            <NButton size="tiny" quaternary type="error" @click="removeDataRoomSource(record)">
+              Remove
+            </NButton>
+          </div>
+        </li>
+      </ul>
+      <p v-else class="empty-state">
+        No checklist-specific source records yet. Save source-backed evidence above as documents, quotes, interviews,
+        or reviewed notes become available.
+      </p>
     </section>
   </div>
 </template>
@@ -530,6 +695,10 @@ defineExpose({
   padding: 16px;
 
   > div {
+    grid-column: 1 / -1;
+  }
+
+  .wide {
     grid-column: 1 / -1;
   }
 
@@ -716,6 +885,10 @@ defineExpose({
       color: $text-muted;
       font-size: 12px;
     }
+
+    .source-note {
+      color: $text-secondary;
+    }
   }
 
   span {
@@ -742,6 +915,16 @@ defineExpose({
       color: $error;
     }
   }
+}
+
+.source-register {
+  border-color: rgba(var(--accent-info-rgb), 0.28);
+}
+
+.empty-state {
+  margin: 14px 0 0;
+  color: $text-secondary;
+  line-height: 1.55;
 }
 
 .data-room-actions {

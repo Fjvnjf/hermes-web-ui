@@ -31,7 +31,16 @@ interface InvestorReadinessTestVm {
     sourceUrl: string
     sourceDate: string
   }
+  dataRoomSourceForm: {
+    checklistLabel: string
+    evidenceStatus: IntelligenceEvidenceStatus
+    sourceTitle: string
+    sourceUrl: string
+    sourceDate: string
+    notes: string
+  }
   saveEvidenceStatus: () => void
+  saveDataRoomSource: () => void
 }
 
 const createTaskMock = vi.hoisted(() => vi.fn())
@@ -826,6 +835,49 @@ describe('investor readiness pages', () => {
     const product = intelligence.state.value.evidenceItems.find(item => item.id === 'product')
     expect(product?.evidenceStatus).toBe('Verified')
     expect(product?.source?.title).toBe('CWAS SDS source')
+  })
+
+  it('saves data-room sources against checklist items and updates readiness explicitly', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const vm = wrapper.vm as unknown as InvestorReadinessTestVm
+
+    vm.dataRoomSourceForm.checklistLabel = 'Product TDS/SDS and CAS evidence'
+    vm.dataRoomSourceForm.evidenceStatus = 'Verified'
+    vm.dataRoomSourceForm.sourceTitle = 'CWAS SDS source'
+    vm.dataRoomSourceForm.sourceDate = '2026-05-30'
+    vm.dataRoomSourceForm.notes = 'SDS source reviewed for investor data room.'
+    vm.saveDataRoomSource()
+    await wrapper.vm.$nextTick()
+
+    const product = intelligence.state.value.evidenceItems.find(item => item.id === 'product')
+    expect(product?.evidenceStatus).toBe('Verified')
+    expect(product?.source?.title).toBe('CWAS SDS source')
+    expect(intelligence.state.value.dataRoomSources).toHaveLength(1)
+    expect(intelligence.state.value.dataRoomSources[0].checklistLabel).toBe('Product TDS/SDS and CAS evidence')
+    expect(wrapper.text()).toContain('Source register')
+    expect(wrapper.text()).toContain('SDS source reviewed for investor data room.')
+  })
+
+  it('keeps verified data-room sources To Verify without usable source evidence', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const vm = wrapper.vm as unknown as InvestorReadinessTestVm
+
+    vm.dataRoomSourceForm.checklistLabel = 'Factory/rent/permit evidence'
+    vm.dataRoomSourceForm.evidenceStatus = 'Verified'
+    vm.dataRoomSourceForm.sourceTitle = 'Factory permit note without date'
+    vm.saveDataRoomSource()
+    await wrapper.vm.$nextTick()
+
+    const factory = intelligence.state.value.evidenceItems.find(item => item.id === 'factory')
+    expect(factory?.evidenceStatus).toBe('To Verify')
+    expect(intelligence.state.value.dataRoomSources[0].evidenceStatus).toBe('To Verify')
+    expect(wrapper.text()).toContain('Factory permit note without date')
   })
 
   it('shows saved evidence sources in readiness cards and data-room checklist', () => {

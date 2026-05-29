@@ -93,6 +93,16 @@ export interface FinancialModelSnapshot {
   createdAt: string
 }
 
+export interface DataRoomSourceRecord {
+  id: string
+  checklistLabel: string
+  area: EvidenceArea
+  evidenceStatus: IntelligenceEvidenceStatus
+  source: SourceReference | null
+  notes: string
+  updatedAt: string
+}
+
 export interface FeasibilityIntelligenceState {
   evidenceItems: FeasibilityEvidenceItem[]
   marketClaims: MarketClaim[]
@@ -101,6 +111,7 @@ export interface FeasibilityIntelligenceState {
   researchJobs: ResearchJobRecord[]
   researchFindings: ResearchReviewFinding[]
   financialModels: FinancialModelSnapshot[]
+  dataRoomSources: DataRoomSourceRecord[]
 }
 
 const STORAGE_KEY = 'hermes.feasibilityIntelligence.v1'
@@ -173,6 +184,7 @@ function emptyState(): FeasibilityIntelligenceState {
     researchJobs: [],
     researchFindings: [],
     financialModels: [],
+    dataRoomSources: [],
   }
 }
 
@@ -209,6 +221,9 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
     researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
     researchFindings: Array.isArray(raw.researchFindings) ? raw.researchFindings : [],
     financialModels: Array.isArray(raw.financialModels) ? raw.financialModels : [],
+    dataRoomSources: Array.isArray(raw.dataRoomSources)
+      ? raw.dataRoomSources.map((record, index) => normalizeDataRoomSourceRecord(record, index))
+      : [],
   }
 }
 
@@ -253,6 +268,19 @@ function normalizePresentationMaterial(material: PresentationMaterial, index = 0
   }
 }
 
+function normalizeDataRoomSourceRecord(record: DataRoomSourceRecord, index = 0): DataRoomSourceRecord {
+  return {
+    ...record,
+    id: record.id || idFrom('source', `${record.checklistLabel || 'data-room'}-${index}`),
+    evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source)
+      ? 'To Verify'
+      : record.evidenceStatus,
+    source: record.source || null,
+    notes: record.notes || '',
+    updatedAt: record.updatedAt || nowIso(),
+  }
+}
+
 export function useFeasibilityIntelligence() {
   ensureLoaded()
 
@@ -270,6 +298,9 @@ export function useFeasibilityIntelligence() {
     state.value.researchFindings.filter(item => item.status === 'Pending Review' || item.status === 'To Verify'),
   )
   const latestFinancialModel = computed(() => state.value.financialModels[0] || null)
+  const verifiedDataRoomSourceCount = computed(() =>
+    state.value.dataRoomSources.filter(item => item.evidenceStatus === 'Verified').length,
+  )
 
   function updateEvidenceStatus(id: EvidenceArea, evidenceStatus: IntelligenceEvidenceStatus, source?: SourceReference | null) {
     state.value.evidenceItems = state.value.evidenceItems.map(item => {
@@ -533,6 +564,26 @@ export function useFeasibilityIntelligence() {
     return saved
   }
 
+  function addDataRoomSource(record: Omit<DataRoomSourceRecord, 'id' | 'updatedAt'>) {
+    const saved = normalizeDataRoomSourceRecord({
+      ...record,
+      id: idFrom('source', record.checklistLabel || record.area),
+      updatedAt: nowIso(),
+    })
+    state.value.dataRoomSources = [saved, ...state.value.dataRoomSources]
+    updateEvidenceStatus(saved.area, saved.evidenceStatus, saved.source || null)
+    persist()
+    return saved
+  }
+
+  function removeDataRoomSource(id: string): boolean {
+    const before = state.value.dataRoomSources.length
+    state.value.dataRoomSources = state.value.dataRoomSources.filter(item => item.id !== id)
+    const removed = state.value.dataRoomSources.length !== before
+    if (removed) persist()
+    return removed
+  }
+
   function resetFeasibilityIntelligenceForTests() {
     state.value = emptyState()
     loaded = true
@@ -547,6 +598,7 @@ export function useFeasibilityIntelligence() {
     approvedPresentationCount,
     pendingResearchFindings,
     latestFinancialModel,
+    verifiedDataRoomSourceCount,
     updateEvidenceStatus,
     addMarketClaim,
     updateMarketClaim,
@@ -563,6 +615,8 @@ export function useFeasibilityIntelligence() {
     approveResearchFinding,
     rejectResearchFinding,
     saveFinancialModelSnapshot,
+    addDataRoomSource,
+    removeDataRoomSource,
     resetFeasibilityIntelligenceForTests,
   }
 }
