@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   calculateInvestmentScenario,
   createEmptyInvestmentScenario,
@@ -13,6 +13,7 @@ import {
   canMarkMarketClaimVerified,
   formatMarketShare,
 } from '@/utils/investorIntelligence'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 
 const createTaskMock = vi.hoisted(() => vi.fn())
 
@@ -58,6 +59,12 @@ vi.mock('vue-router', async (importOriginal) => {
 
 import InvestorReadinessView from '@/views/hermes/InvestorReadinessView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
+
+beforeEach(() => {
+  window.localStorage.clear()
+  useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
+  createTaskMock.mockClear()
+})
 
 describe('investor feasibility workflow utilities', () => {
   it('calculates NPV and IRR for sample cash flows', () => {
@@ -122,6 +129,82 @@ describe('investor feasibility workflow utilities', () => {
 
     expect(score).toBeGreaterThan(0)
     expect(score).toBeLessThan(100)
+  })
+
+  it('keeps verified market claims To Verify until a usable source is attached', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    const saved = intelligence.addMarketClaim({
+      label: 'China market size',
+      value: '100 MT',
+      evidenceStatus: 'Verified',
+      source: null,
+      confidence: 'high',
+    })
+
+    expect(saved.evidenceStatus).toBe('To Verify')
+    expect(intelligence.verifiedClaimCount.value).toBe(0)
+  })
+
+  it('promotes source-backed market evidence into shared readiness state', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const source = { title: 'Distributor interview notes', date: '2026-05-30' }
+
+    const saved = intelligence.addMarketClaim({
+      label: 'CWAS pricing evidence',
+      value: 'User-approved source-backed note',
+      evidenceStatus: 'Verified',
+      source,
+      confidence: 'medium',
+    })
+    intelligence.updateEvidenceStatus('market', saved.evidenceStatus, source)
+
+    expect(saved.evidenceStatus).toBe('Verified')
+    expect(intelligence.verifiedClaimCount.value).toBe(1)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Verified')
+  })
+
+  it('stores approved investor material while excluding unsupported draft claims', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    intelligence.addPresentationMaterial({
+      section: 'Use of Funds',
+      content: 'User approved use-of-funds draft',
+      evidenceStatus: 'User Approved',
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported verified claim',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+
+    const draft = buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)
+
+    expect(intelligence.approvedPresentationCount.value).toBe(1)
+    expect(draft).toHaveLength(1)
+    expect(draft[0].section).toBe('Use of Funds')
+  })
+
+  it('downgrades verified competitor records without source evidence', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    const saved = intelligence.addCompetitor({
+      companyName: 'Example competitor',
+      countryRegion: 'China',
+      productEquivalent: 'To Verify',
+      activeContent: 'To Verify',
+      pricingEvidence: 'Missing',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '',
+      evidenceStatus: 'Verified',
+      source: null,
+      notes: 'No source yet',
+    })
+
+    expect(saved.evidenceStatus).toBe('To Verify')
+    expect(formatMarketShare(saved.marketShare)).toBe('To Verify')
   })
 })
 

@@ -1,0 +1,285 @@
+import { computed, ref } from 'vue'
+import {
+  calculateInvestorReadinessScore,
+  normalizedMarketClaimStatus,
+  type IntelligenceEvidenceStatus,
+  type MarketClaim,
+  type PresentationMaterial,
+  type ReadinessItem,
+  type SourceReference,
+} from '@/utils/investorIntelligence'
+
+export type EvidenceArea =
+  | 'companyLegal'
+  | 'product'
+  | 'factory'
+  | 'regulatory'
+  | 'market'
+  | 'financial'
+  | 'presentation'
+
+export interface FeasibilityEvidenceItem extends ReadinessItem {
+  id: EvidenceArea
+  description: string
+  nextAction: string
+  source?: SourceReference | null
+  updatedAt?: string
+}
+
+export interface CompetitorIntelligenceRecord {
+  id: string
+  companyName: string
+  countryRegion: string
+  productEquivalent: string
+  activeContent: string
+  pricingEvidence: string
+  certifications: string
+  distributionPresence: string
+  marketShare?: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  source?: SourceReference | null
+  notes: string
+  updatedAt: string
+}
+
+export interface ResearchJobRecord {
+  id: string
+  title: string
+  question: string
+  context: string
+  status: 'Task Created' | 'Manual Research Job' | 'Later'
+  createdAt: string
+}
+
+export interface FeasibilityIntelligenceState {
+  evidenceItems: FeasibilityEvidenceItem[]
+  marketClaims: MarketClaim[]
+  competitors: CompetitorIntelligenceRecord[]
+  presentationMaterials: PresentationMaterial[]
+  researchJobs: ResearchJobRecord[]
+}
+
+const STORAGE_KEY = 'hermes.feasibilityIntelligence.v1'
+
+const defaultEvidenceItems: FeasibilityEvidenceItem[] = [
+  {
+    id: 'companyLegal',
+    label: 'Company / legal evidence',
+    evidenceStatus: 'To Verify',
+    description: 'Business license, company name, business scope, bank confirmation, import/export permission.',
+    nextAction: 'Upload source documents or create evidence tasks before using this in investor material.',
+    weight: 1.2,
+  },
+  {
+    id: 'product',
+    label: 'Product evidence',
+    evidenceStatus: 'To Verify',
+    description: 'TDS/SDS, formula/CAS list, product equivalents, and verified launch-product scope.',
+    nextAction: 'Collect and source product documents for CWAS 90%+ and CWMS 70%.',
+    weight: 1.2,
+  },
+  {
+    id: 'factory',
+    label: 'Factory evidence',
+    evidenceStatus: 'Missing',
+    description: 'Location shortlist, rent offers, chemical approval, machine quotes, utilities, waste treatment.',
+    nextAction: 'Create tasks for quote collection and site approval checks.',
+    weight: 1.1,
+  },
+  {
+    id: 'regulatory',
+    label: 'Regulatory evidence',
+    evidenceStatus: 'Missing',
+    description: 'DMS status, product handling, China chemical permissions, safety/fire and environmental requirements.',
+    nextAction: 'Run source-backed regulatory research and track every gap as a task.',
+    weight: 1.3,
+  },
+  {
+    id: 'market',
+    label: 'Market evidence',
+    evidenceStatus: 'To Verify',
+    description: 'Customer interviews, distributor responses, competitor price proof, and sourced demand claims.',
+    nextAction: 'Use Market and Competitor Intelligence to collect source-backed claims only.',
+    weight: 1.2,
+  },
+  {
+    id: 'financial',
+    label: 'Financial model completeness',
+    evidenceStatus: 'Assumption',
+    description: 'Year 1 15,000 MT model, working capital, capex, opex, pricing, tax, and IRR sensitivity.',
+    nextAction: 'Use the IRR calculator and label every input by evidence status.',
+    weight: 1.2,
+  },
+  {
+    id: 'presentation',
+    label: 'Investor presentation completeness',
+    evidenceStatus: 'Missing',
+    description: 'Executive story, evidence-backed claims, use of funds, risks, and data-room readiness.',
+    nextAction: 'Build draft slides only from verified or user-approved material.',
+    weight: 1,
+  },
+]
+
+function emptyState(): FeasibilityIntelligenceState {
+  return {
+    evidenceItems: defaultEvidenceItems.map(item => ({ ...item })),
+    marketClaims: [],
+    competitors: [],
+    presentationMaterials: [],
+    researchJobs: [],
+  }
+}
+
+const state = ref<FeasibilityIntelligenceState>(emptyState())
+let loaded = false
+
+function nowIso(): string {
+  return new Date().toISOString()
+}
+
+function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): FeasibilityIntelligenceState {
+  const fallback = emptyState()
+  if (!raw || typeof raw !== 'object') return fallback
+  const evidenceById = new Map(fallback.evidenceItems.map(item => [item.id, item]))
+  for (const item of Array.isArray(raw.evidenceItems) ? raw.evidenceItems : []) {
+    if (!item || typeof item !== 'object') continue
+    const id = (item as FeasibilityEvidenceItem).id
+    if (evidenceById.has(id)) {
+      evidenceById.set(id, { ...evidenceById.get(id)!, ...item })
+    }
+  }
+  return {
+    evidenceItems: Array.from(evidenceById.values()),
+    marketClaims: Array.isArray(raw.marketClaims) ? raw.marketClaims : [],
+    competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
+    presentationMaterials: Array.isArray(raw.presentationMaterials) ? raw.presentationMaterials : [],
+    researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
+  }
+}
+
+function loadState(): FeasibilityIntelligenceState {
+  if (typeof window === 'undefined') return emptyState()
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    return mergeState(raw ? JSON.parse(raw) : null)
+  } catch {
+    return emptyState()
+  }
+}
+
+function persist() {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+}
+
+function ensureLoaded() {
+  if (loaded) return
+  state.value = loadState()
+  loaded = true
+}
+
+function idFrom(prefix: string, label: string): string {
+  return `${prefix}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now().toString(36)}`
+}
+
+function sourceIsUsable(source?: SourceReference | null): boolean {
+  return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
+}
+
+export function useFeasibilityIntelligence() {
+  ensureLoaded()
+
+  const readinessScore = computed(() => calculateInvestorReadinessScore(state.value.evidenceItems))
+  const evidenceGaps = computed(() =>
+    state.value.evidenceItems.filter(item => item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify'),
+  )
+  const verifiedClaimCount = computed(() =>
+    state.value.marketClaims.filter(item => normalizedMarketClaimStatus(item) === 'Verified').length,
+  )
+  const approvedPresentationCount = computed(() =>
+    state.value.presentationMaterials.filter(item =>
+      item.evidenceStatus === 'Verified' || item.evidenceStatus === 'User Approved' || item.evidenceStatus === 'Approved Assumption',
+    ).length,
+  )
+
+  function updateEvidenceStatus(id: EvidenceArea, evidenceStatus: IntelligenceEvidenceStatus, source?: SourceReference | null) {
+    state.value.evidenceItems = state.value.evidenceItems.map(item => {
+      if (item.id !== id) return item
+      const nextStatus = evidenceStatus === 'Verified' && !sourceIsUsable(source) ? 'To Verify' : evidenceStatus
+      return {
+        ...item,
+        evidenceStatus: nextStatus,
+        source: source || item.source || null,
+        updatedAt: nowIso(),
+      }
+    })
+    persist()
+  }
+
+  function addMarketClaim(claim: Omit<MarketClaim, 'lastChecked'> & { lastChecked?: string }) {
+    const normalized: MarketClaim = {
+      ...claim,
+      evidenceStatus: normalizedMarketClaimStatus(claim),
+      lastChecked: claim.lastChecked || nowIso().slice(0, 10),
+    }
+    state.value.marketClaims = [normalized, ...state.value.marketClaims]
+    persist()
+    return normalized
+  }
+
+  function addCompetitor(record: Omit<CompetitorIntelligenceRecord, 'id' | 'updatedAt'>) {
+    const saved: CompetitorIntelligenceRecord = {
+      ...record,
+      id: idFrom('competitor', record.companyName || 'unknown'),
+      marketShare: record.marketShare?.trim() || '',
+      evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source) ? 'To Verify' : record.evidenceStatus,
+      updatedAt: nowIso(),
+    }
+    state.value.competitors = [saved, ...state.value.competitors]
+    persist()
+    return saved
+  }
+
+  function addPresentationMaterial(material: PresentationMaterial) {
+    const saved: PresentationMaterial = {
+      ...material,
+      evidenceStatus: material.evidenceStatus === 'Verified' && !sourceIsUsable(material.source)
+        ? 'To Verify'
+        : material.evidenceStatus,
+    }
+    state.value.presentationMaterials = [saved, ...state.value.presentationMaterials]
+    persist()
+    return saved
+  }
+
+  function addResearchJob(job: Omit<ResearchJobRecord, 'id' | 'createdAt'>) {
+    const saved: ResearchJobRecord = {
+      ...job,
+      id: idFrom('research', job.title),
+      createdAt: nowIso(),
+    }
+    state.value.researchJobs = [saved, ...state.value.researchJobs]
+    persist()
+    return saved
+  }
+
+  function resetFeasibilityIntelligenceForTests() {
+    state.value = emptyState()
+    loaded = true
+    persist()
+  }
+
+  return {
+    state,
+    readinessScore,
+    evidenceGaps,
+    verifiedClaimCount,
+    approvedPresentationCount,
+    updateEvidenceStatus,
+    addMarketClaim,
+    addCompetitor,
+    addPresentationMaterial,
+    addResearchJob,
+    resetFeasibilityIntelligenceForTests,
+  }
+}

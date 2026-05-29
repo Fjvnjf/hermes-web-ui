@@ -5,9 +5,11 @@ import { fetchPerformanceRuntime, type PerformanceRuntimeSnapshot } from '@/api/
 import { fetchSessions, type SessionSummary } from '@/api/hermes/sessions'
 import { listJobs, type Job } from '@/api/hermes/jobs'
 import { getActiveProfileName, hasApiKey } from '@/api/client'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
 
 const appStore = useAppStore()
+const intelligence = useFeasibilityIntelligence()
 
 const loading = ref(false)
 const loadWarning = ref('')
@@ -67,6 +69,37 @@ const kpis = computed(() => [
     value: `${runningWorkers.value}/${workerCount.value}`,
     note: bridgeOnline.value ? 'broker reachable' : 'broker pending',
     tone: bridgeOnline.value ? 'ok' : 'warn',
+  },
+])
+
+const investorSnapshot = computed(() => [
+  {
+    label: 'Investor Readiness',
+    value: `${intelligence.readinessScore.value}%`,
+    note: 'Evidence-status score',
+    tone: intelligence.readinessScore.value >= 70 ? 'ok' : intelligence.readinessScore.value >= 35 ? 'warn' : 'danger',
+    to: { name: 'hermes.investorReadiness' },
+  },
+  {
+    label: 'Evidence Gaps',
+    value: String(intelligence.evidenceGaps.value.length),
+    note: 'Missing / To Verify',
+    tone: intelligence.evidenceGaps.value.length > 0 ? 'warn' : 'ok',
+    to: { name: 'hermes.investorReadiness' },
+  },
+  {
+    label: 'Research Jobs',
+    value: String(intelligence.state.value.researchJobs.length),
+    note: 'Created from intelligence pages',
+    tone: intelligence.state.value.researchJobs.length > 0 ? 'info' : 'muted',
+    to: { name: 'hermes.researchResultReview' },
+  },
+  {
+    label: 'Deck Materials',
+    value: String(intelligence.approvedPresentationCount.value),
+    note: 'Approved for draft only',
+    tone: intelligence.approvedPresentationCount.value > 0 ? 'info' : 'muted',
+    to: { name: 'hermes.investorPresentation' },
   },
 ])
 
@@ -284,6 +317,14 @@ onMounted(() => {
         </RouterLink>
       </section>
 
+      <section class="investor-snapshot-grid" aria-label="Investor readiness snapshot">
+        <RouterLink v-for="item in investorSnapshot" :key="item.label" class="kpi-card investor" :class="item.tone" :to="item.to">
+          <div class="kpi-value">{{ item.value }}</div>
+          <div class="kpi-label">{{ item.label }}</div>
+          <div class="kpi-note">{{ item.note }}</div>
+        </RouterLink>
+      </section>
+
       <section class="kpi-grid" aria-label="Runtime metrics">
         <div v-for="kpi in kpis" :key="kpi.label" class="kpi-card" :class="kpi.tone">
           <div class="kpi-value">{{ kpi.value }}</div>
@@ -472,11 +513,17 @@ onMounted(() => {
 }
 
 .workspace-action-grid,
+.investor-snapshot-grid,
 .kpi-grid,
 .workstream-grid,
 .ops-grid {
   display: grid;
   gap: 12px;
+}
+
+.investor-snapshot-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 12px;
 }
 
 .workspace-action-grid {
@@ -534,6 +581,19 @@ onMounted(() => {
 
   &.warn {
     border-color: rgba(var(--warning-rgb), 0.35);
+  }
+
+  &.danger {
+    border-color: rgba(var(--error-rgb), 0.35);
+  }
+
+  &.muted {
+    opacity: 0.85;
+  }
+
+  &.investor {
+    color: inherit;
+    text-decoration: none;
   }
 }
 

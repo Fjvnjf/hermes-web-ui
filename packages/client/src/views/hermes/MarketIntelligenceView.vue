@@ -1,29 +1,24 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
-import { normalizedMarketClaimStatus, type MarketClaim } from '@/utils/investorIntelligence'
+import { normalizedMarketClaimStatus, type IntelligenceEvidenceStatus, type MarketClaim } from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
 
-const claims = ref<MarketClaim[]>([
-  {
-    label: 'China textile softener demand',
-    value: '',
-    evidenceStatus: 'To Verify',
-    confidence: 'low',
-    source: null,
-  },
-  {
-    label: 'CWAS/CWMS price validation',
-    value: '',
-    evidenceStatus: 'To Verify',
-    confidence: 'low',
-    source: null,
-  },
-])
+const claimForm = ref({
+  label: '',
+  value: '',
+  evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
+  confidence: 'low' as NonNullable<MarketClaim['confidence']>,
+  sourceTitle: '',
+  sourceUrl: '',
+  sourceDate: '',
+})
 
 const sections = [
   'Market Questions',
@@ -36,7 +31,8 @@ const sections = [
   'Verified / To Verify Claims',
 ]
 
-const sourceReadyCount = computed(() => claims.value.filter(item => normalizedMarketClaimStatus(item) === 'Verified').length)
+const claims = computed(() => intelligence.state.value.marketClaims)
+const sourceReadyCount = intelligence.verifiedClaimCount
 
 async function createResearchTask(label: string) {
   creating.value = label
@@ -55,6 +51,12 @@ async function createResearchTask(label: string) {
       priority: 2,
       tenant: 'Chemicon China Feasibility',
     })
+    intelligence.addResearchJob({
+      title: `Market research: ${label}`,
+      question: label,
+      context: 'Chemicon China Feasibility',
+      status: 'Task Created',
+    })
     message.success('Market research task created')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown task error'
@@ -62,6 +64,49 @@ async function createResearchTask(label: string) {
   } finally {
     creating.value = ''
   }
+}
+
+function addClaim() {
+  const label = claimForm.value.label.trim()
+  if (!label) {
+    message.warning('Add a claim or research question first')
+    return
+  }
+  const source = claimForm.value.sourceTitle.trim()
+    ? {
+        title: claimForm.value.sourceTitle.trim(),
+        url: claimForm.value.sourceUrl.trim() || undefined,
+        date: claimForm.value.sourceDate.trim() || undefined,
+      }
+    : null
+  const saved = intelligence.addMarketClaim({
+    label,
+    value: claimForm.value.value.trim(),
+    evidenceStatus: claimForm.value.evidenceStatus,
+    confidence: claimForm.value.confidence,
+    source,
+  })
+  if (claimForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Claim saved as To Verify because verified claims need a value and usable source')
+  } else {
+    message.success('Market claim saved in this browser workspace')
+  }
+  claimForm.value = {
+    label: '',
+    value: '',
+    evidenceStatus: 'To Verify',
+    confidence: 'low',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+  }
+}
+
+function addClaimToInvestorReview(claim: MarketClaim) {
+  const status = normalizedMarketClaimStatus(claim)
+  intelligence.updateEvidenceStatus('market', status, claim.source || null)
+  if (status === 'Verified') message.success('Market evidence marked verified for investor readiness')
+  else message.info('Market evidence remains To Verify until value and source are complete')
 }
 </script>
 
@@ -97,17 +142,68 @@ async function createResearchTask(label: string) {
       </article>
     </section>
 
+    <section class="claim-form" aria-label="Add market claim">
+      <div>
+        <h3>Add sourced market claim</h3>
+        <p>Saved locally in this browser workspace. Verified status requires a claim value plus a source title and URL or date.</p>
+      </div>
+      <label>
+        Claim
+        <input v-model="claimForm.label" type="text" placeholder="Example: CWAS price validation source" />
+      </label>
+      <label>
+        Value
+        <input v-model="claimForm.value" type="text" placeholder="Leave blank if still To Verify" />
+      </label>
+      <label>
+        Evidence status
+        <select v-model="claimForm.evidenceStatus">
+          <option>To Verify</option>
+          <option>Assumption</option>
+          <option>User Approved</option>
+          <option>Verified</option>
+        </select>
+      </label>
+      <label>
+        Confidence
+        <select v-model="claimForm.confidence">
+          <option>low</option>
+          <option>medium</option>
+          <option>high</option>
+        </select>
+      </label>
+      <label>
+        Source title
+        <input v-model="claimForm.sourceTitle" type="text" placeholder="Source title" />
+      </label>
+      <label>
+        Source URL
+        <input v-model="claimForm.sourceUrl" type="url" placeholder="https://..." />
+      </label>
+      <label>
+        Source date
+        <input v-model="claimForm.sourceDate" type="text" placeholder="YYYY-MM-DD or publication date" />
+      </label>
+      <NButton secondary type="primary" @click="addClaim">Save claim</NButton>
+    </section>
+
     <section class="claims-panel">
       <h3>Verified / To Verify Claims</h3>
       <div class="claim-row head">
-        <span>Claim</span><span>Value</span><span>Source</span><span>Status</span><span>Last checked</span>
+        <span>Claim</span><span>Value</span><span>Source</span><span>Status</span><span>Last checked</span><span>Action</span>
       </div>
+      <p v-if="claims.length === 0" class="empty-state">
+        No market claims saved yet. Add source-backed claims here, or create research tasks from the cards above.
+      </p>
       <div v-for="claim in claims" :key="claim.label" class="claim-row">
         <span>{{ claim.label }}</span>
         <span>{{ claim.value || 'To Verify' }}</span>
         <span>{{ claim.source?.title || 'Source missing' }}</span>
         <span>{{ normalizedMarketClaimStatus(claim) }}</span>
         <span>{{ claim.lastChecked || 'Not checked' }}</span>
+        <span>
+          <button type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
+        </span>
       </div>
     </section>
   </div>
@@ -123,6 +219,7 @@ async function createResearchTask(label: string) {
 
 .page-header,
 .workspace-card,
+.claim-form,
 .claims-panel,
 .summary-card {
   border: 1px solid $border-color;
@@ -172,12 +269,45 @@ async function createResearchTask(label: string) {
 }
 
 .workspace-card,
+.claim-form,
 .claims-panel {
   padding: 16px;
 
   h3 {
     margin: 0 0 8px;
     color: $text-primary;
+  }
+}
+
+.claim-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+  align-items: end;
+
+  > div {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  input,
+  select {
+    min-width: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 8px 10px;
+    text-transform: none;
   }
 }
 
@@ -199,7 +329,7 @@ async function createResearchTask(label: string) {
 
 .claim-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr 130px 130px;
+  grid-template-columns: 1.2fr 1fr 1fr 130px 130px 150px;
   gap: 10px;
   padding: 10px 0;
   border-top: 1px solid $border-color;
@@ -211,6 +341,24 @@ async function createResearchTask(label: string) {
     font-weight: 900;
     text-transform: uppercase;
   }
+
+  button {
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: transparent;
+    color: $accent-info;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+}
+
+.empty-state {
+  border-top: 1px solid $border-color;
+  margin: 0;
+  padding: 12px 0 0;
+  color: $text-secondary;
 }
 
 @media (max-width: 820px) {

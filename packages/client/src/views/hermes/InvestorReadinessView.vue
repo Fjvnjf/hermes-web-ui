@@ -2,80 +2,40 @@
 import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
-import { calculateInvestorReadinessScore, type ReadinessItem } from '@/utils/investorIntelligence'
+import {
+  type EvidenceArea,
+  type FeasibilityEvidenceItem,
+  useFeasibilityIntelligence,
+} from '@/composables/useFeasibilityIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 
-interface ReadinessSection extends ReadinessItem {
-  description: string
-  nextAction: string
+interface ReadinessSection extends FeasibilityEvidenceItem {
   routeName: string
 }
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const intelligence = useFeasibilityIntelligence()
 const creatingKey = ref('')
-const localAssumptions = ref<Set<string>>(new Set())
 
-const sections = computed<ReadinessSection[]>(() => [
-  {
-    label: 'Company / legal evidence',
-    evidenceStatus: 'To Verify',
-    description: 'Business license, company name, business scope, bank confirmation, import/export permission.',
-    nextAction: 'Upload source documents or create evidence tasks before using this in investor material.',
-    routeName: 'hermes.files',
-    weight: 1.2,
-  },
-  {
-    label: 'Product evidence',
-    evidenceStatus: 'To Verify',
-    description: 'TDS/SDS, formula/CAS list, product equivalents, and verified launch-product scope.',
-    nextAction: 'Collect and source product documents for CWAS 90%+ and CWMS 70%.',
-    routeName: 'hermes.files',
-    weight: 1.2,
-  },
-  {
-    label: 'Factory evidence',
-    evidenceStatus: 'Missing',
-    description: 'Location shortlist, rent offers, chemical approval, machine quotes, utilities, waste treatment.',
-    nextAction: 'Create tasks for quote collection and site approval checks.',
-    routeName: 'hermes.kanban',
-    weight: 1.1,
-  },
-  {
-    label: 'Regulatory evidence',
-    evidenceStatus: 'Missing',
-    description: 'DMS status, product handling, China chemical permissions, safety/fire and environmental requirements.',
-    nextAction: 'Run source-backed regulatory research and track every gap as a task.',
-    routeName: 'hermes.chat',
-    weight: 1.3,
-  },
-  {
-    label: 'Market evidence',
-    evidenceStatus: 'To Verify',
-    description: 'Customer interviews, distributor responses, competitor price proof, and sourced demand claims.',
-    nextAction: 'Use Market and Competitor Intelligence to collect source-backed claims only.',
-    routeName: 'hermes.marketIntelligence',
-    weight: 1.2,
-  },
-  {
-    label: 'Financial model completeness',
-    evidenceStatus: 'Assumption',
-    description: 'Year 1 15,000 MT model, working capital, capex, opex, pricing, tax, and IRR sensitivity.',
-    nextAction: 'Use the IRR calculator and label every input by evidence status.',
-    routeName: 'hermes.investmentCalculator',
-    weight: 1.2,
-  },
-  {
-    label: 'Investor presentation completeness',
-    evidenceStatus: 'Missing',
-    description: 'Executive story, evidence-backed claims, use of funds, risks, and data-room readiness.',
-    nextAction: 'Build draft slides only from verified or user-approved material.',
-    routeName: 'hermes.investorPresentation',
-    weight: 1,
-  },
-])
+const routeByEvidenceId: Record<EvidenceArea, string> = {
+  companyLegal: 'hermes.files',
+  product: 'hermes.files',
+  factory: 'hermes.kanban',
+  regulatory: 'hermes.chat',
+  market: 'hermes.marketIntelligence',
+  financial: 'hermes.investmentCalculator',
+  presentation: 'hermes.investorPresentation',
+}
 
-const readinessScore = computed(() => calculateInvestorReadinessScore(sections.value))
+const sections = computed<ReadinessSection[]>(() =>
+  intelligence.state.value.evidenceItems.map(item => ({
+    ...item,
+    routeName: routeByEvidenceId[item.id],
+  })),
+)
+
+const readinessScore = intelligence.readinessScore
 const statusCounts = computed(() => {
   return sections.value.reduce<Record<string, number>>((acc, item) => {
     acc[item.evidenceStatus] = (acc[item.evidenceStatus] || 0) + 1
@@ -148,10 +108,23 @@ async function copyForPresentation(item: ReadinessSection) {
 }
 
 function markAssumption(item: ReadinessSection) {
-  const next = new Set(localAssumptions.value)
-  next.add(item.label)
-  localAssumptions.value = next
-  message.info('Marked as a local assumption for this review only')
+  intelligence.updateEvidenceStatus(item.id, 'Assumption')
+  message.info('Marked as an assumption in this browser workspace')
+}
+
+function addToInvestorDraft(item: ReadinessSection) {
+  if (item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify') {
+    message.warning('Add evidence or mark this as an assumption before staging it for investor draft')
+    return
+  }
+  intelligence.addPresentationMaterial({
+    section: item.label,
+    content: `${item.description}\n\nInvestor readiness note: ${item.nextAction}`,
+    evidenceStatus: item.evidenceStatus === 'Verified' ? 'Verified' : item.evidenceStatus === 'Assumption' ? 'Approved Assumption' : item.evidenceStatus,
+    source: item.source || null,
+  })
+  intelligence.updateEvidenceStatus('presentation', 'User Approved')
+  message.success('Added approved material to the investor draft builder')
 }
 </script>
 
@@ -189,7 +162,7 @@ function markAssumption(item: ReadinessSection) {
       <article v-for="item in sections" :key="item.label" class="readiness-card">
         <div class="card-head">
           <h3>{{ item.label }}</h3>
-          <span class="status-pill">{{ localAssumptions.has(item.label) ? 'Assumption' : item.evidenceStatus }}</span>
+          <span class="status-pill">{{ item.evidenceStatus }}</span>
         </div>
         <p>{{ item.description }}</p>
         <small>{{ item.nextAction }}</small>
@@ -199,6 +172,7 @@ function markAssumption(item: ReadinessSection) {
           </NButton>
           <RouterLink :to="{ name: 'hermes.chat', query: { captureContext: 'investment-research' } }">Send to Review & Capture</RouterLink>
           <button type="button" @click="markAssumption(item)">Mark as assumption</button>
+          <button type="button" @click="addToInvestorDraft(item)">Add to investor draft</button>
           <button type="button" @click="copyForPresentation(item)">Copy for presentation</button>
           <RouterLink :to="{ name: item.routeName }">Open source area</RouterLink>
         </div>

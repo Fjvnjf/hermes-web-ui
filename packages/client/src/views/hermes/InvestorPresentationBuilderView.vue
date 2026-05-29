@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { buildInvestorPresentationDraft, type PresentationMaterial } from '@/utils/investorIntelligence'
+import { computed, ref } from 'vue'
+import { useMessage } from 'naive-ui'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import {
+  buildInvestorPresentationDraft,
+  type IntelligenceEvidenceStatus,
+  type PresentationMaterial,
+} from '@/utils/investorIntelligence'
 
 const slideSections = [
   'Cover',
@@ -21,8 +27,20 @@ const slideSections = [
   'Next Steps',
 ]
 
-const approvedMaterials: PresentationMaterial[] = []
-const draftSections = computed(() => buildInvestorPresentationDraft(approvedMaterials))
+const message = useMessage()
+const intelligence = useFeasibilityIntelligence()
+
+const materialForm = ref({
+  section: 'Executive Summary',
+  content: '',
+  evidenceStatus: 'User Approved' as IntelligenceEvidenceStatus,
+  sourceTitle: '',
+  sourceUrl: '',
+  sourceDate: '',
+})
+
+const approvedMaterials = computed(() => intelligence.state.value.presentationMaterials)
+const draftSections = computed(() => buildInvestorPresentationDraft(approvedMaterials.value))
 
 const actions = [
   'Improve this slide',
@@ -33,6 +51,41 @@ const actions = [
   'Mark risky claim',
   'Remove unsupported claim',
 ]
+
+function saveMaterial() {
+  const content = materialForm.value.content.trim()
+  if (!content) {
+    message.warning('Add draft text before staging material')
+    return
+  }
+  const source = materialForm.value.sourceTitle.trim()
+    ? {
+        title: materialForm.value.sourceTitle.trim(),
+        url: materialForm.value.sourceUrl.trim() || undefined,
+        date: materialForm.value.sourceDate.trim() || undefined,
+      }
+    : null
+  const saved: PresentationMaterial = intelligence.addPresentationMaterial({
+    section: materialForm.value.section,
+    content,
+    evidenceStatus: materialForm.value.evidenceStatus,
+    source,
+  })
+  if (materialForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Material saved as To Verify because verified claims need usable source evidence')
+  } else {
+    intelligence.updateEvidenceStatus('presentation', 'User Approved')
+    message.success('Approved material staged for investor draft')
+  }
+  materialForm.value = {
+    section: 'Executive Summary',
+    content: '',
+    evidenceStatus: 'User Approved',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+  }
+}
 </script>
 
 <template>
@@ -64,6 +117,45 @@ const actions = [
       </article>
     </section>
 
+    <section class="material-form" aria-label="Stage investor presentation material">
+      <div>
+        <h3>Stage approved material</h3>
+        <p>Add only verified, user-approved, or approved-assumption text. Unsupported claims are excluded from the draft.</p>
+      </div>
+      <label>
+        Slide section
+        <select v-model="materialForm.section">
+          <option v-for="section in slideSections" :key="section">{{ section }}</option>
+        </select>
+      </label>
+      <label>
+        Evidence status
+        <select v-model="materialForm.evidenceStatus">
+          <option>User Approved</option>
+          <option>Approved Assumption</option>
+          <option>Verified</option>
+          <option>To Verify</option>
+        </select>
+      </label>
+      <label>
+        Source title
+        <input v-model="materialForm.sourceTitle" type="text" placeholder="Required for Verified" />
+      </label>
+      <label>
+        Source URL
+        <input v-model="materialForm.sourceUrl" type="url" placeholder="https://..." />
+      </label>
+      <label>
+        Source date
+        <input v-model="materialForm.sourceDate" type="text" placeholder="YYYY-MM-DD or source date" />
+      </label>
+      <label class="wide">
+        Draft text
+        <textarea v-model="materialForm.content" rows="4" placeholder="Approved text for the investor draft"></textarea>
+      </label>
+      <button type="button" @click="saveMaterial">Stage material</button>
+    </section>
+
     <section class="slide-grid">
       <article v-for="section in slideSections" :key="section" class="slide-card">
         <h3>{{ section }}</h3>
@@ -89,6 +181,7 @@ const actions = [
 .page-header,
 .readiness-warning,
 .draft-status,
+.material-form,
 .slide-card {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
@@ -137,6 +230,51 @@ const actions = [
   h3 {
     margin: 0 0 8px;
     color: $text-primary;
+  }
+}
+
+.material-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+  padding: 16px;
+
+  > div,
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  input,
+  select,
+  textarea {
+    min-width: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 8px 10px;
+    text-transform: none;
+  }
+
+  button {
+    align-self: end;
+    border: 1px solid $accent-primary;
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-primary-rgb), 0.12);
+    color: $accent-primary;
+    padding: 9px 12px;
+    font-weight: 900;
+    cursor: pointer;
   }
 }
 

@@ -1,44 +1,36 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
+import {
+  type CompetitorIntelligenceRecord,
+  useFeasibilityIntelligence,
+} from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
-import { formatMarketShare } from '@/utils/investorIntelligence'
-
-interface CompetitorRecord {
-  companyName: string
-  countryRegion: string
-  productEquivalent: string
-  activeContent: string
-  pricingEvidence: string
-  certifications: string
-  distributionPresence: string
-  marketShare?: string
-  evidenceStatus: 'To Verify' | 'Verified' | 'Missing'
-  sourceLink: string
-  notes: string
-}
+import { formatMarketShare, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
 
-const competitors = ref<CompetitorRecord[]>([
-  {
-    companyName: 'Competitor to identify',
-    countryRegion: 'To Verify',
-    productEquivalent: 'To Verify',
-    activeContent: 'To Verify',
-    pricingEvidence: 'Missing',
-    certifications: 'To Verify',
-    distributionPresence: 'To Verify',
-    marketShare: '',
-    evidenceStatus: 'To Verify',
-    sourceLink: '',
-    notes: 'No competitor should be treated as real until a source is attached.',
-  },
-])
+const competitorForm = ref({
+  companyName: '',
+  countryRegion: '',
+  productEquivalent: '',
+  activeContent: '',
+  pricingEvidence: '',
+  certifications: '',
+  distributionPresence: '',
+  marketShare: '',
+  evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
+  sourceTitle: '',
+  sourceUrl: '',
+  notes: '',
+})
 
-async function createResearchTask(competitor: CompetitorRecord) {
+const competitors = computed(() => intelligence.state.value.competitors)
+
+async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
   creating.value = competitor.companyName
   try {
     await kanbanStore.fetchBoards()
@@ -55,12 +47,64 @@ async function createResearchTask(competitor: CompetitorRecord) {
       priority: 2,
       tenant: 'Chemicon China Feasibility',
     })
+    intelligence.addResearchJob({
+      title: `Competitor research: ${competitor.companyName}`,
+      question: `Verify ${competitor.companyName} product equivalent, pricing evidence, distribution, certifications, and market-share source if available.`,
+      context: 'Chemicon China Feasibility',
+      status: 'Task Created',
+    })
     message.success('Competitor research task created')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown task error'
     message.error(`Could not create task: ${detail}`)
   } finally {
     creating.value = ''
+  }
+}
+
+function addCompetitor() {
+  const companyName = competitorForm.value.companyName.trim()
+  if (!companyName) {
+    message.warning('Add a company name or competitor placeholder first')
+    return
+  }
+  const source = competitorForm.value.sourceTitle.trim()
+    ? {
+        title: competitorForm.value.sourceTitle.trim(),
+        url: competitorForm.value.sourceUrl.trim() || undefined,
+      }
+    : null
+  const saved = intelligence.addCompetitor({
+    companyName,
+    countryRegion: competitorForm.value.countryRegion.trim() || 'To Verify',
+    productEquivalent: competitorForm.value.productEquivalent.trim() || 'To Verify',
+    activeContent: competitorForm.value.activeContent.trim() || 'To Verify',
+    pricingEvidence: competitorForm.value.pricingEvidence.trim() || 'Missing',
+    certifications: competitorForm.value.certifications.trim() || 'To Verify',
+    distributionPresence: competitorForm.value.distributionPresence.trim() || 'To Verify',
+    marketShare: competitorForm.value.marketShare.trim(),
+    evidenceStatus: competitorForm.value.evidenceStatus,
+    source,
+    notes: competitorForm.value.notes.trim() || 'No competitor claim should be treated as real until source evidence is attached.',
+  })
+  if (competitorForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Competitor saved as To Verify because verified records need usable source evidence')
+  } else {
+    message.success('Competitor record saved in this browser workspace')
+  }
+  competitorForm.value = {
+    companyName: '',
+    countryRegion: '',
+    productEquivalent: '',
+    activeContent: '',
+    pricingEvidence: '',
+    certifications: '',
+    distributionPresence: '',
+    marketShare: '',
+    evidenceStatus: 'To Verify',
+    sourceTitle: '',
+    sourceUrl: '',
+    notes: '',
   }
 }
 </script>
@@ -79,10 +123,42 @@ async function createResearchTask(competitor: CompetitorRecord) {
       <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
     </header>
 
+    <section class="competitor-form" aria-label="Add competitor record">
+      <div>
+        <h3>Add competitor evidence</h3>
+        <p>Saved locally in this browser workspace. Unknown market share is always displayed as To Verify.</p>
+      </div>
+      <label>Company<input v-model="competitorForm.companyName" type="text" placeholder="Company name" /></label>
+      <label>Region<input v-model="competitorForm.countryRegion" type="text" placeholder="Country / region" /></label>
+      <label>Product equivalent<input v-model="competitorForm.productEquivalent" type="text" placeholder="Equivalent product" /></label>
+      <label>Active content<input v-model="competitorForm.activeContent" type="text" placeholder="Active content" /></label>
+      <label>Pricing evidence<input v-model="competitorForm.pricingEvidence" type="text" placeholder="Quote, source, or Missing" /></label>
+      <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="To Verify" /></label>
+      <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="To Verify" /></label>
+      <label>Market share<input v-model="competitorForm.marketShare" type="text" placeholder="Leave blank unless sourced" /></label>
+      <label>
+        Evidence status
+        <select v-model="competitorForm.evidenceStatus">
+          <option>To Verify</option>
+          <option>Missing</option>
+          <option>Assumption</option>
+          <option>User Approved</option>
+          <option>Verified</option>
+        </select>
+      </label>
+      <label>Source title<input v-model="competitorForm.sourceTitle" type="text" placeholder="Source title" /></label>
+      <label>Source URL<input v-model="competitorForm.sourceUrl" type="url" placeholder="https://..." /></label>
+      <label class="wide">Notes<input v-model="competitorForm.notes" type="text" placeholder="Evidence notes" /></label>
+      <NButton secondary type="primary" @click="addCompetitor">Save competitor</NButton>
+    </section>
+
     <section class="competitor-table" aria-label="Competitor list">
       <div class="competitor-row head">
         <span>Company</span><span>Region</span><span>Equivalent</span><span>Pricing</span><span>Market share</span><span>Status</span><span>Action</span>
       </div>
+      <p v-if="competitors.length === 0" class="empty-state">
+        No competitor records saved yet. Add sourced records above, or create research tasks for unknown competitors.
+      </p>
       <div v-for="competitor in competitors" :key="competitor.companyName" class="competitor-row">
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
@@ -128,6 +204,7 @@ async function createResearchTask(competitor: CompetitorRecord) {
 }
 
 .page-header,
+.competitor-form,
 .competitor-table,
 .detail-grid article {
   border: 1px solid $border-color;
@@ -141,6 +218,39 @@ async function createResearchTask(competitor: CompetitorRecord) {
   gap: 16px;
   align-items: start;
   padding: 18px;
+}
+
+.competitor-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+  padding: 16px;
+
+  > div,
+  .wide {
+    grid-column: 1 / -1;
+  }
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  input,
+  select {
+    min-width: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 8px 10px;
+    text-transform: none;
+  }
 }
 
 .eyebrow {
@@ -184,6 +294,13 @@ async function createResearchTask(competitor: CompetitorRecord) {
     font-weight: 900;
     text-transform: uppercase;
   }
+}
+
+.empty-state {
+  border-top: 1px solid $border-color;
+  margin: 0;
+  padding: 12px 0 0;
+  color: $text-secondary;
 }
 
 .detail-grid {
