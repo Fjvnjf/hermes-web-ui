@@ -7,8 +7,10 @@ import {
   calculateInvestmentScenario,
   createEmptyInvestmentScenario,
   hasUsableInvestmentOutputs,
+  listInvestmentEvidenceGaps,
   summarizeInvestmentEvidence,
   type EvidenceStatus,
+  type InvestmentEvidenceGap,
   type InvestmentScenarioInput,
 } from '@/utils/investmentCalculator'
 import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
@@ -24,6 +26,7 @@ const scenarioKeys: ScenarioKey[] = ['Lean', 'Base', 'Conservative', 'Aggressive
 const activeScenario = ref<ScenarioKey>('Base')
 const copied = ref(false)
 const creatingFinancialTask = ref(false)
+const creatingGapTaskId = ref('')
 
 function makeScenario(name: ScenarioKey): InvestmentScenarioInput {
   const scenario = createEmptyInvestmentScenario(`Chemicon China Feasibility - ${name}`)
@@ -46,6 +49,8 @@ const scenarios = reactive(loadScenarios())
 const scenario = computed(() => scenarios[activeScenario.value])
 const result = computed(() => calculateInvestmentScenario(scenario.value))
 const evidenceSummary = computed(() => summarizeInvestmentEvidence(scenario.value))
+const investmentEvidenceGaps = computed(() => listInvestmentEvidenceGaps(scenario.value))
+const topInvestmentEvidenceGaps = computed(() => investmentEvidenceGaps.value.slice(0, 10))
 const draftableFinancialOutputs = computed(() => hasUsableInvestmentOutputs(result.value))
 const financialEvidenceStatus = computed<IntelligenceEvidenceStatus>(() => {
   if (result.value.incomplete || evidenceSummary.value.toVerify > 0) return 'To Verify'
@@ -206,6 +211,42 @@ async function createFinancialEvidenceTask() {
   }
 }
 
+function financialInputTaskBody(item: InvestmentEvidenceGap): string {
+  return [
+    `Financial input evidence gap: ${item.label}`,
+    `Category: ${item.category}`,
+    `Current evidence status: ${item.evidenceStatus}`,
+    `Recommended action: ${item.recommendedAction}`,
+    `Scenario: ${activeScenario.value}`,
+    `Project: ${scenario.value.projectName}`,
+    'Source page: IRR / Investment Calculator / Financial Input Evidence',
+    'Tags: Financial Model, Input Evidence, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not use this input as investor-ready until it is source-backed, user-provided, or explicitly approved as an assumption.',
+  ].join('\n')
+}
+
+async function createFinancialInputTask(item: InvestmentEvidenceGap) {
+  creatingGapTaskId.value = item.id
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Verify financial input: ${item.label}`,
+      body: financialInputTaskBody(item),
+      priority: item.priority,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Financial input evidence task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create financial input task: ${detail}`)
+  } finally {
+    creatingGapTaskId.value = ''
+  }
+}
+
 function saveFinancialSnapshot() {
   const saved = intelligence.saveFinancialModelSnapshot({
     scenarioName: activeScenario.value,
@@ -331,6 +372,39 @@ function addFinancialSummaryToDraft() {
           Add capex and revenue until NPV/IRR are calculable before staging output.
         </small>
       </article>
+    </section>
+
+    <section class="cashflow-panel financial-gap-panel" aria-label="Financial input evidence checklist">
+      <div class="panel-heading">
+        <div>
+          <h3>Financial Input Evidence Checklist</h3>
+          <p>
+            Weak inputs are the exact assumptions still blocking investor-safe financial outputs. Create targeted
+            Tasks instead of one vague finance follow-up.
+          </p>
+        </div>
+        <RouterLink :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
+      </div>
+      <div v-if="topInvestmentEvidenceGaps.length" class="financial-gap-list">
+        <article v-for="item in topInvestmentEvidenceGaps" :key="item.id" class="financial-gap-row">
+          <div>
+            <strong>{{ item.label }}</strong>
+            <p>{{ item.recommendedAction }}</p>
+            <small>{{ item.category }} / {{ item.evidenceStatus }}</small>
+          </div>
+          <NButton
+            size="tiny"
+            secondary
+            :loading="creatingGapTaskId === item.id"
+            @click="createFinancialInputTask(item)"
+          >
+            Create input task
+          </NButton>
+        </article>
+      </div>
+      <p v-else class="empty-state">
+        No weak financial inputs in the active scenario. Keep source labels attached before using outputs with investors.
+      </p>
     </section>
 
     <section class="input-grid">
@@ -681,6 +755,50 @@ function addFinancialSummaryToDraft() {
   margin-bottom: 0;
 }
 
+.financial-gap-panel {
+  margin: 14px 0;
+}
+
+.financial-gap-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.financial-gap-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-panel;
+
+  strong {
+    color: $text-primary;
+  }
+
+  p {
+    margin: 5px 0;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+}
+
+.empty-state {
+  margin: 12px 0 0;
+  color: $text-secondary;
+  line-height: 1.55;
+}
+
 .model-status-grid {
   margin: 14px 0;
 }
@@ -778,6 +896,12 @@ function addFinancialSummaryToDraft() {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
+
+  p {
+    margin: 5px 0 0;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
 }
 
 .year-table,
@@ -845,6 +969,11 @@ function addFinancialSummaryToDraft() {
   .year-row,
   .cashflow-row {
     grid-template-columns: 1fr;
+  }
+
+  .financial-gap-row {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 }
 </style>

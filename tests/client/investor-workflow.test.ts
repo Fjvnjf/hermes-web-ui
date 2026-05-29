@@ -6,6 +6,7 @@ import {
   createEmptyInvestmentScenario,
   hasUsableInvestmentOutputs,
   irr,
+  listInvestmentEvidenceGaps,
   npv,
   summarizeInvestmentEvidence,
 } from '@/utils/investmentCalculator'
@@ -244,6 +245,22 @@ describe('investor feasibility workflow utilities', () => {
     expect(summary.verified).toBeGreaterThan(0)
     expect(summary.userProvided).toBeGreaterThan(0)
     expect(summary.weak).toBeGreaterThan(0)
+  })
+
+  it('lists targeted financial evidence gaps for weak model inputs', () => {
+    const scenario = createEmptyInvestmentScenario()
+    scenario.products[0].name = 'CWAS / CWMS product mix'
+    scenario.products[0].evidenceStatus = 'User Provided'
+    scenario.capex.machinery.evidenceStatus = 'Verified'
+    scenario.variableCostPerTon.rawMaterials.evidenceStatus = 'To Verify'
+    scenario.discountRate.evidenceStatus = 'Assumption'
+
+    const gaps = listInvestmentEvidenceGaps(scenario)
+
+    expect(gaps.some(gap => gap.label === 'Raw material cost / ton' && gap.priority === 3)).toBe(true)
+    expect(gaps.some(gap => gap.label === 'Discount rate' && gap.priority === 2)).toBe(true)
+    expect(gaps.some(gap => gap.label === 'Machinery')).toBe(false)
+    expect(gaps.some(gap => gap.label.includes('CWAS / CWMS product mix'))).toBe(false)
   })
 
   it('blocks verified market claims without a source', () => {
@@ -806,6 +823,37 @@ describe('investor readiness pages', () => {
     expect(createTaskMock.mock.calls[0][0].body).toContain('Do not treat IRR, NPV, investor return, or payback as verified investor claims')
     expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'financial')?.evidenceStatus).toBe('Assumption')
+  })
+
+  it('creates targeted Kanban tasks from financial input evidence gaps', async () => {
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    base.products[0].name = 'CWAS / CWMS product mix'
+    base.variableCostPerTon.rawMaterials.evidenceStatus = 'To Verify'
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Financial Input Evidence Checklist')
+    expect(wrapper.text()).toContain('Raw material cost / ton')
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create input task')
+
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Verify financial input: Setup months',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source page: IRR / Investment Calculator / Financial Input Evidence')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not use this input as investor-ready')
   })
 
   it('renders the investor readiness shell without fake readiness data', () => {

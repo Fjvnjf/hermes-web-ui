@@ -101,6 +101,15 @@ export interface InvestmentEvidenceSummary {
   weak: number
 }
 
+export interface InvestmentEvidenceGap {
+  id: string
+  category: string
+  label: string
+  evidenceStatus: EvidenceStatus
+  recommendedAction: string
+  priority: 1 | 2 | 3
+}
+
 const VARIABLE_COST_LABELS = [
   'rawMaterials',
   'packaging',
@@ -137,6 +146,59 @@ const CAPEX_LABELS = [
   'permitLegalCosts',
   'officeSetup',
 ]
+
+const VARIABLE_COST_NAMES: Record<string, string> = {
+  rawMaterials: 'Raw material cost / ton',
+  packaging: 'Packaging / ton',
+  labor: 'Direct labor / ton',
+  utilities: 'Utilities / ton',
+  maintenance: 'Maintenance / ton',
+  qcLab: 'QC/lab / ton',
+  regulatory: 'Regulatory / ton',
+  salesAdmin: 'Sales/admin / ton',
+  logistics: 'Logistics / ton',
+  insurance: 'Insurance / ton',
+  wasteTreatment: 'Waste treatment / ton',
+  contingency: 'Contingency / ton',
+}
+
+const FIXED_COST_NAMES: Record<string, string> = {
+  rent: 'Factory rent / year',
+  fixedLabor: 'Fixed labor / year',
+  admin: 'Sales/admin / year',
+  maintenanceFixed: 'Maintenance / year',
+  regulatoryFixed: 'Regulatory / year',
+  insuranceFixed: 'Insurance / year',
+}
+
+const CAPEX_NAMES: Record<string, string> = {
+  machinery: 'Machinery',
+  installation: 'Installation',
+  factorySetup: 'Factory setup',
+  labEquipment: 'Lab equipment',
+  safetyFireSystems: 'Safety/fire systems',
+  wastewaterTreatment: 'Wastewater treatment',
+  tanksReactorsMixers: 'Tanks/reactors/mixers',
+  engineering: 'Engineering',
+  permitLegalCosts: 'Permit/legal costs',
+  officeSetup: 'Office setup',
+}
+
+const WORKING_CAPITAL_NAMES: Record<keyof WorkingCapitalAssumptions, string> = {
+  rawMaterialInventoryDays: 'Raw material inventory days',
+  finishedGoodsInventoryDays: 'Finished goods inventory days',
+  customerCreditDays: 'Customer credit days / DSO',
+  supplierCreditDays: 'Supplier credit days / DPO',
+  safetyCashBuffer: 'Safety cash buffer',
+}
+
+const FUNDING_NAMES: Record<keyof FundingAssumptions, string> = {
+  investorAmount: 'Investor amount',
+  founderContribution: 'Founder contribution',
+  investorEquityPercent: 'Investor equity percentage',
+  exitYear: 'Exit year',
+  exitMultiple: 'Exit multiple',
+}
 
 function safeNumber(value: number | undefined | null): number {
   return Number.isFinite(value) ? Number(value) : 0
@@ -283,6 +345,140 @@ export function summarizeInvestmentEvidence(input: InvestmentScenarioInput): Inv
 
 function isWeakEvidence(status: EvidenceStatus): boolean {
   return status === 'Assumption' || status === 'To Verify'
+}
+
+function evidencePriority(status: EvidenceStatus): 1 | 2 | 3 {
+  if (status === 'To Verify') return 3
+  if (status === 'Assumption') return 2
+  return 1
+}
+
+function addGap(
+  gaps: InvestmentEvidenceGap[],
+  input: {
+    id: string
+    category: string
+    label: string
+    evidenceStatus: EvidenceStatus
+    recommendedAction: string
+  },
+) {
+  if (!isWeakEvidence(input.evidenceStatus)) return
+  gaps.push({
+    ...input,
+    priority: evidencePriority(input.evidenceStatus),
+  })
+}
+
+function evidenceCategoryRank(category: string): number {
+  const order = [
+    'Project setup',
+    'Revenue',
+    'Cost assumptions',
+    'Capex',
+    'Working capital',
+    'Fixed costs',
+    'Investment/funding',
+  ]
+  const index = order.indexOf(category)
+  return index === -1 ? order.length : index
+}
+
+export function listInvestmentEvidenceGaps(input: InvestmentScenarioInput): InvestmentEvidenceGap[] {
+  const gaps: InvestmentEvidenceGap[] = []
+
+  addGap(gaps, {
+    id: 'setup-months',
+    category: 'Project setup',
+    label: 'Setup months',
+    evidenceStatus: input.setupMonths.evidenceStatus,
+    recommendedAction: 'Confirm setup/construction timing with factory setup plan, machine lead time, and permit timing.',
+  })
+  addGap(gaps, {
+    id: 'discount-rate',
+    category: 'Project setup',
+    label: 'Discount rate',
+    evidenceStatus: input.discountRate.evidenceStatus,
+    recommendedAction: 'Approve the investor discount-rate assumption or attach source rationale before using NPV as investor material.',
+  })
+  addGap(gaps, {
+    id: 'tax-rate',
+    category: 'Project setup',
+    label: 'Tax rate',
+    evidenceStatus: input.taxRate.evidenceStatus,
+    recommendedAction: 'Verify applicable China tax assumptions with a source or advisor note.',
+  })
+  addGap(gaps, {
+    id: 'terminal-value',
+    category: 'Project setup',
+    label: 'Terminal / salvage value',
+    evidenceStatus: input.salvageValue.evidenceStatus,
+    recommendedAction: 'Keep terminal value as To Verify unless there is a user-approved exit/salvage assumption.',
+  })
+
+  input.products.forEach((product, index) => {
+    addGap(gaps, {
+      id: `revenue-${index}`,
+      category: 'Revenue',
+      label: `${product.name || `Product ${index + 1}`} volume and price`,
+      evidenceStatus: product.evidenceStatus,
+      recommendedAction: 'Attach source-backed volume, price, utilization, customer, or distributor evidence before using revenue outputs.',
+    })
+  })
+
+  Object.entries(input.variableCostPerTon).forEach(([key, value]) => {
+    addGap(gaps, {
+      id: `variable-cost-${key}`,
+      category: 'Cost assumptions',
+      label: VARIABLE_COST_NAMES[key] || key,
+      evidenceStatus: value.evidenceStatus,
+      recommendedAction: 'Attach supplier quote, landed-cost sheet, or user-approved costing assumption.',
+    })
+  })
+
+  Object.entries(input.annualFixedCosts).forEach(([key, value]) => {
+    addGap(gaps, {
+      id: `fixed-cost-${key}`,
+      category: 'Fixed costs',
+      label: FIXED_COST_NAMES[key] || key,
+      evidenceStatus: value.evidenceStatus,
+      recommendedAction: 'Attach rent, staffing, maintenance, regulatory, or operating-cost support.',
+    })
+  })
+
+  Object.entries(input.capex).forEach(([key, value]) => {
+    addGap(gaps, {
+      id: `capex-${key}`,
+      category: 'Capex',
+      label: CAPEX_NAMES[key] || key,
+      evidenceStatus: value.evidenceStatus,
+      recommendedAction: 'Attach quote, engineering estimate, equipment list, or approved capex assumption.',
+    })
+  })
+
+  Object.entries(input.workingCapital).forEach(([key, value]) => {
+    const typedKey = key as keyof WorkingCapitalAssumptions
+    addGap(gaps, {
+      id: `working-capital-${key}`,
+      category: 'Working capital',
+      label: WORKING_CAPITAL_NAMES[typedKey] || key,
+      evidenceStatus: value.evidenceStatus,
+      recommendedAction: 'Approve or verify cash-cycle assumptions for inventory, receivables, payables, and safety cash.',
+    })
+  })
+
+  Object.entries(input.funding).forEach(([key, value]) => {
+    const typedKey = key as keyof FundingAssumptions
+    addGap(gaps, {
+      id: `funding-${key}`,
+      category: 'Investment/funding',
+      label: FUNDING_NAMES[typedKey] || key,
+      evidenceStatus: value.evidenceStatus,
+      recommendedAction: 'Approve or source investor amount, equity, founder contribution, exit, and return assumptions before investor use.',
+    })
+  })
+
+  return gaps.sort((a, b) => b.priority - a.priority || evidenceCategoryRank(a.category) - evidenceCategoryRank(b.category))
 }
 
 function workingCapitalRequirement(
