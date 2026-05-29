@@ -15,6 +15,7 @@ const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingTaskId = ref('')
+const creatingJobTaskId = ref('')
 const savingMemoryId = ref('')
 
 const areaOptions: Array<{ value: EvidenceArea; label: string }> = [
@@ -114,6 +115,46 @@ function useJobAsFindingDraft(job: ResearchJobRecord) {
     riskNote: 'Do not approve this finding until source-backed research results are reviewed.',
   }
   message.info('Research job copied into the review form as To Verify')
+}
+
+function researchJobPriority(job: ResearchJobRecord): number {
+  const text = `${job.title} ${job.question}`.toLowerCase()
+  if (text.includes('regulatory') || text.includes('dms') || text.includes('investor') || text.includes('risk')) return 3
+  if (text.includes('price') || text.includes('competitor') || text.includes('supplier') || text.includes('market')) return 2
+  return 1
+}
+
+async function createResearchJobTask(job: ResearchJobRecord) {
+  creatingJobTaskId.value = job.id
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Research: ${job.title}`,
+      body: [
+        `Research job: ${job.title}`,
+        `Research question: ${job.question}`,
+        `Project/context: ${job.context}`,
+        `Current job status: ${job.status}`,
+        'Expected output: Source-backed research finding with clear Verified / To Verify / Assumption labels.',
+        'Source requirements: Include source title plus URL or date before using claims in investor material.',
+        'Source page: Research Result Review',
+        'Tags: Research Job, Evidence Gap, Chemicon China Feasibility',
+        '',
+        'Note: This is a Kanban research task, not an automatically scheduled job.',
+      ].join('\n'),
+      priority: researchJobPriority(job),
+      tenant: job.context || 'Chemicon China Feasibility',
+    })
+    intelligence.updateResearchJobStatus(job.id, 'Task Created')
+    message.success('Research job task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown research job task error'
+    message.error(`Could not create research job task: ${detail}`)
+  } finally {
+    creatingJobTaskId.value = ''
+  }
 }
 
 function stageFinding() {
@@ -288,9 +329,20 @@ async function createTask(item: ResearchReviewFinding) {
           <span>{{ job.status }} / {{ job.context }}</span>
           <small>{{ job.question }}</small>
         </div>
-        <NButton size="tiny" secondary @click="useJobAsFindingDraft(job)">
-          Use as finding draft
-        </NButton>
+        <div class="job-actions">
+          <NButton
+            size="tiny"
+            secondary
+            :disabled="job.status === 'Task Created'"
+            :loading="creatingJobTaskId === job.id"
+            @click="createResearchJobTask(job)"
+          >
+            {{ job.status === 'Task Created' ? 'Task created' : 'Create research task' }}
+          </NButton>
+          <NButton size="tiny" secondary @click="useJobAsFindingDraft(job)">
+            Use as finding draft
+          </NButton>
+        </div>
       </div>
     </section>
 
@@ -537,6 +589,13 @@ async function createTask(item: ResearchReviewFinding) {
   }
 }
 
+.job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .finding-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -649,6 +708,10 @@ async function createTask(item: ResearchReviewFinding) {
 
   .finding-actions {
     max-width: none;
+    justify-content: flex-start;
+  }
+
+  .job-actions {
     justify-content: flex-start;
   }
 

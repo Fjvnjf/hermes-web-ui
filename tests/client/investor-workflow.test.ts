@@ -502,6 +502,21 @@ describe('investor feasibility workflow utilities', () => {
     expect(intelligence.state.value.researchJobs[0].title).toContain('DMS')
   })
 
+  it('updates deferred research jobs after they become real tasks', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Later',
+    })
+
+    const updated = intelligence.updateResearchJobStatus(saved.id, 'Task Created')
+
+    expect(updated?.status).toBe('Task Created')
+    expect(intelligence.state.value.researchJobs[0].status).toBe('Task Created')
+  })
+
   it('builds honest next actions from current investor evidence state', () => {
     const intelligence = useFeasibilityIntelligence()
 
@@ -894,6 +909,31 @@ describe('investor readiness pages', () => {
     expect((selects[0].element as HTMLSelectElement).value).toBe('regulatory')
     expect((selects[1].element as HTMLSelectElement).value).toBe('To Verify')
     expect(intelligence.state.value.researchFindings).toHaveLength(0)
+  })
+
+  it('creates a Kanban task from a deferred research job and marks it task-created', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Later',
+    })
+
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const createButton = wrapper.findAll('button').find(button => button.text().includes('Create research task'))
+
+    expect(createButton).toBeTruthy()
+    await createButton!.trigger('click')
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Research: DMS regulation in China',
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source requirements')
+    expect(intelligence.state.value.researchJobs[0].status).toBe('Task Created')
   })
 
   it('renders approved investor material and creates missing-proof tasks from presentation builder', async () => {

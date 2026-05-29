@@ -44,6 +44,7 @@ vi.mock('naive-ui', () => ({
     success: vi.fn(),
     warning: vi.fn(),
     error: vi.fn(),
+    info: vi.fn(),
   }),
   NAlert: { template: '<div class="n-alert"><slot /></div>' },
   NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
@@ -220,5 +221,26 @@ describe('Session Capture Assistant', () => {
 
     expect(createTaskMock).toHaveBeenCalled()
     expect(intelligence.state.value.researchJobs.some(job => job.title.includes('DMS regulation'))).toBe(true)
+  })
+
+  it('saves deferred deep research suggestions as Later jobs without creating a task', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(SessionCaptureDrawer, {
+      props: {
+        show: true,
+        sessionId: 'session-1',
+        sessionTitle: 'Chemicon feasibility',
+        messages: testMessages(),
+        initialContext: 'chemicon',
+      },
+    })
+
+    const laterButton = wrapper.findAll('button').find(button => button.text() === 'Later')
+    expect(laterButton).toBeTruthy()
+    await laterButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).not.toHaveBeenCalled()
+    expect(intelligence.state.value.researchJobs.some(job => job.status === 'Later' && job.title.includes('DMS regulation'))).toBe(true)
   })
 })
