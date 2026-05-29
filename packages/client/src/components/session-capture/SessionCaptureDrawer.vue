@@ -64,6 +64,7 @@ const fallbackText = ref('')
 const saveErrors = ref<string[]>([])
 const saveSessionSummary = ref(false)
 const saveFullTranscript = ref(false)
+const stageResearchReview = ref(false)
 const hiddenResearchSuggestions = ref<Set<string>>(new Set())
 const creatingResearchTaskId = ref<string | null>(null)
 const researchTaskStatus = ref<Record<string, string>>({})
@@ -144,6 +145,7 @@ function resetDraft(resetContext = true) {
   saveErrors.value = []
   saveSessionSummary.value = false
   saveFullTranscript.value = false
+  stageResearchReview.value = false
   hiddenResearchSuggestions.value = new Set()
   researchTaskStatus.value = {}
   draft.value = generateSessionCaptureDraft(props.messages, {
@@ -236,11 +238,13 @@ async function addSelected() {
         fetchMemory,
         saveMemory,
         copyText: copyToClipboard,
+        stageResearchFinding: finding => intelligence.addResearchFinding(finding),
         stagePresentationMaterial: material => intelligence.addPresentationMaterial(material),
       },
       {
         saveSessionSummary: saveSessionSummary.value,
         saveFullTranscript: saveFullTranscript.value,
+        stageResearchReview: stageResearchReview.value,
         transcriptMessages: props.messages,
         memoryTags: ['Session Capture', contextLabel(selectedContext.value), draft.value.context],
         summaryEvidenceStatus: draft.value.context === 'feasibility' ? 'Research Note' : 'To Verify',
@@ -248,7 +252,7 @@ async function addSelected() {
     )
     fallbackText.value = result.fallbackText.trim()
     saveErrors.value = result.errors
-    const savedCount = result.createdTasks + result.savedMemoryItems + result.stagedPresentationItems + result.copiedItems + (result.savedSessionSummary ? 1 : 0) + (result.savedFullTranscript ? 1 : 0)
+    const savedCount = result.createdTasks + result.savedMemoryItems + result.stagedResearchFindings + result.stagedPresentationItems + result.copiedItems + (result.savedSessionSummary ? 1 : 0) + (result.savedFullTranscript ? 1 : 0)
     if (savedCount > 0 || result.errors.length === 0) {
       if (props.sessionId) markCaptureReviewed(props.sessionId)
       emit('saved')
@@ -371,7 +375,7 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
 
         <NAlert type="info" :bordered="false" class="capture-honesty">
           Suggestions are generated from the current active session only. Nothing is saved until you select items and approve them.
-          Tasks and evidence gaps save to real Kanban tasks; research notes and memory candidates append to Memory; report snippets stage as To Verify investor material until reviewed.
+          Tasks and evidence gaps save to real Kanban tasks; research notes and memory candidates append to Memory; selected research items can also be staged for Research Result Review; report snippets stage as To Verify investor material until reviewed.
         </NAlert>
 
         <section class="memory-pipeline" aria-labelledby="memory-pipeline-title">
@@ -389,6 +393,10 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
             <label>
               <NCheckbox v-model:checked="saveFullTranscript" />
               <span>Save full transcript, not recommended</span>
+            </label>
+            <label>
+              <NCheckbox v-model:checked="stageResearchReview" />
+              <span>Stage selected research notes/evidence for Research Result Review</span>
             </label>
           </div>
         </section>
@@ -491,6 +499,7 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
           <RouterLink :to="{ name: 'hermes.memory' }">Open Memory</RouterLink>
           <RouterLink :to="{ name: 'hermes.files' }">Open Documents</RouterLink>
           <RouterLink :to="{ name: 'hermes.reportsHub' }">Open Reports</RouterLink>
+          <RouterLink :to="{ name: 'hermes.researchResultReview' }">Open Research Review</RouterLink>
         </div>
       </div>
 

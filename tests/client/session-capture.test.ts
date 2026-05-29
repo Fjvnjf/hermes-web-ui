@@ -175,6 +175,54 @@ describe('Session Capture Assistant', () => {
     expect(saveMemoryMock.mock.calls[0][1]).not.toContain('Full Session Transcript')
   })
 
+  it('stages approved research notes into Research Result Review without updating readiness automatically', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const draft = generateSessionCaptureDraft(testMessages(), { context: 'chemicon' })
+    const note = draft.researchNotes.find(item => item.description.includes('15,000'))
+    expect(note).toBeTruthy()
+    const source = {
+      sessionId: 's1',
+      sessionTitle: 'Chemicon feasibility',
+      contextLabel: 'Chemicon China Feasibility',
+      capturedAt: new Date('2026-05-29T00:00:00Z'),
+    }
+
+    const withoutOptIn = await saveSessionCaptureSelection(
+      draft,
+      new Set([note!.id]),
+      source,
+      {
+        createTask: createTaskMock,
+        fetchMemory: fetchMemoryMock,
+        saveMemory: saveMemoryMock,
+        stageResearchFinding: finding => intelligence.addResearchFinding(finding),
+      },
+    )
+
+    expect(withoutOptIn.stagedResearchFindings).toBe(0)
+    expect(intelligence.state.value.researchFindings).toHaveLength(0)
+
+    const result = await saveSessionCaptureSelection(
+      draft,
+      new Set([note!.id]),
+      source,
+      {
+        createTask: createTaskMock,
+        fetchMemory: fetchMemoryMock,
+        saveMemory: saveMemoryMock,
+        stageResearchFinding: finding => intelligence.addResearchFinding(finding),
+      },
+      { stageResearchReview: true },
+    )
+
+    expect(result.stagedResearchFindings).toBe(1)
+    expect(intelligence.state.value.researchFindings).toHaveLength(1)
+    expect(intelligence.state.value.researchFindings[0].keyClaim).toBe(note!.title)
+    expect(intelligence.state.value.researchFindings[0].status).toBe('Pending Review')
+    expect(intelligence.state.value.researchFindings[0].evidenceStatus).toBe('Reference Only')
+    expect(intelligence.state.value.evidenceItems.some(item => item.source?.title?.includes('Chat session'))).toBe(false)
+  })
+
   it('stages approved report snippets as To Verify presentation material', async () => {
     const intelligence = useFeasibilityIntelligence()
     const messages: Message[] = [
@@ -233,6 +281,7 @@ describe('Session Capture Assistant', () => {
 
     expect(wrapper.text()).toContain('Save useful items from this session?')
     expect(wrapper.text()).toContain('A. Tasks')
+    expect(wrapper.text()).toContain('Research Result Review')
 
     const addButton = wrapper.findAll('button').find(button => button.text().includes('Add selected'))
     expect(addButton).toBeTruthy()

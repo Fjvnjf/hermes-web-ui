@@ -1,4 +1,6 @@
 import type { Message } from '@/stores/hermes/chat'
+import type { EvidenceArea, ResearchReviewStatus } from '@/composables/useFeasibilityIntelligence'
+import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
 export type CaptureContextId =
   | 'chemicon'
@@ -68,6 +70,7 @@ export interface SaveCaptureDeps {
   fetchMemory?: () => Promise<{ memory?: string }>
   saveMemory?: (section: 'memory' | 'user' | 'soul', content: string) => Promise<void>
   copyText?: (text: string) => Promise<boolean>
+  stageResearchFinding?: (finding: CaptureResearchFindingPayload) => unknown
   stagePresentationMaterial?: (material: {
     section: string
     content: string
@@ -82,6 +85,7 @@ export interface SaveCaptureResult {
   savedMemoryItems: number
   savedSessionSummary: boolean
   savedFullTranscript: boolean
+  stagedResearchFindings: number
   stagedPresentationItems: number
   copiedItems: number
   fallbackText: string
@@ -91,9 +95,23 @@ export interface SaveCaptureResult {
 export interface SaveSessionCaptureOptions {
   saveSessionSummary?: boolean
   saveFullTranscript?: boolean
+  stageResearchReview?: boolean
   transcriptMessages?: Message[]
   memoryTags?: string[]
   summaryEvidenceStatus?: CaptureEvidenceStatus
+}
+
+export interface CaptureResearchFindingPayload {
+  summary: string
+  keyClaim: string
+  area: EvidenceArea
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence: 'low' | 'medium' | 'high'
+  source?: SourceReference | null
+  suggestedTask?: string
+  suggestedInvestorMaterial?: string
+  riskNote?: string
+  status?: ResearchReviewStatus
 }
 
 export interface DeepResearchSuggestion {
@@ -584,6 +602,70 @@ export function formatReportSnippetMaterial(item: CaptureSuggestion, source: Ses
   }
 }
 
+function captureStatusToIntelligenceStatus(status: CaptureEvidenceStatus): IntelligenceEvidenceStatus {
+  if (status === 'Research Note') return 'Reference Only'
+  return status
+}
+
+function areaForCaptureSuggestion(item: CaptureSuggestion): EvidenceArea {
+  const text = `${item.title} ${item.description} ${item.recommendedAction}`.toLowerCase()
+  if (text.includes('company') || text.includes('legal') || text.includes('business license') || text.includes('bank') || text.includes('import/export')) {
+    return 'companyLegal'
+  }
+  if (text.includes('product') || text.includes('cwas') || text.includes('cwms') || text.includes('sds') || text.includes('tds') || text.includes('cas')) {
+    return 'product'
+  }
+  if (text.includes('factory') || text.includes('plant') || text.includes('manufacturing') || text.includes('machine') || text.includes('capacity') || text.includes('utility')) {
+    return 'factory'
+  }
+  if (text.includes('regulatory') || text.includes('dms') || text.includes('permission') || text.includes('permit') || text.includes('approval')) {
+    return 'regulatory'
+  }
+  if (text.includes('finance') || text.includes('financial') || text.includes('investment') || text.includes('investor') || text.includes('irr') || text.includes('npv') || text.includes('model')) {
+    return 'financial'
+  }
+  if (text.includes('presentation') || text.includes('deck') || text.includes('report')) {
+    return 'presentation'
+  }
+  return 'market'
+}
+
+function canStageForResearchReview(item: CaptureSuggestion): boolean {
+  return item.category === 'evidenceGaps' || item.category === 'researchNotes' || item.category === 'memoryCandidates'
+}
+
+export function formatCaptureResearchFinding(
+  item: CaptureSuggestion,
+  source: SessionCaptureSource,
+): CaptureResearchFindingPayload {
+  const capturedAt = source.capturedAt || new Date()
+  const evidenceStatus = captureStatusToIntelligenceStatus(item.evidenceStatus)
+  return {
+    summary: [
+      item.description,
+      '',
+      `Recommended action: ${item.recommendedAction}`,
+      `Category: ${categoryLabel(item.category)}`,
+      `Context/project: ${source.contextLabel}`,
+      `Source session: ${source.sessionId || 'current'}`,
+      'Captured by Session Capture Assistant',
+      'Review required before this changes readiness, market evidence, or investor material.',
+    ].join('\n'),
+    keyClaim: item.title,
+    area: areaForCaptureSuggestion(item),
+    evidenceStatus,
+    confidence: item.confidence || item.priority || 'medium',
+    source: {
+      title: `Chat session${source.sessionTitle ? ` - ${source.sessionTitle}` : ''}`,
+      date: capturedAt.toISOString().slice(0, 10),
+    },
+    suggestedTask: item.category === 'evidenceGaps' ? item.recommendedAction : '',
+    suggestedInvestorMaterial: '',
+    riskNote: 'Captured from a conversation. Keep as Pending Review / To Verify until source documents or user approval support it.',
+    status: evidenceStatus === 'Missing' || evidenceStatus === 'To Verify' ? 'To Verify' : 'Pending Review',
+  }
+}
+
 export function categoryLabel(category: CaptureCategory): string {
   switch (category) {
     case 'tasks':
@@ -613,6 +695,7 @@ export async function saveSessionCaptureSelection(
     savedMemoryItems: 0,
     savedSessionSummary: false,
     savedFullTranscript: false,
+    stagedResearchFindings: 0,
     stagedPresentationItems: 0,
     copiedItems: 0,
     fallbackText: '',
@@ -620,6 +703,7 @@ export async function saveSessionCaptureSelection(
   }
   const memoryItems: CaptureSuggestion[] = []
   const copyItems: CaptureSuggestion[] = []
+  const researchReviewItems: CaptureSuggestion[] = []
 
   for (const item of selected) {
     if (item.target === 'kanban') {
@@ -650,6 +734,27 @@ export async function saveSessionCaptureSelection(
         }
       } else {
         copyItems.push(item)
+      }
+    }
+    if (options.stageResearchReview && canStageForResearchReview(item)) {
+      researchReviewItems.push(item)
+    }
+  }
+
+  if (researchReviewItems.length > 0) {
+    if (!deps.stageResearchFinding) {
+      result.errors.push('Research Result Review staging is unavailable in this runtime. Use Copy all instead.')
+      result.fallbackText += researchReviewItems.map(item => formatCaptureSuggestionText(item, source)).join('\n\n')
+    } else {
+      for (const item of researchReviewItems) {
+        try {
+          deps.stageResearchFinding(formatCaptureResearchFinding(item, source))
+          result.stagedResearchFindings += 1
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : 'Unknown research review staging error'
+          result.errors.push(`${item.title}: ${detail}`)
+          result.fallbackText += `${formatCaptureSuggestionText(item, source)}\n\n`
+        }
       }
     }
   }
