@@ -140,6 +140,43 @@ function addClaimToInvestorReview(claim: MarketClaim) {
   else message.info('Market evidence remains To Verify until value and source are complete')
 }
 
+function stageClaimForReview(claim: MarketClaim) {
+  const status = normalizedMarketClaimStatus(claim)
+  const value = claim.value?.trim() || 'To Verify'
+  const canSuggestInvestorMaterial = Boolean(claim.value?.trim()) &&
+    (status === 'Verified' || status === 'User Approved' || status === 'Assumption')
+  const saved = intelligence.addResearchFinding({
+    summary: [
+      `Market claim: ${claim.label}`,
+      `Value: ${value}`,
+      `Evidence status: ${status}`,
+      `Confidence: ${claim.confidence || 'low'}`,
+      `Source: ${claim.source?.title || 'Source missing'}`,
+      `Last checked: ${claim.lastChecked || 'Not checked'}`,
+    ].join('\n'),
+    keyClaim: `Market claim: ${claim.label}`,
+    area: 'market',
+    evidenceStatus: status,
+    confidence: claim.confidence || 'low',
+    source: claim.source || null,
+    suggestedTask: status === 'Verified' || status === 'User Approved'
+      ? `Review market claim "${claim.label}" before using it in investor material.`
+      : `Collect usable source evidence for market claim "${claim.label}".`,
+    suggestedInvestorMaterial: canSuggestInvestorMaterial
+      ? `Market evidence: ${claim.label}. Value/note: ${claim.value?.trim()}.`
+      : '',
+    riskNote: status === 'Verified'
+      ? 'Review source quality before approving this market evidence for investor use.'
+      : 'Market claim remains To Verify until value and usable source evidence are attached.',
+  })
+
+  if (claim.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Staged as To Verify because verified claims need value plus usable source evidence')
+  } else {
+    message.success('Market claim staged for research review')
+  }
+}
+
 function removeClaim(claim: MarketClaim) {
   if (!claim.id) {
     message.error('This older claim cannot be removed until the page is refreshed')
@@ -246,6 +283,7 @@ function removeClaim(claim: MarketClaim) {
         <span>{{ claim.lastChecked || 'Not checked' }}</span>
         <span class="row-actions">
           <button type="button" @click="startEditClaim(claim)">Edit claim</button>
+          <button type="button" @click="stageClaimForReview(claim)">Stage for review</button>
           <button type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
           <button type="button" class="danger-link" @click="removeClaim(claim)">Remove claim</button>
         </span>

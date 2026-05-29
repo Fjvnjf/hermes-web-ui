@@ -529,6 +529,55 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Verified')
   })
 
+  it('stages source-backed market claims for research review without updating readiness', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'CWAS price validation note',
+      value: 'Distributor interview supports price validation note',
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+      confidence: 'medium',
+    })
+    const wrapper = mount(MarketIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const stageButton = wrapper.findAll('button').find(button => button.text().includes('Stage for review'))
+
+    expect(stageButton).toBeTruthy()
+    await stageButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    expect(finding.keyClaim).toBe('Market claim: CWAS price validation note')
+    expect(finding.evidenceStatus).toBe('Verified')
+    expect(finding.source?.title).toBe('Distributor interview')
+    expect(finding.status).toBe('Pending Review')
+    expect(finding.suggestedInvestorMaterial).toContain('Distributor interview supports price validation note')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('To Verify')
+  })
+
+  it('keeps unsourced market claims To Verify when staged for review', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Unsourced market size note',
+      value: 'Claimed market size without source',
+      evidenceStatus: 'Verified',
+      source: null,
+      confidence: 'high',
+    })
+    const wrapper = mount(MarketIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const stageButton = wrapper.findAll('button').find(button => button.text().includes('Stage for review'))
+
+    await stageButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    expect(finding.keyClaim).toBe('Market claim: Unsourced market size note')
+    expect(finding.evidenceStatus).toBe('To Verify')
+    expect(finding.source).toBeNull()
+    expect(finding.suggestedInvestorMaterial).toBe('')
+  })
+
   it('keeps verified readiness evidence To Verify when source is missing', async () => {
     const intelligence = useFeasibilityIntelligence()
     const wrapper = mount(InvestorReadinessView, {
