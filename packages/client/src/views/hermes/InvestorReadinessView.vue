@@ -7,6 +7,7 @@ import {
   type FeasibilityEvidenceItem,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
+import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 
 interface ReadinessSection extends FeasibilityEvidenceItem {
@@ -17,6 +18,13 @@ const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingKey = ref('')
+const evidenceForm = ref({
+  area: 'companyLegal' as EvidenceArea,
+  evidenceStatus: 'User Provided' as IntelligenceEvidenceStatus,
+  sourceTitle: '',
+  sourceUrl: '',
+  sourceDate: '',
+})
 
 const routeByEvidenceId: Record<EvidenceArea, string> = {
   companyLegal: 'hermes.files',
@@ -50,6 +58,25 @@ const quickLinks = [
   { label: 'Memory', to: { name: 'hermes.memory' } },
   { label: 'Feasibility Studio', to: { name: 'hermes.feasibility' } },
   { label: 'Reports Hub', to: { name: 'hermes.reportsHub' } },
+]
+
+const evidenceAreaOptions: Array<{ value: EvidenceArea; label: string }> = [
+  { value: 'companyLegal', label: 'Company / Legal' },
+  { value: 'product', label: 'Product' },
+  { value: 'factory', label: 'Factory / Plant' },
+  { value: 'regulatory', label: 'Regulatory' },
+  { value: 'market', label: 'Market' },
+  { value: 'financial', label: 'Financial Model' },
+  { value: 'presentation', label: 'Presentation' },
+]
+
+const readinessStatusOptions: IntelligenceEvidenceStatus[] = [
+  'To Verify',
+  'Missing',
+  'Assumption',
+  'User Provided',
+  'User Approved',
+  'Verified',
 ]
 
 const dataRoomChecklist = [
@@ -112,6 +139,47 @@ function markAssumption(item: ReadinessSection) {
   message.info('Marked as an assumption in this browser workspace')
 }
 
+function evidenceSourceFromForm(): SourceReference | null {
+  const title = evidenceForm.value.sourceTitle.trim()
+  if (!title) return null
+  return {
+    title,
+    url: evidenceForm.value.sourceUrl.trim() || undefined,
+    date: evidenceForm.value.sourceDate.trim() || undefined,
+  }
+}
+
+function resetEvidenceForm() {
+  evidenceForm.value = {
+    area: evidenceForm.value.area,
+    evidenceStatus: 'User Provided',
+    sourceTitle: '',
+    sourceUrl: '',
+    sourceDate: '',
+  }
+}
+
+function updateEvidenceArea(event: Event) {
+  evidenceForm.value.area = (event.target as HTMLSelectElement).value as EvidenceArea
+}
+
+function updateEvidenceStatus(event: Event) {
+  evidenceForm.value.evidenceStatus = (event.target as HTMLSelectElement).value as IntelligenceEvidenceStatus
+}
+
+function saveEvidenceStatus() {
+  const source = evidenceSourceFromForm()
+  const requestedStatus = evidenceForm.value.evidenceStatus
+  intelligence.updateEvidenceStatus(evidenceForm.value.area, requestedStatus, source)
+  const saved = intelligence.state.value.evidenceItems.find(item => item.id === evidenceForm.value.area)
+  if (requestedStatus === 'Verified' && saved?.evidenceStatus !== 'Verified') {
+    message.warning('Evidence kept To Verify because Verified requires source title plus URL or date')
+  } else {
+    message.success('Readiness evidence status saved')
+  }
+  resetEvidenceForm()
+}
+
 function addToInvestorDraft(item: ReadinessSection) {
   if (item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify') {
     message.warning('Add evidence or mark this as an assumption before staging it for investor draft')
@@ -126,6 +194,11 @@ function addToInvestorDraft(item: ReadinessSection) {
   intelligence.updateEvidenceStatus('presentation', 'User Approved')
   message.success('Added approved material to the investor draft builder')
 }
+
+defineExpose({
+  evidenceForm,
+  saveEvidenceStatus,
+})
 </script>
 
 <template>
@@ -156,6 +229,42 @@ function addToInvestorDraft(item: ReadinessSection) {
       <span>Assumptions: {{ statusCounts.Assumption || 0 }}</span>
       <span>To Verify: {{ statusCounts['To Verify'] || 0 }}</span>
       <span>Missing: {{ statusCounts.Missing || 0 }}</span>
+    </section>
+
+    <section class="evidence-intake" aria-label="Save readiness evidence">
+      <div>
+        <p class="eyebrow">Evidence intake</p>
+        <h3>Save source-backed readiness evidence</h3>
+        <p>
+          Use this when you have a source document, user-approved assumption, or reviewed evidence. Verified status
+          requires a source title plus URL or date; otherwise it stays To Verify.
+        </p>
+      </div>
+      <label>
+        Area
+        <select :value="evidenceForm.area" @change="updateEvidenceArea">
+          <option v-for="area in evidenceAreaOptions" :key="area.value" :value="area.value">{{ area.label }}</option>
+        </select>
+      </label>
+      <label>
+        Evidence status
+        <select :value="evidenceForm.evidenceStatus" @change="updateEvidenceStatus">
+          <option v-for="status in readinessStatusOptions" :key="status" :value="status">{{ status }}</option>
+        </select>
+      </label>
+      <label>
+        Source title
+        <input v-model="evidenceForm.sourceTitle" type="text" placeholder="Document, interview, quote, or review note" />
+      </label>
+      <label>
+        Source URL
+        <input v-model="evidenceForm.sourceUrl" type="url" placeholder="https://... or leave blank" />
+      </label>
+      <label>
+        Source date
+        <input v-model="evidenceForm.sourceDate" type="text" placeholder="YYYY-MM-DD or source date" />
+      </label>
+      <NButton secondary type="primary" @click="saveEvidenceStatus">Save evidence status</NButton>
     </section>
 
     <section class="readiness-grid" aria-label="Investor readiness sections">
@@ -217,6 +326,7 @@ function addToInvestorDraft(item: ReadinessSection) {
 }
 
 .page-header,
+.evidence-intake,
 .readiness-card,
 .support-grid article,
 .data-room,
@@ -296,6 +406,50 @@ function addToInvestorDraft(item: ReadinessSection) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
+}
+
+.evidence-intake {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding: 16px;
+
+  > div {
+    grid-column: 1 / -1;
+  }
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  input,
+  select {
+    min-width: 0;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 8px 10px;
+    text-transform: none;
+  }
 }
 
 .readiness-card,

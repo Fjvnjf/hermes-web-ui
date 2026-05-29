@@ -18,6 +18,19 @@ import {
   formatInvestorPresentationOutline,
 } from '@/utils/investorIntelligence'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import type { EvidenceArea } from '@/composables/useFeasibilityIntelligence'
+import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+
+interface InvestorReadinessTestVm {
+  evidenceForm: {
+    area: EvidenceArea
+    evidenceStatus: IntelligenceEvidenceStatus
+    sourceTitle: string
+    sourceUrl: string
+    sourceDate: string
+  }
+  saveEvidenceStatus: () => void
+}
 
 const createTaskMock = vi.hoisted(() => vi.fn())
 
@@ -392,6 +405,42 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Investor-Ready Feasibility Intelligence')
     expect(wrapper.text()).toContain('Missing')
     expect(wrapper.text()).toContain('To Verify')
+  })
+
+  it('saves source-backed readiness evidence from the intake form', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const vm = wrapper.vm as unknown as InvestorReadinessTestVm
+
+    vm.evidenceForm.area = 'product'
+    vm.evidenceForm.evidenceStatus = 'Verified'
+    vm.evidenceForm.sourceTitle = 'CWAS SDS source'
+    vm.evidenceForm.sourceDate = '2026-05-30'
+    vm.saveEvidenceStatus()
+    await wrapper.vm.$nextTick()
+
+    const product = intelligence.state.value.evidenceItems.find(item => item.id === 'product')
+    expect(product?.evidenceStatus).toBe('Verified')
+    expect(product?.source?.title).toBe('CWAS SDS source')
+  })
+
+  it('keeps verified readiness evidence To Verify when source is missing', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const vm = wrapper.vm as unknown as InvestorReadinessTestVm
+
+    vm.evidenceForm.area = 'regulatory'
+    vm.evidenceForm.evidenceStatus = 'Verified'
+    vm.saveEvidenceStatus()
+    await wrapper.vm.$nextTick()
+
+    const regulatory = intelligence.state.value.evidenceItems.find(item => item.id === 'regulatory')
+    expect(regulatory?.evidenceStatus).toBe('To Verify')
+    expect(regulatory?.source).toBeNull()
   })
 
   it('renders competitor unknown market share as To Verify', () => {
