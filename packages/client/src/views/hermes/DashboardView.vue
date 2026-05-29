@@ -7,7 +7,7 @@ import { listJobs, type Job } from '@/api/hermes/jobs'
 import { getActiveProfileName, hasApiKey } from '@/api/client'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
-import { buildInvestorNextActions } from '@/utils/investorIntelligence'
+import { buildInvestorNextActions, isPresentationMaterialAllowed, type PresentationMaterial } from '@/utils/investorIntelligence'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -112,6 +112,28 @@ const investorSnapshot = computed(() => [
 ])
 
 const nextBestActions = computed(() => buildInvestorNextActions(intelligence.state.value))
+const topEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
+const pendingReviewItems = computed(() =>
+  intelligence.state.value.researchFindings
+    .filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
+    .slice(0, 4),
+)
+const openResearchJobs = computed(() =>
+  intelligence.state.value.researchJobs
+    .filter(job => job.status === 'Task Created' || job.status === 'Manual Research Job')
+    .slice(0, 4),
+)
+const latestFinancialSnapshot = intelligence.latestFinancialModel
+const deckMaterialsNeedingEvidence = computed(() =>
+  intelligence.state.value.presentationMaterials
+    .filter(material => !isPresentationMaterialAllowed(material))
+    .slice(0, 4),
+)
+
+function materialStatusLabel(material: PresentationMaterial): string {
+  if (material.evidenceStatus === 'Verified') return 'Source required'
+  return material.evidenceStatus
+}
 
 const workspaceActions = [
   {
@@ -362,6 +384,88 @@ onMounted(() => {
         </div>
       </section>
 
+      <section class="triage-grid" aria-label="Feasibility intelligence triage">
+        <article class="triage-panel">
+          <div class="panel-title">
+            <div>
+              <h3>Evidence Gaps</h3>
+              <p>Top missing or unverified investor-readiness areas.</p>
+            </div>
+            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Review</RouterLink>
+          </div>
+          <div v-if="topEvidenceGaps.length" class="triage-list">
+            <RouterLink
+              v-for="gap in topEvidenceGaps"
+              :key="gap.id"
+              class="triage-row"
+              :to="{ name: gap.id === 'market' ? 'hermes.marketIntelligence' : gap.id === 'financial' ? 'hermes.investmentCalculator' : 'hermes.investorReadiness' }"
+            >
+              <span>{{ gap.label }}</span>
+              <small>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</small>
+            </RouterLink>
+          </div>
+          <div v-else class="triage-empty">No missing readiness areas in the current local intelligence state.</div>
+        </article>
+
+        <article class="triage-panel">
+          <div class="panel-title">
+            <div>
+              <h3>Research Review Queue</h3>
+              <p>Items waiting for approval before they affect readiness or investor material.</p>
+            </div>
+            <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
+          </div>
+          <div v-if="pendingReviewItems.length || openResearchJobs.length" class="triage-list">
+            <RouterLink
+              v-for="finding in pendingReviewItems"
+              :key="finding.id"
+              class="triage-row"
+              :to="{ name: 'hermes.researchResultReview' }"
+            >
+              <span>{{ finding.keyClaim || finding.summary }}</span>
+              <small>{{ finding.status }} / {{ finding.evidenceStatus }}</small>
+            </RouterLink>
+            <RouterLink
+              v-for="job in openResearchJobs"
+              :key="job.id"
+              class="triage-row"
+              :to="{ name: 'hermes.researchResultReview' }"
+            >
+              <span>{{ job.title }}</span>
+              <small>{{ job.status }} / {{ job.context }}</small>
+            </RouterLink>
+          </div>
+          <div v-else class="triage-empty">No pending research findings or manual research jobs.</div>
+        </article>
+
+        <article class="triage-panel">
+          <div class="panel-title">
+            <div>
+              <h3>Financial & Deck Status</h3>
+              <p>Latest model snapshot and investor material that still needs evidence.</p>
+            </div>
+            <RouterLink :to="{ name: 'hermes.investorPresentation' }">Deck</RouterLink>
+          </div>
+          <div class="triage-list">
+            <RouterLink class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
+              <span>{{ latestFinancialSnapshot?.scenarioName || 'No saved financial snapshot' }}</span>
+              <small>
+                {{ latestFinancialSnapshot ? `${latestFinancialSnapshot.evidenceStatus} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
+              </small>
+            </RouterLink>
+            <RouterLink
+              v-for="material in deckMaterialsNeedingEvidence"
+              :key="material.id || `${material.section}-${material.content}`"
+              class="triage-row"
+              :to="{ name: 'hermes.investorPresentation' }"
+            >
+              <span>{{ material.section }}</span>
+              <small>{{ materialStatusLabel(material) }} / {{ material.content }}</small>
+            </RouterLink>
+          </div>
+        </article>
+      </section>
+
       <section class="kpi-grid" aria-label="Runtime metrics">
         <div v-for="kpi in kpis" :key="kpi.label" class="kpi-card" :class="kpi.tone">
           <div class="kpi-value">{{ kpi.value }}</div>
@@ -553,6 +657,7 @@ onMounted(() => {
 .investor-snapshot-grid,
 .kpi-grid,
 .workstream-grid,
+.triage-grid,
 .ops-grid {
   display: grid;
   gap: 12px;
@@ -609,6 +714,71 @@ onMounted(() => {
   border: 1px solid $border-color;
   border-radius: $radius-md;
   background: $bg-card;
+}
+
+.triage-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
+}
+
+.triage-panel {
+  display: grid;
+  align-content: start;
+  min-height: 236px;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+}
+
+.triage-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.triage-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-primary;
+  color: $text-primary;
+  text-decoration: none;
+
+  &:hover {
+    border-color: $accent-info;
+    color: $accent-info;
+  }
+
+  span {
+    overflow: hidden;
+    color: $text-primary;
+    font-size: 13px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    display: -webkit-box;
+    overflow: hidden;
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.35;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
+.triage-empty {
+  margin-top: 14px;
+  padding: 28px 0;
+  color: $text-muted;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .next-actions-list {
@@ -893,6 +1063,7 @@ onMounted(() => {
 }
 
 @media (max-width: 1100px) {
+  .triage-grid,
   .ops-grid {
     grid-template-columns: 1fr;
   }

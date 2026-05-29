@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   calculateInvestmentScenario,
@@ -35,6 +35,11 @@ interface InvestorReadinessTestVm {
 const createTaskMock = vi.hoisted(() => vi.fn())
 const fetchMemoryMock = vi.hoisted(() => vi.fn())
 const saveMemoryMock = vi.hoisted(() => vi.fn())
+const checkConnectionMock = vi.hoisted(() => vi.fn())
+const loadModelsMock = vi.hoisted(() => vi.fn())
+const fetchSessionsMock = vi.hoisted(() => vi.fn())
+const listJobsMock = vi.hoisted(() => vi.fn())
+const fetchPerformanceRuntimeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/stores/hermes/kanban', () => ({
   DEFAULT_KANBAN_BOARD: 'default',
@@ -55,6 +60,35 @@ vi.mock('@/utils/clipboard', () => ({
 vi.mock('@/api/hermes/skills', () => ({
   fetchMemory: fetchMemoryMock,
   saveMemory: saveMemoryMock,
+}))
+
+vi.mock('@/api/hermes/sessions', () => ({
+  fetchSessions: fetchSessionsMock,
+}))
+
+vi.mock('@/api/hermes/jobs', () => ({
+  listJobs: listJobsMock,
+}))
+
+vi.mock('@/api/hermes/performance-monitor', () => ({
+  fetchPerformanceRuntime: fetchPerformanceRuntimeMock,
+}))
+
+vi.mock('@/api/client', () => ({
+  getActiveProfileName: () => 'default',
+  hasApiKey: () => true,
+}))
+
+vi.mock('@/stores/hermes/app', () => ({
+  useAppStore: () => ({
+    connected: true,
+    modelGroups: [{ provider: 'openai-codex', models: [] }],
+    selectedModel: 'gpt-5.5',
+    selectedProvider: 'openai-codex',
+    displayModelName: (model: string) => model,
+    checkConnection: checkConnectionMock,
+    loadModels: loadModelsMock,
+  }),
 }))
 
 vi.mock('naive-ui', () => ({
@@ -86,6 +120,7 @@ import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
 import ResearchResultReviewView from '@/views/hermes/ResearchResultReviewView.vue'
 import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentationBuilderView.vue'
+import DashboardView from '@/views/hermes/DashboardView.vue'
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -94,6 +129,14 @@ beforeEach(() => {
   createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
   fetchMemoryMock.mockReset().mockResolvedValue({ memory: 'Existing memory' })
   saveMemoryMock.mockReset().mockResolvedValue(undefined)
+  checkConnectionMock.mockReset().mockResolvedValue(undefined)
+  loadModelsMock.mockReset().mockResolvedValue(undefined)
+  fetchSessionsMock.mockReset().mockResolvedValue([])
+  listJobsMock.mockReset().mockResolvedValue([])
+  fetchPerformanceRuntimeMock.mockReset().mockResolvedValue({
+    sessions: { active: 0, running: 0 },
+    bridge: { reachable: true, workers: [] },
+  })
 })
 
 describe('investor feasibility workflow utilities', () => {
@@ -969,5 +1012,61 @@ describe('investor readiness pages', () => {
 
     expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
     expect(intelligence.state.value.researchFindings).toHaveLength(1)
+  })
+
+  it('shows real feasibility intelligence triage on Home without fake business metrics', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'DMS source review is waiting for approval.',
+      keyClaim: 'DMS regulation source review',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+    })
+    intelligence.addResearchJob({
+      title: 'CWAS competitor price proof',
+      question: 'Find source-backed price evidence only.',
+      context: 'Chemicon China Feasibility',
+      status: 'Manual Research Job',
+    })
+    intelligence.saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Derived from Assumptions',
+      npv: 100,
+      irr: 0.12,
+      mirr: 0.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 1200,
+      capexTotal: 1000,
+      yearOneRevenue: 500,
+      warnings: ['Pricing input is still To Verify.'],
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported market evidence needs source.',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+
+    const wrapper = mount(DashboardView, {
+      global: { stubs: { RouterLink: { props: ['to'], template: '<a><slot /></a>' } } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Evidence Gaps')
+    expect(wrapper.text()).toContain('Research Review Queue')
+    expect(wrapper.text()).toContain('Financial & Deck Status')
+    expect(wrapper.text()).toContain('Regulatory evidence')
+    expect(wrapper.text()).toContain('DMS regulation source review')
+    expect(wrapper.text()).toContain('CWAS competitor price proof')
+    expect(wrapper.text()).toContain('Base')
+    expect(wrapper.text()).toContain('Derived from Assumptions')
+    expect(wrapper.text()).toContain('Market Evidence')
+    expect(wrapper.text()).toContain('Unsupported market evidence needs source')
+    expect(wrapper.text()).not.toContain('market share is')
+    expect(wrapper.text()).not.toContain('CAGR')
   })
 })
