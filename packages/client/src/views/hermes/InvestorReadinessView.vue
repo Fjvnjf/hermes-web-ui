@@ -79,16 +79,42 @@ const readinessStatusOptions: IntelligenceEvidenceStatus[] = [
   'Verified',
 ]
 
-const dataRoomChecklist = [
-  'Company registration and business scope',
-  'Product TDS/SDS and CAS evidence',
-  'Supplier quotes and raw-material cost sheets',
-  'Machine quotes, capacity, and utility assumptions',
-  'Factory/rent/permit evidence',
-  'Customer, distributor, and competitor price evidence',
-  'Financial model with evidence status per input',
-  'Risk register and mitigation tasks',
+const dataRoomChecklist: Array<{ label: string; area: EvidenceArea; sourceHint: string }> = [
+  { label: 'Company registration and business scope', area: 'companyLegal', sourceHint: 'Business license, scope, bank, import/export evidence' },
+  { label: 'Product TDS/SDS and CAS evidence', area: 'product', sourceHint: 'CWAS/CWMS TDS, SDS, formula, CAS list' },
+  { label: 'Supplier quotes and raw-material cost sheets', area: 'product', sourceHint: 'Supplier quote or landed-cost source' },
+  { label: 'Machine quotes, capacity, and utility assumptions', area: 'factory', sourceHint: 'Machine quote, batch capacity, utilities' },
+  { label: 'Factory/rent/permit evidence', area: 'factory', sourceHint: 'Rent offer, site approval, chemical permission' },
+  { label: 'Customer, distributor, and competitor price evidence', area: 'market', sourceHint: 'Customer interview, distributor proof, competitor source' },
+  { label: 'Financial model with evidence status per input', area: 'financial', sourceHint: 'Saved IRR scenario and evidence status by input' },
+  { label: 'Risk register and mitigation tasks', area: 'regulatory', sourceHint: 'Regulatory, safety, factory, and operating risks' },
 ]
+
+const evidenceByArea = computed(() => new Map(sections.value.map(item => [item.id, item])))
+
+const dataRoomItems = computed(() =>
+  dataRoomChecklist.map(item => {
+    const evidence = evidenceByArea.value.get(item.area)
+    return {
+      ...item,
+      status: evidence?.evidenceStatus || 'To Verify',
+      source: evidence?.source || null,
+      updatedAt: evidence?.updatedAt || '',
+      routeName: evidence?.routeName || routeByEvidenceId[item.area],
+    }
+  }),
+)
+
+function formatSource(source?: SourceReference | null): string {
+  if (!source?.title) return 'Source missing'
+  return [source.title, source.date, source.url].filter(Boolean).join(' / ')
+}
+
+function sourceClass(item: { status: IntelligenceEvidenceStatus }): 'ready' | 'weak' | 'missing' {
+  if (item.status === 'Verified' || item.status === 'User Approved' || item.status === 'User Provided') return 'ready'
+  if (item.status === 'Assumption' || item.status === 'Approved Assumption' || item.status === 'Derived from Assumptions') return 'weak'
+  return 'missing'
+}
 
 function taskBody(item: ReadinessSection): string {
   return [
@@ -274,6 +300,14 @@ defineExpose({
           <span class="status-pill">{{ item.evidenceStatus }}</span>
         </div>
         <p>{{ item.description }}</p>
+        <div class="source-row" :class="sourceClass({ status: item.evidenceStatus })">
+          <span>Source</span>
+          <strong>{{ formatSource(item.source) }}</strong>
+        </div>
+        <div v-if="item.updatedAt" class="source-row muted">
+          <span>Updated</span>
+          <strong>{{ new Date(item.updatedAt).toLocaleString() }}</strong>
+        </div>
         <small>{{ item.nextAction }}</small>
         <div class="card-actions">
           <NButton size="tiny" secondary type="primary" :loading="creatingKey === item.label" @click="createEvidenceTask(item)">
@@ -311,7 +345,16 @@ defineExpose({
         <h3>Investor Evidence Pack</h3>
       </div>
       <ul>
-        <li v-for="item in dataRoomChecklist" :key="item">{{ item }} <span>Missing / To Verify</span></li>
+        <li v-for="item in dataRoomItems" :key="item.label">
+          <div>
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.source ? formatSource(item.source) : item.sourceHint }}</small>
+          </div>
+          <div class="data-room-actions">
+            <span :class="sourceClass(item)">{{ item.status }}</span>
+            <RouterLink :to="{ name: item.routeName }">Open</RouterLink>
+          </div>
+        </li>
       </ul>
     </section>
   </div>
@@ -486,6 +529,50 @@ defineExpose({
   color: $text-muted;
 }
 
+.source-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: rgba(255, 255, 255, 0.02);
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    min-width: 0;
+    overflow: hidden;
+    color: $text-secondary;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &.ready {
+    border-color: rgba(var(--success-rgb), 0.4);
+  }
+
+  &.weak {
+    border-color: rgba(var(--warning-rgb), 0.4);
+  }
+
+  &.missing {
+    border-color: rgba(var(--error-rgb), 0.3);
+  }
+
+  &.muted {
+    opacity: 0.82;
+  }
+}
+
 .card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -538,22 +625,86 @@ defineExpose({
   }
 
   li {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
+    align-items: center;
     padding: 10px 0;
     border-top: 1px solid $border-color;
+
+    strong,
+    small {
+      display: block;
+    }
+
+    strong {
+      color: $text-primary;
+    }
+
+    small {
+      margin-top: 4px;
+      color: $text-muted;
+      font-size: 12px;
+    }
   }
 
   span {
-    color: $warning;
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 8px;
+    border: 1px solid $border-color;
+    border-radius: 999px;
     font-weight: 900;
+
+    &.ready {
+      border-color: rgba(var(--success-rgb), 0.45);
+      color: $success;
+    }
+
+    &.weak {
+      border-color: rgba(var(--warning-rgb), 0.45);
+      color: $warning;
+    }
+
+    &.missing {
+      border-color: rgba(var(--error-rgb), 0.35);
+      color: $error;
+    }
+  }
+}
+
+.data-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 8px;
+    border: 1px solid $border-color;
+    border-radius: 999px;
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
   }
 }
 
 @media (max-width: 760px) {
   .page-header {
     grid-template-columns: 1fr;
+  }
+
+  .data-room li {
+    grid-template-columns: 1fr;
+  }
+
+  .data-room-actions {
+    justify-content: flex-start;
   }
 }
 </style>

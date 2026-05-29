@@ -426,6 +426,23 @@ describe('investor readiness pages', () => {
     expect(product?.source?.title).toBe('CWAS SDS source')
   })
 
+  it('shows saved evidence sources in readiness cards and data-room checklist', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.updateEvidenceStatus('product', 'Verified', {
+      title: 'CWAS SDS source',
+      date: '2026-05-30',
+    })
+
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('CWAS SDS source')
+    expect(wrapper.text()).toContain('Product TDS/SDS and CAS evidence')
+    expect(wrapper.text()).toContain('Verified')
+    expect(wrapper.text()).not.toContain('Product TDS/SDS and CAS evidence Missing / To Verify')
+  })
+
   it('keeps verified readiness evidence To Verify when source is missing', async () => {
     const intelligence = useFeasibilityIntelligence()
     const wrapper = mount(InvestorReadinessView, {
