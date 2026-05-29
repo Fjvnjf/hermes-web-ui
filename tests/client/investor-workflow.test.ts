@@ -10,6 +10,7 @@ import {
 } from '@/utils/investmentCalculator'
 import {
   buildInvestorPresentationDraft,
+  buildInvestorNextActions,
   buildInvestorSlideOutline,
   calculateInvestorReadinessScore,
   canMarkMarketClaimVerified,
@@ -314,6 +315,48 @@ describe('investor feasibility workflow utilities', () => {
 
     expect(saved.status).toBe('Task Created')
     expect(intelligence.state.value.researchJobs[0].title).toContain('DMS')
+  })
+
+  it('builds honest next actions from current investor evidence state', () => {
+    const intelligence = useFeasibilityIntelligence()
+
+    const actions = buildInvestorNextActions(intelligence.state.value)
+
+    expect(actions[0].title).toContain('Regulatory evidence')
+    expect(actions.some(action => action.title === 'Save a financial model snapshot')).toBe(true)
+    expect(actions.some(action => action.title === 'Collect source-backed market evidence')).toBe(true)
+    expect(actions.some(action => action.title === 'Stage approved investor material')).toBe(true)
+    expect(actions.every(action => !action.reason.includes('market share is'))).toBe(true)
+  })
+
+  it('points next actions to research review and financial review when data exists', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Pending source-backed research review.',
+      keyClaim: 'DMS evidence needs approval',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+    })
+    intelligence.saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Derived from Assumptions',
+      npv: 100,
+      irr: 0.12,
+      mirr: 0.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 1200,
+      capexTotal: 1000,
+      yearOneRevenue: 500,
+      warnings: ['Outputs are derived from assumptions.'],
+    })
+
+    const actions = buildInvestorNextActions(intelligence.state.value)
+
+    expect(actions.some(action => action.routeName === 'hermes.researchResultReview')).toBe(true)
+    expect(actions.some(action => action.title === 'Review Base financial assumptions')).toBe(true)
   })
 
   it('saves financial model snapshots and updates financial readiness status', () => {

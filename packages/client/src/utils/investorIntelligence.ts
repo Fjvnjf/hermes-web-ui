@@ -53,6 +53,53 @@ export interface InvestorSlideDraft {
   missingAction: string
 }
 
+export interface InvestorNextAction {
+  id: string
+  title: string
+  reason: string
+  routeName: string
+  routeLabel: string
+  evidenceStatus: IntelligenceEvidenceStatus | 'Pending Review' | 'Not Started'
+  priority: 'high' | 'medium' | 'low'
+}
+
+interface NextActionEvidenceItem extends ReadinessItem {
+  id?: string
+  description?: string
+  nextAction?: string
+}
+
+interface NextActionResearchFinding {
+  keyClaim?: string
+  summary?: string
+  status: string
+}
+
+interface NextActionFinancialModel {
+  scenarioName: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  warnings?: string[]
+}
+
+interface NextActionResearchJob {
+  title: string
+  status: string
+}
+
+export interface InvestorNextActionSource {
+  evidenceItems: NextActionEvidenceItem[]
+  marketClaims: MarketClaim[]
+  competitors: Array<{
+    companyName?: string
+    evidenceStatus: IntelligenceEvidenceStatus
+    source?: SourceReference | null
+  }>
+  presentationMaterials: PresentationMaterial[]
+  researchJobs: NextActionResearchJob[]
+  researchFindings: NextActionResearchFinding[]
+  financialModels: NextActionFinancialModel[]
+}
+
 export function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
@@ -131,6 +178,140 @@ export function formatInvestorPresentationOutline(slides: InvestorSlideDraft[]):
         : slide.missingAction,
     ].join('\n\n')),
   ].join('\n\n---\n\n')
+}
+
+function routeForEvidenceArea(id?: string): string {
+  if (id === 'market') return 'hermes.marketIntelligence'
+  if (id === 'financial') return 'hermes.investmentCalculator'
+  if (id === 'presentation') return 'hermes.investorPresentation'
+  if (id === 'factory') return 'hermes.kanban'
+  if (id === 'regulatory') return 'hermes.chat'
+  return 'hermes.investorReadiness'
+}
+
+function actionPriority(status: IntelligenceEvidenceStatus): InvestorNextAction['priority'] {
+  if (status === 'Missing') return 'high'
+  if (status === 'To Verify' || status === 'Hypothesis') return 'medium'
+  return 'low'
+}
+
+export function buildInvestorNextActions(source: InvestorNextActionSource): InvestorNextAction[] {
+  const actions: InvestorNextAction[] = []
+  const evidenceGaps = source.evidenceItems
+    .filter(item => item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify')
+    .sort((a, b) => {
+      if (a.evidenceStatus === b.evidenceStatus) return (b.weight || 1) - (a.weight || 1)
+      return a.evidenceStatus === 'Missing' ? -1 : 1
+    })
+
+  for (const item of evidenceGaps.slice(0, 2)) {
+    actions.push({
+      id: `evidence-${item.id || item.label}`,
+      title: `Resolve ${item.label}`,
+      reason: item.nextAction || item.description || 'Create or collect source evidence before using this in investor material.',
+      routeName: routeForEvidenceArea(item.id),
+      routeLabel: item.id === 'factory' ? 'Tasks' : item.id === 'regulatory' ? 'Chat' : 'Open evidence area',
+      evidenceStatus: item.evidenceStatus,
+      priority: actionPriority(item.evidenceStatus),
+    })
+  }
+
+  const pendingFindings = source.researchFindings.filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
+  if (pendingFindings.length > 0) {
+    actions.push({
+      id: 'research-findings',
+      title: `Review ${pendingFindings.length} research finding${pendingFindings.length === 1 ? '' : 's'}`,
+      reason: 'Approve, reject, or keep findings To Verify before they affect readiness or investor material.',
+      routeName: 'hermes.researchResultReview',
+      routeLabel: 'Review results',
+      evidenceStatus: 'Pending Review',
+      priority: 'high',
+    })
+  }
+
+  const latestFinancialModel = source.financialModels[0] || null
+  if (!latestFinancialModel) {
+    actions.push({
+      id: 'financial-model',
+      title: 'Save a financial model snapshot',
+      reason: 'Use the IRR calculator to capture a scenario with evidence-status labels before discussing investor returns.',
+      routeName: 'hermes.investmentCalculator',
+      routeLabel: 'Open IRR calculator',
+      evidenceStatus: 'Not Started',
+      priority: 'medium',
+    })
+  } else if (latestFinancialModel.warnings?.length || latestFinancialModel.evidenceStatus !== 'Verified') {
+    actions.push({
+      id: 'financial-review',
+      title: `Review ${latestFinancialModel.scenarioName} financial assumptions`,
+      reason: 'Financial outputs should stay labeled as assumptions until inputs are source-backed or user-approved.',
+      routeName: 'hermes.investmentCalculator',
+      routeLabel: 'Review model',
+      evidenceStatus: latestFinancialModel.evidenceStatus,
+      priority: 'medium',
+    })
+  }
+
+  const verifiedMarketClaims = source.marketClaims.filter(claim => normalizedMarketClaimStatus(claim) === 'Verified')
+  if (verifiedMarketClaims.length === 0) {
+    actions.push({
+      id: 'market-evidence',
+      title: 'Collect source-backed market evidence',
+      reason: 'Market size, pricing, demand, and growth claims must remain To Verify until source-backed.',
+      routeName: 'hermes.marketIntelligence',
+      routeLabel: 'Open Market Intelligence',
+      evidenceStatus: 'To Verify',
+      priority: 'medium',
+    })
+  }
+
+  if (source.competitors.length === 0) {
+    actions.push({
+      id: 'competitor-evidence',
+      title: 'Add competitor evidence records',
+      reason: 'Track product equivalents, pricing proof, sources, and unknown market share as To Verify.',
+      routeName: 'hermes.competitorIntelligence',
+      routeLabel: 'Open Competitors',
+      evidenceStatus: 'To Verify',
+      priority: 'medium',
+    })
+  } else if (source.competitors.some(item => item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify')) {
+    actions.push({
+      id: 'competitor-review',
+      title: 'Verify competitor claims',
+      reason: 'Competitor claims need source links before they can support investor material.',
+      routeName: 'hermes.competitorIntelligence',
+      routeLabel: 'Review competitors',
+      evidenceStatus: 'To Verify',
+      priority: 'medium',
+    })
+  }
+
+  if (buildInvestorPresentationDraft(source.presentationMaterials).length === 0) {
+    actions.push({
+      id: 'presentation-material',
+      title: 'Stage approved investor material',
+      reason: 'The presentation builder only uses verified, user-approved, or assumption-labeled material.',
+      routeName: 'hermes.investorPresentation',
+      routeLabel: 'Open Presentation Builder',
+      evidenceStatus: 'To Verify',
+      priority: 'medium',
+    })
+  }
+
+  if (source.researchJobs.length > 0) {
+    actions.push({
+      id: 'research-jobs',
+      title: `Review ${source.researchJobs.length} research job${source.researchJobs.length === 1 ? '' : 's'}`,
+      reason: 'Turn completed research jobs into reviewed findings before updating readiness or investor material.',
+      routeName: 'hermes.researchResultReview',
+      routeLabel: 'Open Research Review',
+      evidenceStatus: 'Pending Review',
+      priority: 'low',
+    })
+  }
+
+  return actions.slice(0, 6)
 }
 
 export function calculateInvestorReadinessScore(items: ReadinessItem[]): number {

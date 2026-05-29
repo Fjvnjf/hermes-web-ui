@@ -7,6 +7,7 @@ import { listJobs, type Job } from '@/api/hermes/jobs'
 import { getActiveProfileName, hasApiKey } from '@/api/client'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
+import { buildInvestorNextActions } from '@/utils/investorIntelligence'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -109,6 +110,8 @@ const investorSnapshot = computed(() => [
     to: { name: 'hermes.investorPresentation' },
   },
 ])
+
+const nextBestActions = computed(() => buildInvestorNextActions(intelligence.state.value))
 
 const workspaceActions = [
   {
@@ -330,6 +333,33 @@ onMounted(() => {
           <div class="kpi-label">{{ item.label }}</div>
           <div class="kpi-note">{{ item.note }}</div>
         </RouterLink>
+      </section>
+
+      <section class="next-actions-panel" aria-label="Next best actions">
+        <div class="panel-title">
+          <div>
+            <h3>Next Best Actions</h3>
+            <p>Generated from evidence status, research review, financial snapshots, and approved deck material.</p>
+          </div>
+          <RouterLink :to="{ name: 'hermes.investorReadiness' }">Readiness</RouterLink>
+        </div>
+        <div class="next-actions-list">
+          <RouterLink
+            v-for="action in nextBestActions"
+            :key="action.id"
+            class="next-action-row"
+            :class="action.priority"
+            :to="{ name: action.routeName }"
+          >
+            <span class="action-priority">{{ action.priority }}</span>
+            <span class="action-body">
+              <strong>{{ action.title }}</strong>
+              <small>{{ action.reason }}</small>
+            </span>
+            <span class="action-status">{{ action.evidenceStatus }}</span>
+            <span class="action-route">{{ action.routeLabel }}</span>
+          </RouterLink>
+        </div>
       </section>
 
       <section class="kpi-grid" aria-label="Runtime metrics">
@@ -571,6 +601,89 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
+.next-actions-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+}
+
+.next-actions-list {
+  display: grid;
+  gap: 8px;
+}
+
+.next-action-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) max-content max-content;
+  gap: 10px;
+  align-items: center;
+  min-height: 62px;
+  padding: 10px 12px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: rgba(255, 255, 255, 0.02);
+  color: $text-primary;
+  text-decoration: none;
+
+  &:hover {
+    border-color: $accent-info;
+    background: $bg-card-hover;
+  }
+
+  &.high {
+    border-color: rgba(var(--error-rgb), 0.35);
+  }
+
+  &.medium {
+    border-color: rgba(var(--warning-rgb), 0.35);
+  }
+
+  &.low {
+    border-color: rgba(var(--accent-info-rgb), 0.28);
+  }
+}
+
+.action-priority,
+.action-status,
+.action-route {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid $border-color;
+  border-radius: 999px;
+  color: $text-muted;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.action-body {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+
+  strong {
+    color: $accent-primary;
+    font-size: 13px;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+}
+
+.action-route {
+  color: $accent-info;
+}
+
 .kpi-card {
   min-height: 116px;
   padding: 14px;
@@ -729,6 +842,13 @@ onMounted(() => {
   margin: 0;
 }
 
+.panel-title p {
+  margin: 5px 0 0;
+  color: $text-muted;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .ops-list {
   display: grid;
   gap: 8px;
@@ -799,6 +919,18 @@ onMounted(() => {
 
   .status-strip {
     position: static;
+  }
+
+  .next-action-row {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .action-priority,
+  .action-status,
+  .action-route {
+    justify-content: flex-start;
+    width: fit-content;
   }
 }
 </style>
