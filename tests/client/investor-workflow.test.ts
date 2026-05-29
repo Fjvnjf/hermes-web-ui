@@ -581,6 +581,40 @@ describe('investor feasibility workflow utilities', () => {
     expect(buildInvestorSlideOutline(['Product Plan'], intelligence.state.value.presentationMaterials)[0].status).toBe('Ready')
   })
 
+  it('turns user-provided readiness evidence into explicitly user-approved investor material', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.updateEvidenceStatus('product', 'User Provided', {
+      title: 'User supplied CWAS SDS packet',
+      date: '2026-05-30',
+    })
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const addButtons = wrapper.findAll('button').filter(button => button.text() === 'Add to investor draft')
+
+    await addButtons[1].trigger('click')
+
+    const material = intelligence.state.value.presentationMaterials[0]
+    expect(material.section).toBe('Product Plan')
+    expect(material.evidenceStatus).toBe('User Approved')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(1)
+    expect(buildInvestorSlideOutline(['Product Plan'], intelligence.state.value.presentationMaterials)[0].status).toBe('Ready')
+  })
+
+  it('does not stage To Verify readiness evidence into investor material', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const addButton = wrapper.findAll('button').find(button => button.text() === 'Add to investor draft')
+
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
+  })
+
   it('records research jobs from capture/intelligence pages in shared state', () => {
     const intelligence = useFeasibilityIntelligence()
 

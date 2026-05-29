@@ -253,15 +253,30 @@ function saveEvidenceStatus() {
   resetEvidenceForm()
 }
 
+function isStageableForInvestorDraft(status: IntelligenceEvidenceStatus): boolean {
+  return status === 'Verified' ||
+    status === 'User Approved' ||
+    status === 'User Provided' ||
+    status === 'Assumption' ||
+    status === 'Approved Assumption' ||
+    status === 'Derived from Assumptions'
+}
+
+function investorDraftStatus(status: IntelligenceEvidenceStatus): IntelligenceEvidenceStatus {
+  if (status === 'Assumption') return 'Approved Assumption'
+  if (status === 'User Provided') return 'User Approved'
+  return status
+}
+
 function addToInvestorDraft(item: ReadinessSection) {
-  if (item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify') {
-    message.warning('Add evidence or mark this as an assumption before staging it for investor draft')
+  if (!isStageableForInvestorDraft(item.evidenceStatus)) {
+    message.warning('Add evidence or approve a labeled assumption before staging it for investor draft')
     return
   }
   intelligence.addPresentationMaterial({
     section: presentationSectionForEvidence(item.id, `${item.label} ${item.description} ${item.nextAction}`),
     content: `${item.description}\n\nInvestor readiness note: ${item.nextAction}`,
-    evidenceStatus: item.evidenceStatus === 'Verified' ? 'Verified' : item.evidenceStatus === 'Assumption' ? 'Approved Assumption' : item.evidenceStatus,
+    evidenceStatus: investorDraftStatus(item.evidenceStatus),
     source: item.source || null,
   })
   intelligence.updateEvidenceStatus('presentation', 'User Approved')
