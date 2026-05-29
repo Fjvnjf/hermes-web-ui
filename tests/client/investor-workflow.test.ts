@@ -809,6 +809,25 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).not.toContain('Product TDS/SDS and CAS evidence Missing / To Verify')
   })
 
+  it('creates Kanban tasks from investor data-room checklist gaps', async () => {
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create task')
+
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Data room evidence: Company registration and business scope',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Investor data-room evidence item: Company registration and business scope')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source page: Investor Readiness Center / Data Room Checklist')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not mark this investor-ready')
+  })
+
   it('removes a market claim without silently changing readiness evidence', async () => {
     const intelligence = useFeasibilityIntelligence()
     const source = { title: 'Distributor interview', date: '2026-05-30' }

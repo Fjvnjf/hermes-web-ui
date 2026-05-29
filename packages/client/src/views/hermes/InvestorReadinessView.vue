@@ -14,10 +14,21 @@ interface ReadinessSection extends FeasibilityEvidenceItem {
   routeName: string
 }
 
+interface DataRoomItem {
+  label: string
+  area: EvidenceArea
+  sourceHint: string
+  status: IntelligenceEvidenceStatus
+  source: SourceReference | null
+  updatedAt: string
+  routeName: string
+}
+
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingKey = ref('')
+const creatingDataRoomTask = ref('')
 const evidenceForm = ref({
   area: 'companyLegal' as EvidenceArea,
   evidenceStatus: 'User Provided' as IntelligenceEvidenceStatus,
@@ -92,7 +103,7 @@ const dataRoomChecklist: Array<{ label: string; area: EvidenceArea; sourceHint: 
 
 const evidenceByArea = computed(() => new Map(sections.value.map(item => [item.id, item])))
 
-const dataRoomItems = computed(() =>
+const dataRoomItems = computed<DataRoomItem[]>(() =>
   dataRoomChecklist.map(item => {
     const evidence = evidenceByArea.value.get(item.area)
     return {
@@ -128,6 +139,21 @@ function taskBody(item: ReadinessSection): string {
   ].join('\n')
 }
 
+function dataRoomTaskBody(item: DataRoomItem): string {
+  return [
+    `Investor data-room evidence item: ${item.label}`,
+    `Evidence area: ${evidenceAreaOptions.find(area => area.value === item.area)?.label || item.area}`,
+    `Current evidence status: ${item.status}`,
+    `Current source trace: ${item.source ? formatSource(item.source) : 'Source missing'}`,
+    `Evidence needed: ${item.sourceHint}`,
+    `Source page: Investor Readiness Center / Data Room Checklist`,
+    'Recommended action: upload/source the evidence in Documents, save the reviewed status in Investor Readiness, and keep unsupported claims out of investor material.',
+    'Tags: Data Room, Investor Readiness, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not mark this investor-ready until source evidence is attached or the user explicitly approves a labeled assumption.',
+  ].join('\n')
+}
+
 async function createEvidenceTask(item: ReadinessSection) {
   creatingKey.value = item.label
   try {
@@ -146,6 +172,27 @@ async function createEvidenceTask(item: ReadinessSection) {
     message.error(`Could not create task: ${detail}`)
   } finally {
     creatingKey.value = ''
+  }
+}
+
+async function createDataRoomTask(item: DataRoomItem) {
+  creatingDataRoomTask.value = item.label
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Data room evidence: ${item.label}`,
+      body: dataRoomTaskBody(item),
+      priority: item.status === 'Missing' || item.status === 'To Verify' ? 3 : 2,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Data-room evidence task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create data-room task: ${detail}`)
+  } finally {
+    creatingDataRoomTask.value = ''
   }
 }
 
@@ -352,6 +399,14 @@ defineExpose({
           </div>
           <div class="data-room-actions">
             <span :class="sourceClass(item)">{{ item.status }}</span>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="creatingDataRoomTask === item.label"
+              @click="createDataRoomTask(item)"
+            >
+              Create task
+            </NButton>
             <RouterLink :to="{ name: item.routeName }">Open</RouterLink>
           </div>
         </li>
