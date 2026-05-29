@@ -469,6 +469,67 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('To Verify')
   })
 
+  it('stages source-backed competitor evidence for research review without updating readiness', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'Example competitor',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: '90% active content',
+      pricingEvidence: 'Distributor quote note',
+      certifications: 'To Verify',
+      distributionPresence: 'Distributor in China',
+      marketShare: '',
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor quote', date: '2026-05-30' },
+      notes: 'Pricing source needs investor review before use.',
+    })
+    const wrapper = mount(CompetitorIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const stageButton = wrapper.findAll('button').find(button => button.text().includes('Stage for review'))
+
+    expect(stageButton).toBeTruthy()
+    await stageButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    expect(finding.keyClaim).toBe('Competitor evidence: Example competitor')
+    expect(finding.evidenceStatus).toBe('Verified')
+    expect(finding.source?.title).toBe('Distributor quote')
+    expect(finding.status).toBe('Pending Review')
+    expect(finding.suggestedInvestorMaterial).toContain('CWAS equivalent')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('To Verify')
+  })
+
+  it('keeps unsourced competitor evidence To Verify when staged for review', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'Unsourced competitor',
+      countryRegion: 'To Verify',
+      productEquivalent: 'To Verify',
+      activeContent: 'To Verify',
+      pricingEvidence: 'Missing',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '',
+      evidenceStatus: 'Verified',
+      source: null,
+      notes: 'No source yet.',
+    })
+    const wrapper = mount(CompetitorIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const stageButton = wrapper.findAll('button').find(button => button.text().includes('Stage for review'))
+
+    await stageButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    expect(finding.keyClaim).toBe('Competitor evidence: Unsourced competitor')
+    expect(finding.evidenceStatus).toBe('To Verify')
+    expect(finding.source).toBeNull()
+    expect(finding.suggestedInvestorMaterial).toBe('')
+  })
+
   it('renders staged research jobs and findings in Research Result Review', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchJob({

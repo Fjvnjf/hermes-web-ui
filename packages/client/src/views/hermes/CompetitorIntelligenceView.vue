@@ -6,7 +6,7 @@ import {
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
-import { formatMarketShare, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import { formatMarketShare, sourceIsUsable, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
@@ -25,6 +25,7 @@ const competitorForm = ref({
   evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
   sourceTitle: '',
   sourceUrl: '',
+  sourceDate: '',
   notes: '',
 })
 
@@ -62,6 +63,45 @@ async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
   }
 }
 
+function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
+  const usableSource = sourceIsUsable(competitor.source)
+  const saved = intelligence.addResearchFinding({
+    summary: [
+      `Competitor: ${competitor.companyName}`,
+      `Region: ${competitor.countryRegion}`,
+      `Product equivalent: ${competitor.productEquivalent}`,
+      `Active content: ${competitor.activeContent}`,
+      `Pricing evidence: ${competitor.pricingEvidence}`,
+      `Certifications: ${competitor.certifications}`,
+      `Distribution presence: ${competitor.distributionPresence}`,
+      `Market share: ${formatMarketShare(competitor.marketShare)}`,
+      `Notes: ${competitor.notes}`,
+    ].join('\n'),
+    keyClaim: `Competitor evidence: ${competitor.companyName}`,
+    area: 'market',
+    evidenceStatus: competitor.evidenceStatus,
+    confidence: usableSource && (competitor.evidenceStatus === 'Verified' || competitor.evidenceStatus === 'User Approved')
+      ? 'medium'
+      : 'low',
+    source: competitor.source || null,
+    suggestedTask: usableSource
+      ? `Review competitor evidence for ${competitor.companyName} before using it in investor material.`
+      : `Collect usable source evidence for ${competitor.companyName}.`,
+    suggestedInvestorMaterial: usableSource
+      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${competitor.pricingEvidence}. Market share: ${formatMarketShare(competitor.marketShare)}.`
+      : '',
+    riskNote: usableSource
+      ? 'Review source quality before approving this competitor evidence for investor use.'
+      : 'Competitor evidence remains To Verify until a source title plus URL or date is attached.',
+  })
+
+  if (competitor.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+    message.warning('Staged as To Verify because verified findings need usable source evidence')
+  } else {
+    message.success('Competitor evidence staged for research review')
+  }
+}
+
 function addCompetitor() {
   const companyName = competitorForm.value.companyName.trim()
   if (!companyName) {
@@ -72,6 +112,7 @@ function addCompetitor() {
     ? {
         title: competitorForm.value.sourceTitle.trim(),
         url: competitorForm.value.sourceUrl.trim() || undefined,
+        date: competitorForm.value.sourceDate.trim() || undefined,
       }
     : null
   const saved = intelligence.addCompetitor({
@@ -104,6 +145,7 @@ function addCompetitor() {
     evidenceStatus: 'To Verify',
     sourceTitle: '',
     sourceUrl: '',
+    sourceDate: '',
     notes: '',
   }
 }
@@ -148,13 +190,14 @@ function addCompetitor() {
       </label>
       <label>Source title<input v-model="competitorForm.sourceTitle" type="text" placeholder="Source title" /></label>
       <label>Source URL<input v-model="competitorForm.sourceUrl" type="url" placeholder="https://..." /></label>
+      <label>Source date<input v-model="competitorForm.sourceDate" type="date" /></label>
       <label class="wide">Notes<input v-model="competitorForm.notes" type="text" placeholder="Evidence notes" /></label>
       <NButton secondary type="primary" @click="addCompetitor">Save competitor</NButton>
     </section>
 
     <section class="competitor-table" aria-label="Competitor list">
       <div class="competitor-row head">
-        <span>Company</span><span>Region</span><span>Equivalent</span><span>Pricing</span><span>Market share</span><span>Status</span><span>Action</span>
+        <span>Company</span><span>Region</span><span>Equivalent</span><span>Pricing</span><span>Source</span><span>Market share</span><span>Status</span><span>Action</span>
       </div>
       <p v-if="competitors.length === 0" class="empty-state">
         No competitor records saved yet. Add sourced records above, or create research tasks for unknown competitors.
@@ -164,9 +207,13 @@ function addCompetitor() {
         <span>{{ competitor.countryRegion }}</span>
         <span>{{ competitor.productEquivalent }}</span>
         <span>{{ competitor.pricingEvidence }}</span>
+        <span>{{ competitor.source?.title || 'Source missing' }}</span>
         <span>{{ formatMarketShare(competitor.marketShare) }}</span>
         <span>{{ competitor.evidenceStatus }}</span>
-        <span>
+        <span class="row-actions">
+          <NButton size="tiny" secondary @click="stageCompetitorForReview(competitor)">
+            Stage for review
+          </NButton>
           <NButton size="tiny" secondary type="primary" :loading="creating === competitor.companyName" @click="createResearchTask(competitor)">
             Research competitor
           </NButton>
@@ -280,7 +327,7 @@ function addCompetitor() {
 
 .competitor-row {
   display: grid;
-  grid-template-columns: 1.1fr 0.8fr 1fr 0.9fr 0.9fr 0.8fr 160px;
+  grid-template-columns: 1.1fr 0.8fr 1fr 0.9fr 0.9fr 0.9fr 0.8fr 170px;
   gap: 10px;
   align-items: center;
   padding: 10px 0;
@@ -294,6 +341,11 @@ function addCompetitor() {
     font-weight: 900;
     text-transform: uppercase;
   }
+}
+
+.row-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .empty-state {
