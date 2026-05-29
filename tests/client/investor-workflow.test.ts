@@ -270,6 +270,21 @@ describe('investor feasibility workflow utilities', () => {
     expect(draft[0].sourceLabel).toBe('Derived from assumptions')
   })
 
+  it('keeps source details attached to investor-ready draft sections', () => {
+    const draft = buildInvestorPresentationDraft([
+      {
+        section: 'Market Evidence',
+        content: 'Distributor interview supports a pricing validation note.',
+        evidenceStatus: 'Verified',
+        source: { title: 'Distributor interview', date: '2026-05-30' },
+      },
+    ])
+
+    expect(draft).toHaveLength(1)
+    expect(draft[0].sourceLabel).toBe('Distributor interview')
+    expect(draft[0].sourceDetail).toContain('2026-05-30')
+  })
+
   it('builds a slide outline only from approved investor material', () => {
     const slides = buildInvestorSlideOutline(['Executive Summary', 'Market Evidence'], [
       {
@@ -817,5 +832,42 @@ describe('investor readiness pages', () => {
     await taskButton!.trigger('click')
 
     expect(createTaskMock).toHaveBeenCalled()
+  })
+
+  it('shows source trace for investor-ready material in the presentation builder', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Source-backed distributor note for investor draft.',
+      evidenceStatus: 'Verified',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Source-backed distributor note for investor draft')
+    expect(wrapper.text()).toContain('Evidence: Verified / Distributor interview (2026-05-30)')
+  })
+
+  it('keeps unsupported material visible for follow-up but excluded from investor slides', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported verified market claim.',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Needs Evidence Before Investor Use')
+    expect(wrapper.text()).toContain('Unsupported verified market claim')
+    expect(wrapper.text()).toContain('Source missing')
+    expect(wrapper.text()).toContain('Marked To Verify')
+    expect(wrapper.text()).toContain('Missing / To Verify')
   })
 })

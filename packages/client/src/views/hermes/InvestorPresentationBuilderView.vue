@@ -6,7 +6,9 @@ import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
   buildInvestorPresentationDraft,
   buildInvestorSlideOutline,
+  formatSourceReference,
   formatInvestorPresentationOutline,
+  isPresentationMaterialAllowed,
   type InvestorSlideDraft,
   type IntelligenceEvidenceStatus,
   type PresentationMaterial,
@@ -50,10 +52,25 @@ const materialForm = ref({
 const approvedMaterials = computed(() => intelligence.state.value.presentationMaterials)
 const draftSections = computed(() => buildInvestorPresentationDraft(approvedMaterials.value))
 const slideDrafts = computed(() => buildInvestorSlideOutline(slideSections, approvedMaterials.value))
+const excludedMaterials = computed(() => approvedMaterials.value.filter(material => !isPresentationMaterialAllowed(material)))
 const readySlideCount = computed(() => slideDrafts.value.filter(slide => slide.status === 'Ready').length)
 const missingSlideCount = computed(() => slideDrafts.value.length - readySlideCount.value)
 const readinessScore = intelligence.readinessScore
 const investorReady = computed(() => readinessScore.value >= 70 && missingSlideCount.value <= 2)
+
+function materialSourceTrace(material: PresentationMaterial): string {
+  if (material.source) return formatSourceReference(material.source)
+  if (material.evidenceStatus === 'Approved Assumption') return 'Approved assumption - source not required, but label must stay visible'
+  if (material.evidenceStatus === 'Derived from Assumptions') return 'Derived from assumption-labeled financial model'
+  if (material.evidenceStatus === 'User Approved') return 'User approved - source optional'
+  return 'Source missing'
+}
+
+function materialExclusionReason(material: PresentationMaterial): string {
+  if (!material.content.trim()) return 'Empty draft text is ignored.'
+  if (material.evidenceStatus === 'Verified') return 'Verified claims need a source title plus a source URL or source date.'
+  return `Marked ${material.evidenceStatus}; keep it out of investor slides until it is user-approved, source-backed, or clearly assumption-labeled.`
+}
 
 function saveMaterial() {
   const content = materialForm.value.content.trim()
@@ -158,7 +175,29 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
       <article v-for="section in draftSections" :key="section.section">
         <strong>{{ section.section }}</strong>
         <p>{{ section.content }}</p>
-        <small>{{ section.evidenceStatus }} / {{ section.sourceLabel }}</small>
+        <small>{{ section.evidenceStatus }} / {{ section.sourceDetail }}</small>
+      </article>
+    </section>
+
+    <section v-if="excludedMaterials.length" class="excluded-materials" aria-label="Materials needing evidence before investor use">
+      <div class="excluded-head">
+        <div>
+          <h3>Needs Evidence Before Investor Use</h3>
+          <p>
+            These saved items are visible for follow-up, but they are excluded from investor slides until their evidence
+            status is approved, source-backed, or assumption-labeled.
+          </p>
+        </div>
+        <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review sources</RouterLink>
+      </div>
+      <article v-for="(material, index) in excludedMaterials" :key="`${material.section}-${index}`">
+        <div class="material-meta">
+          <strong>{{ material.section }}</strong>
+          <span>{{ material.evidenceStatus }}</span>
+        </div>
+        <p>{{ material.content || 'No draft text provided.' }}</p>
+        <small>{{ materialSourceTrace(material) }}</small>
+        <em>{{ materialExclusionReason(material) }}</em>
       </article>
     </section>
 
@@ -211,7 +250,7 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
         <div v-else class="slide-materials">
           <div v-for="item in slide.materials" :key="`${item.section}-${item.content}`" class="slide-material">
             <p>{{ item.content }}</p>
-            <small>{{ item.evidenceStatus }} / {{ item.sourceLabel }}</small>
+            <small>Evidence: {{ item.evidenceStatus }} / {{ item.sourceDetail }}</small>
           </div>
         </div>
         <div class="action-list">
@@ -292,6 +331,76 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
   h3 {
     margin: 0 0 8px;
     color: $text-primary;
+  }
+}
+
+.excluded-materials {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  border: 1px solid rgba(var(--warning-rgb), 0.35);
+  border-radius: $radius-sm;
+  background: rgba(var(--warning-rgb), 0.06);
+  padding: 16px;
+
+  h3 {
+    margin: 0 0 8px;
+    color: $text-primary;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+
+  article {
+    display: grid;
+    gap: 7px;
+    border-top: 1px solid $border-color;
+    padding-top: 10px;
+  }
+
+  small,
+  em {
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.excluded-head,
+.material-meta {
+  display: flex;
+  gap: 12px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.excluded-head a {
+  flex: 0 0 auto;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  padding: 6px 9px;
+  color: $accent-info;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.material-meta {
+  strong {
+    color: $text-primary;
+  }
+
+  span {
+    border: 1px solid rgba(var(--warning-rgb), 0.35);
+    border-radius: 999px;
+    padding: 3px 8px;
+    color: $warning;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 }
 
@@ -427,6 +536,11 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
 @media (max-width: 760px) {
   .page-header {
     grid-template-columns: 1fr;
+  }
+
+  .excluded-head,
+  .material-meta {
+    display: grid;
   }
 }
 </style>

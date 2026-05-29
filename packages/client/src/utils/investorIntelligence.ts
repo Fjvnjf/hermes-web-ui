@@ -44,6 +44,7 @@ export interface PresentationDraftSection {
   content: string
   evidenceStatus: IntelligenceEvidenceStatus
   sourceLabel: string
+  sourceDetail: string
 }
 
 export interface InvestorSlideDraft {
@@ -105,6 +106,13 @@ export function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
 
+export function formatSourceReference(source?: SourceReference | null): string {
+  const title = source?.title?.trim()
+  if (!title) return 'Source missing'
+  const details = [source?.url?.trim(), source?.date?.trim()].filter(Boolean).join(' / ')
+  return details ? `${title} (${details})` : title
+}
+
 export function canMarkMarketClaimVerified(claim: MarketClaim): boolean {
   return Boolean(claim.value?.trim() && sourceIsUsable(claim.source))
 }
@@ -140,6 +148,13 @@ export function buildInvestorPresentationDraft(materials: PresentationMaterial[]
           : material.evidenceStatus === 'Derived from Assumptions'
             ? 'Derived from assumptions'
             : 'User approved'),
+      sourceDetail: material.source
+        ? formatSourceReference(material.source)
+        : material.evidenceStatus === 'Approved Assumption'
+          ? 'Approved assumption - source not required, but label must stay visible'
+          : material.evidenceStatus === 'Derived from Assumptions'
+            ? 'Derived from assumption-labeled financial model'
+            : 'User approved - source optional',
     }))
 }
 
@@ -174,7 +189,7 @@ export function formatInvestorPresentationOutline(slides: InvestorSlideDraft[]):
         ? slide.materials.map(item => [
             item.content,
             `Evidence status: ${item.evidenceStatus}`,
-            `Source: ${item.sourceLabel}`,
+            `Source: ${item.sourceDetail || item.sourceLabel}`,
           ].join('\n')).join('\n\n')
         : slide.missingAction,
     ].join('\n\n')),
