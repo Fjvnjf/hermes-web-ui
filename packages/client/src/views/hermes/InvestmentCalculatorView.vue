@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { NAlert, NButton, NInput, NInputNumber, useMessage } from 'naive-ui'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
   calculateInvestmentScenario,
   createEmptyInvestmentScenario,
@@ -18,9 +19,11 @@ type ScenarioKey = 'Lean' | 'Base' | 'Conservative' | 'Aggressive'
 const STORAGE_KEY = 'hermes.investmentCalculator.scenarios.v1'
 const message = useMessage()
 const intelligence = useFeasibilityIntelligence()
+const kanbanStore = useKanbanStore()
 const scenarioKeys: ScenarioKey[] = ['Lean', 'Base', 'Conservative', 'Aggressive']
 const activeScenario = ref<ScenarioKey>('Base')
 const copied = ref(false)
+const creatingFinancialTask = ref(false)
 
 function makeScenario(name: ScenarioKey): InvestmentScenarioInput {
   const scenario = createEmptyInvestmentScenario(`Chemicon China Feasibility - ${name}`)
@@ -153,6 +156,56 @@ function financialSummaryText(): string {
   ].join('\n')
 }
 
+function financialEvidenceTaskBody(): string {
+  return [
+    `Financial model evidence task: ${scenario.value.projectName}`,
+    `Scenario: ${activeScenario.value}`,
+    `Current financial evidence status: ${financialEvidenceStatus.value}`,
+    `Weak inputs: ${evidenceSummary.value.weak} / ${evidenceSummary.value.total}`,
+    `To Verify inputs: ${evidenceSummary.value.toVerify}`,
+    `Assumption inputs: ${evidenceSummary.value.assumptions}`,
+    `Verified inputs: ${evidenceSummary.value.verified}`,
+    '',
+    `NPV: ${formatCurrency(result.value.npv)}`,
+    `IRR: ${formatPercent(result.value.irr)}`,
+    `Investor IRR: ${formatPercent(result.value.investorIrr)}`,
+    `Capex: ${formatCurrency(result.value.capexTotal)}`,
+    `Year 1 revenue: ${formatCurrency(result.value.yearly[0]?.revenue || 0)}`,
+    `Funding gap: ${formatCurrency(result.value.fundingGap)}`,
+    '',
+    result.value.warnings.length
+      ? `Warnings:\n- ${result.value.warnings.join('\n- ')}`
+      : 'Warnings: none from calculator completeness checks',
+    '',
+    'Recommended action: attach source evidence or user approval for weak financial assumptions before treating outputs as investor-ready.',
+    'Source page: IRR / Investment Calculator',
+    'Tags: Financial Model, Evidence Gap, IRR, Chemicon China Feasibility',
+    '',
+    'Do not treat IRR, NPV, investor return, or payback as verified investor claims until assumptions are source-backed or explicitly approved.',
+  ].join('\n')
+}
+
+async function createFinancialEvidenceTask() {
+  creatingFinancialTask.value = true
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Financial evidence: ${activeScenario.value} model assumptions`,
+      body: financialEvidenceTaskBody(),
+      priority: evidenceSummary.value.toVerify > 0 || result.value.incomplete ? 3 : 2,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Financial evidence task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create financial evidence task: ${detail}`)
+  } finally {
+    creatingFinancialTask.value = false
+  }
+}
+
 function saveFinancialSnapshot() {
   const saved = intelligence.saveFinancialModelSnapshot({
     scenarioName: activeScenario.value,
@@ -269,6 +322,7 @@ function addFinancialSummaryToDraft() {
       <article class="status-actions">
         <NButton secondary type="primary" @click="saveFinancialSnapshot">Save financial snapshot</NButton>
         <NButton secondary @click="addFinancialSummaryToDraft">Add assumption-labeled draft</NButton>
+        <NButton secondary :loading="creatingFinancialTask" @click="createFinancialEvidenceTask">Create financial evidence task</NButton>
         <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>
         <small v-if="draftableFinancialOutputs">
           Can stage as investor draft text, but weak inputs stay labeled as assumptions or To Verify.

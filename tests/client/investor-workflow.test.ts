@@ -730,6 +730,38 @@ describe('investor readiness pages', () => {
     expect(draft.every(item => item.evidenceStatus === 'Derived from Assumptions')).toBe(true)
   })
 
+  it('creates a Kanban task for weak financial model evidence without approving outputs', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    base.capex.machinery.value = 1000
+    base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    base.variableCostPerTon.rawMaterials.value = 20
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create financial evidence task')
+
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Financial evidence: Base model assumptions',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Weak inputs:')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not treat IRR, NPV, investor return, or payback as verified investor claims')
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'financial')?.evidenceStatus).toBe('Assumption')
+  })
+
   it('renders the investor readiness shell without fake readiness data', () => {
     const wrapper = mount(InvestorReadinessView, {
       global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
