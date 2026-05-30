@@ -1306,6 +1306,40 @@ describe('investor readiness pages', () => {
     expect(intelligence.readinessScore.value).toBe(beforeScore)
   })
 
+  it('creates deeper research jobs from investor risks without approving the risk', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'DMS regulatory status still needs source-backed review.',
+      keyClaim: 'DMS regulatory status',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+      riskNote: 'Regulatory status must be confirmed before investor use.',
+      status: 'Pending Review',
+    })
+    const beforeScore = intelligence.readinessScore.value
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const riskPanel = wrapper.find('.risk-register')
+    const researchButton = riskPanel.findAll('button').find(button => button.text() === 'Do deeper research')
+
+    expect(researchButton).toBeTruthy()
+    await researchButton!.trigger('click')
+
+    const job = intelligence.state.value.researchJobs[0]
+    expect(job.title).toBe('Risk research: Factory evidence')
+    expect(job.status).toBe('Manual Research Job')
+    expect(job.priority).toBe('high')
+    expect(job.schedulePreference).toBe('Tonight')
+    expect(job.context).toBe('Chemicon China Feasibility')
+    expect(job.scope).toContain('Current evidence status: Missing')
+    expect(job.scope).toContain('Do not invent market data')
+    expect(job.sourceRequirements).toContain('Every claim needs source evidence or must remain To Verify')
+    expect(intelligence.readinessScore.value).toBe(beforeScore)
+  })
+
   it('stages saved data-room sources for research review without updating investor draft material', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addDataRoomSource({

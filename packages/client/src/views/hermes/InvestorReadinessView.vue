@@ -52,6 +52,7 @@ const creatingDataRoomTask = ref('')
 const stagingDataRoomSourceId = ref('')
 const creatingAssumptionTaskId = ref('')
 const creatingRiskTaskId = ref('')
+const creatingRiskResearchId = ref('')
 const savingDataRoomIndex = ref(false)
 const latestDataRoomIndexPath = ref('')
 const evidenceForm = ref({
@@ -578,6 +579,40 @@ async function createRiskTask(item: InvestorRiskRegisterItem) {
   }
 }
 
+function riskResearchPriority(item: InvestorRiskRegisterItem): 'high' | 'medium' | 'low' {
+  if (item.priority >= 3) return 'high'
+  if (item.priority === 2) return 'medium'
+  return 'low'
+}
+
+function createRiskResearchJob(item: InvestorRiskRegisterItem) {
+  creatingRiskResearchId.value = item.id
+  try {
+    intelligence.addResearchJob({
+      title: `Risk research: ${item.title}`,
+      question: `Research and verify the investor risk around ${item.title}.`,
+      scope: [
+        `Risk register item: ${item.title}`,
+        `Origin: ${item.origin}`,
+        `Evidence area: ${evidenceAreaOptions.find(area => area.value === item.area)?.label || item.area}`,
+        `Current evidence status: ${item.evidenceStatus}`,
+        `Risk detail: ${item.detail}`,
+        '',
+        'Focus on Chemicon China feasibility. Do not invent market data, pricing, competitor share, IRR, regulatory status, or investor claims.',
+      ].join('\n'),
+      expectedOutput: 'A review-ready research finding with summary, key claims, source title plus URL/date, confidence, risk note, suggested tasks, and investor-safe wording only when supported.',
+      sourceRequirements: 'Every claim needs source evidence or must remain To Verify. Missing evidence should become a task, not an investor claim.',
+      priority: riskResearchPriority(item),
+      schedulePreference: 'Tonight',
+      context: 'Chemicon China Feasibility',
+      status: 'Manual Research Job',
+    })
+    message.success('Risk research job saved for review')
+  } finally {
+    creatingRiskResearchId.value = ''
+  }
+}
+
 async function copyForPresentation(item: ReadinessSection) {
   const copied = await copyToClipboard([
     `${item.label}`,
@@ -917,6 +952,14 @@ defineExpose({
               @click="createRiskTask(item)"
             >
               Create mitigation task
+            </NButton>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="creatingRiskResearchId === item.id"
+              @click="createRiskResearchJob(item)"
+            >
+              Do deeper research
             </NButton>
             <RouterLink :to="{ name: item.routeName }">Open</RouterLink>
           </div>
