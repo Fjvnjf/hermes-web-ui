@@ -1,9 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import {
+  canAccessRouteName,
+  getFrontendAccessRole,
+  shouldRedactForEmployee,
+} from '@/utils/accessControl'
 import { formatSourcedMarketShare, formatSourceReference, normalizedMarketClaimStatus } from '@/utils/investorIntelligence'
 
 const intelligence = useFeasibilityIntelligence()
+const frontendRole = computed(() => getFrontendAccessRole())
+const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
+const sensitiveResearchTerms = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|gross\s+margin|margin|irr|npv|payback|formula|cas\s+list|raw\s+material\s+ratio|product\s+development|dms|dimethyl\s+sulfate|investor\s+terms|valuation|equity)\b/i
 
 const sections = [
   {
@@ -50,6 +58,9 @@ const captureLinks = [
   { label: 'Open Documents', to: { name: 'hermes.files' } },
 ]
 
+const visibleLinks = computed(() => links.filter(link => canUseRoute(String(link.to.name))))
+const visibleCaptureLinks = computed(() => captureLinks.filter(link => canUseRoute(String(link.to.name))))
+
 const pendingFindings = computed(() =>
   intelligence.state.value.researchFindings
     .filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
@@ -84,7 +95,7 @@ const liveStats = computed(() => [
     status: intelligence.state.value.competitors.some(item => item.evidenceStatus === 'Verified') ? 'Has verified records' : 'To Verify',
     to: { name: 'hermes.competitorIntelligence' },
   },
-])
+].filter(item => canUseRoute(String(item.to.name))))
 
 const researchQueueItems = computed(() => [
   ...pendingFindings.value.map(item => ({
@@ -103,7 +114,7 @@ const researchQueueItems = computed(() => [
     source: [item.context, item.schedulePreference, item.priority ? `${item.priority} priority` : ''].filter(Boolean).join(' / '),
     to: { name: 'hermes.researchResultReview' },
   })),
-].slice(0, 6))
+].filter(item => canUseRoute(String(item.to.name))).slice(0, 6))
 
 const evidenceRecords = computed(() => [
   ...marketClaims.value.map(item => ({
@@ -122,7 +133,15 @@ const evidenceRecords = computed(() => [
     source: formatSourceReference(item.source),
     to: { name: 'hermes.competitorIntelligence' },
   })),
-].slice(0, 6))
+].filter(item => canUseRoute(String(item.to.name))).slice(0, 6))
+
+function canUseRoute(routeName: string): boolean {
+  return canAccessRouteName(routeName, frontendRole.value)
+}
+
+function visibleText(value: string): string {
+  return redactSensitiveFields.value && sensitiveResearchTerms.test(value) ? 'Restricted' : value
+}
 </script>
 
 <template>
@@ -137,7 +156,7 @@ const evidenceRecords = computed(() => [
         </p>
       </div>
       <div class="quick-actions">
-        <RouterLink v-for="link in links" :key="link.label" class="shell-link" :to="link.to">{{ link.label }}</RouterLink>
+        <RouterLink v-for="link in visibleLinks" :key="link.label" class="shell-link" :to="link.to">{{ link.label }}</RouterLink>
       </div>
     </header>
 
@@ -160,7 +179,7 @@ const evidenceRecords = computed(() => [
       </div>
       <div class="capture-actions">
         <RouterLink
-          v-for="link in captureLinks"
+          v-for="link in visibleCaptureLinks"
           :key="link.label"
           :class="link.primary ? 'shell-link primary' : 'shell-link'"
           :to="link.to"
@@ -171,20 +190,20 @@ const evidenceRecords = computed(() => [
     </section>
 
     <section class="research-live-panels" aria-label="Research intelligence records">
-      <article class="research-panel">
+      <article v-if="canUseRoute('hermes.researchResultReview')" class="research-panel">
         <div class="panel-head">
           <div>
             <p class="eyebrow">Review queue</p>
             <h3>Research Waiting for Approval</h3>
           </div>
-          <RouterLink class="shell-link" :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
+          <RouterLink v-if="canUseRoute('hermes.researchResultReview')" class="shell-link" :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
         </div>
         <div v-if="researchQueueItems.length" class="record-list">
           <RouterLink v-for="item in researchQueueItems" :key="item.id" class="record-row" :to="item.to">
             <div>
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.detail }}</p>
-              <small>{{ item.source }}</small>
+              <strong>{{ visibleText(item.title) }}</strong>
+              <p>{{ visibleText(item.detail) }}</p>
+              <small>{{ visibleText(item.source) }}</small>
             </div>
             <span>{{ item.status }}</span>
           </RouterLink>
@@ -203,9 +222,9 @@ const evidenceRecords = computed(() => [
         <div v-if="evidenceRecords.length" class="record-list">
           <RouterLink v-for="item in evidenceRecords" :key="item.id" class="record-row" :to="item.to">
             <div>
-              <strong>{{ item.title }}</strong>
-              <p>{{ item.detail }}</p>
-              <small>{{ item.source }}</small>
+              <strong>{{ visibleText(item.title) }}</strong>
+              <p>{{ visibleText(item.detail) }}</p>
+              <small>{{ visibleText(item.source) }}</small>
             </div>
             <span>{{ item.status }}</span>
           </RouterLink>

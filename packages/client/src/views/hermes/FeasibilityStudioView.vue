@@ -3,6 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useFeasibilityIntelligence, type FeasibilityEvidenceItem } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import {
+  canAccessRouteName,
+  getFrontendAccessRole,
+  shouldRedactForEmployee,
+} from '@/utils/accessControl'
 import { isPresentationMaterialAllowed, type PresentationMaterial } from '@/utils/investorIntelligence'
 
 type RouteName =
@@ -71,6 +76,10 @@ const taskErrors = ref<Record<string, string>>({})
 const createdTasks = ref<Record<string, string>>({})
 const manualTaskText = ref('')
 const boardLoading = ref(false)
+const frontendRole = computed(() => getFrontendAccessRole())
+const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
+
+const sensitiveChecklistTerms = /\b(price|pricing|cost|costing|supplier\s+quote|landed\s+cost|raw\s+material\s+cost|formula|cas\s+list|raw\s+material\s+ratio|dms|dimethyl\s+sulfate|working\s+capital|irr|npv|payback|investor\s+structure|investor\s+terms|use\s+of\s+funds|15,000\s*mt|60,000\s*mt)\b/i
 
 const workspaceLinks: WorkspaceLink[] = [
   {
@@ -257,7 +266,11 @@ const investorWorkflowLinks = [
 ]
 
 const readinessScore = intelligence.readinessScore
-const topLiveEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
+const topLiveEvidenceGaps = computed(() =>
+  intelligence.evidenceGaps.value
+    .filter(gap => canUseRoute(routeForEvidenceGap(gap)))
+    .slice(0, 4),
+)
 const topInvestorRisks = computed(() => intelligence.riskRegisterItems.value.slice(0, 3))
 const pendingResearchReview = computed(() =>
   intelligence.state.value.researchFindings
@@ -342,6 +355,30 @@ const reportPreparationSummary = computed(() => {
   return `Reports are file-based and evidence-labeled: ${ready} approved investor item${ready === 1 ? '' : 's'}, ${model}, ${pendingResearchReview.value.length} research review item${pendingResearchReview.value.length === 1 ? '' : 's'} pending.`
 })
 
+const visibleWorkspaceLinks = computed(() =>
+  workspaceLinks.filter(link => canUseRoute(link.routeName)),
+)
+
+const visibleWorkflowSteps = computed(() =>
+  workflowSteps.filter(step => canUseRoute(step.routeName)),
+)
+
+const visibleInvestorWorkflowLinks = computed(() =>
+  investorWorkflowLinks.filter(link => canUseRoute(link.routeName)),
+)
+
+const visibleReportPreparationActions = computed(() =>
+  reportPreparationActions.value.filter(action => canUseRoute(action.routeName)),
+)
+
+const visibleSuggestedTasks = computed(() =>
+  suggestedTasks.filter(task => !redactSensitiveFields.value || !sensitiveChecklistTerms.test(task)),
+)
+
+const visibleEvidenceGuidance = computed(() =>
+  evidenceGuidance.filter(guidance => canUseEvidenceGuidance(guidance)),
+)
+
 const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().replace(/\s+/g, '-')}`
 
 const selectedKanbanBoardLabel = computed(() => {
@@ -364,6 +401,39 @@ onMounted(async () => {
 
 function itemKey(group: ChecklistGroup, item: ChecklistItem): string {
   return `${group.code}:${item.label}`
+}
+
+function canUseRoute(routeName: RouteName): boolean {
+  return canAccessRouteName(routeName, frontendRole.value)
+}
+
+function itemSensitivityText(group: ChecklistGroup, item: ChecklistItem): string {
+  return `${group.title} ${item.label} ${item.nextAction}`
+}
+
+function isRestrictedChecklistItem(group: ChecklistGroup, item: ChecklistItem): boolean {
+  return redactSensitiveFields.value && sensitiveChecklistTerms.test(itemSensitivityText(group, item))
+}
+
+function visibleChecklistLabel(group: ChecklistGroup, item: ChecklistItem): string {
+  return isRestrictedChecklistItem(group, item) ? 'Restricted feasibility item' : item.label
+}
+
+function visibleChecklistAction(group: ChecklistGroup, item: ChecklistItem): string {
+  if (!isRestrictedChecklistItem(group, item)) return item.nextAction
+  return 'Owner-only: sensitive cost, formula, product-development, or investor material is hidden for this role.'
+}
+
+function canUseChecklistAction(group: ChecklistGroup, item: ChecklistItem): boolean {
+  return !isRestrictedChecklistItem(group, item) && canUseRoute(item.routeName)
+}
+
+function canUseEvidenceGuidance(guidance: string): boolean {
+  if (guidance.toLowerCase().includes('memory')) return canUseRoute('hermes.memory')
+  if (guidance.toLowerCase().includes('documents')) return canUseRoute('hermes.files')
+  if (guidance.toLowerCase().includes('tasks')) return canUseRoute('hermes.kanban')
+  if (guidance.toLowerCase().includes('reports')) return canUseRoute('hermes.reportsHub')
+  return true
 }
 
 function priorityForItem(group: ChecklistGroup, item: ChecklistItem): number {
@@ -403,6 +473,14 @@ function errorMessage(err: unknown): string {
 async function createChecklistTask(group: ChecklistGroup, item: ChecklistItem) {
   const key = itemKey(group, item)
   taskErrors.value = { ...taskErrors.value, [key]: '' }
+  if (isRestrictedChecklistItem(group, item)) {
+    taskErrors.value = {
+      ...taskErrors.value,
+      [key]: 'This checklist item is restricted for this role and was not sent to Kanban.',
+    }
+    message.warning('Restricted item was not created')
+    return
+  }
   const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
   if (!board) {
     taskErrors.value = {
@@ -436,6 +514,10 @@ async function createChecklistTask(group: ChecklistGroup, item: ChecklistItem) {
 }
 
 async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
+  if (isRestrictedChecklistItem(group, item)) {
+    message.warning('Restricted item text is not available for this role')
+    return
+  }
   const text = [`Title: ${item.label}`, '', taskBody(group, item)].join('\n')
   manualTaskText.value = text
   try {
@@ -461,7 +543,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
       <div class="quick-actions" aria-label="Feasibility quick links">
         <RouterLink
-          v-for="link in workspaceLinks"
+          v-for="link in visibleWorkspaceLinks"
           :key="link.label"
           class="shell-link"
           :to="{ name: link.routeName }"
@@ -481,7 +563,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         </p>
       </div>
       <div class="workflow-grid">
-        <article v-for="(step, index) in workflowSteps" :key="step.title" class="workflow-card">
+        <article v-for="(step, index) in visibleWorkflowSteps" :key="step.title" class="workflow-card">
           <span class="step-index">{{ index + 1 }}</span>
           <h4>{{ step.title }}</h4>
           <p>{{ step.description }}</p>
@@ -502,7 +584,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       <div class="capture-chat-actions">
         <RouterLink class="primary-link" :to="{ name: 'hermes.chat', query: { captureContext: 'chemicon' } }">Open Chat</RouterLink>
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
-        <RouterLink class="shell-link compact" :to="{ name: 'hermes.memory' }">Open Memory</RouterLink>
+        <RouterLink v-if="canUseRoute('hermes.memory')" class="shell-link compact" :to="{ name: 'hermes.memory' }">Open Memory</RouterLink>
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.files' }">Open Documents</RouterLink>
       </div>
     </section>
@@ -518,27 +600,27 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
 
       <div class="live-summary-grid">
-        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investorReadiness' }">
+        <RouterLink v-if="canUseRoute('hermes.investorReadiness')" class="live-summary-card" :to="{ name: 'hermes.investorReadiness' }">
           <span>Readiness score</span>
           <strong>{{ readinessScore }}%</strong>
           <small>Evidence-status only</small>
         </RouterLink>
-        <RouterLink class="live-summary-card" :to="{ name: 'hermes.researchResultReview' }">
+        <RouterLink v-if="canUseRoute('hermes.researchResultReview')" class="live-summary-card" :to="{ name: 'hermes.researchResultReview' }">
           <span>Research review</span>
           <strong>{{ pendingResearchReview.length + openResearchJobs.length }}</strong>
           <small>pending findings / research jobs</small>
         </RouterLink>
-        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investmentCalculator' }">
+        <RouterLink v-if="canUseRoute('hermes.investmentCalculator')" class="live-summary-card" :to="{ name: 'hermes.investmentCalculator' }">
           <span>Financial model</span>
           <strong>{{ latestFinancialModel?.scenarioName || 'None' }}</strong>
           <small>{{ financialStatusText() }}</small>
         </RouterLink>
-        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investorPresentation' }">
+        <RouterLink v-if="canUseRoute('hermes.investorPresentation')" class="live-summary-card" :to="{ name: 'hermes.investorPresentation' }">
           <span>Deck evidence</span>
           <strong>{{ deckMaterialsNeedingEvidence.length }}</strong>
           <small>items need review</small>
         </RouterLink>
-        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investorReadiness' }">
+        <RouterLink v-if="canUseRoute('hermes.investorReadiness')" class="live-summary-card" :to="{ name: 'hermes.investorReadiness' }">
           <span>Investor risks</span>
           <strong>{{ topInvestorRisks.length }}</strong>
           <small>live register items</small>
@@ -546,10 +628,10 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
 
       <div class="live-intelligence-grid">
-        <article class="live-panel">
+        <article v-if="canUseRoute('hermes.researchResultReview')" class="live-panel">
           <div class="mini-panel-head">
             <h4>Top Evidence Gaps</h4>
-            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Open readiness</RouterLink>
+            <RouterLink v-if="canUseRoute('hermes.investorReadiness')" :to="{ name: 'hermes.investorReadiness' }">Open readiness</RouterLink>
           </div>
           <div v-if="topLiveEvidenceGaps.length" class="live-list">
             <RouterLink
@@ -565,7 +647,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
           <p v-else class="live-empty">No missing readiness areas in the current workspace state.</p>
         </article>
 
-        <article class="live-panel">
+        <article v-if="canUseRoute('hermes.investorReadiness')" class="live-panel">
           <div class="mini-panel-head">
             <h4>Research and Review Queue</h4>
             <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
@@ -593,10 +675,10 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
           <p v-else class="live-empty">No pending research findings or saved research jobs.</p>
         </article>
 
-        <article class="live-panel">
+        <article v-if="canUseRoute('hermes.investorPresentation')" class="live-panel">
           <div class="mini-panel-head">
             <h4>Investor Risk Register</h4>
-            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Open risks</RouterLink>
+            <RouterLink v-if="canUseRoute('hermes.investorReadiness')" :to="{ name: 'hermes.investorReadiness' }">Open risks</RouterLink>
           </div>
           <div v-if="topInvestorRisks.length" class="live-list">
             <RouterLink
@@ -615,7 +697,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <article class="live-panel">
           <div class="mini-panel-head">
             <h4>Deck Material Needing Evidence</h4>
-            <RouterLink :to="{ name: 'hermes.investorPresentation' }">Open deck</RouterLink>
+            <RouterLink v-if="canUseRoute('hermes.investorPresentation')" :to="{ name: 'hermes.investorPresentation' }">Open deck</RouterLink>
           </div>
           <div v-if="deckMaterialsNeedingEvidence.length" class="live-list">
             <RouterLink
@@ -657,7 +739,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <textarea :value="manualTaskText" readonly rows="7" />
       </div>
       <div class="task-copy-list" aria-label="Suggested task text">
-        <article v-for="task in suggestedTasks" :key="task" class="task-copy-card">
+        <article v-for="task in visibleSuggestedTasks" :key="task" class="task-copy-card">
           <span>{{ task }}</span>
           <RouterLink :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
         </article>
@@ -682,12 +764,13 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
           <div class="checklist-items">
             <div v-for="item in group.items" :key="`${group.code}-${item.label}`" class="checklist-item">
               <div class="item-main">
-                <strong>{{ item.label }}</strong>
-                <p>{{ item.nextAction }}</p>
+                <strong>{{ visibleChecklistLabel(group, item) }}</strong>
+                <p>{{ visibleChecklistAction(group, item) }}</p>
               </div>
               <div class="item-actions">
                 <span class="status-pill" :class="statusClass(item.status)">{{ item.status }}</span>
                 <NButton
+                  v-if="canUseChecklistAction(group, item)"
                   size="tiny"
                   class="create-task-button"
                   :loading="creatingTaskKey === itemKey(group, item)"
@@ -696,6 +779,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
                   Create Task
                 </NButton>
                 <NButton
+                  v-if="canUseChecklistAction(group, item)"
                   size="tiny"
                   quaternary
                   class="copy-task-button"
@@ -703,7 +787,14 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
                 >
                   Copy Text
                 </NButton>
-                <RouterLink class="mini-link" :to="{ name: item.routeName }">{{ item.routeLabel }}</RouterLink>
+                <span v-if="isRestrictedChecklistItem(group, item)" class="restricted-note">Restricted</span>
+                <RouterLink
+                  v-else-if="canUseRoute(item.routeName)"
+                  class="mini-link"
+                  :to="{ name: item.routeName }"
+                >
+                  {{ item.routeLabel }}
+                </RouterLink>
                 <RouterLink
                   v-if="createdTasks[itemKey(group, item)]"
                   class="created-link"
@@ -727,13 +818,13 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <h3 id="evidence-title">Evidence Links Guidance</h3>
       </div>
       <div class="evidence-grid">
-        <article v-for="guidance in evidenceGuidance" :key="guidance" class="evidence-card">
+        <article v-for="guidance in visibleEvidenceGuidance" :key="guidance" class="evidence-card">
           {{ guidance }}
         </article>
       </div>
       <div class="evidence-actions">
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.files' }">Documents</RouterLink>
-        <RouterLink class="shell-link compact" :to="{ name: 'hermes.memory' }">Memory</RouterLink>
+        <RouterLink v-if="canUseRoute('hermes.memory')" class="shell-link compact" :to="{ name: 'hermes.memory' }">Memory</RouterLink>
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.kanban' }">Tasks</RouterLink>
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.reportsHub' }">Reports</RouterLink>
       </div>
@@ -749,7 +840,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         </p>
       </div>
       <div class="investor-link-grid">
-        <RouterLink v-for="link in investorWorkflowLinks" :key="link.label" :to="{ name: link.routeName }">
+        <RouterLink v-for="link in visibleInvestorWorkflowLinks" :key="link.label" :to="{ name: link.routeName }">
           <strong>{{ link.label }}</strong>
           <span>{{ link.description }}</span>
         </RouterLink>
@@ -768,7 +859,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
       <div class="report-grid">
         <RouterLink
-          v-for="draft in reportPreparationActions"
+          v-for="draft in visibleReportPreparationActions"
           :key="draft.title"
           class="report-card"
           :to="{ name: draft.routeName }"
@@ -783,8 +874,8 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
       </div>
       <div class="evidence-actions">
         <RouterLink class="primary-link" :to="{ name: 'hermes.reportsHub' }">Open Reports Hub</RouterLink>
-        <RouterLink class="shell-link compact" :to="{ name: 'hermes.investorPresentation' }">Open Presentation Builder</RouterLink>
-        <RouterLink class="shell-link compact" :to="{ name: 'hermes.investorReadiness' }">Open Investor Readiness</RouterLink>
+        <RouterLink v-if="canUseRoute('hermes.investorPresentation')" class="shell-link compact" :to="{ name: 'hermes.investorPresentation' }">Open Presentation Builder</RouterLink>
+        <RouterLink v-if="canUseRoute('hermes.investorReadiness')" class="shell-link compact" :to="{ name: 'hermes.investorReadiness' }">Open Investor Readiness</RouterLink>
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.files' }">Open Documents</RouterLink>
       </div>
     </section>
@@ -1381,6 +1472,18 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   font-size: 11px;
   font-weight: 900;
   text-decoration: none;
+}
+
+.restricted-note {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(var(--warning-rgb), 0.45);
+  border-radius: 999px;
+  color: $warning;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .task-error {

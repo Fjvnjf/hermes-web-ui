@@ -68,8 +68,8 @@ describe('RBAC request permission gate', () => {
     expect(next).toHaveBeenCalledOnce()
   })
 
-  it('blocks employees from raw memory/history/files/system APIs but allows tasks', async () => {
-    for (const path of ['/api/hermes/memory', '/api/hermes/sessions', '/api/hermes/files', '/api/hermes/jobs', '/api/hermes/investor/portal', '/api/hermes/logs']) {
+  it('allows employees through scoped business APIs while blocking memory, investor, proxy, and system APIs', async () => {
+    for (const path of ['/api/hermes/memory', '/api/hermes/investor/portal', '/api/hermes/logs', '/api/hermes/config', '/api/hermes/available-models', '/api/hermes/backup/export', '/v1/chat/completions']) {
       const request = ctx(path, 'employee')
       const next = vi.fn(async () => {})
       await requireRequestPermission(request, next)
@@ -77,10 +77,12 @@ describe('RBAC request permission gate', () => {
       expect(next).not.toHaveBeenCalled()
     }
 
-    const kanban = ctx('/api/hermes/kanban', 'employee')
-    const next = vi.fn(async () => {})
-    await requireRequestPermission(kanban, next)
-    expect(next).toHaveBeenCalledOnce()
+    for (const path of ['/api/hermes/sessions', '/api/hermes/files', '/api/hermes/kanban', '/api/hermes/jobs']) {
+      const request = ctx(path, 'employee')
+      const next = vi.fn(async () => {})
+      await requireRequestPermission(request, next)
+      expect(next).toHaveBeenCalledOnce()
+    }
   })
 
   it('keeps local backup exports owner-only', async () => {
@@ -98,12 +100,17 @@ describe('RBAC request permission gate', () => {
     expect(next).toHaveBeenCalledOnce()
   })
 
-  it('keeps research assistants out of raw jobs until job scoping exists', async () => {
+  it('lets research assistants reach scoped jobs without granting raw system tools', async () => {
     const jobs = ctx('/api/hermes/jobs', 'research_assistant')
     const next = vi.fn(async () => {})
     await requireRequestPermission(jobs, next)
-    expect(jobs.status).toBe(403)
-    expect(next).not.toHaveBeenCalled()
+    expect(next).toHaveBeenCalledOnce()
+
+    const logs = ctx('/api/hermes/logs', 'research_assistant')
+    const denied = vi.fn(async () => {})
+    await requireRequestPermission(logs, denied)
+    expect(logs.status).toBe(403)
+    expect(denied).not.toHaveBeenCalled()
   })
 
   it('lets developer admins use system tools without granting raw business memory', async () => {

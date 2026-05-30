@@ -15,6 +15,7 @@ import {
 import { copyToClipboard } from '@/utils/clipboard'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { mkDir, writeFile } from '@/api/hermes/files'
+import { shouldRedactForEmployee } from '@/utils/accessControl'
 
 interface MissingOutputInput {
   id: string
@@ -33,6 +34,7 @@ const savingDraftFile = ref(false)
 const savingBriefFile = ref(false)
 const latestDraftPath = ref('')
 const latestBriefPath = ref('')
+const redactSensitiveFields = computed(() => shouldRedactForEmployee())
 
 const INVESTOR_DRAFT_DIR = 'investor-drafts'
 const FEASIBILITY_BRIEF_DIR = 'feasibility-briefs'
@@ -170,6 +172,10 @@ function formatPercent(value: number | null | undefined): string {
   return `${(value * 100).toFixed(1)}%`
 }
 
+function financialDisplay(value: string): string {
+  return redactSensitiveFields.value ? 'Restricted' : value
+}
+
 async function copyApprovedOutline() {
   const text = formatInvestorPresentationOutline(slideDrafts.value)
   copiedOutline.value = await copyToClipboard(text)
@@ -244,7 +250,7 @@ function buildFeasibilityBriefMarkdown(): string {
     `Country / region: ${competitor.countryRegion || 'To Verify'}`,
     `Product equivalent: ${competitor.productEquivalent || 'To Verify'}`,
     `Active content: ${competitor.activeContent || 'To Verify'}`,
-    `Pricing evidence: ${competitor.pricingEvidence || 'To Verify'}`,
+    `Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence || 'To Verify'}`,
     `Market share: ${formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)}`,
     `Source: ${formatSource(competitor.source)}`,
     `Notes: ${competitor.notes || 'No notes saved.'}`,
@@ -286,11 +292,11 @@ function buildFeasibilityBriefMarkdown(): string {
     ? [
         `Scenario: ${latestFinancialModel.value.scenarioName}`,
         `Evidence status: ${latestFinancialModel.value.evidenceStatus}`,
-        `NPV: ${formatCurrency(latestFinancialModel.value.npv, latestFinancialModel.value.currency)}`,
-        `IRR: ${formatPercent(latestFinancialModel.value.irr)}`,
-        `Payback: ${latestFinancialModel.value.paybackYear ? `Year ${latestFinancialModel.value.paybackYear}` : 'Not reached'}`,
-        `Capex total: ${formatCurrency(latestFinancialModel.value.capexTotal, latestFinancialModel.value.currency)}`,
-        `Year 1 revenue: ${formatCurrency(latestFinancialModel.value.yearOneRevenue, latestFinancialModel.value.currency)}`,
+        `NPV: ${financialDisplay(formatCurrency(latestFinancialModel.value.npv, latestFinancialModel.value.currency))}`,
+        `IRR: ${financialDisplay(formatPercent(latestFinancialModel.value.irr))}`,
+        `Payback: ${financialDisplay(latestFinancialModel.value.paybackYear ? `Year ${latestFinancialModel.value.paybackYear}` : 'Not reached')}`,
+        `Capex total: ${financialDisplay(formatCurrency(latestFinancialModel.value.capexTotal, latestFinancialModel.value.currency))}`,
+        `Year 1 revenue: ${financialDisplay(formatCurrency(latestFinancialModel.value.yearOneRevenue, latestFinancialModel.value.currency))}`,
         `Source: ${formatSource(latestFinancialModel.value.source)}`,
         latestFinancialModel.value.warnings.length
           ? `Warnings: ${latestFinancialModel.value.warnings.join('; ')}`
@@ -582,17 +588,17 @@ async function createMissingInputTask(item: MissingOutputInput) {
         </article>
         <article>
           <span>NPV</span>
-          <strong>{{ formatCurrency(latestFinancialModel.npv, latestFinancialModel.currency) }}</strong>
+          <strong>{{ financialDisplay(formatCurrency(latestFinancialModel.npv, latestFinancialModel.currency)) }}</strong>
           <small>Derived model output</small>
         </article>
         <article>
           <span>IRR</span>
-          <strong>{{ formatPercent(latestFinancialModel.irr) }}</strong>
+          <strong>{{ financialDisplay(formatPercent(latestFinancialModel.irr)) }}</strong>
           <small>Derived model output</small>
         </article>
         <article>
           <span>Payback</span>
-          <strong>{{ latestFinancialModel.paybackYear ? `Year ${latestFinancialModel.paybackYear}` : 'Not reached' }}</strong>
+          <strong>{{ financialDisplay(latestFinancialModel.paybackYear ? `Year ${latestFinancialModel.paybackYear}` : 'Not reached') }}</strong>
           <small>{{ latestFinancialModel.warnings.length }} warning{{ latestFinancialModel.warnings.length === 1 ? '' : 's' }}</small>
         </article>
       </div>

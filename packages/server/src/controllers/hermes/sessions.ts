@@ -23,6 +23,11 @@ import { logger } from '../../services/logger'
 import type { ConversationSummary } from '../../services/hermes/conversations'
 import { listUserProfiles } from '../../db/hermes/users-store'
 import { readConfigYamlForProfile } from '../../services/config-helpers'
+import {
+  isEmployeeLikeRole,
+  redactRestrictedTextForRole,
+  roleCanAccessText,
+} from '../../services/hermes/sensitivity'
 
 function getPendingDeletedSessionIds(): Set<string> {
   return getGroupChatServer()?.getStorage().getPendingDeletedSessionIds() || new Set<string>()
@@ -70,6 +75,68 @@ function denySessionAccess(ctx: any, session: any | null | undefined): boolean {
   ctx.status = 403
   ctx.body = { error: `Profile "${session.profile || 'default'}" is not available for this user` }
   return true
+}
+
+function sessionText(session: any): string {
+  const messages = Array.isArray(session?.messages)
+    ? session.messages.map((message: any) => `${message?.role || ''}: ${message?.content || ''}`).join('\n')
+    : ''
+  return [
+    session?.title,
+    session?.preview,
+    session?.workspace,
+    messages,
+  ].filter(Boolean).join('\n')
+}
+
+function accessRole(ctx: any): string {
+  return ctx.state?.user?.role || 'super_admin'
+}
+
+function denySensitiveSessionAccess(ctx: any, session: any | null | undefined): boolean {
+  if (!session) return false
+  const role = accessRole(ctx)
+  if (roleCanAccessText(role, sessionText(session))) return false
+  ctx.status = 403
+  ctx.body = { error: 'Session contains restricted business or product-development content' }
+  return true
+}
+
+function filterSessionSummariesForRole<T extends Record<string, any>>(ctx: any, sessions: T[]): T[] {
+  const role = accessRole(ctx)
+  if (!isEmployeeLikeRole(role) && role !== 'financial_analyst') return sessions
+  return sessions
+    .filter(session => roleCanAccessText(role, session?.title, session?.preview, session?.workspace))
+    .map(session => sanitizeSessionSummaryForRole(session, role))
+}
+
+function sanitizeSessionSummaryForRole<T extends Record<string, any>>(session: T, role: string | undefined): T {
+  if (!isEmployeeLikeRole(role) && role !== 'financial_analyst') return session
+  const next = {
+    ...session,
+    title: redactRestrictedTextForRole(String(session.title || ''), role),
+    preview: redactRestrictedTextForRole(String(session.preview || ''), role),
+    cost_status: session.cost_status ? 'restricted' : session.cost_status,
+  } as Record<string, any>
+  delete next.estimated_cost_usd
+  delete next.actual_cost_usd
+  delete next.billing_provider
+  return next as T
+}
+
+function sanitizeSessionDetailForRole<T extends Record<string, any>>(session: T, role: string | undefined): T {
+  if (!isEmployeeLikeRole(role) && role !== 'financial_analyst') return session
+  const next = sanitizeSessionSummaryForRole(session, role) as Record<string, any>
+  if (Array.isArray(next.messages)) {
+    next.messages = next.messages.map((message: any) => ({
+      ...message,
+      content: redactRestrictedTextForRole(String(message?.content || ''), role),
+      reasoning: undefined,
+      reasoning_details: undefined,
+      reasoning_content: undefined,
+    }))
+  }
+  return next as T
 }
 
 interface HermesDeleteResult {
@@ -275,7 +342,7 @@ export async function listConversations(ctx: any) {
     is_active: s.ended_at == null && (Date.now() / 1000 - s.last_active) <= 300,
     thread_session_count: 1,
   }))
-  ctx.body = { sessions: filterPendingDeletedConversationSummaries(filterByAllowedProfiles(ctx, summaries)) }
+  ctx.body = { sessions: filterSessionSummariesForRole(ctx, filterPendingDeletedConversationSummaries(filterByAllowedProfiles(ctx, summaries))) }
 }
 
 export async function getConversationMessages(ctx: any) {
@@ -288,6 +355,7 @@ export async function getConversationMessages(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, detail)) return
+  if (denySensitiveSessionAccess(ctx, detail)) return
   const messages = detail.messages
     .filter(m => {
       if (humanOnly && m.role !== 'user' && m.role !== 'assistant') return false
@@ -303,7 +371,10 @@ export async function getConversationMessages(ctx: any) {
     }))
   ctx.body = {
     session_id: ctx.params.id,
-    messages,
+    messages: messages.map(message => ({
+      ...message,
+      content: redactRestrictedTextForRole(message.content, accessRole(ctx)),
+    })),
     visible_count: messages.length,
     thread_session_count: 1,
   }
@@ -318,10 +389,10 @@ export async function list(ctx: any) {
   const allSessions = localListSessions(profile, source, effectiveLimit)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
-    sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
+    sessions: filterSessionSummariesForRole(ctx, filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
       (s.source === 'api_server' || s.source === 'cli') &&
       (!knownProfiles || knownProfiles.has(s.profile || 'default')),
-    )),
+    ))),
   }
 }
 
@@ -341,7 +412,7 @@ export async function listHermesSessions(ctx: any) {
       ...(profile ? { ...session, profile } : session),
       webui_imported: importedIds.has(session.id),
     }))
-  ctx.body = { sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => s.source !== 'api_server')) }
+  ctx.body = { sessions: filterSessionSummariesForRole(ctx, filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => s.source !== 'api_server'))) }
 }
 
 export async function search(ctx: any) {
@@ -351,9 +422,9 @@ export async function search(ctx: any) {
   const results = localSearchSessions(profile, q, limit && limit > 0 ? limit : 20)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
-    results: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, results).filter(s =>
+    results: filterSessionSummariesForRole(ctx, filterPendingDeletedSessions(filterByAllowedProfiles(ctx, results).filter(s =>
       !knownProfiles || knownProfiles.has(s.profile || 'default'),
-    )),
+    ))),
   }
 }
 
@@ -365,7 +436,8 @@ export async function get(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, session)) return
-  ctx.body = { session }
+  if (denySensitiveSessionAccess(ctx, session)) return
+  ctx.body = { session: sanitizeSessionDetailForRole(session, accessRole(ctx)) }
 }
 
 /**
@@ -382,7 +454,8 @@ export async function getHermesSession(ctx: any) {
   const localSessionProfile = (localSession?.profile || 'default') as string
   if (localSession && localSession.source !== 'api_server' && (!profile || localSessionProfile === profile)) {
     if (denySessionAccess(ctx, localSession)) return
-    ctx.body = { session: localSession }
+    if (denySensitiveSessionAccess(ctx, localSession)) return
+    ctx.body = { session: sanitizeSessionDetailForRole(localSession, accessRole(ctx)) }
     return
   }
 
@@ -394,7 +467,8 @@ export async function getHermesSession(ctx: any) {
     if (session && session.source !== 'api_server') {
       const sessionWithProfile = profile ? { ...session, profile } : session
       if (denySessionAccess(ctx, sessionWithProfile)) return
-      ctx.body = { session: sessionWithProfile }
+      if (denySensitiveSessionAccess(ctx, sessionWithProfile)) return
+      ctx.body = { session: sanitizeSessionDetailForRole(sessionWithProfile, accessRole(ctx)) }
       return
     }
   } catch (err) {
@@ -415,7 +489,8 @@ export async function getHermesSession(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, session)) return
-  ctx.body = { session }
+  if (denySensitiveSessionAccess(ctx, session)) return
+  ctx.body = { session: sanitizeSessionDetailForRole(session, accessRole(ctx)) }
 }
 
 export async function importHermesSession(ctx: any) {
@@ -805,6 +880,7 @@ export async function exportSession(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, session)) return
+  if (denySensitiveSessionAccess(ctx, session)) return
 
   const mode = (ctx.query.mode as string) || 'full'
   const ext = (ctx.query.ext as string) || (mode === 'compressed' ? 'txt' : 'json')
@@ -827,11 +903,11 @@ export async function exportSession(ctx: any) {
     if (ext === 'txt') {
       ctx.set('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
       ctx.set('Content-Type', 'text/plain; charset=utf-8')
-      ctx.body = serializeAsText(session.title, session.messages || [])
+      ctx.body = serializeAsText(session.title, sanitizeSessionDetailForRole(session, accessRole(ctx)).messages || [])
     } else {
       ctx.set('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
       ctx.set('Content-Type', 'application/json')
-      ctx.body = JSON.stringify(session, null, 2)
+      ctx.body = JSON.stringify(sanitizeSessionDetailForRole(session, accessRole(ctx)), null, 2)
     }
   }
 }
@@ -882,9 +958,10 @@ export async function getConversationMessagesPaginated(ctx: any) {
     return
   }
   if (denySessionAccess(ctx, result.session)) return
+  if (denySensitiveSessionAccess(ctx, { ...result.session, messages: result.messages })) return
 
   ctx.body = {
-    session: {
+    session: sanitizeSessionSummaryForRole({
       id: result.session.id,
       source: result.session.source,
       model: result.session.model,
@@ -895,8 +972,14 @@ export async function getConversationMessagesPaginated(ctx: any) {
       message_count: result.session.message_count,
       input_tokens: result.session.input_tokens,
       output_tokens: result.session.output_tokens,
-    },
-    messages: result.messages,
+    }, accessRole(ctx)),
+    messages: result.messages.map((message: any) => ({
+      ...message,
+      content: redactRestrictedTextForRole(String(message?.content || ''), accessRole(ctx)),
+      reasoning: undefined,
+      reasoning_details: undefined,
+      reasoning_content: undefined,
+    })),
     total: result.total,
     offset: result.offset,
     limit: result.limit,

@@ -3,6 +3,11 @@ import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import {
+  canAccessRouteName,
+  getFrontendAccessRole,
+  shouldRedactForEmployee,
+} from '@/utils/accessControl'
 import { normalizedMarketClaimStatus, type IntelligenceEvidenceStatus, type MarketClaim } from '@/utils/investorIntelligence'
 
 const message = useMessage()
@@ -11,6 +16,9 @@ const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
 const creatingClaimTaskId = ref('')
 const editingClaimId = ref<string | null>(null)
+const frontendRole = computed(() => getFrontendAccessRole())
+const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
+const sensitiveMarketTerms = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|margin|irr|npv|payback|formula|cas\s+list|raw\s+material\s+ratio|investor\s+terms|valuation|equity)\b/i
 
 const claimForm = ref({
   label: '',
@@ -36,6 +44,38 @@ const sections = [
 const claims = computed(() => intelligence.state.value.marketClaims)
 const sourceReadyCount = intelligence.verifiedClaimCount
 const claimSubmitLabel = computed(() => editingClaimId.value ? 'Update claim' : 'Save claim')
+const visibleSections = computed(() =>
+  sections.filter(section => !redactSensitiveFields.value || !sensitiveMarketTerms.test(section)),
+)
+const visibleClaims = computed(() =>
+  claims.value.map(claim => ({
+    claim,
+    restricted: isSensitiveMarketClaim(claim),
+  })),
+)
+
+function canUseRoute(routeName: string): boolean {
+  return canAccessRouteName(routeName, frontendRole.value)
+}
+
+function isSensitiveMarketClaim(claim: MarketClaim): boolean {
+  return redactSensitiveFields.value && sensitiveMarketTerms.test([
+    claim.label,
+    claim.value,
+    claim.source?.title,
+    claim.source?.url,
+  ].filter(Boolean).join('\n'))
+}
+
+function visibleClaimValue(claim: MarketClaim): string {
+  if (isSensitiveMarketClaim(claim)) return 'Restricted'
+  return claim.value || 'To Verify'
+}
+
+function ensureEmployeeSafeMarketText(...parts: Array<string | null | undefined>): boolean {
+  if (!redactSensitiveFields.value) return true
+  return !sensitiveMarketTerms.test(parts.filter(Boolean).join('\n'))
+}
 
 function resetClaimForm() {
   claimForm.value = {
@@ -51,6 +91,10 @@ function resetClaimForm() {
 }
 
 async function createResearchTask(label: string) {
+  if (!ensureEmployeeSafeMarketText(label)) {
+    message.warning('Sensitive pricing/cost research is restricted for this role')
+    return
+  }
   creating.value = label
   try {
     await kanbanStore.fetchBoards()
@@ -88,6 +132,7 @@ async function createResearchTask(label: string) {
 }
 
 function marketClaimTaskBody(claim: MarketClaim): string {
+  if (isSensitiveMarketClaim(claim)) return 'Restricted market claim'
   const status = normalizedMarketClaimStatus(claim)
   return [
     `Market claim evidence gap: ${claim.label}`,
@@ -116,6 +161,10 @@ function marketClaimTaskPriority(claim: MarketClaim): 1 | 2 | 3 {
 }
 
 async function createClaimEvidenceTask(claim: MarketClaim) {
+  if (isSensitiveMarketClaim(claim)) {
+    message.warning('Sensitive market claim tasks are restricted for this role')
+    return
+  }
   const key = claim.id || claim.label
   creatingClaimTaskId.value = key
   try {
@@ -141,6 +190,10 @@ function addClaim() {
   const label = claimForm.value.label.trim()
   if (!label) {
     message.warning('Add a claim or research question first')
+    return
+  }
+  if (!ensureEmployeeSafeMarketText(label, claimForm.value.value, claimForm.value.sourceTitle, claimForm.value.sourceUrl)) {
+    message.warning('Do not save price, cost, formula, or investor-sensitive claims from this role')
     return
   }
   const source = claimForm.value.sourceTitle.trim()
@@ -173,6 +226,10 @@ function addClaim() {
 }
 
 function startEditClaim(claim: MarketClaim) {
+  if (isSensitiveMarketClaim(claim)) {
+    message.warning('Sensitive market claims are restricted for this role')
+    return
+  }
   if (!claim.id) {
     message.error('This older claim cannot be edited until the page is refreshed')
     return
@@ -190,6 +247,10 @@ function startEditClaim(claim: MarketClaim) {
 }
 
 function addClaimToInvestorReview(claim: MarketClaim) {
+  if (isSensitiveMarketClaim(claim) || !canUseRoute('hermes.investorReadiness')) {
+    message.warning('Investor review actions are restricted for this role')
+    return
+  }
   const status = normalizedMarketClaimStatus(claim)
   intelligence.updateEvidenceStatus('market', status, claim.source || null)
   if (status === 'Verified') message.success('Market evidence marked verified for investor readiness')
@@ -197,6 +258,10 @@ function addClaimToInvestorReview(claim: MarketClaim) {
 }
 
 function stageClaimForReview(claim: MarketClaim) {
+  if (isSensitiveMarketClaim(claim) || !canUseRoute('hermes.researchResultReview')) {
+    message.warning('Research review action is restricted for this role')
+    return
+  }
   const status = normalizedMarketClaimStatus(claim)
   const value = claim.value?.trim() || 'To Verify'
   const canSuggestInvestorMaterial = Boolean(claim.value?.trim()) &&
@@ -234,6 +299,10 @@ function stageClaimForReview(claim: MarketClaim) {
 }
 
 function removeClaim(claim: MarketClaim) {
+  if (isSensitiveMarketClaim(claim)) {
+    message.warning('Sensitive market claims are restricted for this role')
+    return
+  }
   if (!claim.id) {
     message.error('This older claim cannot be removed until the page is refreshed')
     return
@@ -262,13 +331,13 @@ function removeClaim(claim: MarketClaim) {
         <small>source required</small>
       </div>
       <div class="header-links">
-        <RouterLink :to="{ name: 'hermes.rawMaterialSourcing' }">Raw materials</RouterLink>
+        <RouterLink v-if="canUseRoute('hermes.rawMaterialSourcing')" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw materials</RouterLink>
         <RouterLink :to="{ name: 'hermes.exportMarketOpportunity' }">Export markets</RouterLink>
       </div>
     </header>
 
     <section class="section-grid">
-      <article v-for="section in sections" :key="section" class="workspace-card">
+      <article v-for="section in visibleSections" :key="section" class="workspace-card">
         <h3>{{ section }}</h3>
         <p>Missing / To Verify until source-backed research is captured and approved.</p>
         <div class="actions">
@@ -277,8 +346,8 @@ function removeClaim(claim: MarketClaim) {
           </NButton>
           <button type="button" @click="createResearchTask(section)">Run Tonight</button>
           <RouterLink :to="{ name: 'hermes.kanban' }">Create task</RouterLink>
-          <RouterLink :to="{ name: 'hermes.researchResultReview' }">Later</RouterLink>
-          <RouterLink :to="{ name: 'hermes.investorReadiness' }">Add claim to investor review</RouterLink>
+          <RouterLink v-if="canUseRoute('hermes.researchResultReview')" :to="{ name: 'hermes.researchResultReview' }">Later</RouterLink>
+          <RouterLink v-if="canUseRoute('hermes.investorReadiness')" :to="{ name: 'hermes.investorReadiness' }">Add claim to investor review</RouterLink>
         </div>
       </article>
     </section>
@@ -290,7 +359,7 @@ function removeClaim(claim: MarketClaim) {
       </div>
       <label>
         Claim
-        <input v-model="claimForm.label" type="text" placeholder="Example: CWAS price validation source" />
+        <input v-model="claimForm.label" type="text" placeholder="Example: CWAS demand validation source" />
       </label>
       <label>
         Value
@@ -339,24 +408,26 @@ function removeClaim(claim: MarketClaim) {
       <p v-if="claims.length === 0" class="empty-state">
         No market claims saved yet. Add source-backed claims here, or create research tasks from the cards above.
       </p>
-      <div v-for="claim in claims" :key="claim.id || claim.label" class="claim-row">
-        <span>{{ claim.label }}</span>
-        <span>{{ claim.value || 'To Verify' }}</span>
-        <span>{{ claim.source?.title || 'Source missing' }}</span>
-        <span>{{ normalizedMarketClaimStatus(claim) }}</span>
-        <span>{{ claim.lastChecked || 'Not checked' }}</span>
+      <div v-for="{ claim, restricted } in visibleClaims" :key="claim.id || claim.label" class="claim-row">
+        <span>{{ restricted ? 'Restricted market claim' : claim.label }}</span>
+        <span>{{ visibleClaimValue(claim) }}</span>
+        <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source missing') }}</span>
+        <span>{{ restricted ? 'Restricted' : normalizedMarketClaimStatus(claim) }}</span>
+        <span>{{ restricted ? 'Restricted' : (claim.lastChecked || 'Not checked') }}</span>
         <span class="row-actions">
-          <button type="button" @click="startEditClaim(claim)">Edit claim</button>
-          <button type="button" @click="stageClaimForReview(claim)">Stage for review</button>
+          <span v-if="restricted" class="restricted-badge">Restricted</span>
+          <button v-if="!restricted" type="button" @click="startEditClaim(claim)">Edit claim</button>
+          <button v-if="!restricted && canUseRoute('hermes.researchResultReview')" type="button" @click="stageClaimForReview(claim)">Stage for review</button>
           <button
+            v-if="!restricted"
             type="button"
             :disabled="creatingClaimTaskId === (claim.id || claim.label)"
             @click="createClaimEvidenceTask(claim)"
           >
             {{ creatingClaimTaskId === (claim.id || claim.label) ? 'Creating task' : 'Create evidence task' }}
           </button>
-          <button type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
-          <button type="button" class="danger-link" @click="removeClaim(claim)">Remove claim</button>
+          <button v-if="!restricted && canUseRoute('hermes.investorReadiness')" type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
+          <button v-if="!restricted" type="button" class="danger-link" @click="removeClaim(claim)">Remove claim</button>
         </span>
       </div>
     </section>
@@ -527,6 +598,19 @@ function removeClaim(claim: MarketClaim) {
 .row-actions {
   display: grid;
   gap: 8px;
+}
+
+.restricted-badge {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(var(--warning-rgb), 0.45);
+  border-radius: 999px;
+  color: $warning;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .empty-state {

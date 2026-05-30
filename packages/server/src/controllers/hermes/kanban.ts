@@ -12,6 +12,13 @@ import {
   findLatestExactSessionIdWithProfile,
 } from '../../db/hermes/sessions-db'
 import { listUserProfiles } from '../../db/hermes/users-store'
+import {
+  containsEmployeeRestrictedContent,
+  isEmployeeLikeRole,
+  isTaskVisibleToRole,
+  redactRestrictedObjectForRole,
+  roleCanAccessText,
+} from '../../services/hermes/sensitivity'
 
 const DEFAULT_PROFILE = 'default'
 
@@ -51,8 +58,37 @@ function taskAssigneeProfile(task: { assignee: string | null }): string {
 
 function filterTasksByVisibleProfiles(ctx: Context, tasks: kanbanCli.KanbanTask[]): kanbanCli.KanbanTask[] {
   const visible = visibleProfileSet(ctx)
-  if (!visible) return tasks
-  return tasks.filter(task => visible.has(taskAssigneeProfile(task)))
+  const scoped = visible ? tasks.filter(task => visible.has(taskAssigneeProfile(task))) : tasks
+  return scoped.filter(task => isTaskVisibleToRole(task, role(ctx)))
+}
+
+function role(ctx: Context): string {
+  return ctx.state?.user?.role || 'super_admin'
+}
+
+function shouldEnforceTaskVisibility(ctx: Context): boolean {
+  return !['super_admin', 'owner', 'admin'].includes(role(ctx))
+}
+
+function mustKeepEmployeeSafe(ctx: Context): boolean {
+  return isEmployeeLikeRole(role(ctx)) || role(ctx) === 'financial_analyst'
+}
+
+function sanitizeForRole<T>(ctx: Context, value: T): T {
+  return redactRestrictedObjectForRole(value, role(ctx))
+}
+
+async function ensureVisibleTask(ctx: Context, board: string, taskId: string): Promise<kanbanCli.KanbanTaskDetail | null> {
+  if (!shouldEnforceTaskVisibility(ctx)) {
+    return { task: { id: taskId } as kanbanCli.KanbanTask, comments: [], events: [], runs: [] }
+  }
+  const detail = await kanbanCli.getTask(taskId, { board })
+  if (!detail || !filterTasksByVisibleProfiles(ctx, [detail.task]).length) {
+    ctx.status = 404
+    ctx.body = { error: 'Task not found' }
+    return null
+  }
+  return detail
 }
 
 function statsForTasks(tasks: kanbanCli.KanbanTask[]): kanbanCli.KanbanStats {
@@ -374,7 +410,7 @@ export async function get(ctx: Context) {
       }
     }
 
-    ctx.body = detail
+    ctx.body = sanitizeForRole(ctx, detail)
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }
@@ -393,6 +429,11 @@ export async function create(ctx: Context) {
   if (rejectBadRequest(ctx, title.error || body.error || assignee.error || priority.error || tenant.error)) return
   const targetAssignee = assignee.value || requestedProfile(ctx) || undefined
   if (targetAssignee && denyProfileAccess(ctx, targetAssignee)) return
+  if (mustKeepEmployeeSafe(ctx) && containsEmployeeRestrictedContent(title.value, body.value, tenant.value)) {
+    ctx.status = 403
+    ctx.body = { error: 'Employee-safe tasks cannot include price, cost, formula, product-development, investor-sensitive, or system-secret content' }
+    return
+  }
   const board = requestBoard(ctx)
   if (!board) return
   try {
@@ -414,6 +455,10 @@ export async function complete(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    for (const id of taskIds.value!) {
+      const detail = await ensureVisibleTask(ctx, board, id)
+      if (!detail) return
+    }
     await kanbanCli.completeTasks(taskIds.value!, summary.value, { board })
     ctx.body = { ok: true }
   } catch (err: any) {
@@ -430,6 +475,8 @@ export async function block(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
     await kanbanCli.blockTask(ctx.params.id, reason.value!, { board })
     ctx.body = { ok: true }
   } catch (err: any) {
@@ -446,6 +493,10 @@ export async function unblock(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    for (const id of taskIds.value!) {
+      const detail = await ensureVisibleTask(ctx, board, id)
+      if (!detail) return
+    }
     await kanbanCli.unblockTasks(taskIds.value!, { board })
     ctx.body = { ok: true }
   } catch (err: any) {
@@ -463,6 +514,8 @@ export async function assign(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
     await kanbanCli.assignTask(ctx.params.id, profile.value!, { board })
     ctx.body = { ok: true }
   } catch (err: any) {
@@ -478,9 +531,16 @@ export async function addComment(ctx: Context) {
   const body = requiredNonEmptyString(bodyPayload.body, 'body')
   const author = optionalString(bodyPayload.author, 'author')
   if (rejectBadRequest(ctx, body.error || author.error)) return
+  if (mustKeepEmployeeSafe(ctx) && containsEmployeeRestrictedContent(body.value)) {
+    ctx.status = 403
+    ctx.body = { error: 'Employee-safe task comments cannot include restricted business content' }
+    return
+  }
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
     ctx.body = await kanbanCli.addComment(ctx.params.id, body.value!, { board, author: author.value })
   } catch (err: any) {
     ctx.status = 500
@@ -497,6 +557,10 @@ export async function linkTasks(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const parent = await ensureVisibleTask(ctx, board, parentId.value!.trim())
+    if (!parent) return
+    const child = await ensureVisibleTask(ctx, board, childId.value!.trim())
+    if (!child) return
     ctx.body = await kanbanCli.linkTasks(parentId.value!.trim(), childId.value!.trim(), { board })
   } catch (err: any) {
     ctx.status = 500
@@ -511,6 +575,10 @@ export async function unlinkTasks(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const parent = await ensureVisibleTask(ctx, board, parentId.value!.trim())
+    if (!parent) return
+    const child = await ensureVisibleTask(ctx, board, childId.value!.trim())
+    if (!child) return
     ctx.body = await kanbanCli.unlinkTasks(parentId.value!.trim(), childId.value!.trim(), { board })
   } catch (err: any) {
     ctx.status = 500
@@ -548,6 +616,10 @@ export async function bulkUpdateTasks(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    for (const id of ids.value!) {
+      const detail = await ensureVisibleTask(ctx, board, id.trim())
+      if (!detail) return
+    }
     ctx.body = await kanbanCli.bulkUpdateTasks({
       board,
       ids: ids.value!.map(id => id.trim()),
@@ -570,7 +642,9 @@ export async function taskLog(ctx: Context) {
   const tail = optionalPositiveIntegerQuery(tailRaw, 'tail', MAX_LOG_TAIL_BYTES)
   if (rejectBadRequest(ctx, tail.error)) return
   try {
-    ctx.body = await kanbanCli.getTaskLog(ctx.params.id, { board, tail: tail.value })
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
+    ctx.body = sanitizeForRole(ctx, await kanbanCli.getTaskLog(ctx.params.id, { board, tail: tail.value }))
   } catch (err: any) {
     ctx.status = err.message?.includes('not found') ? 404 : 500
     ctx.body = { error: err.message }
@@ -588,6 +662,10 @@ export async function diagnostics(ctx: Context) {
     return
   }
   try {
+    if (task) {
+      const detail = await ensureVisibleTask(ctx, board, task)
+      if (!detail) return
+    }
     const diagnostics = await kanbanCli.getDiagnostics({ board, task, severity })
     ctx.body = { diagnostics }
   } catch (err: any) {
@@ -605,6 +683,8 @@ export async function reclaim(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
     ctx.body = await kanbanCli.reclaimTask(ctx.params.id, { board, reason: reason.value })
   } catch (err: any) {
     ctx.status = 500
@@ -624,6 +704,8 @@ export async function reassign(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
     ctx.body = await kanbanCli.reassignTask(ctx.params.id, profile.value!, { board, reclaim: reclaim.value, reason: reason.value })
   } catch (err: any) {
     ctx.status = 500
@@ -640,8 +722,10 @@ export async function specify(ctx: Context) {
   const board = requestBoard(ctx)
   if (!board) return
   try {
+    const detail = await ensureVisibleTask(ctx, board, ctx.params.id)
+    if (!detail) return
     const results = await kanbanCli.specifyTask(ctx.params.id, { board, author: author.value })
-    ctx.body = { results }
+    ctx.body = { results: sanitizeForRole(ctx, results) }
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }
@@ -649,6 +733,11 @@ export async function specify(ctx: Context) {
 }
 
 export async function dispatch(ctx: Context) {
+  if (mustKeepEmployeeSafe(ctx)) {
+    ctx.status = 403
+    ctx.body = { error: 'Kanban dispatch is restricted to owner/developer roles until task sensitivity scoping is complete' }
+    return
+  }
   const bodyResult = requestBody(ctx)
   if (rejectBadRequest(ctx, bodyResult.error)) return
   const body = bodyResult.body
@@ -713,6 +802,11 @@ export async function readArtifact(ctx: Context) {
 
   try {
     const data = await readFile(resolved, 'utf-8')
+    if (mustKeepEmployeeSafe(ctx) && !roleCanAccessText(role(ctx), filePath, data)) {
+      ctx.status = 403
+      ctx.body = { error: 'Artifact contains restricted task workspace content' }
+      return
+    }
     ctx.body = { content: data, path: filePath }
   } catch (err: any) {
     if (err.code === 'ENOENT') {
@@ -743,6 +837,10 @@ export async function searchSessions(ctx: Context) {
       if (exactSessionId) {
         const sessionDetail = await getExactSessionDetailFromDbWithProfile(exactSessionId, profile)
         if (sessionDetail) {
+          if (!roleCanAccessText(role(ctx), sessionDetail.title, sessionDetail.preview, sessionDetail.messages)) {
+            ctx.body = { results: [] }
+            return
+          }
           ctx.body = {
             results: [{
               id: exactSessionId,
@@ -760,10 +858,10 @@ export async function searchSessions(ctx: Context) {
               cache_read_tokens: sessionDetail.cache_read_tokens,
               cache_write_tokens: sessionDetail.cache_write_tokens,
               reasoning_tokens: sessionDetail.reasoning_tokens,
-              billing_provider: sessionDetail.billing_provider,
-              estimated_cost_usd: sessionDetail.estimated_cost_usd,
-              actual_cost_usd: sessionDetail.actual_cost_usd,
-              cost_status: sessionDetail.cost_status,
+              billing_provider: mustKeepEmployeeSafe(ctx) ? undefined : sessionDetail.billing_provider,
+              estimated_cost_usd: mustKeepEmployeeSafe(ctx) ? undefined : sessionDetail.estimated_cost_usd,
+              actual_cost_usd: mustKeepEmployeeSafe(ctx) ? undefined : sessionDetail.actual_cost_usd,
+              cost_status: mustKeepEmployeeSafe(ctx) ? 'restricted' : sessionDetail.cost_status,
               matched_message_id: null,
               snippet: sessionDetail.preview,
               rank: 0,
@@ -776,7 +874,13 @@ export async function searchSessions(ctx: Context) {
 
     const searchQuery = q || task_id
     const results = await searchSessionSummariesWithProfile(searchQuery, profile, undefined, 10)
-    ctx.body = { results }
+    ctx.body = {
+      results: results
+        .filter(result => roleCanAccessText(role(ctx), result.title, result.preview, (result as any).snippet))
+        .map(result => mustKeepEmployeeSafe(ctx)
+          ? { ...result, billing_provider: undefined, estimated_cost_usd: undefined, actual_cost_usd: undefined, cost_status: 'restricted' }
+          : result),
+    }
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }

@@ -15,7 +15,10 @@ export type RouteSensitivity =
   | 'employee-safe'
   | 'investor-approved'
   | 'confidential'
+  | 'price-cost-sensitive'
+  | 'formula-secret'
   | 'product-development-secret'
+  | 'investor-sensitive'
   | 'system-admin-only'
 
 export interface RouteAccessPolicy {
@@ -28,30 +31,30 @@ export interface RouteAccessPolicy {
 export const FRONTEND_ROLE_STORAGE_KEY = 'hermes.frontendAccessRole'
 
 export const ROUTE_ACCESS_POLICIES: RouteAccessPolicy[] = [
-  { routeName: 'hermes.dashboard', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Home can include internal activity and evidence gaps.' },
+  { routeName: 'hermes.dashboard', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Home is visible to business roles with sensitive fields redacted by page utilities.' },
   { routeName: 'hermes.accessDenied', sensitivity: 'public-shareable', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'investor_viewer', 'developer_admin'], note: 'Safe access denial page.' },
   { routeName: 'hermes.investorPortal', sensitivity: 'investor-approved', allowedRoles: ['owner', 'investor_viewer'], note: 'Investor-only approved material portal.' },
-  { routeName: 'hermes.last24Hours', sensitivity: 'owner-only', allowedRoles: ['owner'], note: 'Daily brief can reveal chats, jobs, memory, files, and failures.' },
-  { routeName: 'hermes.chat', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw chats may contain formulas, costs, and strategy.' },
-  { routeName: 'hermes.session', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw chat session.' },
-  { routeName: 'hermes.history', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw chat history.' },
-  { routeName: 'hermes.historySession', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw historical session.' },
-  { routeName: 'hermes.feasibility', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Feasibility contains unapproved assumptions and gaps.' },
+  { routeName: 'hermes.last24Hours', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Daily brief is visible with restricted sources redacted or unavailable by API role.' },
+  { routeName: 'hermes.chat', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Chat is available to business roles; backend blocks restricted prompts and secret session replay.' },
+  { routeName: 'hermes.session', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Session route is available only for backend-filtered non-sensitive sessions.' },
+  { routeName: 'hermes.history', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'History is backend-filtered for product-development and sensitive economics.' },
+  { routeName: 'hermes.historySession', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Historical session detail is backend-filtered and blocked if sensitive.' },
+  { routeName: 'hermes.feasibility', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Feasibility workspace is visible with sensitive fields redacted or linked to protected routes.' },
   { routeName: 'hermes.projects', sensitivity: 'confidential', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Project shell; backend project permissions are still required.' },
-  { routeName: 'hermes.research', sensitivity: 'employee-safe', allowedRoles: ['owner'], note: 'Research workspace can read local intelligence state; keep owner-only until project filtering exists.' },
-  { routeName: 'hermes.files', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Raw files are owner-only until document categories are enforced.' },
+  { routeName: 'hermes.research', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Research workspace is employee-visible; raw Memory remains blocked by route/API.' },
+  { routeName: 'hermes.files', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Documents are backend-limited to explicit employee-safe categories for business roles.' },
   { routeName: 'hermes.kanban', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Tasks are allowed, with backend profile scope still applied.' },
   { routeName: 'hermes.memory', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Memory can contain durable confidential facts.' },
-  { routeName: 'hermes.reportsHub', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Reports can read local intelligence state; keep owner-only until approved-report filtering exists.' },
+  { routeName: 'hermes.reportsHub', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Reports Hub is visible; sensitive economics are redacted for employee-style roles.' },
   { routeName: 'hermes.investorReadiness', sensitivity: 'investor-approved', allowedRoles: ['owner'], note: 'Readiness can read local intelligence state; investor sees only the Investor Portal until approval filtering exists.' },
   { routeName: 'hermes.investmentCalculator', sensitivity: 'confidential', allowedRoles: ['owner', 'financial_analyst'], note: 'Finance assumptions and IRR scenarios are confidential until approved.' },
-  { routeName: 'hermes.marketIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner'], note: 'Market intelligence is owner-only until backend filtering/redaction exists.' },
-  { routeName: 'hermes.competitorIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner'], note: 'Competitor intelligence is owner-only until backend filtering/redaction exists.' },
+  { routeName: 'hermes.marketIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Market intelligence is visible; pricing/cost claims must stay redacted or To Verify.' },
+  { routeName: 'hermes.competitorIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Competitor intelligence is visible with pricing/cost fields redacted for employees.' },
   { routeName: 'hermes.rawMaterialSourcing', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Prices, costs, sources, and formula impact are sensitive.' },
-  { routeName: 'hermes.exportMarketOpportunity', sensitivity: 'employee-safe', allowedRoles: ['owner'], note: 'Trade proxy research can be shared only after project/category filtering exists.' },
+  { routeName: 'hermes.exportMarketOpportunity', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Trade proxy research is employee-visible when it avoids sensitive pricing/formula detail.' },
   { routeName: 'hermes.researchResultReview', sensitivity: 'confidential', allowedRoles: ['owner', 'research_assistant', 'regulatory_consultant'], note: 'Review queue contains unapproved findings.' },
   { routeName: 'hermes.investorPresentation', sensitivity: 'investor-approved', allowedRoles: ['owner'], note: 'Presentation builder can read local intelligence state; investor sees only the Investor Portal until approval filtering exists.' },
-  { routeName: 'hermes.jobs', sensitivity: 'confidential', allowedRoles: ['owner', 'developer_admin'], note: 'Jobs can run research/automation.' },
+  { routeName: 'hermes.jobs', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'developer_admin'], note: 'Research jobs are visible to business roles through backend filtering; developer admin can manage system jobs.' },
   { routeName: 'hermes.channels', sensitivity: 'confidential', allowedRoles: ['owner', 'developer_admin'], note: 'Messaging/channel integrations are internal.' },
   { routeName: 'hermes.groupChat', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Group chats can expose raw strategy discussions.' },
   { routeName: 'hermes.groupChatRoom', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Group chat room content can be sensitive.' },
@@ -110,8 +113,26 @@ export function isEmployeeRestrictedRoute(routeName: string): boolean {
   return !canAccessRouteName(routeName, 'employee')
 }
 
+export function isEmployeeStyleRole(role: FrontendAccessRole = getFrontendAccessRole()): boolean {
+  return role === 'employee' || role === 'research_assistant' || role === 'regulatory_consultant'
+}
+
+export function isBusinessLimitedRole(role: FrontendAccessRole = getFrontendAccessRole()): boolean {
+  return isEmployeeStyleRole(role) || role === 'investor_viewer' || role === 'developer_admin'
+}
+
 export function shouldRedactForEmployee(role: FrontendAccessRole = getFrontendAccessRole()): boolean {
-  return role === 'employee' || role === 'investor_viewer'
+  return isBusinessLimitedRole(role)
+}
+
+export function restrictedFieldLabel(role: FrontendAccessRole = getFrontendAccessRole()): string {
+  if (role === 'developer_admin') return 'Business Restricted'
+  if (role === 'investor_viewer') return 'Investor Portal Only'
+  return 'Restricted'
+}
+
+export function redactForEmployee<T>(value: T, role: FrontendAccessRole = getFrontendAccessRole()): T | string {
+  return shouldRedactForEmployee(role) ? restrictedFieldLabel(role) : value
 }
 
 export function accessControlWarning(): string {

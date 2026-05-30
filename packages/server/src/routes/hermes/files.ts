@@ -5,6 +5,11 @@ import {
   isSensitivePath,
   MAX_EDIT_SIZE,
 } from '../../services/hermes/file-provider'
+import {
+  filterEmployeeVisibleFileEntries,
+  isEmployeeFilePathAllowed,
+  isEmployeeLikeRole,
+} from '../../services/hermes/sensitivity'
 
 function requestedProfile(ctx: any): string | undefined {
   return ctx.state?.profile?.name
@@ -23,6 +28,21 @@ function withAbsolutePath<T extends { path: string }>(ctx: any, entry: T): T & {
 }
 
 export const fileRoutes = new Router()
+
+function role(ctx: any): string | undefined {
+  return ctx.state?.user?.role
+}
+
+function denyEmployeeFileAccess(ctx: any, relativePath: string, action: string): boolean {
+  if (!isEmployeeLikeRole(role(ctx)) && role(ctx) !== 'financial_analyst') return false
+  if (isEmployeeFilePathAllowed(relativePath)) return false
+  ctx.status = 403
+  ctx.body = {
+    error: `File ${action} requires an employee-safe document category`,
+    code: 'permission_denied',
+  }
+  return true
+}
 
 function handleError(ctx: any, err: any) {
   const code = err.code || 'unknown'
@@ -50,7 +70,10 @@ fileRoutes.get('/api/hermes/files/list', async (ctx) => {
   try {
     const absPath = resolveRequestPath(ctx, relativePath)
     const provider = await createRequestFileProvider(ctx)
-    const entries = await provider.listDir(absPath)
+    let entries = await provider.listDir(absPath)
+    if (isEmployeeLikeRole(role(ctx)) || role(ctx) === 'financial_analyst') {
+      entries = filterEmployeeVisibleFileEntries(entries)
+    }
     entries.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
       return a.name.localeCompare(b.name)
@@ -70,6 +93,7 @@ fileRoutes.get('/api/hermes/files/stat', async (ctx) => {
     return
   }
   try {
+    if (denyEmployeeFileAccess(ctx, relativePath, 'metadata access')) return
     const absPath = resolveRequestPath(ctx, relativePath)
     const provider = await createRequestFileProvider(ctx)
     const info = await provider.stat(absPath)
@@ -88,6 +112,7 @@ fileRoutes.get('/api/hermes/files/read', async (ctx) => {
     return
   }
   try {
+    if (denyEmployeeFileAccess(ctx, relativePath, 'read access')) return
     const absPath = resolveRequestPath(ctx, relativePath)
     const provider = await createRequestFileProvider(ctx)
     const data = await provider.readFile(absPath)
@@ -115,6 +140,7 @@ fileRoutes.put('/api/hermes/files/write', async (ctx) => {
     ctx.body = { error: 'Cannot modify sensitive file', code: 'permission_denied' }
     return
   }
+  if (denyEmployeeFileAccess(ctx, relativePath, 'write access')) return
   try {
     const buf = Buffer.from(content || '', 'utf-8')
     if (buf.length > MAX_EDIT_SIZE) {
@@ -144,6 +170,7 @@ fileRoutes.delete('/api/hermes/files/delete', async (ctx) => {
     ctx.body = { error: 'Cannot delete sensitive file', code: 'permission_denied' }
     return
   }
+  if (denyEmployeeFileAccess(ctx, relativePath, 'delete access')) return
   try {
     const absPath = resolveRequestPath(ctx, relativePath)
     const provider = await createRequestFileProvider(ctx)
@@ -171,6 +198,7 @@ fileRoutes.post('/api/hermes/files/rename', async (ctx) => {
     ctx.body = { error: 'Cannot rename sensitive file', code: 'permission_denied' }
     return
   }
+  if (denyEmployeeFileAccess(ctx, oldPath, 'rename access') || denyEmployeeFileAccess(ctx, newPath, 'rename access')) return
   try {
     const absOld = resolveRequestPath(ctx, oldPath)
     const absNew = resolveRequestPath(ctx, newPath)
@@ -190,6 +218,7 @@ fileRoutes.post('/api/hermes/files/mkdir', async (ctx) => {
     ctx.body = { error: 'Missing path parameter', code: 'missing_path' }
     return
   }
+  if (denyEmployeeFileAccess(ctx, relativePath, 'folder creation')) return
   try {
     const absPath = resolveRequestPath(ctx, relativePath)
     const provider = await createRequestFileProvider(ctx)
@@ -208,6 +237,7 @@ fileRoutes.post('/api/hermes/files/copy', async (ctx) => {
     ctx.body = { error: 'Missing srcPath or destPath', code: 'missing_path' }
     return
   }
+  if (denyEmployeeFileAccess(ctx, srcPath, 'copy access') || denyEmployeeFileAccess(ctx, destPath, 'copy access')) return
   try {
     const absSrc = resolveRequestPath(ctx, srcPath)
     const absDest = resolveRequestPath(ctx, destPath)
@@ -274,6 +304,7 @@ fileRoutes.post('/api/hermes/files/upload', async (ctx) => {
       ctx.body = { error: `Cannot overwrite sensitive file: ${filename}`, code: 'permission_denied' }
       return
     }
+    if (denyEmployeeFileAccess(ctx, filePath, 'upload access')) return
 
     const absPath = resolveRequestPath(ctx, filePath)
     await provider.writeFile(absPath, data)

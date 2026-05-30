@@ -10,10 +10,13 @@ import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { listRecentCaptureActivities, type SessionCaptureActivity } from '@/composables/useSessionCapture'
 import { copyToClipboard } from '@/utils/clipboard'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
+const frontendRole = computed(() => getFrontendAccessRole())
+const canUseRawMemory = computed(() => canAccessRouteName('hermes.memory', frontendRole.value))
 
 const loading = ref(false)
 const saving = ref(false)
@@ -206,7 +209,7 @@ onMounted(refresh)
       <div class="action-row">
         <NButton secondary @click="copyBrief">Copy summary</NButton>
         <NButton secondary :loading="saving" @click="createFollowUpTask">Create follow-up task</NButton>
-        <NButton secondary :loading="saving" @click="saveBriefToMemory">Save summary to Memory</NButton>
+        <NButton v-if="canUseRawMemory" secondary :loading="saving" @click="saveBriefToMemory">Save summary to Memory</NButton>
       </div>
     </section>
 

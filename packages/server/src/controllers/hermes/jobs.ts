@@ -5,6 +5,7 @@ import { join } from 'path'
 import { promisify } from 'util'
 import { getHermesBin } from '../../services/hermes/hermes-path'
 import { getActiveProfileName, getProfileDir } from '../../services/hermes/hermes-profile'
+import { isEmployeeLikeRole, redactRestrictedObjectForRole, roleCanAccessText } from '../../services/hermes/sensitivity'
 
 const execFileAsync = promisify(execFile)
 const TIMEOUT_MS = 60_000
@@ -71,6 +72,38 @@ function readJobs(profile: string, includeDisabled = true): JobRecord[] {
 
 function findJob(profile: string, jobId: string): JobRecord | null {
   return readJobs(profile, true).find((job) => job.job_id === jobId || job.id === jobId) ?? null
+}
+
+function role(ctx: Context): string {
+  return ctx.state?.user?.role || 'super_admin'
+}
+
+function isScopedBusinessRole(ctx: Context): boolean {
+  return isEmployeeLikeRole(role(ctx)) || role(ctx) === 'financial_analyst'
+}
+
+function canAccessJob(ctx: Context, job: JobRecord | null): boolean {
+  if (!job) return false
+  if (!isScopedBusinessRole(ctx)) return true
+  return roleCanAccessText(role(ctx), job.name, job.prompt, job.prompt_preview, job.schedule_display, job.skill, job.skills)
+}
+
+function sanitizeJob(ctx: Context, job: JobRecord): JobRecord {
+  if (!isScopedBusinessRole(ctx)) return job
+  const redacted = redactRestrictedObjectForRole(job, role(ctx)) as JobRecord
+  redacted.model = null
+  redacted.provider = null
+  redacted.base_url = null
+  redacted.script = null
+  return redacted
+}
+
+function denySensitiveJobPayload(ctx: Context, body: Record<string, any>): boolean {
+  if (!isScopedBusinessRole(ctx)) return false
+  if (roleCanAccessText(role(ctx), body.name, body.prompt, body.skill, body.skills, body.script, body.workdir)) return false
+  ctx.status = 403
+  ctx.body = { error: { message: 'Employee-safe research jobs cannot include price, cost, formula, product-development, investor-sensitive, or system-secret content' } }
+  return true
 }
 
 function boolQuery(value: unknown, defaultValue: boolean): boolean {
@@ -158,14 +191,15 @@ function findCreatedJob(beforeJobs: JobRecord[], afterJobs: JobRecord[]): JobRec
 export async function list(ctx: Context) {
   const profile = resolveProfile(ctx)
   const includeDisabled = boolQuery(ctx.query.include_disabled, false)
-  ctx.body = { jobs: readJobs(profile, includeDisabled) }
+  ctx.body = { jobs: readJobs(profile, includeDisabled).filter(job => canAccessJob(ctx, job)).map(job => sanitizeJob(ctx, job)) }
 }
 
 export async function get(ctx: Context) {
   const profile = resolveProfile(ctx)
   const job = findJob(profile, ctx.params.id)
   if (!job) return sendJobNotFound(ctx)
-  ctx.body = { job }
+  if (!canAccessJob(ctx, job)) return sendJobNotFound(ctx)
+  ctx.body = { job: sanitizeJob(ctx, job) }
 }
 
 export async function create(ctx: Context) {
@@ -173,6 +207,7 @@ export async function create(ctx: Context) {
   const body = getBody(ctx)
   const schedule = String(body.schedule || body.schedule_display || '').trim()
   const prompt = String(body.prompt || '').trim()
+  if (denySensitiveJobPayload(ctx, body)) return
 
   if (!schedule) {
     ctx.status = 400
@@ -207,7 +242,7 @@ export async function create(ctx: Context) {
   try {
     await runHermesCron(profile, args)
     const job = findCreatedJob(beforeJobs, readJobs(profile, true))
-    ctx.body = { job }
+    ctx.body = { job: job ? sanitizeJob(ctx, job) : job }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }
@@ -216,7 +251,9 @@ export async function create(ctx: Context) {
 export async function update(ctx: Context) {
   const profile = resolveProfile(ctx)
   const body = getBody(ctx)
-  if (!findJob(profile, ctx.params.id)) return sendJobNotFound(ctx)
+  const existing = findJob(profile, ctx.params.id)
+  if (!existing || !canAccessJob(ctx, existing)) return sendJobNotFound(ctx)
+  if (denySensitiveJobPayload(ctx, body)) return
 
   const args = ['cron', 'edit', ctx.params.id]
   if (body.schedule != null || body.schedule_display != null) {
@@ -252,7 +289,7 @@ export async function update(ctx: Context) {
     await runHermesCron(profile, args)
     const job = findJob(profile, ctx.params.id)
     if (!job) return sendJobNotFound(ctx)
-    ctx.body = { job }
+    ctx.body = { job: sanitizeJob(ctx, job) }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }
@@ -260,7 +297,8 @@ export async function update(ctx: Context) {
 
 export async function remove(ctx: Context) {
   const profile = resolveProfile(ctx)
-  if (!findJob(profile, ctx.params.id)) return sendJobNotFound(ctx)
+  const job = findJob(profile, ctx.params.id)
+  if (!job || !canAccessJob(ctx, job)) return sendJobNotFound(ctx)
 
   try {
     await runHermesCron(profile, ['cron', 'remove', ctx.params.id])
@@ -272,12 +310,13 @@ export async function remove(ctx: Context) {
 
 export async function pause(ctx: Context) {
   const profile = resolveProfile(ctx)
-  if (!findJob(profile, ctx.params.id)) return sendJobNotFound(ctx)
+  const existing = findJob(profile, ctx.params.id)
+  if (!existing || !canAccessJob(ctx, existing)) return sendJobNotFound(ctx)
 
   try {
     await runHermesCron(profile, ['cron', 'pause', ctx.params.id])
     const job = findJob(profile, ctx.params.id)
-    ctx.body = { job }
+    ctx.body = { job: job ? sanitizeJob(ctx, job) : job }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }
@@ -285,12 +324,13 @@ export async function pause(ctx: Context) {
 
 export async function resume(ctx: Context) {
   const profile = resolveProfile(ctx)
-  if (!findJob(profile, ctx.params.id)) return sendJobNotFound(ctx)
+  const existing = findJob(profile, ctx.params.id)
+  if (!existing || !canAccessJob(ctx, existing)) return sendJobNotFound(ctx)
 
   try {
     await runHermesCron(profile, ['cron', 'resume', ctx.params.id])
     const job = findJob(profile, ctx.params.id)
-    ctx.body = { job }
+    ctx.body = { job: job ? sanitizeJob(ctx, job) : job }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }
@@ -298,12 +338,13 @@ export async function resume(ctx: Context) {
 
 export async function run(ctx: Context) {
   const profile = resolveProfile(ctx)
-  if (!findJob(profile, ctx.params.id)) return sendJobNotFound(ctx)
+  const existing = findJob(profile, ctx.params.id)
+  if (!existing || !canAccessJob(ctx, existing)) return sendJobNotFound(ctx)
 
   try {
     await runHermesCron(profile, ['cron', 'run', ctx.params.id])
     const job = findJob(profile, ctx.params.id)
-    ctx.body = { job }
+    ctx.body = { job: job ? sanitizeJob(ctx, job) : job }
   } catch (error: any) {
     sendCommandError(ctx, error)
   }

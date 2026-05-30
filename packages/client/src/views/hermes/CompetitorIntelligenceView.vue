@@ -7,12 +7,14 @@ import {
 } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { formatSourcedMarketShare, sourceIsUsable, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import { redactForEmployee, shouldRedactForEmployee } from '@/utils/accessControl'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
 const editingCompetitorId = ref<string | null>(null)
+const redactSensitiveFields = computed(() => shouldRedactForEmployee())
 
 const competitorForm = ref({
   companyName: '',
@@ -35,6 +37,10 @@ const competitorSubmitLabel = computed(() => editingCompetitorId.value ? 'Update
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
   return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
+}
+
+function visibleSensitiveValue(value: string): string {
+  return String(redactForEmployee(value || 'Missing'))
 }
 
 function resetCompetitorForm() {
@@ -101,7 +107,7 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       `Region: ${competitor.countryRegion}`,
       `Product equivalent: ${competitor.productEquivalent}`,
       `Active content: ${competitor.activeContent}`,
-      `Pricing evidence: ${competitor.pricingEvidence}`,
+      `Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence}`,
       `Certifications: ${competitor.certifications}`,
       `Distribution presence: ${competitor.distributionPresence}`,
       `Market share: ${competitorMarketShareLabel(competitor)}`,
@@ -118,7 +124,7 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       ? `Review competitor evidence for ${competitor.companyName} before using it in investor material.`
       : `Collect usable source evidence for ${competitor.companyName}.`,
     suggestedInvestorMaterial: usableSource
-      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${competitor.pricingEvidence}. Market share: ${competitorMarketShareLabel(competitor)}.`
+      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence}. Market share: ${competitorMarketShareLabel(competitor)}.`
       : '',
     riskNote: usableSource
       ? 'Review source quality before approving this competitor evidence for investor use.'
@@ -207,8 +213,8 @@ function addCompetitor() {
         <p class="eyebrow">Competitor intelligence</p>
         <h2 class="header-title">Evidence-Backed Competitor Tracking</h2>
         <p class="page-copy">
-          Track product equivalents, pricing evidence, certifications, distribution presence, and source links. Unknown
-          market share is always displayed as To Verify.
+          Track product equivalents, certifications, distribution presence, and source links. Pricing/cost fields are
+          restricted for employee-style roles. Unknown market share is always displayed as To Verify.
         </p>
       </div>
       <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
@@ -223,7 +229,8 @@ function addCompetitor() {
       <label>Region<input v-model="competitorForm.countryRegion" type="text" placeholder="Country / region" /></label>
       <label>Product equivalent<input v-model="competitorForm.productEquivalent" type="text" placeholder="Equivalent product" /></label>
       <label>Active content<input v-model="competitorForm.activeContent" type="text" placeholder="Active content" /></label>
-      <label>Pricing evidence<input v-model="competitorForm.pricingEvidence" type="text" placeholder="Quote, source, or Missing" /></label>
+      <label v-if="!redactSensitiveFields">Pricing evidence<input v-model="competitorForm.pricingEvidence" type="text" placeholder="Quote, source, or Missing" /></label>
+      <label v-else>Pricing evidence<input type="text" value="Restricted" disabled /></label>
       <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="To Verify" /></label>
       <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="To Verify" /></label>
       <label>Market share<input v-model="competitorForm.marketShare" type="text" placeholder="Leave blank unless sourced" /></label>
@@ -258,7 +265,7 @@ function addCompetitor() {
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
         <span>{{ competitor.productEquivalent }}</span>
-        <span>{{ competitor.pricingEvidence }}</span>
+        <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
         <span>{{ competitor.source?.title || 'Source missing' }}</span>
         <span>{{ competitorMarketShareLabel(competitor) }}</span>
         <span>{{ competitor.evidenceStatus }}</span>

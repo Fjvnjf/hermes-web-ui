@@ -23,6 +23,8 @@ import { contentBlocksToString } from './content-blocks'
 import type { ContentBlock, QueuedRun, SessionState } from './types'
 import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '../../../middleware/user-auth'
 import { userCanAccessProfile } from '../../../db/hermes/users-store'
+import { roleHasPermission } from '../../../middleware/access-control'
+import { isEmployeeLikeRole, roleCanAccessText } from '../sensitivity'
 
 export type { ContentBlock } from './types'
 
@@ -54,6 +56,9 @@ export class ChatRunSocket {
     const user = await authenticateUserToken(token || '')
     if (!user) {
       return next(new Error('Authentication failed'))
+    }
+    if (!roleHasPermission(user.role, 'view:chat')) {
+      return next(new Error('Chat access denied'))
     }
     const socketProfile = String(socket.handshake.query?.profile || '').trim()
     if (socketProfile && !this.canAccessProfile(user, socketProfile)) {
@@ -119,6 +124,14 @@ export class ChatRunSocket {
           event: 'run.failed',
           session_id: data.session_id,
           error: err instanceof Error ? err.message : String(err),
+        })
+        return
+      }
+      if (!this.canSendChatContent(socketUser, data.input, data.instructions)) {
+        socket.emit('run.failed', {
+          event: 'run.failed',
+          session_id: data.session_id,
+          error: 'This role cannot send price, cost, formula, product-development, investor-sensitive, or system-secret chat content.',
         })
         return
       }
@@ -331,6 +344,27 @@ export class ChatRunSocket {
       state = await loadSessionStateFromDb(sid, this.sessionMap)
       this.sessionMap.set(sid, state)
     }
+    const socketUser = socket.data.user as AuthenticatedUser | undefined
+    if (!this.canResumeSession(socketUser, state)) {
+      socket.emit('resumed', {
+        session_id: sid,
+        messages: [],
+        messageTotal: 0,
+        messageLoadedCount: 0,
+        messagePageLimit: state.messagePageLimit,
+        hasMoreBefore: false,
+        isWorking: false,
+        isAborting: false,
+        events: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        contextTokens: 0,
+        queueLength: 0,
+        queueMessages: [],
+        error: 'Session contains restricted business or product-development content',
+      })
+      return
+    }
     socket.emit('resumed', {
       session_id: sid,
       messages: state.messages,
@@ -439,5 +473,18 @@ export class ChatRunSocket {
     }
     this.sessionMap.clear()
     logger.info('[chat-run-socket] closed all connections and cleared state')
+  }
+
+  private canSendChatContent(user: AuthenticatedUser | undefined, input: string | ContentBlock[], instructions?: string): boolean {
+    const role = user?.role
+    if (!role || (!isEmployeeLikeRole(role) && role !== 'financial_analyst')) return true
+    const text = typeof input === 'string' ? input : contentBlocksToString(input)
+    return roleCanAccessText(role, text, instructions)
+  }
+
+  private canResumeSession(user: AuthenticatedUser | undefined, state: SessionState): boolean {
+    const role = user?.role
+    if (!role || (!isEmployeeLikeRole(role) && role !== 'financial_analyst')) return true
+    return roleCanAccessText(role, state.messages.map(message => message.content).join('\n'))
   }
 }

@@ -34,12 +34,14 @@ export type Permission =
 
 export type ConfidentialityLabel =
   | 'public-shareable'
+  | 'employee-safe'
   | 'investor-approved'
   | 'internal'
   | 'confidential'
-  | 'product-development-secret'
   | 'price-cost-sensitive'
   | 'formula-secret'
+  | 'product-development-secret'
+  | 'investor-sensitive'
   | 'system-admin-only'
 
 const OWNER_ROLES = new Set<string>(['super_admin', 'owner', 'admin'])
@@ -47,25 +49,53 @@ const OWNER_ROLES = new Set<string>(['super_admin', 'owner', 'admin'])
 const ROLE_PERMISSIONS: Record<string, Permission[]> = {
   employee: [
     'view:account',
+    'view:chat',
+    'view:history',
+    'view:files',
+    'upload:files',
+    'download:files',
     'view:kanban',
     'create:task',
+    'view:jobs',
+    'create:job',
   ],
   research_assistant: [
     'view:account',
+    'view:chat',
+    'view:history',
+    'view:files',
+    'upload:files',
+    'download:files',
     'view:kanban',
     'create:task',
+    'view:jobs',
+    'create:job',
   ],
   financial_analyst: [
     'view:account',
+    'view:chat',
+    'view:history',
+    'view:files',
+    'upload:files',
+    'download:files',
     'view:kanban',
     'create:task',
+    'view:jobs',
+    'create:job',
     'view:raw-material-prices',
     'view:costing',
   ],
   regulatory_consultant: [
     'view:account',
+    'view:chat',
+    'view:history',
+    'view:files',
+    'upload:files',
+    'download:files',
     'view:kanban',
     'create:task',
+    'view:jobs',
+    'create:job',
   ],
   investor_viewer: [
     'view:account',
@@ -112,10 +142,10 @@ export function permissionForRequest(ctx: Pick<Context, 'path' | 'method'>): Per
   if (path.startsWith('/api/hermes/investor/portal')) return 'view:investor-approved'
   if (path.startsWith('/api/hermes/backup')) return 'export:backup'
   if (path.startsWith('/api/hermes/memory')) return writing ? 'write:memory' : 'view:memory'
+  if (path.startsWith('/api/hermes/usage')) return 'view:logs'
   if (path.startsWith('/api/hermes/sessions') ||
     path.startsWith('/api/hermes/session') ||
     path.startsWith('/api/hermes/search/sessions') ||
-    path.startsWith('/api/hermes/usage') ||
     path.startsWith('/api/hermes/context-length') ||
     path.startsWith('/api/hermes/workspace/folders')) return 'view:history'
 

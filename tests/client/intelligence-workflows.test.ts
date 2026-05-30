@@ -22,12 +22,17 @@ vi.mock('@/api/client', () => ({
 }))
 
 describe('intelligence workspace guardrails', () => {
-  it('keeps employee access away from sensitive product, price, memory, terminal, and system routes', () => {
-    expect(canAccessRouteName('hermes.research', 'employee')).toBe(false)
+  it('lets employees use safe research workspaces while blocking sensitive product, price, memory, terminal, and system routes', () => {
+    expect(canAccessRouteName('hermes.research', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.chat', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.history', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.files', 'employee')).toBe(true)
     expect(canAccessRouteName('hermes.kanban', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.marketIntelligence', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.competitorIntelligence', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.exportMarketOpportunity', 'employee')).toBe(true)
     expect(canAccessRouteName('hermes.rawMaterialSourcing', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.memory', 'employee')).toBe(false)
-    expect(canAccessRouteName('hermes.history', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.terminal', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.settings', 'employee')).toBe(false)
     expect(isEmployeeRestrictedRoute('hermes.rawMaterialSourcing')).toBe(true)

@@ -8,6 +8,7 @@ import {
   resolveHermesPath,
 } from '../../services/hermes/file-provider'
 import { getActiveProfileName } from '../../services/hermes/hermes-profile'
+import { isEmployeeFilePathAllowed, isEmployeeLikeRole } from '../../services/hermes/sensitivity'
 
 export const downloadRoutes = new Router()
 
@@ -67,6 +68,15 @@ function requestedProfile(ctx: any): string {
   return ctx.state?.profile?.name || getActiveProfileName() || 'default'
 }
 
+function denyEmployeeDownload(ctx: any, filePath: string): boolean {
+  const role = ctx.state?.user?.role
+  if (!isEmployeeLikeRole(role) && role !== 'financial_analyst') return false
+  if (isEmployeeFilePathAllowed(filePath)) return false
+  ctx.status = 403
+  ctx.body = { error: 'File download requires an employee-safe document category', code: 'permission_denied' }
+  return true
+}
+
 downloadRoutes.get('/api/hermes/download', async (ctx) => {
   const filePath = ctx.query.path as string | undefined
   const fileName = ctx.query.name as string | undefined
@@ -78,6 +88,7 @@ downloadRoutes.get('/api/hermes/download', async (ctx) => {
   }
 
   try {
+    if (denyEmployeeDownload(ctx, filePath)) return
     const profile = requestedProfile(ctx)
     // Validate the path first
     // Support both absolute and relative paths

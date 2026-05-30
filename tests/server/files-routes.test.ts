@@ -82,4 +82,38 @@ describe('file routes path metadata', () => {
       modTime: '2026-05-20T00:00:00.000Z',
     })
   })
+
+  it('filters employee file listings to safe categories and blocks sensitive direct metadata access', async () => {
+    provider.listDir.mockResolvedValue([
+      { name: 'employee-safe', path: 'employee-safe', isDir: true, size: 0, modTime: '2026-05-20T00:00:00.000Z' },
+      { name: 'supplier-quotes', path: 'supplier-quotes', isDir: true, size: 0, modTime: '2026-05-20T00:00:00.000Z' },
+      { name: 'note.md', path: 'research/note.md', isDir: false, size: 12, modTime: '2026-05-20T00:00:00.000Z' },
+      { name: 'cost.xlsx', path: 'research/cost.xlsx', isDir: false, size: 12, modTime: '2026-05-20T00:00:00.000Z' },
+    ])
+
+    const { fileRoutes } = await import('../../packages/server/src/routes/hermes/files')
+    const listLayer = fileRoutes.stack.find((entry: any) => entry.path === '/api/hermes/files/list')
+    const listCtx: any = {
+      query: { path: '' },
+      state: { profile: { name: 'research' }, user: { role: 'employee' } },
+      body: null,
+    }
+
+    await listLayer.stack[0](listCtx)
+
+    expect(listCtx.body.entries.map((entry: any) => entry.path)).toEqual(['employee-safe', 'research/note.md'])
+
+    const statLayer = fileRoutes.stack.find((entry: any) => entry.path === '/api/hermes/files/stat')
+    const statCtx: any = {
+      query: { path: 'supplier-quotes/quote.pdf' },
+      state: { profile: { name: 'research' }, user: { role: 'employee' } },
+      body: null,
+    }
+
+    await statLayer.stack[0](statCtx)
+
+    expect(statCtx.status).toBe(403)
+    expect(statCtx.body).toMatchObject({ code: 'permission_denied' })
+    expect(provider.stat).not.toHaveBeenCalled()
+  })
 })

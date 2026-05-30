@@ -22,19 +22,19 @@ const router = createRouter({
     {
       path: '/hermes/dashboard',
       name: 'hermes.dashboard',
-      meta: { sensitivity: 'confidential' },
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/DashboardView.vue'),
     },
     {
       path: '/hermes/last-24-hours',
       name: 'hermes.last24Hours',
-      meta: { sensitivity: 'owner-only' },
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/Last24HoursView.vue'),
     },
     {
       path: '/hermes/chat',
       name: 'hermes.chat',
-      meta: { sensitivity: 'product-development-secret' },
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/ChatView.vue'),
     },
     {
@@ -45,6 +45,7 @@ const router = createRouter({
     {
       path: '/hermes/feasibility',
       name: 'hermes.feasibility',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/FeasibilityStudioView.vue'),
     },
     {
@@ -56,6 +57,7 @@ const router = createRouter({
     {
       path: '/hermes/reports',
       name: 'hermes.reportsHub',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/ReportsHubView.vue'),
     },
     {
@@ -105,26 +107,31 @@ const router = createRouter({
     {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/ChatView.vue'),
     },
     {
       path: '/hermes/history',
       name: 'hermes.history',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/HistoryView.vue'),
     },
     {
       path: '/hermes/history/session/:sessionId',
       name: 'hermes.historySession',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/HistoryView.vue'),
     },
     {
       path: '/hermes/jobs',
       name: 'hermes.jobs',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/JobsView.vue'),
     },
     {
       path: '/hermes/kanban',
       name: 'hermes.kanban',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/KanbanView.vue'),
     },
     {
@@ -206,6 +213,7 @@ const router = createRouter({
     {
       path: '/hermes/files',
       name: 'hermes.files',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/FilesView.vue'),
     },
     {
