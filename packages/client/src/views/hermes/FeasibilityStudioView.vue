@@ -53,9 +53,12 @@ interface ChecklistGroup {
   items: ChecklistItem[]
 }
 
-interface ReportDraft {
+interface ReportPreparationAction {
   title: string
   description: string
+  routeName: RouteName
+  actionLabel: string
+  status: string
 }
 
 const message = useMessage()
@@ -268,6 +271,10 @@ const deckMaterialsNeedingEvidence = computed(() =>
     .filter(material => !isPresentationMaterialAllowed(material))
     .slice(0, 3),
 )
+const approvedInvestorMaterialCount = computed(() =>
+  intelligence.state.value.presentationMaterials.filter(material => isPresentationMaterialAllowed(material)).length,
+)
+const savedDataRoomSourceCount = computed(() => intelligence.state.value.dataRoomSources.length)
 
 function routeForEvidenceGap(gap: FeasibilityEvidenceItem): RouteName {
   if (gap.id === 'market') return 'hermes.marketIntelligence'
@@ -287,28 +294,49 @@ function financialStatusText(): string {
   return `${latestFinancialModel.value.evidenceStatus} / ${warnings} warning${warnings === 1 ? '' : 's'}`
 }
 
-const reportDrafts: ReportDraft[] = [
+const reportPreparationActions = computed<ReportPreparationAction[]>(() => [
   {
-    title: 'Feasibility Study Draft',
-    description: 'Not generated yet - use Reports/Files for drafts.',
+    title: 'Feasibility Evidence Brief',
+    description: 'Save a Markdown evidence brief from current readiness, finance, market, competitor, data-room, risk, and review state.',
+    routeName: 'hermes.reportsHub',
+    actionLabel: 'Open Reports Hub',
+    status: `${topLiveEvidenceGaps.value.length} top gaps visible`,
   },
   {
-    title: 'Investor Brief Draft',
-    description: 'Not generated yet - use Reports/Files for drafts.',
+    title: 'Investor Presentation Draft',
+    description: 'Build draft slide text only from approved, verified, or assumption-labeled material. Unsupported claims stay excluded.',
+    routeName: 'hermes.investorPresentation',
+    actionLabel: 'Open Presentation Builder',
+    status: `${approvedInvestorMaterialCount.value} approved item${approvedInvestorMaterialCount.value === 1 ? '' : 's'}`,
   },
   {
-    title: 'Product/Raw Material Summary',
-    description: 'Not generated yet - use Reports/Files for drafts.',
+    title: 'Financial Model Summary',
+    description: 'Save IRR/NPV assumptions, evidence labels, and warnings before using any investor-return output.',
+    routeName: 'hermes.investmentCalculator',
+    actionLabel: 'Open IRR Calculator',
+    status: latestFinancialModel.value ? `${latestFinancialModel.value.scenarioName} / ${latestFinancialModel.value.evidenceStatus}` : 'No saved model',
   },
   {
-    title: 'Location Comparison',
-    description: 'Not generated yet - use Reports/Files for drafts.',
+    title: 'Research Review Notes',
+    description: 'Turn reviewed research into Memory notes, market claims, competitor records, data-room evidence, or investor draft material.',
+    routeName: 'hermes.researchResultReview',
+    actionLabel: 'Open Research Review',
+    status: `${pendingResearchReview.value.length} pending review`,
   },
   {
-    title: 'Regulatory Risk Note',
-    description: 'Not generated yet - use Reports/Files for drafts.',
+    title: 'Investor Data Room Index',
+    description: 'Register source-backed checklist evidence and save a file-based data-room index for review.',
+    routeName: 'hermes.investorReadiness',
+    actionLabel: 'Open Investor Readiness',
+    status: `${savedDataRoomSourceCount.value} source${savedDataRoomSourceCount.value === 1 ? '' : 's'} registered`,
   },
-]
+])
+
+const reportPreparationSummary = computed(() => {
+  const ready = approvedInvestorMaterialCount.value
+  const model = latestFinancialModel.value?.scenarioName || 'no saved model'
+  return `Reports are file-based and evidence-labeled: ${ready} approved investor item${ready === 1 ? '' : 's'}, ${model}, ${pendingResearchReview.value.length} research review item${pendingResearchReview.value.length === 1 ? '' : 's'} pending.`
+})
 
 const statusClass = (status: ChecklistStatus) => `status-${status.toLowerCase().replace(/\s+/g, '-')}`
 
@@ -729,17 +757,30 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <p class="eyebrow">File-based drafts</p>
         <h3 id="report-title">Report Preparation</h3>
         <p>
-          These are not generated yet. Use Reports Hub for planning and Documents for actual draft files.
+          Reports Hub and Presentation Builder now use the real local feasibility intelligence state. Outputs stay
+          evidence-labeled and unsupported claims remain To Verify or excluded from investor-facing drafts.
         </p>
+        <p class="report-summary">{{ reportPreparationSummary }}</p>
       </div>
       <div class="report-grid">
-        <article v-for="draft in reportDrafts" :key="draft.title" class="report-card">
-          <h4>{{ draft.title }}</h4>
+        <RouterLink
+          v-for="draft in reportPreparationActions"
+          :key="draft.title"
+          class="report-card"
+          :to="{ name: draft.routeName }"
+        >
+          <div>
+            <h4>{{ draft.title }}</h4>
+            <span>{{ draft.status }}</span>
+          </div>
           <p>{{ draft.description }}</p>
-        </article>
+          <small>{{ draft.actionLabel }}</small>
+        </RouterLink>
       </div>
       <div class="evidence-actions">
         <RouterLink class="primary-link" :to="{ name: 'hermes.reportsHub' }">Open Reports Hub</RouterLink>
+        <RouterLink class="shell-link compact" :to="{ name: 'hermes.investorPresentation' }">Open Presentation Builder</RouterLink>
+        <RouterLink class="shell-link compact" :to="{ name: 'hermes.investorReadiness' }">Open Investor Readiness</RouterLink>
         <RouterLink class="shell-link compact" :to="{ name: 'hermes.files' }">Open Documents</RouterLink>
       </div>
     </section>
@@ -959,6 +1000,12 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 .report-card p {
   color: $text-secondary;
   line-height: 1.55;
+}
+
+.section-heading .report-summary {
+  color: $text-primary;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .page-copy {
@@ -1404,16 +1451,38 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
 .report-card {
   min-height: 112px;
   padding: 14px;
+  display: grid;
+  gap: 10px;
+  text-decoration: none;
 
   h4 {
-    margin: 0 0 8px;
+    margin: 0;
     color: $text-primary;
     font-size: 15px;
+  }
+
+  span {
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 8px;
+    padding: 3px 8px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.35);
+    border-radius: 999px;
+    background: rgba(var(--accent-info-rgb), 0.08);
+    color: $accent-info;
+    font-size: 11px;
+    font-weight: 900;
   }
 
   p {
     margin: 0;
     font-size: 13px;
+  }
+
+  small {
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
   }
 }
 
