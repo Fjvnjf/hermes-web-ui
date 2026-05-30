@@ -10,6 +10,10 @@ import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntellig
 import { useAppStore } from '@/stores/hermes/app'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
+  listRecentCaptureActivities,
+  type SessionCaptureActivity,
+} from '@/composables/useSessionCapture'
+import {
   buildInvestorNextActions,
   isPresentationMaterialAllowed,
   type InvestorNextAction,
@@ -26,6 +30,7 @@ const loadWarning = ref('')
 const sessions = ref<SessionSummary[]>([])
 const jobs = ref<Job[]>([])
 const runtime = ref<PerformanceRuntimeSnapshot | null>(null)
+const recentCaptureActivities = ref<SessionCaptureActivity[]>([])
 const tokenReady = ref(false)
 const activeProfileName = ref('default')
 const lastUpdated = ref('')
@@ -106,6 +111,13 @@ const investorSnapshot = computed(() => [
     to: { name: 'hermes.researchResultReview' },
   },
   {
+    label: 'Captured Sessions',
+    value: String(recentCaptureActivities.value.length),
+    note: 'Approved capture activity',
+    tone: recentCaptureActivities.value.length > 0 ? 'info' : 'muted',
+    to: { name: 'hermes.history' },
+  },
+  {
     label: 'Financial Model',
     value: intelligence.latestFinancialModel.value?.scenarioName || 'None',
     note: intelligence.latestFinancialModel.value?.evidenceStatus || 'No saved snapshot',
@@ -143,6 +155,19 @@ const deckMaterialsNeedingEvidence = computed(() =>
 function materialStatusLabel(material: PresentationMaterial): string {
   if (material.evidenceStatus === 'Verified') return 'Source required'
   return material.evidenceStatus
+}
+
+function formatCaptureActivityMeta(activity: SessionCaptureActivity): string {
+  const parts = [
+    activity.contextLabel || 'Session Capture',
+    activity.createdTasks ? `${activity.createdTasks} task${activity.createdTasks === 1 ? '' : 's'}` : '',
+    activity.savedMemoryItems || activity.savedSessionSummary ? 'memory saved' : '',
+    activity.stagedResearchFindings ? `${activity.stagedResearchFindings} review item${activity.stagedResearchFindings === 1 ? '' : 's'}` : '',
+    activity.stagedPresentationItems ? `${activity.stagedPresentationItems} draft item${activity.stagedPresentationItems === 1 ? '' : 's'}` : '',
+    activity.fallbackItems ? 'copy fallback available' : '',
+    activity.errorCount ? `${activity.errorCount} warning${activity.errorCount === 1 ? '' : 's'}` : '',
+  ].filter(Boolean)
+  return parts.join(' / ') || 'Captured with no saved item counts'
 }
 
 function nextActionTaskPriority(action: InvestorNextAction): number {
@@ -327,6 +352,7 @@ function formatUpdatedAt(): string {
 async function loadDashboard() {
   loading.value = true
   loadWarning.value = ''
+  recentCaptureActivities.value = listRecentCaptureActivities(4)
   tokenReady.value = hasApiKey()
   activeProfileName.value = getActiveProfileName() || 'default'
 
@@ -495,6 +521,30 @@ onMounted(() => {
             </RouterLink>
           </div>
           <div v-else class="triage-empty">No pending research findings or manual research jobs.</div>
+        </article>
+
+        <article class="triage-panel">
+          <div class="panel-title">
+            <div>
+              <h3>Recent Session Captures</h3>
+              <p>Approved capture activity from Chat. Raw conversations stay in History.</p>
+            </div>
+            <RouterLink :to="{ name: 'hermes.chat' }">Review & Capture</RouterLink>
+          </div>
+          <div v-if="recentCaptureActivities.length" class="triage-list">
+            <RouterLink
+              v-for="activity in recentCaptureActivities"
+              :key="activity.sessionId"
+              class="triage-row"
+              :to="{ name: 'hermes.session', params: { sessionId: activity.sessionId } }"
+            >
+              <span>{{ activity.sessionTitle || activity.sessionId }}</span>
+              <small>{{ formatCaptureActivityMeta(activity) }}</small>
+            </RouterLink>
+          </div>
+          <div v-else class="triage-empty">
+            No captured sessions yet. Use Review & Capture in Chat after a useful Hermes conversation.
+          </div>
         </article>
 
         <article class="triage-panel">

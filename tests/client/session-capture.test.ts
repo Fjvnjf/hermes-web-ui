@@ -8,6 +8,7 @@ import {
   generateSessionCaptureDraft,
   generateDeepResearchSuggestions,
   formatResearchSuggestionJobPrompt,
+  listRecentCaptureActivities,
   markCaptureSkipped,
   parseSessionCaptureJson,
   saveSessionCaptureSelection,
@@ -315,6 +316,33 @@ describe('Session Capture Assistant', () => {
 
     expect(fetchBoardsMock).toHaveBeenCalled()
     expect(createTaskMock).toHaveBeenCalled()
+  })
+
+  it('records recent capture activity without storing raw conversation text', async () => {
+    const wrapper = mount(SessionCaptureDrawer, {
+      props: {
+        show: true,
+        sessionId: 'session-activity',
+        sessionTitle: 'Chemicon feasibility',
+        messages: testMessages(),
+        initialContext: 'chemicon',
+      },
+    })
+
+    const addButton = wrapper.findAll('button').find(button => button.text().includes('Add selected'))
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+    await flushPromises()
+
+    const activities = listRecentCaptureActivities()
+    expect(activities[0].sessionId).toBe('session-activity')
+    expect(activities[0].sessionTitle).toBe('Chemicon feasibility')
+    expect(activities[0].contextLabel).toBe('Chemicon China Feasibility')
+    expect(activities[0].createdTasks).toBeGreaterThan(0)
+
+    const rawCaptureState = window.localStorage.getItem('hermes.sessionCapture.state.v1') || ''
+    expect(rawCaptureState).not.toContain('DMS regulatory status in China')
+    expect(rawCaptureState).not.toContain('CAS list and factory chemical permission')
   })
 
   it('schedules approved deep research suggestions as Hermes Jobs and records the source job id', async () => {

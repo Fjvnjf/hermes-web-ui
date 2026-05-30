@@ -23,6 +23,7 @@ import {
   presentationSectionForEvidence,
 } from '@/utils/investorIntelligence'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { recordSessionCaptureActivity } from '@/composables/useSessionCapture'
 import type { EvidenceArea } from '@/composables/useFeasibilityIntelligence'
 import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
@@ -2047,6 +2048,27 @@ describe('investor readiness pages', () => {
       evidenceStatus: 'Verified',
       source: null,
     })
+    recordSessionCaptureActivity(
+      'captured-session-1',
+      {
+        sessionId: 'captured-session-1',
+        sessionTitle: 'DMS source review',
+        contextLabel: 'Chemicon China Feasibility',
+        capturedAt: new Date('2026-05-30T10:00:00Z'),
+      },
+      {
+        createdTasks: 2,
+        createdResearchTasks: 0,
+        savedMemoryItems: 1,
+        savedSessionSummary: true,
+        savedFullTranscript: false,
+        stagedResearchFindings: 1,
+        stagedPresentationItems: 0,
+        copiedItems: 0,
+        fallbackText: '',
+        errors: [],
+      },
+    )
 
     const wrapper = mount(DashboardView, {
       global: { stubs: { RouterLink: { props: ['to'], template: '<a><slot /></a>' } } },
@@ -2055,6 +2077,7 @@ describe('investor readiness pages', () => {
 
     expect(wrapper.text()).toContain('Evidence Gaps')
     expect(wrapper.text()).toContain('Research Review Queue')
+    expect(wrapper.text()).toContain('Recent Session Captures')
     expect(wrapper.text()).toContain('Financial & Deck Status')
     expect(wrapper.text()).toContain('Regulatory evidence')
     expect(wrapper.text()).toContain('DMS regulation source review')
@@ -2063,6 +2086,9 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Derived from Assumptions')
     expect(wrapper.text()).toContain('Market Evidence')
     expect(wrapper.text()).toContain('Unsupported market evidence needs source')
+    expect(wrapper.text()).toContain('DMS source review')
+    expect(wrapper.text()).toContain('2 tasks')
+    expect(wrapper.text()).toContain('memory saved')
     expect(wrapper.text()).not.toContain('market share is')
     expect(wrapper.text()).not.toContain('CAGR')
 

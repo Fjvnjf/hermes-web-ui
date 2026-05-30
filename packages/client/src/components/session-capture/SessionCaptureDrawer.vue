@@ -24,8 +24,8 @@ import {
   formatResearchSuggestionTask,
   generateDeepResearchSuggestions,
   generateSessionCaptureDraft,
-  markCaptureReviewed,
   markCaptureSkipped,
+  recordSessionCaptureActivity,
   saveSessionCaptureSelection,
   scheduleForResearchSuggestion,
   type CaptureCategory,
@@ -229,15 +229,11 @@ async function addSelected() {
     await kanbanStore.fetchBoards()
     const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
     kanbanStore.setSelectedBoard(board)
+    const source = captureSource()
     const result = await saveSessionCaptureSelection(
       draft.value,
       selectedIds.value,
-      {
-        sessionId: props.sessionId || 'current',
-        sessionTitle: props.sessionTitle,
-        contextLabel: contextLabel(selectedContext.value),
-        capturedAt: new Date(),
-      },
+      source,
       {
         createTask: data => kanbanStore.createTask(data),
         fetchMemory,
@@ -259,7 +255,7 @@ async function addSelected() {
     saveErrors.value = result.errors
     const savedCount = result.createdTasks + result.savedMemoryItems + result.stagedResearchFindings + result.stagedPresentationItems + result.copiedItems + (result.savedSessionSummary ? 1 : 0) + (result.savedFullTranscript ? 1 : 0)
     if (savedCount > 0 || result.errors.length === 0) {
-      if (props.sessionId) markCaptureReviewed(props.sessionId)
+      if (props.sessionId) recordSessionCaptureActivity(props.sessionId, source, result)
       emit('saved')
     }
     if (result.errors.length > 0) {

@@ -56,6 +56,22 @@ export interface CaptureReviewState {
   reviewed?: boolean
   skipped?: boolean
   lastCaptureAt?: number
+  sessionTitle?: string
+  contextLabel?: string
+  capturedAt?: number
+  createdTasks?: number
+  savedMemoryItems?: number
+  savedSessionSummary?: boolean
+  savedFullTranscript?: boolean
+  stagedResearchFindings?: number
+  stagedPresentationItems?: number
+  copiedItems?: number
+  fallbackItems?: number
+  errorCount?: number
+}
+
+export interface SessionCaptureActivity extends CaptureReviewState {
+  sessionId: string
 }
 
 export interface SessionCaptureSource {
@@ -491,8 +507,37 @@ export function markCaptureReviewed(sessionId: string, patch: CaptureReviewState
   safeStorageWrite(state)
 }
 
+export function recordSessionCaptureActivity(
+  sessionId: string,
+  source: SessionCaptureSource,
+  result: SaveCaptureResult,
+) {
+  markCaptureReviewed(sessionId, {
+    sessionTitle: source.sessionTitle || '',
+    contextLabel: source.contextLabel,
+    capturedAt: (source.capturedAt || new Date()).getTime(),
+    createdTasks: result.createdTasks + result.createdResearchTasks,
+    savedMemoryItems: result.savedMemoryItems,
+    savedSessionSummary: result.savedSessionSummary,
+    savedFullTranscript: result.savedFullTranscript,
+    stagedResearchFindings: result.stagedResearchFindings,
+    stagedPresentationItems: result.stagedPresentationItems,
+    copiedItems: result.copiedItems,
+    fallbackItems: result.fallbackText.trim() ? 1 : 0,
+    errorCount: result.errors.length,
+  })
+}
+
 export function markCaptureSkipped(sessionId: string) {
   markCaptureReviewed(sessionId, { skipped: true, reviewed: true })
+}
+
+export function listRecentCaptureActivities(limit = 5): SessionCaptureActivity[] {
+  return Object.entries(safeStorageRead())
+    .filter(([, value]) => Boolean(value.reviewed && !value.skipped && value.capturedAt))
+    .map(([sessionId, value]) => ({ sessionId, ...value }))
+    .sort((a, b) => (b.capturedAt || b.lastCaptureAt || 0) - (a.capturedAt || a.lastCaptureAt || 0))
+    .slice(0, limit)
 }
 
 export function shouldPromptForCapture(sessionId: string | null | undefined, messages: Message[]): boolean {
