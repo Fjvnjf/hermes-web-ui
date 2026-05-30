@@ -32,6 +32,7 @@ describe('frontend route access policy', () => {
   })
 
   it('allows developer admins system tools without raw business memory', () => {
+    expect(canAccessRouteName('hermes.dashboard', 'developer_admin')).toBe(true)
     expect(canAccessRouteName('hermes.terminal', 'developer_admin')).toBe(true)
     expect(canAccessRouteName('hermes.settings', 'developer_admin')).toBe(true)
     expect(canAccessRouteName('hermes.logs', 'developer_admin')).toBe(true)

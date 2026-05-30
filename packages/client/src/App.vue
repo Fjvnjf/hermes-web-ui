@@ -41,6 +41,9 @@ function canShowRoute(name: string) {
   return canAccessRouteName(name, getFrontendAccessRole())
 }
 
+const canUseSearch = computed(() => canShowRoute('hermes.history'))
+const canUseExecutiveIntel = computed(() => canShowRoute('hermes.investorReadiness'))
+
 // Close mobile sidebar on route change
 watch(() => router.currentRoute.value.path, () => {
   appStore.closeSidebar()
@@ -188,7 +191,8 @@ useKeyboard()
               <header class="command-topbar">
                 <div class="topbar-title">
                   <span class="topbar-dot" :class="{ online: appStore.connected }"></span>
-                  <span class="topbar-brand">Hermes Command Center</span>
+                  <span class="topbar-brand topbar-brand-full">Hermes Command Center</span>
+                  <span class="topbar-brand topbar-brand-compact">Hermes Workspace</span>
                 </div>
                 <div class="topbar-meta">
                   <span class="topbar-pill" :class="{ online: appStore.connected }">
@@ -198,14 +202,14 @@ useKeyboard()
                   <span class="topbar-pill subtle">v{{ appStore.serverVersion || '0.6.4' }}</span>
                 </div>
                 <div class="topbar-actions" aria-label="Command center quick actions">
-                  <button class="topbar-action" type="button" title="Search sessions" aria-label="Search" @click="openSessionSearch">
+                  <button v-if="canUseSearch" class="topbar-action" type="button" title="Search sessions" aria-label="Search" @click="openSessionSearch">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="11" cy="11" r="7" />
                       <path d="m20 20-3.5-3.5" />
                     </svg>
                     <span>Search</span>
                   </button>
-                  <button class="topbar-action executive-intel-action" type="button" title="Open Executive Intelligence" aria-label="Executive Intelligence" @click="executiveBoardOpen = true">
+                  <button v-if="canUseExecutiveIntel" class="topbar-action executive-intel-action" type="button" title="Open Executive Intelligence" aria-label="Executive Intelligence" @click="executiveBoardOpen = true">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M4 19V5" />
                       <path d="M4 19h16" />
@@ -254,12 +258,12 @@ useKeyboard()
               </header>
               <router-view />
             </main>
-            <NDrawer v-model:show="executiveBoardOpen" :width="executiveDrawerWidth" placement="right">
+            <NDrawer v-if="canUseExecutiveIntel" v-model:show="executiveBoardOpen" :width="executiveDrawerWidth" placement="right">
               <NDrawerContent title="Executive Intelligence" closable>
                 <PinnedExecutiveIntelligenceBoard compact />
               </NDrawerContent>
             </NDrawer>
-            <button class="executive-floating-btn" type="button" title="Executive Intelligence" aria-label="Executive Intelligence" @click="executiveBoardOpen = true">
+            <button v-if="canUseExecutiveIntel" class="executive-floating-btn" type="button" title="Executive Intelligence" aria-label="Executive Intelligence" @click="executiveBoardOpen = true">
               EI
             </button>
           </div>
@@ -369,6 +373,10 @@ useKeyboard()
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.topbar-brand-compact {
+  display: none;
 }
 
 .topbar-dot {
@@ -486,7 +494,7 @@ useKeyboard()
   }
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1480px) {
   .topbar-action {
     width: 30px;
     justify-content: center;
@@ -498,9 +506,13 @@ useKeyboard()
   }
 }
 
-@media (max-width: 1024px) {
-  .topbar-brand {
-    max-width: 210px;
+@media (max-width: 1380px) {
+  .topbar-brand-full {
+    display: none;
+  }
+
+  .topbar-brand-compact {
+    display: inline;
   }
 }
 

@@ -20,7 +20,7 @@ import {
   type InvestorNextAction,
   type PresentationMaterial,
 } from '@/utils/investorIntelligence'
-import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { canAccessRouteName, getFrontendAccessRole, type FrontendAccessRole } from '@/utils/accessControl'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -37,6 +37,12 @@ const tokenReady = ref(false)
 const activeProfileName = ref('default')
 const lastUpdated = ref('')
 const creatingActionTaskId = ref('')
+const frontendRole = computed(() => getFrontendAccessRole())
+const isOwnerHome = computed(() => frontendRole.value === 'owner')
+const isDeveloperHome = computed(() => frontendRole.value === 'developer_admin')
+const isLimitedBusinessHome = computed(() =>
+  ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'].includes(frontendRole.value)
+)
 
 const enabledJobs = computed(() => jobs.value.filter(job => job.enabled).length)
 const activeSessions = computed(() => runtime.value?.sessions.active ?? sessions.value.length)
@@ -93,7 +99,7 @@ const kpis = computed(() => [
 type DashboardRouteTarget = { name: string }
 
 function canUseRouteName(routeName: string): boolean {
-  return canAccessRouteName(routeName, getFrontendAccessRole())
+  return canAccessRouteName(routeName, frontendRole.value)
 }
 
 function canUseRouteTarget(to: DashboardRouteTarget): boolean {
@@ -421,6 +427,44 @@ const commandLinks = [
 
 const visibleCommandLinks = computed(() => commandLinks.filter(link => canUseRouteTarget(link.to)))
 
+function roleLabel(role: FrontendAccessRole): string {
+  if (role === 'developer_admin') return 'Developer Admin'
+  if (role === 'research_assistant') return 'Research Assistant'
+  if (role === 'financial_analyst') return 'Financial Analyst'
+  if (role === 'regulatory_consultant') return 'Regulatory Consultant'
+  if (role === 'employee') return 'Employee'
+  return 'Owner'
+}
+
+const limitedHomeActions = computed(() => {
+  const base = [
+    { label: 'Chat', detail: 'Discuss assigned work with Hermes. Product-development secret sessions stay blocked.', to: { name: 'hermes.chat' }, roles: ['employee', 'research_assistant', 'regulatory_consultant'] },
+    { label: 'My Tasks', detail: 'Open the filtered Kanban task board for allowed work.', to: { name: 'hermes.kanban' }, roles: ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'] },
+    { label: 'Research Jobs', detail: 'Review allowed research jobs without system/admin controls.', to: { name: 'hermes.jobs' }, roles: ['employee', 'research_assistant'] },
+    { label: 'Research Library', detail: 'Use safe research workspaces. Raw Memory remains owner-only.', to: { name: 'hermes.research' }, roles: ['employee', 'research_assistant'] },
+    { label: 'Employee Documents', detail: 'Open employee-safe document categories only.', to: { name: 'hermes.files' }, roles: ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'] },
+    { label: 'Market', detail: 'Review non-sensitive market research with prices and secret fields redacted.', to: { name: 'hermes.marketIntelligence' }, roles: ['research_assistant', 'employee'] },
+    { label: 'Competitors', detail: 'Review competitor notes without supplier-cost or formula-sensitive fields.', to: { name: 'hermes.competitorIntelligence' }, roles: ['research_assistant', 'employee'] },
+    { label: 'IRR Calculator', detail: 'Work on financial assumptions within your permitted finance scope.', to: { name: 'hermes.investmentCalculator' }, roles: ['financial_analyst'] },
+    { label: 'Regulatory Review', detail: 'Review assigned regulatory research and evidence status.', to: { name: 'hermes.researchResultReview' }, roles: ['regulatory_consultant', 'research_assistant'] },
+    { label: 'Reports / Outputs', detail: 'Use approved report/output workspaces; unsupported claims stay labeled.', to: { name: 'hermes.reportsHub' }, roles: ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'] },
+  ]
+  return base.filter(action =>
+    action.roles.includes(frontendRole.value) &&
+    canUseRouteTarget(action.to)
+  )
+})
+
+const developerHomeActions = computed(() => [
+  { label: 'Terminal', detail: 'Owner-approved system shell access.', to: { name: 'hermes.terminal' } },
+  { label: 'Logs', detail: 'Inspect runtime logs without raw business memory shortcuts.', to: { name: 'hermes.logs' } },
+  { label: 'Jobs', detail: 'Review system and research job execution.', to: { name: 'hermes.jobs' } },
+  { label: 'Settings', detail: 'Admin system settings and provider configuration.', to: { name: 'hermes.settings' } },
+  { label: 'Models', detail: 'Provider/model configuration.', to: { name: 'hermes.models' } },
+  { label: 'Profiles', detail: 'Profile management tools.', to: { name: 'hermes.profiles' } },
+  { label: 'System Health', detail: 'Runtime performance and bridge state.', to: { name: 'hermes.performance' } },
+].filter(action => canUseRouteTarget(action.to)))
+
 function formatSessionTitle(session: SessionSummary): string {
   return session.title || session.preview || session.id
 }
@@ -461,7 +505,7 @@ async function loadDashboard() {
 
   const [modelsResult, sessionsResult, jobsResult, runtimeResult] = await Promise.allSettled([
     canUseRouteName('hermes.models') ? appStore.loadModels(true) : Promise.resolve(null),
-    fetchSessions(undefined, 6),
+    isDeveloperHome.value ? Promise.resolve([]) : fetchSessions(undefined, 6),
     listJobs(),
     canUseRouteName('hermes.performance') ? fetchPerformanceRuntime() : Promise.resolve(null),
   ])
@@ -492,8 +536,8 @@ onMounted(() => {
         <div class="header-subtitle">Research workspace overview</div>
       </div>
       <div class="dashboard-actions">
-        <RouterLink class="command-btn primary" :to="{ name: 'hermes.chat' }">Continue Chat</RouterLink>
-        <RouterLink class="command-btn" :to="{ name: 'hermes.feasibility' }">Feasibility</RouterLink>
+        <RouterLink v-if="canUseRouteName('hermes.chat')" class="command-btn primary" :to="{ name: 'hermes.chat' }">Continue Chat</RouterLink>
+        <RouterLink v-if="canUseRouteName('hermes.feasibility')" class="command-btn" :to="{ name: 'hermes.feasibility' }">Feasibility</RouterLink>
         <button class="command-btn" type="button" :disabled="loading" @click="loadDashboard">
           {{ loading ? 'Refreshing' : 'Refresh' }}
         </button>
@@ -509,6 +553,46 @@ onMounted(() => {
         <span v-if="loadWarning" class="status-chip warn">{{ loadWarning }}</span>
       </section>
 
+      <section v-if="isLimitedBusinessHome" class="role-home-panel" aria-label="Role workspace home">
+        <div class="role-home-hero">
+          <span class="role-badge">{{ roleLabel(frontendRole) }}</span>
+          <h3>Your Hermes workspace</h3>
+          <p>
+            This view only links to areas available for your role. Price, costing, formulas, product-development
+            memory/history, terminal, provider settings, logs, and owner-only investor/admin tools stay restricted.
+          </p>
+        </div>
+        <div class="role-action-grid">
+          <RouterLink v-for="action in limitedHomeActions" :key="action.label" class="role-action-card" :to="action.to">
+            <strong>{{ action.label }}</strong>
+            <small>{{ action.detail }}</small>
+          </RouterLink>
+        </div>
+        <div class="role-guidance">
+          <strong>Access reminder</strong>
+          <span>Use Access Help when you need a document, task, or workspace the owner has not approved for your role yet.</span>
+          <RouterLink :to="{ name: 'hermes.accessDenied' }">Access Help</RouterLink>
+        </div>
+      </section>
+
+      <section v-else-if="isDeveloperHome" class="role-home-panel developer" aria-label="Developer admin home">
+        <div class="role-home-hero">
+          <span class="role-badge">Developer Admin</span>
+          <h3>System workspace</h3>
+          <p>
+            Developer access is focused on runtime, models, logs, jobs, and terminal support. Raw business memory,
+            history, files, Kanban, and investor materials remain blocked unless the owner grants separate access.
+          </p>
+        </div>
+        <div class="role-action-grid">
+          <RouterLink v-for="action in developerHomeActions" :key="action.label" class="role-action-card" :to="action.to">
+            <strong>{{ action.label }}</strong>
+            <small>{{ action.detail }}</small>
+          </RouterLink>
+        </div>
+      </section>
+
+      <template v-if="isOwnerHome">
       <section class="executive-brief-card executive-card gold" aria-label="Executive command brief">
         <div>
           <p class="executive-eyebrow">Executive Command Brief</p>
@@ -788,6 +872,7 @@ onMounted(() => {
           </div>
         </article>
       </section>
+      </template>
     </main>
   </div>
 </template>
@@ -902,6 +987,105 @@ onMounted(() => {
     border-color: rgba(var(--error-rgb), 0.55);
     background: rgba(var(--error-rgb), 0.1);
     color: $error;
+  }
+}
+
+.role-home-panel {
+  display: grid;
+  gap: 14px;
+  max-width: 1180px;
+}
+
+.role-home-hero,
+.role-guidance {
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+}
+
+.role-home-hero {
+  padding: 18px;
+
+  h3 {
+    margin: 8px 0;
+    color: $accent-primary;
+    font-size: 20px;
+  }
+
+  p {
+    max-width: 760px;
+    margin: 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.role-badge {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.48);
+  border-radius: 999px;
+  background: rgba(var(--accent-info-rgb), 0.1);
+  color: $accent-info;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.role-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.role-action-card {
+  display: grid;
+  gap: 8px;
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $bg-card;
+  color: $text-primary;
+  text-decoration: none;
+
+  &:hover {
+    border-color: $accent-info;
+    background: $bg-card-hover;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 14px;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.role-guidance {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  color: $text-secondary;
+  font-size: 12px;
+
+  strong {
+    color: $accent-primary;
+  }
+
+  a {
+    color: $accent-info;
+    font-weight: 800;
+    text-decoration: none;
   }
 }
 

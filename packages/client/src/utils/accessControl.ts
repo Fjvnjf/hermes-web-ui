@@ -31,7 +31,7 @@ export interface RouteAccessPolicy {
 export const FRONTEND_ROLE_STORAGE_KEY = 'hermes.frontendAccessRole'
 
 export const ROUTE_ACCESS_POLICIES: RouteAccessPolicy[] = [
-  { routeName: 'hermes.dashboard', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Home is visible to business roles with sensitive fields redacted by page utilities.' },
+  { routeName: 'hermes.dashboard', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'developer_admin'], note: 'Home is role-specific; developer admin sees system shortcuts without raw business data.' },
   { routeName: 'hermes.accessDenied', sensitivity: 'public-shareable', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'investor_viewer', 'developer_admin'], note: 'Safe access denial page.' },
   { routeName: 'hermes.investorPortal', sensitivity: 'investor-approved', allowedRoles: ['owner', 'investor_viewer'], note: 'Investor-only approved material portal.' },
   { routeName: 'hermes.last24Hours', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Daily brief is visible with restricted sources redacted or unavailable by API role.' },

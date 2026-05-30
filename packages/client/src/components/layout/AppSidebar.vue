@@ -13,7 +13,7 @@ import { usePersistentRecord } from '@/composables/usePersistentRecord'
 import RouteLinkItem from '@/components/common/RouteLinkItem.vue'
 import CommandGlyph from '@/components/common/CommandGlyph.vue'
 import { changelog } from "@/data/changelog";
-import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { canAccessRouteName, getFrontendAccessRole, type FrontendAccessRole } from '@/utils/accessControl'
 
 const { t } = useI18n();
 const message = useMessage();
@@ -57,6 +57,10 @@ function canShowRoute(name: string) {
   return canAccessRouteName(name, frontendAccessRole.value);
 }
 
+function roleIs(...roles: FrontendAccessRole[]) {
+  return roles.includes(frontendAccessRole.value)
+}
+
 const { record: collapsedGroups, persist: persistCollapsedGroups } = usePersistentRecord('hermes.sidebar.collapsedGroups');
 
 let initializedDefaultCollapsedGroups = false;
@@ -68,7 +72,20 @@ for (const key of ['hermesSystem', 'developerTools']) {
 }
 if (initializedDefaultCollapsedGroups) persistCollapsedGroups();
 
-type SidebarGroupKey = "Workspace" | "ResearchLibrary" | "Reports" | "Memory" | "HermesSystem" | "DeveloperTools";
+type SidebarGroupKey = "Workspace" | "ResearchLibrary" | "Reports" | "Memory" | "HermesSystem" | "DeveloperTools" | "Investor" | "Access";
+type NavItem = {
+  label: string
+  routeName: string
+  symbol: string
+  title?: string
+  badge?: string
+  activeNames?: string[]
+}
+type NavGroup = {
+  key: SidebarGroupKey
+  stateKey: string
+  items: NavItem[]
+}
 
 const collapsedGroupLabels: Record<SidebarGroupKey, string> = {
   Workspace: 'WORK',
@@ -77,6 +94,8 @@ const collapsedGroupLabels: Record<SidebarGroupKey, string> = {
   Memory: 'MEM',
   HermesSystem: 'SYS',
   DeveloperTools: 'DEV',
+  Investor: 'INV',
+  Access: 'HELP',
 };
 
 const groupTitles: Record<SidebarGroupKey, string> = {
@@ -86,6 +105,8 @@ const groupTitles: Record<SidebarGroupKey, string> = {
   Memory: 'Memory',
   HermesSystem: 'Hermes System',
   DeveloperTools: 'Developer Tools',
+  Investor: 'Investor Portal',
+  Access: 'Access Help',
 };
 
 function groupTitle(key: SidebarGroupKey) {
@@ -108,6 +129,169 @@ function toggleGroup(key: string) {
 function isGroupCollapsed(key: string) {
   return !!collapsedGroups[key];
 }
+
+function itemIsActive(item: NavItem) {
+  return isNavActive(item.routeName, ...(item.activeNames || []))
+}
+
+function canShowItem(item: NavItem) {
+  return canShowRoute(item.routeName)
+}
+
+function homeRouteName() {
+  if (roleIs('investor_viewer')) return 'hermes.investorPortal'
+  return canShowRoute('hermes.dashboard') ? 'hermes.dashboard' : 'hermes.accessDenied'
+}
+
+function filterItems(items: NavItem[]) {
+  return items.filter(canShowItem)
+}
+
+const ownerWorkspaceItems: NavItem[] = [
+  { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'Last 24 Hours', routeName: 'hermes.last24Hours', symbol: '24', title: 'Owner-only daily activity brief' },
+  { label: 'Chat', routeName: 'hermes.chat', symbol: 'CH', activeNames: ['hermes.session'] },
+  { label: 'Feasibility Studio', routeName: 'hermes.feasibility', symbol: 'FS', badge: 'Primary', title: 'Main feasibility work area' },
+  { label: 'Investor Readiness', routeName: 'hermes.investorReadiness', symbol: 'IR' },
+  { label: 'Investor Portal', routeName: 'hermes.investorPortal', symbol: 'IP' },
+  { label: 'IRR Calculator', routeName: 'hermes.investmentCalculator', symbol: 'IRR' },
+  { label: 'Projects', routeName: 'hermes.projects', symbol: 'PR' },
+  { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
+  { label: 'Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
+]
+
+const ownerResearchItems: NavItem[] = [
+  { label: 'Research Library', routeName: 'hermes.research', symbol: 'RL' },
+  { label: 'History', routeName: 'hermes.history', symbol: 'HS', activeNames: ['hermes.historySession'] },
+  { label: 'Market Intelligence', routeName: 'hermes.marketIntelligence', symbol: 'MK' },
+  { label: 'Raw Materials', routeName: 'hermes.rawMaterialSourcing', symbol: 'RM' },
+  { label: 'Export Markets', routeName: 'hermes.exportMarketOpportunity', symbol: 'EX' },
+  { label: 'Competitors', routeName: 'hermes.competitorIntelligence', symbol: 'CP' },
+  { label: 'Research Review', routeName: 'hermes.researchResultReview', symbol: 'RV' },
+]
+
+const ownerReportItems: NavItem[] = [
+  { label: 'Reports Hub', routeName: 'hermes.reportsHub', symbol: 'RP' },
+  { label: 'Presentation Builder', routeName: 'hermes.investorPresentation', symbol: 'PB' },
+  { label: 'Usage', routeName: 'hermes.usage', symbol: 'US' },
+  { label: 'Skills Usage', routeName: 'hermes.skillsUsage', symbol: 'SU' },
+]
+
+const ownerSystemItems: NavItem[] = [
+  { label: 'Jobs', routeName: 'hermes.jobs', symbol: 'JB' },
+  { label: 'Channels', routeName: 'hermes.channels', symbol: 'CN' },
+  { label: 'Skills', routeName: 'hermes.skills', symbol: 'SK' },
+  { label: 'Plugins', routeName: 'hermes.plugins', symbol: 'PL' },
+  { label: 'Models', routeName: 'hermes.models', symbol: 'MD' },
+  { label: 'Profiles', routeName: 'hermes.profiles', symbol: 'PF' },
+  { label: 'Settings', routeName: 'hermes.settings', symbol: 'ST' },
+  { label: 'Group Chat', routeName: 'hermes.groupChat', symbol: 'GC', badge: 'Beta', activeNames: ['hermes.groupChatRoom'] },
+]
+
+const developerItems: NavItem[] = [
+  { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'Jobs', routeName: 'hermes.jobs', symbol: 'JB' },
+  { label: 'Terminal', routeName: 'hermes.terminal', symbol: 'TR' },
+  { label: 'Logs', routeName: 'hermes.logs', symbol: 'LG' },
+  { label: 'Settings', routeName: 'hermes.settings', symbol: 'ST' },
+  { label: 'Models', routeName: 'hermes.models', symbol: 'MD' },
+  { label: 'Profiles', routeName: 'hermes.profiles', symbol: 'PF' },
+  { label: 'System Health', routeName: 'hermes.performance', symbol: 'SH' },
+  { label: 'Version Preview', routeName: 'hermes.versionPreview', symbol: 'VP' },
+]
+
+const employeeItems: NavItem[] = [
+  { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'Chat', routeName: 'hermes.chat', symbol: 'CH', activeNames: ['hermes.session'] },
+  { label: 'My Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
+  { label: 'Research Jobs', routeName: 'hermes.jobs', symbol: 'JB' },
+  { label: 'Research Library', routeName: 'hermes.research', symbol: 'RL' },
+  { label: 'Employee Documents', routeName: 'hermes.files', symbol: 'DC' },
+  { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },
+  { label: 'Access Help', routeName: 'hermes.accessDenied', symbol: '?' },
+]
+
+const researchAssistantItems: NavItem[] = [
+  { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'Chat', routeName: 'hermes.chat', symbol: 'CH', activeNames: ['hermes.session'] },
+  { label: 'My Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
+  { label: 'Research Jobs', routeName: 'hermes.jobs', symbol: 'JB' },
+  { label: 'Research Library', routeName: 'hermes.research', symbol: 'RL' },
+  { label: 'Market', routeName: 'hermes.marketIntelligence', symbol: 'MK' },
+  { label: 'Competitors', routeName: 'hermes.competitorIntelligence', symbol: 'CP' },
+  { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
+  { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },
+]
+
+const financialAnalystItems: NavItem[] = [
+  { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'My Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
+  { label: 'IRR Calculator', routeName: 'hermes.investmentCalculator', symbol: 'IRR' },
+  { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },
+  { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
+]
+
+const regulatoryConsultantItems: NavItem[] = [
+  { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'My Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
+  { label: 'Regulatory Review', routeName: 'hermes.researchResultReview', symbol: 'RV' },
+  { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
+  { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },
+]
+
+const investorItems: NavItem[] = [
+  { label: 'Investor Portal', routeName: 'hermes.investorPortal', symbol: 'IP' },
+  { label: 'Approved Presentation', routeName: 'hermes.investorPortal', symbol: 'AP' },
+  { label: 'Approved Reports', routeName: 'hermes.investorPortal', symbol: 'AR' },
+  { label: 'Approved Data Room', routeName: 'hermes.investorPortal', symbol: 'DR' },
+  { label: 'Access Help', routeName: 'hermes.accessDenied', symbol: '?' },
+]
+
+const visibleNavGroups = computed<NavGroup[]>(() => {
+  if (roleIs('investor_viewer')) {
+    return [{ key: 'Investor', stateKey: 'investor', items: filterItems(investorItems) }]
+  }
+
+  if (roleIs('developer_admin')) {
+    return [{ key: 'DeveloperTools', stateKey: 'developerTools', items: filterItems(developerItems) }]
+  }
+
+  if (roleIs('employee')) {
+    return [{ key: 'Workspace', stateKey: 'workspace', items: filterItems(employeeItems) }]
+  }
+
+  if (roleIs('research_assistant')) {
+    return [{ key: 'Workspace', stateKey: 'workspace', items: filterItems(researchAssistantItems) }]
+  }
+
+  if (roleIs('financial_analyst')) {
+    return [{ key: 'Workspace', stateKey: 'workspace', items: filterItems(financialAnalystItems) }]
+  }
+
+  if (roleIs('regulatory_consultant')) {
+    return [{ key: 'Workspace', stateKey: 'workspace', items: filterItems(regulatoryConsultantItems) }]
+  }
+
+  const ownerGroups: NavGroup[] = [
+    { key: 'Workspace', stateKey: 'workspace', items: filterItems(ownerWorkspaceItems) },
+    { key: 'ResearchLibrary', stateKey: 'researchLibrary', items: filterItems(ownerResearchItems) },
+    { key: 'Reports', stateKey: 'reports', items: filterItems(ownerReportItems) },
+    { key: 'Memory', stateKey: 'memory', items: filterItems([{ label: 'Memory', routeName: 'hermes.memory', symbol: 'MM' }]) },
+    { key: 'HermesSystem', stateKey: 'hermesSystem', items: filterItems(ownerSystemItems) },
+    {
+      key: 'DeveloperTools',
+      stateKey: 'developerTools',
+      items: filterItems([
+        { label: 'Backup Vault', routeName: 'hermes.localBackupVault', symbol: 'BK' },
+        { label: 'Terminal', routeName: 'hermes.terminal', symbol: 'TR' },
+        { label: 'Logs', routeName: 'hermes.logs', symbol: 'LG' },
+        { label: 'Performance', routeName: 'hermes.performance', symbol: 'PF' },
+        ...(!isVersionPreview ? [{ label: 'Version Preview', routeName: 'hermes.versionPreview', symbol: 'VP' }] : []),
+      ]),
+    },
+  ]
+  return ownerGroups.filter(group => group.items.length > 0)
+})
 
 function handleSidebarControl() {
   if (isMobileSidebar.value) {
@@ -146,11 +330,11 @@ function openChangelog() {
 
 <template>
   <aside class="sidebar" :class="{ open: appStore.sidebarOpen, collapsed: sidebarIsCollapsed }">
-    <RouteLinkItem class="sidebar-logo" :to="{ name: 'hermes.dashboard' }">
+    <RouteLinkItem class="sidebar-logo" :to="{ name: homeRouteName() }">
       <CommandGlyph class="logo-mark" :size="30" />
       <span class="logo-copy">
-        <span class="logo-title">Hermes Command Center</span>
-        <span class="logo-subtitle">Live operations</span>
+        <span class="logo-title">Hermes Workspace</span>
+        <span class="logo-subtitle">{{ roleIs('owner') ? 'Command operations' : roleIs('developer_admin') ? 'System tools' : roleIs('investor_viewer') ? 'Approved access' : 'Assigned workspace' }}</span>
       </span>
     </RouteLinkItem>
 
@@ -163,368 +347,55 @@ function openChangelog() {
     </button>
 
     <nav class="sidebar-nav">
-      <!-- Research Workspace -->
-      <div class="nav-group">
-        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Workspace')" :aria-label="groupAriaLabel('Workspace')" @click="toggleGroup('workspace')" @keydown.enter.prevent="toggleGroup('workspace')" @keydown.space.prevent="toggleGroup('workspace')">
-          <span>{{ groupLabel("Workspace") }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('workspace') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <div v-for="group in visibleNavGroups" :key="group.stateKey" class="nav-group">
+        <div
+          class="nav-group-label"
+          role="button"
+          tabindex="0"
+          :title="groupTitle(group.key)"
+          :aria-label="groupAriaLabel(group.key)"
+          @click="toggleGroup(group.stateKey)"
+          @keydown.enter.prevent="toggleGroup(group.stateKey)"
+          @keydown.space.prevent="toggleGroup(group.stateKey)"
+        >
+          <span>{{ groupLabel(group.key) }}</span>
+          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed(group.stateKey) }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </div>
-        <div v-show="!isGroupCollapsed('workspace')" class="nav-group-items">
-          <RouteLinkItem v-if="canShowRoute('hermes.dashboard')" class="nav-item" :to="{ name: 'hermes.dashboard' }" :active="selectedKey === 'hermes.dashboard'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-            <span>Home</span>
+        <div v-show="!isGroupCollapsed(group.stateKey)" class="nav-group-items">
+          <RouteLinkItem
+            v-for="item in group.items"
+            :key="`${group.stateKey}-${item.label}`"
+            class="nav-item"
+            :to="{ name: item.routeName }"
+            :active="itemIsActive(item)"
+            :title="item.title"
+          >
+            <span class="nav-symbol">{{ item.symbol }}</span>
+            <span class="nav-label-copy">
+              {{ item.label }}{{ item.badge ? ' ' : '' }}
+              <span v-if="item.badge" class="beta-tag">{{ item.badge }}</span>
+            </span>
           </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.last24Hours')" class="nav-item" :to="{ name: 'hermes.last24Hours' }" :active="selectedKey === 'hermes.last24Hours'" title="Owner-only daily activity brief">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 12h4l3-8 4 16 3-8h4" />
-            </svg>
-            <span>Last 24 Hours</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.chat')" class="nav-item" :to="{ name: 'hermes.chat' }" :active="isNavActive('hermes.chat', 'hermes.session')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <span>{{ t("sidebar.chat") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.feasibility')" class="nav-item" :to="{ name: 'hermes.feasibility' }" :active="selectedKey === 'hermes.feasibility'" title="Main feasibility work area">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 19.5V5a2 2 0 0 1 2-2h9l5 5v11.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5z" />
-              <path d="M14 3v6h6" />
-              <path d="M8 13h8" />
-              <path d="M8 17h5" />
-            </svg>
-            <span>Feasibility Studio<span class="beta-tag">main</span></span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.investorReadiness')" class="nav-item" :to="{ name: 'hermes.investorReadiness' }" :active="selectedKey === 'hermes.investorReadiness'" title="Investor readiness preparation">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 19V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14" />
-              <path d="M8 9h8" />
-              <path d="M8 13h5" />
-              <path d="M6 21h12" />
-            </svg>
-            <span>Investor Readiness</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.investorPortal')" class="nav-item" :to="{ name: 'hermes.investorPortal' }" :active="selectedKey === 'hermes.investorPortal'" title="Approved investor-only portal">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3 20 7v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z" />
-              <path d="M9 12l2 2 4-5" />
-            </svg>
-            <span>Investor Portal</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.investmentCalculator')" class="nav-item" :to="{ name: 'hermes.investmentCalculator' }" :active="selectedKey === 'hermes.investmentCalculator'" title="IRR and investment calculator">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 19V5" />
-              <path d="M4 19h16" />
-              <path d="M8 15l3-3 3 2 5-7" />
-            </svg>
-            <span>IRR Calculator</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.projects')" class="nav-item" :to="{ name: 'hermes.projects' }" :active="selectedKey === 'hermes.projects'" title="Project workspaces">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <path d="M8 13h8" />
-            </svg>
-            <span>Projects</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.files')" class="nav-item" :to="{ name: 'hermes.files' }" :active="selectedKey === 'hermes.files'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            </svg>
-            <span>Documents</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.kanban')" class="nav-item" :to="{ name: 'hermes.kanban' }" :active="selectedKey === 'hermes.kanban'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="5" height="18" rx="1" />
-              <rect x="10" y="3" width="5" height="12" rx="1" />
-              <rect x="17" y="3" width="5" height="18" rx="1" />
-            </svg>
-            <span>Tasks</span>
-          </RouteLinkItem>
-        </div>
-      </div>
-
-      <!-- Research Library -->
-      <div class="nav-group">
-        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('ResearchLibrary')" :aria-label="groupAriaLabel('ResearchLibrary')" @click="toggleGroup('researchLibrary')" @keydown.enter.prevent="toggleGroup('researchLibrary')" @keydown.space.prevent="toggleGroup('researchLibrary')">
-          <span>{{ groupLabel("ResearchLibrary") }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('researchLibrary') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        <div v-show="!isGroupCollapsed('researchLibrary')" class="nav-group-items">
-          <RouteLinkItem v-if="canShowRoute('hermes.research')" class="nav-item" :to="{ name: 'hermes.research' }" :active="selectedKey === 'hermes.research'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 19.5V5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-1.5z" />
-              <path d="M13 3h5a2 2 0 0 1 2 2v14.5a2 2 0 0 1-2 1.5h-5z" />
-              <path d="M8 7h1" />
-              <path d="M16 7h1" />
-            </svg>
-            <span>Research Library</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.history')" class="nav-item" :to="{ name: 'hermes.history' }" :active="isNavActive('hermes.history', 'hermes.historySession')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span>{{ t("sidebar.history") }}</span>
-          </RouteLinkItem>
-          <button v-if="canShowRoute('hermes.history')" class="nav-item" @click="openSessionSearch">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3.5-3.5" />
-            </svg>
+          <a
+            v-if="(group.stateKey === 'hermesSystem' || group.stateKey === 'developerTools') && canShowRoute('hermes.models')"
+            class="nav-item fun-link"
+            href="https://apikey.fun/register?aff=LIBAPI"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="nav-symbol">API</span>
+            <span>API Relay</span>
+          </a>
+          <button
+            v-if="group.key === 'ResearchLibrary' && canShowRoute('hermes.history')"
+            class="nav-item"
+            @click="openSessionSearch"
+          >
+            <span class="nav-symbol">SR</span>
             <span>{{ t("sidebar.search") }}</span>
           </button>
-          <RouteLinkItem v-if="canShowRoute('hermes.marketIntelligence')" class="nav-item" :to="{ name: 'hermes.marketIntelligence' }" :active="selectedKey === 'hermes.marketIntelligence'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-              <path d="M8 11h6" />
-            </svg>
-            <span>Market Intelligence</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.rawMaterialSourcing')" class="nav-item" :to="{ name: 'hermes.rawMaterialSourcing' }" :active="selectedKey === 'hermes.rawMaterialSourcing'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 20h16" />
-              <path d="M7 20V8l5-4 5 4v12" />
-              <path d="M9 13h6" />
-            </svg>
-            <span>Raw Materials</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.exportMarketOpportunity')" class="nav-item" :to="{ name: 'hermes.exportMarketOpportunity' }" :active="selectedKey === 'hermes.exportMarketOpportunity'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="9" />
-              <path d="M3 12h18" />
-              <path d="M12 3a14 14 0 0 1 0 18" />
-              <path d="M12 3a14 14 0 0 0 0 18" />
-            </svg>
-            <span>Export Markets</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.competitorIntelligence')" class="nav-item" :to="{ name: 'hermes.competitorIntelligence' }" :active="selectedKey === 'hermes.competitorIntelligence'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 20h18" />
-              <path d="M6 20V8h4v12" />
-              <path d="M14 20V4h4v16" />
-            </svg>
-            <span>Competitors</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.researchResultReview')" class="nav-item" :to="{ name: 'hermes.researchResultReview' }" :active="selectedKey === 'hermes.researchResultReview'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 11l3 3L22 4" />
-              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-            </svg>
-            <span>Research Review</span>
-          </RouteLinkItem>
-        </div>
-      </div>
-
-      <!-- Reports -->
-      <div class="nav-group">
-        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Reports')" :aria-label="groupAriaLabel('Reports')" @click="toggleGroup('reports')" @keydown.enter.prevent="toggleGroup('reports')" @keydown.space.prevent="toggleGroup('reports')">
-          <span>{{ groupLabel("Reports") }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('reports') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        <div v-show="!isGroupCollapsed('reports')" class="nav-group-items">
-          <RouteLinkItem v-if="canShowRoute('hermes.reportsHub')" class="nav-item" :to="{ name: 'hermes.reportsHub' }" :active="selectedKey === 'hermes.reportsHub'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 19V5a2 2 0 0 1 2-2h9l5 5v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-              <path d="M14 3v6h6" />
-              <path d="M8 14h8" />
-              <path d="M8 17h5" />
-            </svg>
-            <span>Reports Hub</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.investorPresentation')" class="nav-item" :to="{ name: 'hermes.investorPresentation' }" :active="selectedKey === 'hermes.investorPresentation'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="14" rx="2" />
-              <path d="M8 21h8" />
-              <path d="M12 18v3" />
-              <path d="M8 9h8" />
-              <path d="M8 13h5" />
-            </svg>
-            <span>Presentation Builder</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.usage')" class="nav-item" :to="{ name: 'hermes.usage' }" :active="selectedKey === 'hermes.usage'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="12" width="4" height="9" rx="1" />
-              <rect x="10" y="7" width="4" height="14" rx="1" />
-              <rect x="17" y="3" width="4" height="18" rx="1" />
-            </svg>
-            <span>{{ t("sidebar.usage") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.skillsUsage')" class="nav-item" :to="{ name: 'hermes.skillsUsage' }" :active="selectedKey === 'hermes.skillsUsage'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.21 15.89A10 10 0 1 1 8.11 2.79" />
-              <path d="M22 12A10 10 0 0 0 12 2v10z" />
-            </svg>
-            <span>{{ t("sidebar.skillsUsage") }}</span>
-          </RouteLinkItem>
-        </div>
-      </div>
-
-      <!-- Memory -->
-      <div class="nav-group">
-        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('Memory')" :aria-label="groupAriaLabel('Memory')" @click="toggleGroup('memory')" @keydown.enter.prevent="toggleGroup('memory')" @keydown.space.prevent="toggleGroup('memory')">
-          <span>{{ groupLabel("Memory") }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('memory') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        <div v-show="!isGroupCollapsed('memory')" class="nav-group-items">
-          <RouteLinkItem v-if="canShowRoute('hermes.memory')" class="nav-item" :to="{ name: 'hermes.memory' }" :active="selectedKey === 'hermes.memory'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 18h6" />
-              <path d="M10 22h4" />
-              <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />
-            </svg>
-            <span>{{ t("sidebar.memory") }}</span>
-          </RouteLinkItem>
-        </div>
-      </div>
-
-      <!-- Hermes System -->
-      <div class="nav-group">
-        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('HermesSystem')" :aria-label="groupAriaLabel('HermesSystem')" @click="toggleGroup('hermesSystem')" @keydown.enter.prevent="toggleGroup('hermesSystem')" @keydown.space.prevent="toggleGroup('hermesSystem')">
-          <span>{{ groupLabel("HermesSystem") }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('hermesSystem') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        <div v-show="!isGroupCollapsed('hermesSystem')" class="nav-group-items">
-          <RouteLinkItem v-if="canShowRoute('hermes.jobs')" class="nav-item" :to="{ name: 'hermes.jobs' }" :active="selectedKey === 'hermes.jobs'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
-            <span>{{ t("sidebar.jobs") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.channels')" class="nav-item" :to="{ name: 'hermes.channels' }" :active="selectedKey === 'hermes.channels'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-            <span>{{ t("sidebar.channels") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.skills')" class="nav-item" :to="{ name: 'hermes.skills' }" :active="selectedKey === 'hermes.skills'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
-            </svg>
-            <span>{{ t("sidebar.skills") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.plugins')" class="nav-item" :to="{ name: 'hermes.plugins' }" :active="selectedKey === 'hermes.plugins'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l2.1-2.1a4 4 0 0 1-5.3 5.3l-7.8 7.8a2.1 2.1 0 0 1-3-3l7.8-7.8a4 4 0 0 1 5.3-5.3l-2.1 2.1z" />
-              <path d="M5 19l1-1" />
-            </svg>
-            <span>{{ t("sidebar.plugins") }}</span>
-          </RouteLinkItem>
-          <a v-if="canShowRoute('hermes.models')" class="nav-item fun-link" href="https://apikey.fun/register?aff=LIBAPI" target="_blank" rel="noopener noreferrer">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            <span>{{ t('sidebar.apiRelay') }}</span>
-          </a>
-          <RouteLinkItem v-if="canShowRoute('hermes.models')" class="nav-item" :to="{ name: 'hermes.models' }" :active="selectedKey === 'hermes.models'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1v4" />
-              <path d="M12 19v4" />
-              <path d="M1 12h4" />
-              <path d="M19 12h4" />
-              <path d="M4.22 4.22l2.83 2.83" />
-              <path d="M16.95 16.95l2.83 2.83" />
-              <path d="M4.22 19.78l2.83-2.83" />
-              <path d="M16.95 7.05l2.83-2.83" />
-            </svg>
-            <span>{{ t("sidebar.models") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.profiles')" class="nav-item" :to="{ name: 'hermes.profiles' }" :active="selectedKey === 'hermes.profiles'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span>{{ t("sidebar.profiles") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.settings')" class="nav-item" :to="{ name: 'hermes.settings' }" :active="selectedKey === 'hermes.settings'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            <span>{{ t("sidebar.settings") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.groupChat')" class="nav-item" :to="{ name: 'hermes.groupChat' }" :active="isNavActive('hermes.groupChat', 'hermes.groupChatRoom')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            <span>{{ t("sidebar.groupChat") }}<span class="beta-tag">(beta)</span></span>
-          </RouteLinkItem>
-        </div>
-      </div>
-
-      <!-- Developer Tools -->
-      <div class="nav-group">
-        <div class="nav-group-label" role="button" tabindex="0" :title="groupTitle('DeveloperTools')" :aria-label="groupAriaLabel('DeveloperTools')" @click="toggleGroup('developerTools')" @keydown.enter.prevent="toggleGroup('developerTools')" @keydown.space.prevent="toggleGroup('developerTools')">
-          <span>{{ groupLabel("DeveloperTools") }}</span>
-          <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('developerTools') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
-        <div v-show="!isGroupCollapsed('developerTools')" class="nav-group-items">
-          <RouteLinkItem v-if="canShowRoute('hermes.localBackupVault')" class="nav-item" :to="{ name: 'hermes.localBackupVault' }" :active="selectedKey === 'hermes.localBackupVault'" title="Owner-only local backup and disaster recovery exports">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6l-8-3z" />
-              <path d="M8 12h8" />
-              <path d="M12 8v8" />
-            </svg>
-            <span>Backup Vault</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.terminal')" class="nav-item" :to="{ name: 'hermes.terminal' }" :active="selectedKey === 'hermes.terminal'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="4 17 10 11 4 5" />
-              <line x1="12" y1="19" x2="20" y2="19" />
-            </svg>
-            <span>{{ t("sidebar.terminal") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.logs')" class="nav-item" :to="{ name: 'hermes.logs' }" :active="selectedKey === 'hermes.logs'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
-              <polyline points="10 9 9 9 8 9" />
-            </svg>
-            <span>{{ t("sidebar.logs") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="canShowRoute('hermes.performance')" class="nav-item" :to="{ name: 'hermes.performance' }" :active="selectedKey === 'hermes.performance'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-            </svg>
-            <span>{{ t("sidebar.performance") }}</span>
-          </RouteLinkItem>
-          <RouteLinkItem v-if="!isVersionPreview && canShowRoute('hermes.versionPreview')" class="nav-item" :to="{ name: 'hermes.versionPreview' }" :active="selectedKey === 'hermes.versionPreview'">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-              <polyline points="7.5 4.21 12 6.81 16.5 4.21" />
-              <polyline points="7.5 19.79 7.5 14.6 3 12" />
-              <polyline points="21 12 16.5 14.6 16.5 19.79" />
-              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-              <line x1="12" y1="22.08" x2="12" y2="12" />
-            </svg>
-            <span>{{ t("sidebar.versionPreview") }}</span>
-          </RouteLinkItem>
         </div>
       </div>
     </nav>
@@ -762,10 +633,41 @@ function openChangelog() {
   }
 
   .beta-tag {
-    font-size: 10px;
-    color: $text-muted;
-    margin-left: 2px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 16px;
+    margin-left: 6px;
+    padding: 1px 5px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+    border-radius: 999px;
+    color: $accent-primary;
+    font-size: 9px;
+    font-weight: 900;
+    line-height: 1;
+    text-transform: uppercase;
   }
+}
+
+.nav-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.26);
+  border-radius: 6px;
+  color: $accent-info;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.nav-label-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-footer {
