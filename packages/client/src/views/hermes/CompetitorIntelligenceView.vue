@@ -76,6 +76,11 @@ async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
     intelligence.addResearchJob({
       title: `Competitor research: ${competitor.companyName}`,
       question: `Verify ${competitor.companyName} product equivalent, pricing evidence, distribution, certifications, and market-share source if available.`,
+      scope: 'Competitor identity, region, product equivalent, active content, pricing proof, certifications, distribution presence, and source-backed market-share status.',
+      expectedOutput: 'Structured competitor evidence record with sources, confidence, and To Verify labels for unsupported claims.',
+      sourceRequirements: 'Market share must stay To Verify unless supported by a credible source title plus URL or date.',
+      priority: 'medium',
+      schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
       status: 'Task Created',
     })

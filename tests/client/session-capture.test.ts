@@ -310,7 +310,13 @@ describe('Session Capture Assistant', () => {
     await flushPromises()
 
     expect(createTaskMock).toHaveBeenCalled()
-    expect(intelligence.state.value.researchJobs.some(job => job.title.includes('DMS regulation'))).toBe(true)
+    const job = intelligence.state.value.researchJobs.find(item => item.title.includes('DMS regulation'))
+    expect(job).toBeTruthy()
+    expect(job?.scope).toContain('Regulatory classification')
+    expect(job?.expectedOutput).toContain('Source-backed')
+    expect(job?.sourceRequirements).toContain('Separate verified facts')
+    expect(job?.priority).toBe('high')
+    expect(job?.schedulePreference).toBe('Tonight')
   })
 
   it('saves deferred deep research suggestions as Later jobs without creating a task', async () => {
@@ -331,6 +337,9 @@ describe('Session Capture Assistant', () => {
     await flushPromises()
 
     expect(createTaskMock).not.toHaveBeenCalled()
-    expect(intelligence.state.value.researchJobs.some(job => job.status === 'Later' && job.title.includes('DMS regulation'))).toBe(true)
+    const job = intelligence.state.value.researchJobs.find(item => item.status === 'Later' && item.title.includes('DMS regulation'))
+    expect(job).toBeTruthy()
+    expect(job?.scope).toContain('Regulatory classification')
+    expect(job?.sourceRequirements).toContain('Separate verified facts')
   })
 })

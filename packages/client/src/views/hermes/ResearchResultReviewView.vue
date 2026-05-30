@@ -80,18 +80,25 @@ function areaLabel(area: EvidenceArea): string {
 }
 
 function inferAreaFromResearchJob(job: ResearchJobRecord): EvidenceArea {
-  const text = `${job.title} ${job.question} ${job.context}`.toLowerCase()
+  const text = [
+    job.title,
+    job.question,
+    job.scope,
+    job.expectedOutput,
+    job.sourceRequirements,
+    job.context,
+  ].filter(Boolean).join(' ').toLowerCase()
   if (text.includes('company') || text.includes('legal') || text.includes('business license') || text.includes('bank') || text.includes('import/export')) {
     return 'companyLegal'
+  }
+  if (text.includes('regulatory') || text.includes('dms') || text.includes('permission') || text.includes('permit')) {
+    return 'regulatory'
   }
   if (text.includes('product') || text.includes('cwas') || text.includes('cwms') || text.includes('sds') || text.includes('tds') || text.includes('cas')) {
     return 'product'
   }
   if (text.includes('factory') || text.includes('plant') || text.includes('manufacturing') || text.includes('machine') || text.includes('capacity') || text.includes('location')) {
     return 'factory'
-  }
-  if (text.includes('regulatory') || text.includes('dms') || text.includes('permission') || text.includes('permit')) {
-    return 'regulatory'
   }
   if (text.includes('finance') || text.includes('financial') || text.includes('investment') || text.includes('investor') || text.includes('irr') || text.includes('npv')) {
     return 'financial'
@@ -102,9 +109,19 @@ function inferAreaFromResearchJob(job: ResearchJobRecord): EvidenceArea {
   return 'market'
 }
 
+function researchJobSummary(job: ResearchJobRecord): string {
+  return [
+    `Research job request: ${job.question}`,
+    job.scope ? `Scope: ${job.scope}` : '',
+    job.expectedOutput ? `Expected output: ${job.expectedOutput}` : '',
+    job.sourceRequirements ? `Source requirements: ${job.sourceRequirements}` : '',
+    job.schedulePreference ? `Run time preference: ${job.schedulePreference}` : '',
+  ].filter(Boolean).join('\n')
+}
+
 function useJobAsFindingDraft(job: ResearchJobRecord) {
   findingForm.value = {
-    summary: `Research job request: ${job.question}`,
+    summary: researchJobSummary(job),
     keyClaim: job.title,
     area: inferAreaFromResearchJob(job),
     evidenceStatus: 'To Verify',
@@ -120,10 +137,31 @@ function useJobAsFindingDraft(job: ResearchJobRecord) {
 }
 
 function researchJobPriority(job: ResearchJobRecord): number {
-  const text = `${job.title} ${job.question}`.toLowerCase()
+  if (job.priority === 'high') return 3
+  if (job.priority === 'medium') return 2
+  if (job.priority === 'low') return 1
+  const text = `${job.title} ${job.question} ${job.scope || ''}`.toLowerCase()
   if (text.includes('regulatory') || text.includes('dms') || text.includes('investor') || text.includes('risk')) return 3
   if (text.includes('price') || text.includes('competitor') || text.includes('supplier') || text.includes('market')) return 2
   return 1
+}
+
+function researchJobTaskBody(job: ResearchJobRecord): string {
+  return [
+    `Research job: ${job.title}`,
+    `Research question: ${job.question}`,
+    job.scope ? `Scope: ${job.scope}` : '',
+    `Expected output: ${job.expectedOutput || 'Source-backed research finding with clear Verified / To Verify / Assumption labels.'}`,
+    `Source requirements: ${job.sourceRequirements || 'Include source title plus URL or date before using claims in investor material.'}`,
+    `Project/context: ${job.context}`,
+    `Priority: ${job.priority || (researchJobPriority(job) === 3 ? 'high' : researchJobPriority(job) === 2 ? 'medium' : 'low')}`,
+    `Run time preference: ${job.schedulePreference || 'Manual'}`,
+    `Current job status: ${job.status}`,
+    'Source page: Research Result Review',
+    'Tags: Research Job, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Note: This is a Kanban research task, not an automatically scheduled job.',
+  ].filter(Boolean).join('\n')
 }
 
 async function createResearchJobTask(job: ResearchJobRecord) {
@@ -134,18 +172,7 @@ async function createResearchJobTask(job: ResearchJobRecord) {
     kanbanStore.setSelectedBoard(board)
     await kanbanStore.createTask({
       title: `Research: ${job.title}`,
-      body: [
-        `Research job: ${job.title}`,
-        `Research question: ${job.question}`,
-        `Project/context: ${job.context}`,
-        `Current job status: ${job.status}`,
-        'Expected output: Source-backed research finding with clear Verified / To Verify / Assumption labels.',
-        'Source requirements: Include source title plus URL or date before using claims in investor material.',
-        'Source page: Research Result Review',
-        'Tags: Research Job, Evidence Gap, Chemicon China Feasibility',
-        '',
-        'Note: This is a Kanban research task, not an automatically scheduled job.',
-      ].join('\n'),
+      body: researchJobTaskBody(job),
       priority: researchJobPriority(job),
       tenant: job.context || 'Chemicon China Feasibility',
     })
@@ -402,8 +429,11 @@ async function createTask(item: ResearchReviewFinding) {
       <div v-for="job in researchJobs.slice(0, 6)" :key="job.id" class="job-row">
         <div>
           <strong>{{ job.title }}</strong>
-          <span>{{ job.status }} / {{ job.context }}</span>
+          <span>{{ job.status }} / {{ job.context }}<template v-if="job.schedulePreference"> / {{ job.schedulePreference }}</template></span>
           <small>{{ job.question }}</small>
+          <small v-if="job.scope">Scope: {{ job.scope }}</small>
+          <small v-if="job.expectedOutput">Expected output: {{ job.expectedOutput }}</small>
+          <small v-if="job.sourceRequirements">Source requirements: {{ job.sourceRequirements }}</small>
         </div>
         <div class="job-actions">
           <NButton

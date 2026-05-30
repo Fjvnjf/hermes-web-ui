@@ -96,9 +96,9 @@ const researchQueueItems = computed(() => [
   ...researchJobs.value.map(item => ({
     id: item.id,
     title: item.title,
-    detail: item.question,
+    detail: item.scope ? `${item.question} Scope: ${item.scope}` : item.question,
     status: item.status,
-    source: item.context,
+    source: [item.context, item.schedulePreference, item.priority ? `${item.priority} priority` : ''].filter(Boolean).join(' / '),
     to: { name: 'hermes.researchResultReview' },
   })),
 ].slice(0, 6))

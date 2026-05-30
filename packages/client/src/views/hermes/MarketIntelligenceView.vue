@@ -69,6 +69,11 @@ async function createResearchTask(label: string) {
     intelligence.addResearchJob({
       title: `Market research: ${label}`,
       question: label,
+      scope: 'Market question, product demand evidence, customer segments, pricing evidence, source library, and To Verify claims.',
+      expectedOutput: 'Source-backed market research note with evidence status, confidence, source title, URL/date, and recommended follow-up tasks.',
+      sourceRequirements: 'Do not use unsourced market size, growth, country ranking, or demand figures. Include source title plus URL or date.',
+      priority: 'medium',
+      schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
       status: 'Task Created',
     })

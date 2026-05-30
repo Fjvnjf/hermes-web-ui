@@ -298,6 +298,11 @@ async function createResearchTask(item: DeepResearchSuggestion) {
     intelligence.addResearchJob({
       title: item.title,
       question: item.researchQuestion,
+      scope: item.scope,
+      expectedOutput: item.expectedOutput,
+      sourceRequirements: item.sourceRequirements,
+      priority: item.priority,
+      schedulePreference: item.schedulePreference,
       context: contextLabel(selectedContext.value),
       status: 'Task Created',
     })
@@ -322,6 +327,11 @@ function deferResearchSuggestion(item: DeepResearchSuggestion) {
   intelligence.addResearchJob({
     title: item.title,
     question: item.researchQuestion,
+    scope: item.scope,
+    expectedOutput: item.expectedOutput,
+    sourceRequirements: item.sourceRequirements,
+    priority: item.priority,
+    schedulePreference: item.schedulePreference,
     context: contextLabel(selectedContext.value),
     status: 'Later',
   })

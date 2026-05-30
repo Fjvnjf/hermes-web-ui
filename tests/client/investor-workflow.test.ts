@@ -1326,6 +1326,11 @@ describe('investor readiness pages', () => {
     intelligence.addResearchJob({
       title: 'DMS regulation in China',
       question: 'Verify DMS regulatory status with sources.',
+      scope: 'Regulatory classification, permits, SDS, storage, transport, and evidence gaps.',
+      expectedOutput: 'Source-backed research note with citations and follow-up tasks.',
+      sourceRequirements: 'Include source title plus URL or date for every claim.',
+      priority: 'high',
+      schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
       status: 'Task Created',
     })
@@ -1352,6 +1357,11 @@ describe('investor readiness pages', () => {
     intelligence.addResearchJob({
       title: 'DMS regulation in China',
       question: 'Verify DMS regulatory status with sources.',
+      scope: 'Regulatory classification, permits, SDS, storage, transport, and evidence gaps.',
+      expectedOutput: 'Source-backed research note with citations and follow-up tasks.',
+      sourceRequirements: 'Include source title plus URL or date for every claim.',
+      priority: 'high',
+      schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
       status: 'Task Created',
     })
@@ -1627,6 +1637,11 @@ describe('investor readiness pages', () => {
     intelligence.addResearchJob({
       title: 'DMS regulation in China',
       question: 'Verify DMS regulatory status with sources.',
+      scope: 'Regulatory classification, permits, SDS, storage, transport, and evidence gaps.',
+      expectedOutput: 'Source-backed research note with citations and follow-up tasks.',
+      sourceRequirements: 'Include source title plus URL or date for every claim.',
+      priority: 'high',
+      schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
       status: 'Task Created',
     })
@@ -1643,6 +1658,10 @@ describe('investor readiness pages', () => {
     const selects = wrapper.findAll('select')
 
     expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Research job request: Verify DMS regulatory status')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Scope: Regulatory classification')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Expected output: Source-backed research note')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Source requirements: Include source title')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Run time preference: Tonight')
     expect((inputs[0].element as HTMLInputElement).value).toBe('DMS regulation in China')
     expect((selects[0].element as HTMLSelectElement).value).toBe('regulatory')
     expect((selects[1].element as HTMLSelectElement).value).toBe('To Verify')
@@ -1654,6 +1673,11 @@ describe('investor readiness pages', () => {
     intelligence.addResearchJob({
       title: 'DMS regulation in China',
       question: 'Verify DMS regulatory status with sources.',
+      scope: 'Regulatory classification, permits, SDS, storage, transport, and evidence gaps.',
+      expectedOutput: 'Source-backed research note with citations and follow-up tasks.',
+      sourceRequirements: 'Include source title plus URL or date for every claim.',
+      priority: 'high',
+      schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
       status: 'Later',
     })
@@ -1671,6 +1695,10 @@ describe('investor readiness pages', () => {
       tenant: 'Chemicon China Feasibility',
     }))
     expect(createTaskMock.mock.calls[0][0].body).toContain('Source requirements')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Scope: Regulatory classification')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Expected output: Source-backed research note')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Run time preference: Tonight')
+    expect(createTaskMock.mock.calls[0][0].priority).toBe(3)
     expect(intelligence.state.value.researchJobs[0].status).toBe('Task Created')
   })
 

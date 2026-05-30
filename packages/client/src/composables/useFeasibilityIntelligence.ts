@@ -48,6 +48,11 @@ export interface ResearchJobRecord {
   id: string
   title: string
   question: string
+  scope?: string
+  expectedOutput?: string
+  sourceRequirements?: string
+  priority?: 'high' | 'medium' | 'low'
+  schedulePreference?: 'Tonight' | 'Tomorrow morning' | 'Custom'
   context: string
   status: 'Task Created' | 'Manual Research Job' | 'Later'
   createdAt: string
@@ -218,7 +223,9 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
     presentationMaterials: Array.isArray(raw.presentationMaterials)
       ? raw.presentationMaterials.map((material, index) => normalizePresentationMaterial(material, index))
       : [],
-    researchJobs: Array.isArray(raw.researchJobs) ? raw.researchJobs : [],
+    researchJobs: Array.isArray(raw.researchJobs)
+      ? raw.researchJobs.map((record, index) => normalizeResearchJobRecord(record, index))
+      : [],
     researchFindings: Array.isArray(raw.researchFindings) ? raw.researchFindings : [],
     financialModels: Array.isArray(raw.financialModels) ? raw.financialModels : [],
     dataRoomSources: Array.isArray(raw.dataRoomSources)
@@ -278,6 +285,18 @@ function normalizeDataRoomSourceRecord(record: DataRoomSourceRecord, index = 0):
     source: record.source || null,
     notes: record.notes || '',
     updatedAt: record.updatedAt || nowIso(),
+  }
+}
+
+function normalizeResearchJobRecord(record: ResearchJobRecord, index = 0): ResearchJobRecord {
+  return {
+    ...record,
+    id: record.id || idFrom('research', `${record.title || 'job'}-${index}`),
+    title: record.title || 'Untitled research job',
+    question: record.question || 'Research question to define.',
+    context: record.context || 'General Research',
+    status: record.status || 'Manual Research Job',
+    createdAt: record.createdAt || nowIso(),
   }
 }
 
@@ -441,11 +460,11 @@ export function useFeasibilityIntelligence() {
   }
 
   function addResearchJob(job: Omit<ResearchJobRecord, 'id' | 'createdAt'>) {
-    const saved: ResearchJobRecord = {
+    const saved = normalizeResearchJobRecord({
       ...job,
       id: idFrom('research', job.title),
       createdAt: nowIso(),
-    }
+    })
     state.value.researchJobs = [saved, ...state.value.researchJobs]
     persist()
     return saved

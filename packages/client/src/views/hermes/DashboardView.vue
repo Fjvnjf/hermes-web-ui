@@ -491,7 +491,7 @@ onMounted(() => {
               :to="{ name: 'hermes.researchResultReview' }"
             >
               <span>{{ job.title }}</span>
-              <small>{{ job.status }} / {{ job.context }}</small>
+              <small>{{ job.status }} / {{ job.context }}<template v-if="job.schedulePreference"> / {{ job.schedulePreference }}</template></small>
             </RouterLink>
           </div>
           <div v-else class="triage-empty">No pending research findings or manual research jobs.</div>
