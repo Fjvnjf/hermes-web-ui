@@ -15,6 +15,26 @@ export const useProfilesStore = defineStore('profiles', () => {
   const loading = ref(false)
   const switching = ref(false)
 
+  function applyAssignedProfiles(names: string[], defaultProfile?: string | null) {
+    const cleanNames = Array.from(new Set(names.map(name => name.trim()).filter(Boolean)))
+    const selectedName = defaultProfile && cleanNames.includes(defaultProfile)
+      ? defaultProfile
+      : cleanNames[0] || null
+    profiles.value = cleanNames.map(name => ({
+      name,
+      active: name === selectedName,
+      model: '',
+      alias: name,
+      avatar: null,
+    }))
+    activeProfile.value = selectedName
+      ? profiles.value.find(profile => profile.name === selectedName) || null
+      : null
+    activeProfileName.value = selectedName
+    if (selectedName) localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, selectedName)
+    else localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY)
+  }
+
   async function fetchProfiles() {
     loading.value = true
     try {
@@ -175,6 +195,7 @@ export const useProfilesStore = defineStore('profiles', () => {
     detailMap,
     loading,
     switching,
+    applyAssignedProfiles,
     fetchProfiles,
     fetchHermesProfiles,
     fetchProfileDetail,

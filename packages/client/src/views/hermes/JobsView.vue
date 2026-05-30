@@ -7,6 +7,8 @@ import JobRunHistory from '@/components/hermes/jobs/JobRunHistory.vue'
 import JobFormModal from '@/components/hermes/jobs/JobFormModal.vue'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useProfilesStore } from '@/stores/hermes/profiles'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { getStoredDefaultProfile, getStoredUserProfiles } from '@/api/client'
 
 const { t } = useI18n()
 const jobsStore = useJobsStore()
@@ -27,7 +29,11 @@ const jobNameMap = computed(() => {
 
 async function ensureProfileSelection() {
   if (!profilesStore.activeProfileName || profilesStore.profiles.length === 0) {
-    await profilesStore.fetchProfiles()
+    if (canAccessRouteName('hermes.profiles', getFrontendAccessRole())) {
+      await profilesStore.fetchProfiles()
+    } else {
+      profilesStore.applyAssignedProfiles(getStoredUserProfiles(), getStoredDefaultProfile())
+    }
   }
 }
 

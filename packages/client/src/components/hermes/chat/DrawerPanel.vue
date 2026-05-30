@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import TerminalPanel from './TerminalPanel.vue'
 import FilesPanel from './FilesPanel.vue'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 
 interface Props {
   show: boolean
@@ -21,9 +22,22 @@ const emit = defineEmits<Emits>()
 const { t } = useI18n()
 
 const activeTab = ref<'terminal' | 'files'>(props.activeTab)
+const frontendRole = computed(() => getFrontendAccessRole())
+const canUseFiles = computed(() => canAccessRouteName('hermes.files', frontendRole.value))
+const canUseTerminal = computed(() => canAccessRouteName('hermes.terminal', frontendRole.value))
+
+function normalizeTab(tab: 'terminal' | 'files') {
+  if (tab === 'terminal' && !canUseTerminal.value) return 'files'
+  if (tab === 'files' && !canUseFiles.value && canUseTerminal.value) return 'terminal'
+  return tab
+}
 
 watch(() => props.activeTab, (newVal) => {
-  if (newVal) activeTab.value = newVal
+  if (newVal) activeTab.value = normalizeTab(newVal)
+}, { immediate: true })
+
+watch([canUseFiles, canUseTerminal], () => {
+  activeTab.value = normalizeTab(activeTab.value)
 })
 
 function handleClose() {
@@ -38,12 +52,14 @@ function handleClose() {
       <div class="drawer-header">
         <div class="drawer-tabs">
           <button
+            v-if="canUseFiles"
             :class="['tab-button', { active: activeTab === 'files' }]"
             @click="activeTab = 'files'"
           >
             {{ t('drawer.files') }}
           </button>
           <button
+            v-if="canUseTerminal"
             :class="['tab-button', { active: activeTab === 'terminal' }]"
             @click="activeTab = 'terminal'"
           >
@@ -59,10 +75,10 @@ function handleClose() {
       </div>
 
       <div class="drawer-content">
-        <div v-show="activeTab === 'files'" class="drawer-pane">
+        <div v-if="canUseFiles" v-show="activeTab === 'files'" class="drawer-pane">
           <FilesPanel />
         </div>
-        <div v-show="activeTab === 'terminal'" class="drawer-pane">
+        <div v-if="canUseTerminal" v-show="activeTab === 'terminal'" class="drawer-pane">
           <TerminalPanel :visible="activeTab === 'terminal' && show" />
         </div>
       </div>

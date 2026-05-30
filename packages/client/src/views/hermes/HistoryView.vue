@@ -9,6 +9,8 @@ import { NButton, NDropdown, NPopconfirm, NTooltip, useMessage, type DropdownOpt
 import { useI18n } from 'vue-i18n'
 import { getSourceLabel } from '@/shared/session-display'
 import { copyToClipboard } from '@/utils/clipboard'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { getStoredDefaultProfile, getStoredUserProfiles } from '@/api/client'
 import HistoryMessageList from '@/components/hermes/chat/HistoryMessageList.vue'
 import SessionListItem from '@/components/hermes/chat/SessionListItem.vue'
 import OutlinePanel from '@/components/hermes/chat/OutlinePanel.vue'
@@ -31,6 +33,9 @@ const routeProfile = computed(() => {
   const value = route.query.profile
   return typeof value === 'string' && value.trim() ? value : null
 })
+const frontendRole = computed(() => getFrontendAccessRole())
+const canLoadProfiles = computed(() => canAccessRouteName('hermes.profiles', frontendRole.value))
+const canLoadModels = computed(() => canAccessRouteName('hermes.models', frontendRole.value))
 
 const effectiveHistoryProfile = computed(() => profilesStore.activeProfileName || routeProfile.value || null)
 
@@ -223,8 +228,12 @@ function handleMobileChange(e: MediaQueryListEvent | MediaQueryList) {
 }
 
 onMounted(async () => {
-  appStore.loadModels()
-  await profilesStore.fetchProfiles()
+  if (canLoadModels.value) appStore.loadModels()
+  if (canLoadProfiles.value) {
+    await profilesStore.fetchProfiles()
+  } else {
+    profilesStore.applyAssignedProfiles(getStoredUserProfiles(), getStoredDefaultProfile())
+  }
   await loadHermesSessions()
   await syncRouteSession()
 

@@ -12,7 +12,18 @@ vi.mock('@/router', () => ({
   },
 }))
 
-import { getApiKey, setApiKey, clearApiKey, hasApiKey, getStoredUserRole, isStoredSuperAdmin, request } from '../../packages/client/src/api/client'
+import {
+  clearApiKey,
+  getApiKey,
+  getStoredDefaultProfile,
+  getStoredUserProfiles,
+  getStoredUserRole,
+  hasApiKey,
+  isStoredSuperAdmin,
+  request,
+  setApiKey,
+  setStoredUserProfileContext,
+} from '../../packages/client/src/api/client'
 import { getDownloadUrl } from '../../packages/client/src/api/hermes/download'
 import { uploadFiles } from '../../packages/client/src/api/hermes/files'
 import { batchDeleteSessions, importHermesSession } from '../../packages/client/src/api/hermes/sessions'
@@ -61,6 +72,34 @@ describe('API Client', () => {
       setApiKey(fakeJwt({ sub: '2', role: 'admin' }))
       expect(getStoredUserRole()).toBe('admin')
       expect(isStoredSuperAdmin()).toBe(false)
+    })
+
+    it('stores employee profile context and clears stale active profile when none is assigned', () => {
+      localStorage.setItem('hermes_active_profile_name', 'default')
+
+      setStoredUserProfileContext({
+        role: 'employee',
+        profiles: [],
+        defaultProfile: null,
+      })
+
+      expect(getStoredUserProfiles()).toEqual([])
+      expect(getStoredDefaultProfile()).toBeNull()
+      expect(localStorage.getItem('hermes_active_profile_name')).toBeNull()
+    })
+
+    it('selects the assigned default profile for scoped employee roles', () => {
+      localStorage.setItem('hermes_active_profile_name', 'stale-owner-profile')
+
+      setStoredUserProfileContext({
+        role: 'employee',
+        profiles: ['research', 'regulatory'],
+        defaultProfile: 'regulatory',
+      })
+
+      expect(getStoredUserProfiles()).toEqual(['research', 'regulatory'])
+      expect(getStoredDefaultProfile()).toBe('regulatory')
+      expect(localStorage.getItem('hermes_active_profile_name')).toBe('regulatory')
     })
   })
 
@@ -117,12 +156,14 @@ describe('API Client', () => {
     it('emits a global auth notice on local 403 responses', async () => {
       const listener = vi.fn()
       window.addEventListener('hermes-auth-notice', listener)
+      setApiKey('employee-jwt')
       mockFetch.mockResolvedValue({ ok: false, status: 403, text: () => Promise.resolve('Forbidden') })
 
       await expect(request('/api/hermes/profiles')).rejects.toThrow('API Error 403')
 
       expect(listener).toHaveBeenCalledOnce()
       expect(listener.mock.calls[0][0].detail).toEqual({ kind: 'forbidden' })
+      expect(hasApiKey()).toBe(true)
       window.removeEventListener('hermes-auth-notice', listener)
     })
 

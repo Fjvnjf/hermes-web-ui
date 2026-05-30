@@ -11,6 +11,7 @@ import {
   findUserById,
   findUserByUsername,
   isUnscopedOwnerRole,
+  listUserProfiles,
   listUsers,
   updateUser,
   updateUsername,
@@ -46,12 +47,15 @@ export async function currentUser(ctx: Context) {
     ctx.body = { error: 'User not found' }
     return
   }
+  const profiles = listUserProfiles(user.id)
   ctx.body = {
     user: {
       id: user.id,
       username: user.username,
       role: user.role,
       status: user.status,
+      profiles: isUnscopedOwnerRole(user.role) ? [] : profiles.map(profile => profile.profile_name),
+      default_profile: isUnscopedOwnerRole(user.role) ? null : profiles.find(profile => profile.is_default === 1)?.profile_name || profiles[0]?.profile_name || null,
       created_at: user.created_at,
       updated_at: user.updated_at,
       last_login_at: user.last_login_at,

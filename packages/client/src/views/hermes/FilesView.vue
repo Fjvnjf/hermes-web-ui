@@ -12,6 +12,8 @@ import FilePreview from '@/components/hermes/files/FilePreview.vue'
 import FileUploadModal from '@/components/hermes/files/FileUploadModal.vue'
 import FileRenameModal from '@/components/hermes/files/FileRenameModal.vue'
 import FileEvidenceIntakePanel from '@/components/hermes/files/FileEvidenceIntakePanel.vue'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { getStoredDefaultProfile, getStoredUserProfiles } from '@/api/client'
 import type { FileEntry } from '@/api/hermes/files'
 
 const filesStore = useFilesStore()
@@ -47,7 +49,11 @@ function handleRename(entry: FileEntry) {
 
 async function loadRoot() {
   if (!profilesStore.activeProfileName || profilesStore.profiles.length === 0) {
-    await profilesStore.fetchProfiles()
+    if (canAccessRouteName('hermes.profiles', getFrontendAccessRole())) {
+      await profilesStore.fetchProfiles()
+    } else {
+      profilesStore.applyAssignedProfiles(getStoredUserProfiles(), getStoredDefaultProfile())
+    }
   }
   await filesStore.fetchEntries('')
 }

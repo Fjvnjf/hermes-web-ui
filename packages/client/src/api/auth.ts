@@ -32,6 +32,8 @@ export interface CurrentUser {
   username: string
   role: UserRole
   status: UserStatus
+  profiles?: string[]
+  default_profile?: string | null
   created_at: number
   updated_at: number
   last_login_at: number | null

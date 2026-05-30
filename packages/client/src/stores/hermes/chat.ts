@@ -9,6 +9,7 @@ import { useProfilesStore } from './profiles'
 import { useSettingsStore } from './settings'
 import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 
 // Re-export ContentBlock for convenience
 export type ContentBlock = ContentBlockImport
@@ -1405,7 +1406,9 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       const appStore = useAppStore()
-      await appStore.waitForModelsForRun()
+      if (canAccessRouteName('hermes.models', getFrontendAccessRole())) {
+        await appStore.waitForModelsForRun()
+      }
       const sessionModel = activeSession.value?.model || appStore.selectedModel
       const sessionProvider = activeSession.value?.provider || appStore.selectedProvider
       const runPayload = {

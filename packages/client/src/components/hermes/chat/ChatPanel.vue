@@ -24,6 +24,8 @@ import {
   shouldPromptForCapture,
   type CaptureContextId,
 } from "@/composables/useSessionCapture";
+import { canAccessRouteName, getFrontendAccessRole } from "@/utils/accessControl";
+import { getStoredDefaultProfile, getStoredUserProfiles } from "@/api/client";
 import FolderPicker from "./FolderPicker.vue";
 import ChatInput from "./ChatInput.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
@@ -49,6 +51,12 @@ const showOutline = ref(false);
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null);
 
 const currentMode = ref<"chat" | "live">("chat");
+const frontendRole = computed(() => getFrontendAccessRole());
+const canUseProfiles = computed(() => canAccessRouteName("hermes.profiles", frontendRole.value));
+const canUseModels = computed(() => canAccessRouteName("hermes.models", frontendRole.value));
+const canUseTerminal = computed(() => canAccessRouteName("hermes.terminal", frontendRole.value));
+const canUseSettings = computed(() => canAccessRouteName("hermes.settings", frontendRole.value));
+const canUseFiles = computed(() => canAccessRouteName("hermes.files", frontendRole.value));
 
 // Batch selection mode
 const isBatchMode = ref(false);
@@ -68,6 +76,25 @@ const showSessions = ref(
 );
 let mobileQuery: MediaQueryList | null = null;
 const isMobile = ref(false);
+const assignedProfileNames = computed(() => getStoredUserProfiles());
+const assignedDefaultProfile = computed(() => getStoredDefaultProfile());
+const effectiveProfiles = computed(() => {
+  if (canUseProfiles.value) return profilesStore.profiles;
+  return assignedProfileNames.value.map((name) => ({
+    name,
+    active: name === assignedDefaultProfile.value,
+    model: "",
+    alias: name,
+    avatar: null,
+  }));
+});
+const chatProfileUnavailable = computed(() => !canUseProfiles.value && effectiveProfiles.value.length === 0);
+const chatProfileUnavailableText = "No chat profile assigned. Contact owner.";
+
+function applyAssignedProfileContext() {
+  if (canUseProfiles.value) return;
+  profilesStore.applyAssignedProfiles(assignedProfileNames.value, assignedDefaultProfile.value);
+}
 
 function sessionHref(sessionId: string) {
   return router.resolve({
@@ -105,7 +132,8 @@ onMounted(() => {
   mobileQuery = window.matchMedia("(max-width: 768px)");
   handleMobileChange(mobileQuery);
   mobileQuery.addEventListener("change", handleMobileChange);
-  if (profilesStore.profiles.length === 0) {
+  applyAssignedProfileContext();
+  if (canUseProfiles.value && profilesStore.profiles.length === 0) {
     void profilesStore.fetchProfiles();
   }
 });
@@ -120,7 +148,7 @@ const renameInputRef = ref<InstanceType<typeof NInput> | null>(null);
 const sessionProfileFilter = computed(() => chatStore.sessionProfileFilter);
 const profileFilterOptions = computed(() => [
   { label: t("chat.allProfiles"), value: "__all__" },
-  ...profilesStore.profiles.map((profile) => ({
+  ...effectiveProfiles.value.map((profile) => ({
     label: profile.name,
     value: profile.name,
   })),
@@ -246,7 +274,7 @@ function getDefaultModelForProfile(profile: string) {
 }
 
 const newChatProfileOptions = computed(() =>
-  (profilesStore.profiles.length > 0 ? profilesStore.profiles : [{ name: "default" }]).map((profile) => ({
+  (effectiveProfiles.value.length > 0 ? effectiveProfiles.value : (canUseProfiles.value ? [{ name: "default" }] : [])).map((profile) => ({
     label: profile.name,
     value: profile.name,
   })),
@@ -281,17 +309,34 @@ function syncNewChatModelSelection() {
 
 async function openNewChatModal() {
   if (maybePromptCaptureBeforeLeaving()) return;
+  applyAssignedProfileContext();
+  if (chatProfileUnavailable.value) {
+    message.warning(chatProfileUnavailableText);
+    return;
+  }
+  if (!canUseModels.value) {
+    const profile =
+      profilesStore.activeProfileName ||
+      assignedDefaultProfile.value ||
+      effectiveProfiles.value[0]?.name;
+    const session = chatStore.newChat({ profile });
+    await router.push({
+      name: "hermes.session",
+      params: { sessionId: session.id },
+    });
+    return;
+  }
   showNewChatModal.value = true;
   newChatLoading.value = true;
   try {
-    if (profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
+    if (canUseProfiles.value && profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
     if (appStore.modelGroups.length === 0 && appStore.profileModelGroups.length === 0) {
       await appStore.loadModels();
     }
     newChatProfile.value =
       profilesStore.activeProfileName ||
-      profilesStore.profiles.find((profile) => profile.active)?.name ||
-      profilesStore.profiles[0]?.name ||
+      effectiveProfiles.value.find((profile) => profile.active)?.name ||
+      effectiveProfiles.value[0]?.name ||
       "default";
     syncNewChatModelSelection();
   } finally {
@@ -1308,6 +1353,7 @@ async function handleSessionModelCustomSubmit() {
             <span class="evidence-copy">Hermes Command Center runtime is attached to this session.</span>
             <div class="command-strip-actions" aria-label="Session command actions">
               <button
+                v-if="canUseFiles"
                 type="button"
                 class="command-action"
                 aria-label="Open files drawer"
@@ -1320,6 +1366,7 @@ async function handleSessionModelCustomSubmit() {
                 <span>Files</span>
               </button>
               <button
+                v-if="canUseTerminal"
                 type="button"
                 class="command-action"
                 aria-label="Open terminal drawer"
@@ -1333,6 +1380,7 @@ async function handleSessionModelCustomSubmit() {
                 <span>Terminal</span>
               </button>
               <button
+                v-if="canUseSettings"
                 type="button"
                 class="command-action"
                 aria-label="Copy session link"
@@ -1347,6 +1395,7 @@ async function handleSessionModelCustomSubmit() {
                 <span>Link</span>
               </button>
               <button
+                v-if="canUseSettings"
                 type="button"
                 class="command-action"
                 aria-label="Open settings"
@@ -1521,7 +1570,13 @@ async function handleSessionModelCustomSubmit() {
             </div>
           </div>
         </div>
-        <ChatInput />
+        <div v-if="chatProfileUnavailable" class="profile-access-alert" role="status">
+          <div class="profile-access-alert-title">{{ chatProfileUnavailableText }}</div>
+          <div class="profile-access-alert-copy">
+            Your account is signed in, but it is not assigned to an employee-safe Hermes chat profile yet.
+          </div>
+        </div>
+        <ChatInput v-else />
       </template>
       <ConversationMonitorPane
         v-else
@@ -1567,6 +1622,27 @@ async function handleSessionModelCustomSubmit() {
   position: relative;
   background: #060a12;
   color: $text-primary;
+}
+
+.profile-access-alert {
+  margin: 12px 16px 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(245, 158, 11, 0.36);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  color: $text-secondary;
+}
+
+.profile-access-alert-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #fbbf24;
+  margin-bottom: 4px;
+}
+
+.profile-access-alert-copy {
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .session-model-search {

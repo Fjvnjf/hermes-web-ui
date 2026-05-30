@@ -20,6 +20,7 @@ import {
   type InvestorNextAction,
   type PresentationMaterial,
 } from '@/utils/investorIntelligence'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -89,6 +90,16 @@ const kpis = computed(() => [
   },
 ])
 
+type DashboardRouteTarget = { name: string }
+
+function canUseRouteName(routeName: string): boolean {
+  return canAccessRouteName(routeName, getFrontendAccessRole())
+}
+
+function canUseRouteTarget(to: DashboardRouteTarget): boolean {
+  return canUseRouteName(to.name)
+}
+
 const investorSnapshot = computed(() => [
   {
     label: 'Investor Readiness',
@@ -139,11 +150,20 @@ const investorSnapshot = computed(() => [
     tone: intelligence.approvedPresentationCount.value > 0 ? 'info' : 'muted',
     to: { name: 'hermes.investorPresentation' },
   },
-])
+].filter(item => canUseRouteTarget(item.to)))
 
-const nextBestActions = computed(() => buildInvestorNextActions(intelligence.state.value))
+const nextBestActions = computed(() =>
+  buildInvestorNextActions(intelligence.state.value)
+    .filter(action => canUseRouteName(action.routeName))
+)
 const topEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
+const visibleTopEvidenceGaps = computed(() =>
+  topEvidenceGaps.value.filter(gap => canUseRouteName(evidenceGapRouteName(gap.id)))
+)
 const topInvestorRisks = computed(() => intelligence.riskRegisterItems.value.slice(0, 4))
+const visibleTopInvestorRisks = computed(() =>
+  topInvestorRisks.value.filter(risk => canUseRouteName(risk.routeName))
+)
 const pendingReviewItems = computed(() =>
   intelligence.state.value.researchFindings
     .filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
@@ -160,6 +180,18 @@ const deckMaterialsNeedingEvidence = computed(() =>
     .filter(material => !isPresentationMaterialAllowed(material))
     .slice(0, 4),
 )
+
+const canUseInvestorReadiness = computed(() => canUseRouteName('hermes.investorReadiness'))
+const canUseResearchReview = computed(() => canUseRouteName('hermes.researchResultReview'))
+const canUseInvestorPresentation = computed(() => canUseRouteName('hermes.investorPresentation'))
+const canUseInvestmentCalculator = computed(() => canUseRouteName('hermes.investmentCalculator'))
+const showFinancialDeckPanel = computed(() => canUseInvestorPresentation.value || canUseInvestmentCalculator.value)
+
+function evidenceGapRouteName(gapId: string): string {
+  if (gapId === 'market') return 'hermes.marketIntelligence'
+  if (gapId === 'financial') return 'hermes.investmentCalculator'
+  return 'hermes.investorReadiness'
+}
 
 function materialStatusLabel(material: PresentationMaterial): string {
   if (material.evidenceStatus === 'Verified') return 'Source required'
@@ -287,6 +319,8 @@ const workspaceActions = [
   },
 ]
 
+const visibleWorkspaceActions = computed(() => workspaceActions.filter(action => canUseRouteTarget(action.to)))
+
 const workstreams = [
   {
     group: 'Feasibility',
@@ -340,6 +374,15 @@ const workstreams = [
   },
 ]
 
+const visibleWorkstreams = computed(() =>
+  workstreams
+    .map(stream => ({
+      ...stream,
+      links: stream.links.filter(link => canUseRouteTarget(link.to)),
+    }))
+    .filter(stream => canUseRouteTarget(stream.to) || stream.links.length > 0)
+)
+
 const commandLinks = [
   { label: 'Settings', to: { name: 'hermes.settings' } },
   { label: 'Models', to: { name: 'hermes.models' } },
@@ -355,6 +398,8 @@ const commandLinks = [
   { label: 'Version Preview', to: { name: 'hermes.versionPreview' } },
   { label: 'Group Chat', to: { name: 'hermes.groupChat' } },
 ]
+
+const visibleCommandLinks = computed(() => commandLinks.filter(link => canUseRouteTarget(link.to)))
 
 function formatSessionTitle(session: SessionSummary): string {
   return session.title || session.preview || session.id
@@ -395,10 +440,10 @@ async function loadDashboard() {
   }
 
   const [modelsResult, sessionsResult, jobsResult, runtimeResult] = await Promise.allSettled([
-    appStore.loadModels(true),
+    canUseRouteName('hermes.models') ? appStore.loadModels(true) : Promise.resolve(null),
     fetchSessions(undefined, 6),
     listJobs(),
-    fetchPerformanceRuntime(),
+    canUseRouteName('hermes.performance') ? fetchPerformanceRuntime() : Promise.resolve(null),
   ])
 
   if (modelsResult.status === 'rejected') partialFailure = true
@@ -447,7 +492,7 @@ onMounted(() => {
       <PinnedExecutiveIntelligenceBoard />
 
       <section class="workspace-action-grid" aria-label="Research workspace shortcuts">
-        <RouterLink v-for="action in workspaceActions" :key="action.label" class="workspace-action" :to="action.to">
+        <RouterLink v-for="action in visibleWorkspaceActions" :key="action.label" class="workspace-action" :to="action.to">
           <span>{{ action.label }}</span>
           <small>{{ action.detail }}</small>
         </RouterLink>
@@ -467,7 +512,7 @@ onMounted(() => {
             <h3>Next Best Actions</h3>
             <p>Generated from evidence status, research review, financial snapshots, and approved deck material.</p>
           </div>
-          <RouterLink :to="{ name: 'hermes.investorReadiness' }">Readiness</RouterLink>
+          <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Readiness</RouterLink>
         </div>
         <div class="next-actions-list">
           <article
@@ -504,14 +549,14 @@ onMounted(() => {
               <h3>Evidence Gaps</h3>
               <p>Top missing or unverified investor-readiness areas.</p>
             </div>
-            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Review</RouterLink>
+            <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Review</RouterLink>
           </div>
-          <div v-if="topEvidenceGaps.length" class="triage-list">
+          <div v-if="visibleTopEvidenceGaps.length" class="triage-list">
             <RouterLink
-              v-for="gap in topEvidenceGaps"
+              v-for="gap in visibleTopEvidenceGaps"
               :key="gap.id"
               class="triage-row"
-              :to="{ name: gap.id === 'market' ? 'hermes.marketIntelligence' : gap.id === 'financial' ? 'hermes.investmentCalculator' : 'hermes.investorReadiness' }"
+              :to="{ name: evidenceGapRouteName(gap.id) }"
             >
               <span>{{ gap.label }}</span>
               <small>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</small>
@@ -526,11 +571,11 @@ onMounted(() => {
               <h3>Investor Risk Register</h3>
               <p>Highest-priority risks from evidence gaps, research review, warnings, and unsupported deck material.</p>
             </div>
-            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Risk register</RouterLink>
+            <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Risk register</RouterLink>
           </div>
-          <div v-if="topInvestorRisks.length" class="triage-list">
+          <div v-if="visibleTopInvestorRisks.length" class="triage-list">
             <RouterLink
-              v-for="risk in topInvestorRisks"
+              v-for="risk in visibleTopInvestorRisks"
               :key="risk.id"
               class="triage-row"
               :to="{ name: risk.routeName }"
@@ -542,7 +587,7 @@ onMounted(() => {
           <div v-else class="triage-empty">No current investor risks in the local intelligence state.</div>
         </article>
 
-        <article class="triage-panel">
+        <article v-if="canUseResearchReview" class="triage-panel">
           <div class="panel-title">
             <div>
               <h3>Research Review Queue</h3>
@@ -573,7 +618,7 @@ onMounted(() => {
           <div v-else class="triage-empty">No pending research findings or manual research jobs.</div>
         </article>
 
-        <article class="triage-panel">
+        <article v-if="showFinancialDeckPanel" class="triage-panel">
           <div class="panel-title">
             <div>
               <h3>Recent Session Captures</h3>
@@ -603,24 +648,26 @@ onMounted(() => {
               <h3>Financial & Deck Status</h3>
               <p>Latest model snapshot and investor material that still needs evidence.</p>
             </div>
-            <RouterLink :to="{ name: 'hermes.investorPresentation' }">Deck</RouterLink>
+            <RouterLink v-if="canUseInvestorPresentation" :to="{ name: 'hermes.investorPresentation' }">Deck</RouterLink>
           </div>
           <div class="triage-list">
-            <RouterLink class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
+            <RouterLink v-if="canUseInvestmentCalculator" class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
               <span>{{ latestFinancialSnapshot?.scenarioName || 'No saved financial snapshot' }}</span>
               <small>
                 {{ latestFinancialSnapshot ? `${latestFinancialSnapshot.evidenceStatus} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
               </small>
             </RouterLink>
-            <RouterLink
-              v-for="material in deckMaterialsNeedingEvidence"
-              :key="material.id || `${material.section}-${material.content}`"
-              class="triage-row"
-              :to="{ name: 'hermes.investorPresentation' }"
-            >
-              <span>{{ material.section }}</span>
-              <small>{{ materialStatusLabel(material) }} / {{ material.content }}</small>
-            </RouterLink>
+            <template v-if="canUseInvestorPresentation">
+              <RouterLink
+                v-for="material in deckMaterialsNeedingEvidence"
+                :key="material.id || `${material.section}-${material.content}`"
+                class="triage-row"
+                :to="{ name: 'hermes.investorPresentation' }"
+              >
+                <span>{{ material.section }}</span>
+                <small>{{ materialStatusLabel(material) }} / {{ material.content }}</small>
+              </RouterLink>
+            </template>
           </div>
         </article>
       </section>
@@ -634,10 +681,10 @@ onMounted(() => {
       </section>
 
       <section class="workstream-grid" aria-label="Hermes workstreams">
-        <article v-for="stream in workstreams" :key="stream.group" class="workstream-card">
+        <article v-for="stream in visibleWorkstreams" :key="stream.group" class="workstream-card">
           <div class="workstream-head">
             <span>{{ stream.group }}</span>
-            <RouterLink :to="stream.to">Open</RouterLink>
+            <RouterLink v-if="canUseRouteTarget(stream.to)" :to="stream.to">Open</RouterLink>
           </div>
           <h3>{{ stream.title }}</h3>
           <p>{{ stream.detail }}</p>
@@ -683,13 +730,13 @@ onMounted(() => {
           <div v-else class="ops-empty">No scheduled jobs</div>
         </article>
 
-        <article class="ops-panel">
+        <article v-if="visibleCommandLinks.length" class="ops-panel">
           <div class="panel-title">
             <h3>Hermes System</h3>
-            <RouterLink :to="{ name: 'hermes.settings' }">Settings</RouterLink>
+            <RouterLink v-if="canUseRouteName('hermes.settings')" :to="{ name: 'hermes.settings' }">Settings</RouterLink>
           </div>
           <div class="command-link-grid">
-            <RouterLink v-for="link in commandLinks" :key="link.label" :to="link.to">
+            <RouterLink v-for="link in visibleCommandLinks" :key="link.label" :to="link.to">
               {{ link.label }}
             </RouterLink>
           </div>

@@ -201,6 +201,10 @@ const router = createRouter({
       component: () => import('@/views/hermes/LocalBackupVaultView.vue'),
     },
     {
+      path: '/hermes/backup-vault',
+      redirect: { name: 'hermes.localBackupVault' },
+    },
+    {
       path: '/hermes/group-chat',
       name: 'hermes.groupChat',
       component: () => import('@/views/hermes/GroupChatView.vue'),

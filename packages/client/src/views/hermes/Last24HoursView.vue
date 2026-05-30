@@ -54,7 +54,11 @@ const recentMarketClaims = computed(() => intelligence.state.value.marketClaims.
 const recentCompetitors = computed(() => intelligence.state.value.competitors.filter(item => toMs(item.updatedAt) >= cutoffMs.value))
 
 const limitedDataNotes = computed(() => [
-  memoryAvailable.value ? 'Memory API is reachable, but memory sections do not expose per-item timestamps.' : 'Memory could not be checked during this refresh.',
+  canUseRawMemory.value
+    ? memoryAvailable.value
+      ? 'Memory API is reachable, but memory sections do not expose per-item timestamps.'
+      : 'Memory could not be checked during this refresh.'
+    : 'Raw Memory is restricted for this role and was not queried.',
   'Investor readiness changes are inferred from local evidence/research records when timestamps exist.',
   'Files are counted from the top-level Documents listing only.',
 ])
@@ -97,18 +101,19 @@ async function refresh() {
   loading.value = true
   warning.value = ''
   try {
+    const memoryCheck = canUseRawMemory.value ? fetchMemory() : Promise.resolve(null)
     const results = await Promise.allSettled([
       fetchSessions(undefined, 50),
       listJobs(),
       listFiles(''),
       kanbanStore.fetchBoards(),
       kanbanStore.fetchTasks(true),
-      fetchMemory(),
+      memoryCheck,
     ])
     if (results[0].status === 'fulfilled') sessions.value = results[0].value
     if (results[1].status === 'fulfilled') jobs.value = results[1].value
     if (results[2].status === 'fulfilled') files.value = results[2].value.entries
-    memoryAvailable.value = results[5].status === 'fulfilled'
+    memoryAvailable.value = canUseRawMemory.value && results[5].status === 'fulfilled'
     captureActivities.value = listRecentCaptureActivities(20)
     const failures = results.filter(item => item.status === 'rejected').length
     if (failures) warning.value = `${failures} activity source${failures === 1 ? '' : 's'} returned limited data.`

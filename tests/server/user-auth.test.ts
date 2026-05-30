@@ -102,6 +102,37 @@ describe('user auth tables and middleware', () => {
     expect(next).toHaveBeenCalledOnce()
   })
 
+  it('returns only the current regular user profile bindings from /api/auth/me', async () => {
+    const { schemas, users } = await initUsers()
+    const authController = await import('../../packages/server/src/controllers/auth')
+    const now = Date.now()
+    db.prepare(
+      `INSERT INTO ${schemas.USERS_TABLE} (username, password_hash, role, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('employee', users.hashPassword('secret'), 'employee', 'active', now, now)
+    const employee = users.findUserByUsername('employee')
+    expect(employee?.id).toBe(1)
+    db.prepare(
+      `INSERT INTO ${schemas.USER_PROFILES_TABLE} (user_id, profile_name, is_default, created_at)
+       VALUES (?, ?, 0, ?), (?, ?, 1, ?)`
+    ).run(employee!.id, 'research', now, employee!.id, 'regulatory', now)
+
+    const ctx = {
+      state: { user: { id: employee!.id, username: 'employee', role: 'employee' } },
+      status: 200,
+      body: null,
+    } as any
+
+    await authController.currentUser(ctx)
+
+    expect(ctx.body.user).toMatchObject({
+      username: 'employee',
+      role: 'employee',
+      profiles: ['regulatory', 'research'],
+      default_profile: 'regulatory',
+    })
+  })
+
   it('does not infer a profile when the frontend does not send one', async () => {
     const { auth } = await initUsers()
     const ctx = makeCtx({ id: 1, username: 'admin', role: 'super_admin' }, '')

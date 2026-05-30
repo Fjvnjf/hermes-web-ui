@@ -1,4 +1,7 @@
 const DEFAULT_BASE_URL = ''
+const USER_PROFILES_STORAGE_KEY = 'hermes_current_user_profiles'
+const USER_DEFAULT_PROFILE_STORAGE_KEY = 'hermes_current_user_default_profile'
+const ACTIVE_PROFILE_STORAGE_KEY = 'hermes_active_profile_name'
 
 function getBaseUrl(): string {
   if (import.meta.env.VITE_HERMES_PREVIEW === '1') return DEFAULT_BASE_URL
@@ -65,8 +68,65 @@ export function isStoredSuperAdmin(): boolean {
   return getStoredUserRole() === 'super_admin'
 }
 
+function isScopedBusinessRole(role: StoredUserRole | null): boolean {
+  return role === 'employee' ||
+    role === 'research_assistant' ||
+    role === 'financial_analyst' ||
+    role === 'regulatory_consultant' ||
+    role === 'investor_viewer'
+}
+
+export function setStoredUserProfileContext(input: {
+  role?: StoredUserRole | null
+  profiles?: string[]
+  defaultProfile?: string | null
+}) {
+  const profiles = Array.isArray(input.profiles)
+    ? input.profiles.map(profile => profile.trim()).filter(Boolean)
+    : []
+  const defaultProfile = input.defaultProfile && profiles.includes(input.defaultProfile)
+    ? input.defaultProfile
+    : profiles[0] || null
+
+  localStorage.setItem(USER_PROFILES_STORAGE_KEY, JSON.stringify(profiles))
+  if (defaultProfile) localStorage.setItem(USER_DEFAULT_PROFILE_STORAGE_KEY, defaultProfile)
+  else localStorage.removeItem(USER_DEFAULT_PROFILE_STORAGE_KEY)
+
+  if (!isScopedBusinessRole(input.role || null)) return
+
+  const activeProfile = localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY)
+  if (defaultProfile && (!activeProfile || !profiles.includes(activeProfile))) {
+    localStorage.setItem(ACTIVE_PROFILE_STORAGE_KEY, defaultProfile)
+    return
+  }
+
+  if (!defaultProfile) {
+    localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY)
+  }
+}
+
+export function clearStoredUserProfileContext() {
+  localStorage.removeItem(USER_PROFILES_STORAGE_KEY)
+  localStorage.removeItem(USER_DEFAULT_PROFILE_STORAGE_KEY)
+}
+
+export function getStoredUserProfiles(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(USER_PROFILES_STORAGE_KEY) || '[]')
+    return Array.isArray(parsed)
+      ? parsed.map(profile => String(profile || '').trim()).filter(Boolean)
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function getStoredDefaultProfile(): string | null {
+  return localStorage.getItem(USER_DEFAULT_PROFILE_STORAGE_KEY) || getStoredUserProfiles()[0] || null
+}
+
 export function getActiveProfileName(): string | null {
-  return localStorage.getItem('hermes_active_profile_name')
+  return localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY)
 }
 
 function bodyHasProfileSelector(body: BodyInit | null | undefined): boolean {
@@ -134,6 +194,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
 
   if (res.status === 401 && isLocalBff) {
     clearApiKey()
+    clearStoredUserProfileContext()
     emitAuthNotice('expired')
     throw new Error('Unauthorized')
   }
@@ -143,6 +204,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     if (res.status === 403 && isLocalBff) {
       if (text.includes('User is disabled or does not exist')) {
         clearApiKey()
+        clearStoredUserProfileContext()
         emitAuthNotice('expired')
       } else {
         emitAuthNotice('forbidden')
