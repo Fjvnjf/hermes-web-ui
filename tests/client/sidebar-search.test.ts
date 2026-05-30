@@ -209,6 +209,7 @@ describe('AppSidebar search entry', () => {
       'hermes.profiles',
       'hermes.settings',
       'hermes.groupChat',
+      'hermes.localBackupVault',
       'hermes.terminal',
       'hermes.logs',
       'hermes.performance',

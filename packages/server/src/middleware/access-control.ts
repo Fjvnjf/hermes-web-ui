@@ -30,6 +30,7 @@ export type Permission =
   | 'approve:investor-material'
   | 'view:admin'
   | 'use:proxy'
+  | 'export:backup'
 
 export type ConfidentialityLabel =
   | 'public-shareable'
@@ -109,6 +110,7 @@ export function permissionForRequest(ctx: Pick<Context, 'path' | 'method'>): Per
 
   if (path.startsWith('/api/hermes/access-denied')) return 'view:account'
   if (path.startsWith('/api/hermes/investor/portal')) return 'view:investor-approved'
+  if (path.startsWith('/api/hermes/backup')) return 'export:backup'
   if (path.startsWith('/api/hermes/memory')) return writing ? 'write:memory' : 'view:memory'
   if (path.startsWith('/api/hermes/sessions') ||
     path.startsWith('/api/hermes/session') ||
@@ -238,7 +240,7 @@ export async function requireRequestPermission(ctx: Context, next: Next): Promis
     return
   }
 
-  const sensitive = ['view:terminal', 'view:settings', 'view:models', 'view:logs', 'download:files', 'view:memory', 'write:memory', 'view:investor-approved']
+  const sensitive = ['view:terminal', 'view:settings', 'view:models', 'view:logs', 'download:files', 'view:memory', 'write:memory', 'view:investor-approved', 'export:backup']
   if (sensitive.includes(permission)) {
     auditAccessEvent({
       ctx,

@@ -188,6 +188,12 @@ const router = createRouter({
       component: () => import('@/views/hermes/TerminalView.vue'),
     },
     {
+      path: '/hermes/local-backup-vault',
+      name: 'hermes.localBackupVault',
+      meta: { sensitivity: 'system-admin-only' },
+      component: () => import('@/views/hermes/LocalBackupVaultView.vue'),
+    },
+    {
       path: '/hermes/group-chat',
       name: 'hermes.groupChat',
       component: () => import('@/views/hermes/GroupChatView.vue'),

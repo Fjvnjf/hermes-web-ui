@@ -63,6 +63,7 @@ export const ROUTE_ACCESS_POLICIES: RouteAccessPolicy[] = [
   { routeName: 'hermes.logs', sensitivity: 'system-admin-only', allowedRoles: ['owner', 'developer_admin'], note: 'Logs can expose system details.' },
   { routeName: 'hermes.performance', sensitivity: 'system-admin-only', allowedRoles: ['owner', 'developer_admin'], note: 'Runtime performance data is system-only.' },
   { routeName: 'hermes.versionPreview', sensitivity: 'system-admin-only', allowedRoles: ['owner', 'developer_admin'], note: 'Version preview/update tooling is system-only.' },
+  { routeName: 'hermes.localBackupVault', sensitivity: 'system-admin-only', allowedRoles: ['owner'], note: 'Disaster recovery exports can contain broad confidential workspace data and are owner-only.' },
   { routeName: 'hermes.terminal', sensitivity: 'system-admin-only', allowedRoles: ['owner', 'developer_admin'], note: 'Terminal is never employee/investor safe.' },
   { routeName: 'hermes.skills', sensitivity: 'system-admin-only', allowedRoles: ['owner', 'developer_admin'], note: 'Skill files and memory wiring are admin only.' },
   { routeName: 'hermes.plugins', sensitivity: 'system-admin-only', allowedRoles: ['owner', 'developer_admin'], note: 'Plugin tools are admin only.' },

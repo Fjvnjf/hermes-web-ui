@@ -27,11 +27,18 @@ describe('frontend route access policy', () => {
     expect(canAccessRouteName('hermes.settings', 'developer_admin')).toBe(true)
     expect(canAccessRouteName('hermes.logs', 'developer_admin')).toBe(true)
     expect(canAccessRouteName('hermes.memory', 'developer_admin')).toBe(false)
+    expect(canAccessRouteName('hermes.localBackupVault', 'developer_admin')).toBe(false)
   })
 
   it('allows financial analysts to open the calculator but not raw history or files', () => {
     expect(canAccessRouteName('hermes.investmentCalculator', 'financial_analyst')).toBe(true)
     expect(canAccessRouteName('hermes.history', 'financial_analyst')).toBe(false)
     expect(canAccessRouteName('hermes.files', 'financial_analyst')).toBe(false)
+  })
+
+  it('keeps the Local Backup Vault owner-only', () => {
+    expect(canAccessRouteName('hermes.localBackupVault', 'owner')).toBe(true)
+    expect(canAccessRouteName('hermes.localBackupVault', 'employee')).toBe(false)
+    expect(canAccessRouteName('hermes.localBackupVault', 'investor_viewer')).toBe(false)
   })
 })

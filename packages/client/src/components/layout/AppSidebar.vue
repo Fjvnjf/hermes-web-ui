@@ -483,6 +483,14 @@ function openChangelog() {
           </svg>
         </div>
         <div v-show="!isGroupCollapsed('developerTools')" class="nav-group-items">
+          <RouteLinkItem v-if="canShowRoute('hermes.localBackupVault')" class="nav-item" :to="{ name: 'hermes.localBackupVault' }" :active="selectedKey === 'hermes.localBackupVault'" title="Owner-only local backup and disaster recovery exports">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6l-8-3z" />
+              <path d="M8 12h8" />
+              <path d="M12 8v8" />
+            </svg>
+            <span>Backup Vault</span>
+          </RouteLinkItem>
           <RouteLinkItem v-if="canShowRoute('hermes.terminal')" class="nav-item" :to="{ name: 'hermes.terminal' }" :active="selectedKey === 'hermes.terminal'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="4 17 10 11 4 5" />
