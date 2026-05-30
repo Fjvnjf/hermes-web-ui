@@ -1261,6 +1261,51 @@ describe('investor readiness pages', () => {
     expect(body).toContain('Do not convert this into a verified investor claim')
   })
 
+  it('surfaces a live risk register and creates mitigation tasks without approving evidence', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'DMS regulatory status still needs source-backed review.',
+      keyClaim: 'DMS regulatory status',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+      riskNote: 'Regulatory status must be confirmed before investor use.',
+      status: 'Pending Review',
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported market demand claim should stay out of investor materials.',
+      evidenceStatus: 'To Verify',
+      source: null,
+    })
+    const beforeScore = intelligence.readinessScore.value
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Risk register')
+    expect(wrapper.text()).toContain('Investor Risks')
+    expect(wrapper.text()).toContain('Factory evidence')
+    expect(wrapper.text()).toContain('DMS regulatory status')
+    expect(wrapper.text()).toContain('Unsupported')
+
+    const createButton = wrapper.findAll('button').find(button => button.text() === 'Create mitigation task')
+    expect(createButton).toBeTruthy()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: expect.stringContaining('Mitigate risk:'),
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    const body = createTaskMock.mock.calls[0][0].body
+    expect(body).toContain('Source page: Investor Readiness Center / Risk Register')
+    expect(body).toContain('Do not hide this risk or use the related claim as investor-ready')
+    expect(intelligence.readinessScore.value).toBe(beforeScore)
+  })
+
   it('stages saved data-room sources for research review without updating investor draft material', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addDataRoomSource({

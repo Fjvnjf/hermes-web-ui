@@ -8,7 +8,13 @@ import {
   type FeasibilityEvidenceItem,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
-import { presentationSectionForEvidence, type IntelligenceEvidenceStatus, type SourceReference } from '@/utils/investorIntelligence'
+import {
+  isPresentationMaterialAllowed,
+  normalizedMarketClaimStatus,
+  presentationSectionForEvidence,
+  type IntelligenceEvidenceStatus,
+  type SourceReference,
+} from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 import { mkDir, writeFile } from '@/api/hermes/files'
 
@@ -39,6 +45,17 @@ interface AssumptionRegisterItem {
   priority: 1 | 2 | 3
 }
 
+interface RiskRegisterItem {
+  id: string
+  title: string
+  origin: string
+  area: EvidenceArea
+  evidenceStatus: IntelligenceEvidenceStatus | 'Pending Review' | 'Unsupported'
+  detail: string
+  routeName: string
+  priority: 1 | 2 | 3
+}
+
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
@@ -46,6 +63,7 @@ const creatingKey = ref('')
 const creatingDataRoomTask = ref('')
 const stagingDataRoomSourceId = ref('')
 const creatingAssumptionTaskId = ref('')
+const creatingRiskTaskId = ref('')
 const savingDataRoomIndex = ref(false)
 const latestDataRoomIndexPath = ref('')
 const evidenceForm = ref({
@@ -280,6 +298,118 @@ const assumptionRecords = computed<AssumptionRegisterItem[]>(() => {
 })
 
 const visibleAssumptionRecords = computed(() => assumptionRecords.value.slice(0, 8))
+
+function riskPriority(area: EvidenceArea, evidenceStatus: RiskRegisterItem['evidenceStatus']): 1 | 2 | 3 {
+  if (evidenceStatus === 'Missing' || evidenceStatus === 'Unsupported') return 3
+  if (area === 'regulatory' || area === 'factory' || area === 'financial') return 3
+  if (evidenceStatus === 'To Verify' || evidenceStatus === 'Pending Review' || evidenceStatus === 'Hypothesis') return 2
+  return 1
+}
+
+function isWeakStatus(status: IntelligenceEvidenceStatus): boolean {
+  return status === 'Missing' ||
+    status === 'To Verify' ||
+    status === 'Hypothesis' ||
+    status === 'Reference Only'
+}
+
+const riskRegisterItems = computed<RiskRegisterItem[]>(() => {
+  const risks: RiskRegisterItem[] = []
+
+  for (const item of sections.value) {
+    if (!isWeakStatus(item.evidenceStatus)) continue
+    risks.push({
+      id: `evidence-${item.id}`,
+      title: item.label,
+      origin: 'Evidence gap',
+      area: item.id,
+      evidenceStatus: item.evidenceStatus,
+      detail: item.nextAction,
+      routeName: item.routeName,
+      priority: riskPriority(item.id, item.evidenceStatus),
+    })
+  }
+
+  for (const finding of intelligence.state.value.researchFindings) {
+    if (finding.status !== 'Pending Review' && finding.status !== 'To Verify') continue
+    risks.push({
+      id: `finding-${finding.id}`,
+      title: finding.keyClaim,
+      origin: 'Research review',
+      area: finding.area,
+      evidenceStatus: finding.status === 'Pending Review' ? 'Pending Review' : finding.evidenceStatus,
+      detail: finding.riskNote || finding.summary,
+      routeName: 'hermes.researchResultReview',
+      priority: riskPriority(finding.area, finding.status === 'Pending Review' ? 'Pending Review' : finding.evidenceStatus),
+    })
+  }
+
+  for (const model of intelligence.state.value.financialModels.slice(0, 2)) {
+    for (const warning of model.warnings) {
+      risks.push({
+        id: `financial-${model.id}-${warning}`,
+        title: `${model.scenarioName} financial warning`,
+        origin: 'IRR calculator',
+        area: 'financial',
+        evidenceStatus: model.evidenceStatus,
+        detail: warning,
+        routeName: 'hermes.investmentCalculator',
+        priority: riskPriority('financial', model.evidenceStatus),
+      })
+    }
+  }
+
+  for (const claim of intelligence.state.value.marketClaims) {
+    const status = normalizedMarketClaimStatus(claim)
+    if (!isWeakStatus(status)) continue
+    risks.push({
+      id: `market-${claim.id || claim.label}`,
+      title: claim.label,
+      origin: 'Market Intelligence',
+      area: 'market',
+      evidenceStatus: status,
+      detail: claim.value || 'Market claim needs value and source evidence.',
+      routeName: 'hermes.marketIntelligence',
+      priority: riskPriority('market', status),
+    })
+  }
+
+  for (const competitor of intelligence.state.value.competitors) {
+    if (!isWeakStatus(competitor.evidenceStatus) && competitor.marketShare?.trim()) continue
+    risks.push({
+      id: `competitor-${competitor.id}`,
+      title: competitor.companyName,
+      origin: 'Competitor Intelligence',
+      area: 'market',
+      evidenceStatus: isWeakStatus(competitor.evidenceStatus) ? competitor.evidenceStatus : 'To Verify',
+      detail: competitor.marketShare?.trim()
+        ? competitor.notes || 'Competitor record needs source-backed review.'
+        : 'Market share is unknown and must stay To Verify.',
+      routeName: 'hermes.competitorIntelligence',
+      priority: riskPriority('market', isWeakStatus(competitor.evidenceStatus) ? competitor.evidenceStatus : 'To Verify'),
+    })
+  }
+
+  for (const material of intelligence.state.value.presentationMaterials) {
+    if (isPresentationMaterialAllowed(material)) continue
+    risks.push({
+      id: `presentation-${material.id || material.section}`,
+      title: material.section,
+      origin: 'Investor Presentation',
+      area: 'presentation',
+      evidenceStatus: 'Unsupported',
+      detail: material.evidenceStatus === 'Verified'
+        ? 'Verified investor material is missing usable source evidence.'
+        : `Material is marked ${material.evidenceStatus} and is excluded from investor drafts.`,
+      routeName: 'hermes.investorPresentation',
+      priority: riskPriority('presentation', 'Unsupported'),
+    })
+  }
+
+  return risks.sort((a, b) => b.priority - a.priority).slice(0, 10)
+})
+
+const visibleRiskRegisterItems = computed(() => riskRegisterItems.value.slice(0, 8))
 
 function formatSource(source?: SourceReference | null): string {
   if (!source?.title) return 'Source missing'
@@ -531,6 +661,42 @@ async function createAssumptionTask(item: AssumptionRegisterItem) {
     message.error(`Could not create assumption task: ${detail}`)
   } finally {
     creatingAssumptionTaskId.value = ''
+  }
+}
+
+function riskTaskBody(item: RiskRegisterItem): string {
+  return [
+    `Investor risk to mitigate: ${item.title}`,
+    `Origin: ${item.origin}`,
+    `Evidence area: ${evidenceAreaOptions.find(area => area.value === item.area)?.label || item.area}`,
+    `Current status: ${item.evidenceStatus}`,
+    `Risk detail: ${item.detail}`,
+    `Source page: Investor Readiness Center / Risk Register`,
+    'Recommended action: resolve the missing evidence, review the source, or keep this risk visible in investor materials.',
+    'Tags: Risk Register, Investor Readiness, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not hide this risk or use the related claim as investor-ready until the evidence status is resolved.',
+  ].join('\n')
+}
+
+async function createRiskTask(item: RiskRegisterItem) {
+  creatingRiskTaskId.value = item.id
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Mitigate risk: ${item.title}`,
+      body: riskTaskBody(item),
+      priority: item.priority,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Risk mitigation task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create risk task: ${detail}`)
+  } finally {
+    creatingRiskTaskId.value = ''
   }
 }
 
@@ -830,7 +996,7 @@ defineExpose({
     <section class="support-grid">
       <article>
         <h3>Risk Register</h3>
-        <p>Risks are not auto-promoted. Add each missing proof, regulatory uncertainty, and weak assumption to Tasks.</p>
+        <p>{{ riskRegisterItems.length }} live risk{{ riskRegisterItems.length === 1 ? '' : 's' }} tracked from evidence gaps, review items, warnings, and unsupported investor material.</p>
       </article>
       <article>
         <h3>Financial Model Status</h3>
@@ -842,6 +1008,45 @@ defineExpose({
         <p>Draft material must be Verified, User Approved, or visibly labeled Approved Assumption.</p>
         <RouterLink :to="{ name: 'hermes.investorPresentation' }">Open presentation builder</RouterLink>
       </article>
+    </section>
+
+    <section class="data-room risk-register">
+      <div class="section-head-with-actions">
+        <div>
+          <p class="eyebrow">Risk register</p>
+          <h3>{{ riskRegisterItems.length }} Investor Risk{{ riskRegisterItems.length === 1 ? '' : 's' }}</h3>
+          <small class="section-note">
+            Risks are generated from current Hermes workspace state. They are not claims; create mitigation tasks or keep them visible.
+          </small>
+        </div>
+        <RouterLink class="section-action-link" :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
+      </div>
+      <ul v-if="visibleRiskRegisterItems.length">
+        <li v-for="item in visibleRiskRegisterItems" :key="item.id">
+          <div>
+            <strong>{{ item.title }}</strong>
+            <small>{{ item.origin }} / {{ evidenceAreaOptions.find(area => area.value === item.area)?.label || item.area }}</small>
+            <small>{{ item.detail }}</small>
+          </div>
+          <div class="data-room-actions">
+            <span :class="sourceClass({ status: item.evidenceStatus === 'Pending Review' || item.evidenceStatus === 'Unsupported' ? 'To Verify' : item.evidenceStatus })">
+              {{ item.evidenceStatus }}
+            </span>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="creatingRiskTaskId === item.id"
+              @click="createRiskTask(item)"
+            >
+              Create mitigation task
+            </NButton>
+            <RouterLink :to="{ name: item.routeName }">Open</RouterLink>
+          </div>
+        </li>
+      </ul>
+      <p v-else class="empty-state">
+        No current investor risks found in the local intelligence state. Continue collecting evidence and reviewing findings.
+      </p>
     </section>
 
     <section class="data-room assumption-register">
@@ -1305,6 +1510,10 @@ defineExpose({
 
 .assumption-register {
   border-color: rgba(var(--warning-rgb), 0.28);
+}
+
+.risk-register {
+  border-color: rgba(var(--error-rgb), 0.26);
 }
 
 .section-action-link {
