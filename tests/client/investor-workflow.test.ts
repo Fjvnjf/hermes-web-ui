@@ -45,6 +45,7 @@ interface InvestorReadinessTestVm {
   }
   saveEvidenceStatus: () => void
   saveDataRoomSource: () => void
+  saveDataRoomIndexFile: () => Promise<void>
 }
 
 const createTaskMock = vi.hoisted(() => vi.fn())
@@ -1178,6 +1179,44 @@ describe('investor readiness pages', () => {
       sourceRecordId: fallback.id,
       source: { title: 'CWAS TDS user upload', date: '2026-05-29' },
     })
+  })
+
+  it('saves a labeled data-room index file without approving missing evidence', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Product TDS/SDS and CAS evidence',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      source: { title: 'CWAS SDS source', date: '2026-05-30' },
+      notes: 'SDS source reviewed for investor data room.',
+    })
+    const beforeScore = intelligence.readinessScore.value
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const vm = wrapper.vm as unknown as InvestorReadinessTestVm
+
+    await vm.saveDataRoomIndexFile()
+    await flushPromises()
+
+    expect(mkDirMock).toHaveBeenCalledWith('data-room-indexes')
+    expect(writeFileMock).toHaveBeenCalledTimes(1)
+    const [path, content] = writeFileMock.mock.calls[0]
+    expect(path).toMatch(/^data-room-indexes\/chemicon-data-room-index-/)
+    expect(content).toContain('# Chemicon China Investor Data-Room Index')
+    expect(content).toContain('This file is an index only. It does not verify any business claim by itself.')
+    expect(content).toContain('Missing / To Verify items must not be used as investor claims.')
+    expect(content).toContain('## Product TDS/SDS and CAS evidence')
+    expect(content).toContain('Evidence status: Verified')
+    expect(content).toContain('Source trace: CWAS SDS source / 2026-05-30')
+    expect(content).toContain('## Factory/rent/permit evidence')
+    expect(content).toContain('Evidence status: Missing')
+    expect(content).toContain('Use rule: Keep this item out of investor claims')
+    expect(content).toContain('# Source Register')
+    expect(content).toContain('SDS source reviewed for investor data room.')
+    expect(wrapper.text()).toContain(path)
+    expect(intelligence.readinessScore.value).toBe(beforeScore)
+    expect(intelligence.state.value.dataRoomSources).toHaveLength(1)
   })
 
   it('stages saved data-room sources for research review without updating investor draft material', async () => {

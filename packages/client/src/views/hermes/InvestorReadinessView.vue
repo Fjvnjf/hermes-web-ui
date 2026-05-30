@@ -10,6 +10,7 @@ import {
 } from '@/composables/useFeasibilityIntelligence'
 import { presentationSectionForEvidence, type IntelligenceEvidenceStatus, type SourceReference } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
+import { mkDir, writeFile } from '@/api/hermes/files'
 
 interface ReadinessSection extends FeasibilityEvidenceItem {
   routeName: string
@@ -32,6 +33,8 @@ const intelligence = useFeasibilityIntelligence()
 const creatingKey = ref('')
 const creatingDataRoomTask = ref('')
 const stagingDataRoomSourceId = ref('')
+const savingDataRoomIndex = ref(false)
+const latestDataRoomIndexPath = ref('')
 const evidenceForm = ref({
   area: 'companyLegal' as EvidenceArea,
   evidenceStatus: 'User Provided' as IntelligenceEvidenceStatus,
@@ -150,6 +153,8 @@ const selectedDataRoomChecklistItem = computed(() =>
   dataRoomChecklist.find(item => item.label === dataRoomSourceForm.value.checklistLabel) || dataRoomChecklist[0],
 )
 
+const DATA_ROOM_INDEX_DIR = 'data-room-indexes'
+
 function formatSource(source?: SourceReference | null): string {
   if (!source?.title) return 'Source missing'
   return [source.title, source.date, source.url].filter(Boolean).join(' / ')
@@ -207,6 +212,93 @@ function dataRoomInvestorMaterialCandidate(record: DataRoomSourceRecord): string
     record.notes ? `Review note: ${record.notes}` : '',
     `Evidence status: ${record.evidenceStatus}.`,
   ].filter(Boolean).join('\n')
+}
+
+function dataRoomIndexTimestamp(date = new Date()): string {
+  return date.toISOString().replace('T', '-').replace(/[:.]/g, '-').slice(0, 19)
+}
+
+function dataRoomIndexFilePath(): string {
+  return `${DATA_ROOM_INDEX_DIR}/chemicon-data-room-index-${dataRoomIndexTimestamp()}.md`
+}
+
+function evidenceAreaLabel(area: EvidenceArea): string {
+  return evidenceAreaOptions.find(option => option.value === area)?.label || area
+}
+
+function buildDataRoomIndexMarkdown(): string {
+  const checklistLines = dataRoomItems.value.flatMap(item => [
+    `## ${item.label}`,
+    '',
+    `Area: ${evidenceAreaLabel(item.area)}`,
+    `Evidence status: ${item.status}`,
+    `Source trace: ${item.source ? formatSource(item.source) : 'Source missing'}`,
+    `Evidence needed: ${item.sourceHint}`,
+    item.sourceRecord?.notes ? `Review note: ${item.sourceRecord.notes}` : '',
+    item.updatedAt ? `Last updated: ${new Date(item.updatedAt).toISOString()}` : '',
+    '',
+    item.status === 'Verified' || item.status === 'User Approved' || item.status === 'User Provided'
+      ? 'Use rule: Review the source against the exact investor claim before using it in a report or deck.'
+      : 'Use rule: Keep this item out of investor claims until evidence is attached or the assumption is explicitly approved and labeled.',
+    '',
+  ].filter(Boolean))
+
+  const sourceRegisterLines = intelligence.state.value.dataRoomSources.length
+    ? intelligence.state.value.dataRoomSources.flatMap((record, index) => [
+        `### ${index + 1}. ${record.checklistLabel}`,
+        '',
+        `Area: ${evidenceAreaLabel(record.area)}`,
+        `Evidence status: ${record.evidenceStatus}`,
+        `Source trace: ${record.source ? formatSource(record.source) : 'Source missing'}`,
+        record.notes ? `Notes: ${record.notes}` : '',
+        `Updated: ${new Date(record.updatedAt).toISOString()}`,
+        '',
+      ].filter(Boolean))
+    : ['No source register records have been saved yet.', '']
+
+  return [
+    '# Chemicon China Investor Data-Room Index',
+    '',
+    'Generated from the current Hermes investor readiness workspace.',
+    'This file is an index only. It does not verify any business claim by itself.',
+    'Missing / To Verify items must not be used as investor claims.',
+    'Verified claims still require review against the exact source before investor use.',
+    `Created: ${new Date().toISOString()}`,
+    'Project: Chemicon China Feasibility',
+    '',
+    '# Readiness Summary',
+    '',
+    `Investor readiness score: ${readinessScore.value}%`,
+    `Verified: ${statusCounts.value.Verified || 0}`,
+    `User Approved: ${statusCounts.value['User Approved'] || 0}`,
+    `Assumptions: ${statusCounts.value.Assumption || 0}`,
+    `To Verify: ${statusCounts.value['To Verify'] || 0}`,
+    `Missing: ${statusCounts.value.Missing || 0}`,
+    '',
+    '# Data-Room Checklist',
+    '',
+    ...checklistLines,
+    '# Source Register',
+    '',
+    ...sourceRegisterLines,
+  ].join('\n')
+}
+
+async function saveDataRoomIndexFile() {
+  if (savingDataRoomIndex.value) return
+  savingDataRoomIndex.value = true
+  try {
+    await mkDir(DATA_ROOM_INDEX_DIR)
+    const path = dataRoomIndexFilePath()
+    await writeFile(path, buildDataRoomIndexMarkdown())
+    latestDataRoomIndexPath.value = path
+    message.success('Data-room index saved to Documents')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown file error'
+    message.error(`Could not save data-room index: ${detail}`)
+  } finally {
+    savingDataRoomIndex.value = false
+  }
 }
 
 function stageDataRoomSourceForReview(record: DataRoomSourceRecord) {
@@ -433,6 +525,7 @@ defineExpose({
   dataRoomSourceForm,
   saveEvidenceStatus,
   saveDataRoomSource,
+  saveDataRoomIndexFile,
 })
 </script>
 
@@ -589,9 +682,21 @@ defineExpose({
     </section>
 
     <section class="data-room">
-      <div>
-        <p class="eyebrow">Data room checklist</p>
-        <h3>Investor Evidence Pack</h3>
+      <div class="section-head-with-actions">
+        <div>
+          <p class="eyebrow">Data room checklist</p>
+          <h3>Investor Evidence Pack</h3>
+          <small class="section-note">Save a file-based index for review; it does not verify claims by itself.</small>
+        </div>
+        <NButton
+          size="small"
+          secondary
+          type="primary"
+          :loading="savingDataRoomIndex"
+          @click="saveDataRoomIndexFile"
+        >
+          Save index file
+        </NButton>
       </div>
       <ul>
         <li v-for="item in dataRoomItems" :key="item.label">
@@ -615,6 +720,9 @@ defineExpose({
           </div>
         </li>
       </ul>
+      <p v-if="latestDataRoomIndexPath" class="saved-file-note">
+        Saved to Documents: <code>{{ latestDataRoomIndexPath }}</code>
+      </p>
     </section>
 
     <section class="data-room source-register">
@@ -975,6 +1083,20 @@ defineExpose({
   }
 }
 
+.section-head-with-actions {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.section-note {
+  display: block;
+  margin-top: 6px;
+  color: $text-muted;
+  line-height: 1.45;
+}
+
 .source-register {
   border-color: rgba(var(--accent-info-rgb), 0.28);
 }
@@ -983,6 +1105,21 @@ defineExpose({
   margin: 14px 0 0;
   color: $text-secondary;
   line-height: 1.55;
+}
+
+.saved-file-note {
+  margin: 12px 0 0;
+  padding: 10px;
+  border: 1px solid rgba(var(--success-rgb), 0.32);
+  border-radius: $radius-sm;
+  background: rgba(var(--success-rgb), 0.06);
+  color: $text-secondary;
+  line-height: 1.5;
+
+  code {
+    color: $success;
+    overflow-wrap: anywhere;
+  }
 }
 
 .data-room-actions {
@@ -1008,6 +1145,10 @@ defineExpose({
 @media (max-width: 760px) {
   .page-header {
     grid-template-columns: 1fr;
+  }
+
+  .section-head-with-actions {
+    display: grid;
   }
 
   .data-room li {
