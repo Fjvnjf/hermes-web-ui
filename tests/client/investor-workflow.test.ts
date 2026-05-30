@@ -1219,6 +1219,48 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.dataRoomSources).toHaveLength(1)
   })
 
+  it('shows a central assumption register and creates verification tasks', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.updateEvidenceStatus('financial', 'Assumption')
+    intelligence.addMarketClaim({
+      label: 'Year 1 volume planning assumption',
+      value: '15,000 MT/year planning case',
+      evidenceStatus: 'Assumption',
+      confidence: 'medium',
+      source: null,
+    })
+    intelligence.addPresentationMaterial({
+      section: 'IRR / Investor Return',
+      content: 'Draft financial returns are derived from assumption-labeled model inputs.',
+      evidenceStatus: 'Derived from Assumptions',
+      source: null,
+    })
+    const wrapper = mount(InvestorReadinessView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    expect(wrapper.text()).toContain('Assumption register')
+    expect(wrapper.text()).toContain('Financial model completeness')
+    expect(wrapper.text()).toContain('Year 1 volume planning assumption')
+    expect(wrapper.text()).toContain('IRR / Investor Return')
+    expect(wrapper.text()).toContain('Derived from Assumptions')
+
+    const createButton = wrapper.findAll('button').find(button => button.text() === 'Create verification task')
+    expect(createButton).toBeTruthy()
+    await createButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Verify assumption: Financial model completeness',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    const body = createTaskMock.mock.calls[0][0].body
+    expect(body).toContain('Current evidence status: Assumption')
+    expect(body).toContain('Source page: Investor Readiness Center / Assumption Register')
+    expect(body).toContain('Do not convert this into a verified investor claim')
+  })
+
   it('stages saved data-room sources for research review without updating investor draft material', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addDataRoomSource({

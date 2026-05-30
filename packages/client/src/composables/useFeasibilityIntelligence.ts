@@ -198,6 +198,7 @@ function emptyState(): FeasibilityIntelligenceState {
 
 const state = ref<FeasibilityIntelligenceState>(emptyState())
 let loaded = false
+let idSequence = 0
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -259,7 +260,8 @@ function ensureLoaded() {
 }
 
 function idFrom(prefix: string, label: string): string {
-  return `${prefix}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now().toString(36)}`
+  idSequence += 1
+  return `${prefix}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now().toString(36)}-${idSequence.toString(36)}`
 }
 
 function sourceIsUsable(source?: SourceReference | null): boolean {

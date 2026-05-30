@@ -27,12 +27,25 @@ interface DataRoomItem {
   routeName: string
 }
 
+interface AssumptionRegisterItem {
+  id: string
+  title: string
+  origin: string
+  area: EvidenceArea
+  evidenceStatus: IntelligenceEvidenceStatus
+  detail: string
+  source: SourceReference | null
+  routeName: string
+  priority: 1 | 2 | 3
+}
+
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingKey = ref('')
 const creatingDataRoomTask = ref('')
 const stagingDataRoomSourceId = ref('')
+const creatingAssumptionTaskId = ref('')
 const savingDataRoomIndex = ref(false)
 const latestDataRoomIndexPath = ref('')
 const evidenceForm = ref({
@@ -154,6 +167,119 @@ const selectedDataRoomChecklistItem = computed(() =>
 )
 
 const DATA_ROOM_INDEX_DIR = 'data-room-indexes'
+
+function isAssumptionStatus(status: IntelligenceEvidenceStatus): boolean {
+  return status === 'Assumption' ||
+    status === 'Approved Assumption' ||
+    status === 'Derived from Assumptions'
+}
+
+function assumptionPriority(area: EvidenceArea, evidenceStatus: IntelligenceEvidenceStatus): 1 | 2 | 3 {
+  if (area === 'financial' || area === 'regulatory' || area === 'factory') return 3
+  if (evidenceStatus === 'Derived from Assumptions') return 3
+  if (area === 'market' || area === 'product') return 2
+  return 1
+}
+
+const assumptionRecords = computed<AssumptionRegisterItem[]>(() => {
+  const records: AssumptionRegisterItem[] = []
+
+  for (const item of sections.value) {
+    if (!isAssumptionStatus(item.evidenceStatus)) continue
+    records.push({
+      id: `readiness-${item.id}`,
+      title: item.label,
+      origin: 'Readiness evidence',
+      area: item.id,
+      evidenceStatus: item.evidenceStatus,
+      detail: item.nextAction,
+      source: item.source || null,
+      routeName: item.routeName,
+      priority: assumptionPriority(item.id, item.evidenceStatus),
+    })
+  }
+
+  for (const record of intelligence.state.value.dataRoomSources) {
+    if (!isAssumptionStatus(record.evidenceStatus)) continue
+    records.push({
+      id: `source-${record.id}`,
+      title: record.checklistLabel,
+      origin: 'Data-room source',
+      area: record.area,
+      evidenceStatus: record.evidenceStatus,
+      detail: record.notes || 'Review this source before using the assumption in investor material.',
+      source: record.source || null,
+      routeName: routeByEvidenceId[record.area],
+      priority: assumptionPriority(record.area, record.evidenceStatus),
+    })
+  }
+
+  for (const model of intelligence.state.value.financialModels.slice(0, 3)) {
+    if (!isAssumptionStatus(model.evidenceStatus)) continue
+    records.push({
+      id: `financial-${model.id}`,
+      title: `${model.scenarioName} financial model`,
+      origin: 'IRR calculator',
+      area: 'financial',
+      evidenceStatus: model.evidenceStatus,
+      detail: model.warnings.length
+        ? model.warnings.join(' ')
+        : 'Financial outputs are derived from the saved model inputs.',
+      source: model.source || null,
+      routeName: 'hermes.investmentCalculator',
+      priority: assumptionPriority('financial', model.evidenceStatus),
+    })
+  }
+
+  for (const claim of intelligence.state.value.marketClaims) {
+    if (!isAssumptionStatus(claim.evidenceStatus)) continue
+    records.push({
+      id: `market-${claim.id || claim.label}`,
+      title: claim.label,
+      origin: 'Market Intelligence',
+      area: 'market',
+      evidenceStatus: claim.evidenceStatus,
+      detail: claim.value || 'Market assumption needs source-backed validation.',
+      source: claim.source || null,
+      routeName: 'hermes.marketIntelligence',
+      priority: assumptionPriority('market', claim.evidenceStatus),
+    })
+  }
+
+  for (const competitor of intelligence.state.value.competitors) {
+    if (!isAssumptionStatus(competitor.evidenceStatus)) continue
+    records.push({
+      id: `competitor-${competitor.id}`,
+      title: competitor.companyName,
+      origin: 'Competitor Intelligence',
+      area: 'market',
+      evidenceStatus: competitor.evidenceStatus,
+      detail: competitor.notes || 'Competitor assumption needs source-backed review.',
+      source: competitor.source || null,
+      routeName: 'hermes.competitorIntelligence',
+      priority: assumptionPriority('market', competitor.evidenceStatus),
+    })
+  }
+
+  for (const material of intelligence.state.value.presentationMaterials) {
+    if (!isAssumptionStatus(material.evidenceStatus)) continue
+    records.push({
+      id: `presentation-${material.id || material.section}`,
+      title: material.section,
+      origin: 'Investor Presentation',
+      area: 'presentation',
+      evidenceStatus: material.evidenceStatus,
+      detail: material.content,
+      source: material.source || null,
+      routeName: 'hermes.investorPresentation',
+      priority: assumptionPriority('presentation', material.evidenceStatus),
+    })
+  }
+
+  return records
+})
+
+const visibleAssumptionRecords = computed(() => assumptionRecords.value.slice(0, 8))
 
 function formatSource(source?: SourceReference | null): string {
   if (!source?.title) return 'Source missing'
@@ -368,6 +494,43 @@ async function createDataRoomTask(item: DataRoomItem) {
     message.error(`Could not create data-room task: ${detail}`)
   } finally {
     creatingDataRoomTask.value = ''
+  }
+}
+
+function assumptionTaskBody(item: AssumptionRegisterItem): string {
+  return [
+    `Investor assumption to verify: ${item.title}`,
+    `Origin: ${item.origin}`,
+    `Evidence area: ${evidenceAreaOptions.find(area => area.value === item.area)?.label || item.area}`,
+    `Current evidence status: ${item.evidenceStatus}`,
+    `Current source trace: ${item.source ? formatSource(item.source) : 'Source missing'}`,
+    `Current detail: ${item.detail}`,
+    `Source page: Investor Readiness Center / Assumption Register`,
+    'Recommended action: attach source evidence, explicitly approve the assumption, or keep it labeled in every investor-facing output.',
+    'Tags: Assumption Register, Investor Readiness, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not convert this into a verified investor claim until source evidence or explicit approval supports it.',
+  ].join('\n')
+}
+
+async function createAssumptionTask(item: AssumptionRegisterItem) {
+  creatingAssumptionTaskId.value = item.id
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Verify assumption: ${item.title}`,
+      body: assumptionTaskBody(item),
+      priority: item.priority,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Assumption verification task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create assumption task: ${detail}`)
+  } finally {
+    creatingAssumptionTaskId.value = ''
   }
 }
 
@@ -679,6 +842,45 @@ defineExpose({
         <p>Draft material must be Verified, User Approved, or visibly labeled Approved Assumption.</p>
         <RouterLink :to="{ name: 'hermes.investorPresentation' }">Open presentation builder</RouterLink>
       </article>
+    </section>
+
+    <section class="data-room assumption-register">
+      <div class="section-head-with-actions">
+        <div>
+          <p class="eyebrow">Assumption register</p>
+          <h3>{{ assumptionRecords.length }} Tracked Assumption{{ assumptionRecords.length === 1 ? '' : 's' }}</h3>
+          <small class="section-note">
+            Assumptions are allowed for planning only when labeled. Create verification tasks before using them as investor claims.
+          </small>
+        </div>
+        <RouterLink class="section-action-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR calculator</RouterLink>
+      </div>
+      <ul v-if="visibleAssumptionRecords.length">
+        <li v-for="item in visibleAssumptionRecords" :key="item.id">
+          <div>
+            <strong>{{ item.title }}</strong>
+            <small>{{ item.origin }} / {{ evidenceAreaOptions.find(area => area.value === item.area)?.label || item.area }}</small>
+            <small>{{ item.detail }}</small>
+            <small class="source-note">Source: {{ item.source ? formatSource(item.source) : 'Source missing' }}</small>
+          </div>
+          <div class="data-room-actions">
+            <span :class="sourceClass({ status: item.evidenceStatus })">{{ item.evidenceStatus }}</span>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="creatingAssumptionTaskId === item.id"
+              @click="createAssumptionTask(item)"
+            >
+              Create verification task
+            </NButton>
+            <RouterLink :to="{ name: item.routeName }">Open</RouterLink>
+          </div>
+        </li>
+      </ul>
+      <p v-else class="empty-state">
+        No assumption-labeled items are currently tracked. Financial outputs, data-room sources, market claims,
+        competitor records, and investor draft material will appear here when they are marked as assumptions.
+      </p>
     </section>
 
     <section class="data-room">
@@ -1099,6 +1301,28 @@ defineExpose({
 
 .source-register {
   border-color: rgba(var(--accent-info-rgb), 0.28);
+}
+
+.assumption-register {
+  border-color: rgba(var(--warning-rgb), 0.28);
+}
+
+.section-action-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  color: $accent-info;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+
+  &:hover {
+    border-color: $accent-info;
+    background: rgba(var(--accent-info-rgb), 0.06);
+  }
 }
 
 .empty-state {
