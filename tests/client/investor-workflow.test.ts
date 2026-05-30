@@ -57,6 +57,8 @@ const listJobsMock = vi.hoisted(() => vi.fn())
 const listCronRunsMock = vi.hoisted(() => vi.fn())
 const readCronRunMock = vi.hoisted(() => vi.fn())
 const fetchPerformanceRuntimeMock = vi.hoisted(() => vi.fn())
+const mkDirMock = vi.hoisted(() => vi.fn())
+const writeFileMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/stores/hermes/kanban', () => ({
   DEFAULT_KANBAN_BOARD: 'default',
@@ -94,6 +96,11 @@ vi.mock('@/api/hermes/cron-history', () => ({
 
 vi.mock('@/api/hermes/performance-monitor', () => ({
   fetchPerformanceRuntime: fetchPerformanceRuntimeMock,
+}))
+
+vi.mock('@/api/hermes/files', () => ({
+  mkDir: mkDirMock,
+  writeFile: writeFileMock,
 }))
 
 vi.mock('@/api/client', () => ({
@@ -195,6 +202,8 @@ beforeEach(() => {
     sessions: { active: 0, running: 0 },
     bridge: { reachable: true, workers: [] },
   })
+  mkDirMock.mockReset().mockResolvedValue(undefined)
+  writeFileMock.mockReset().mockResolvedValue(undefined)
 })
 
 describe('investor feasibility workflow utilities', () => {
@@ -1557,6 +1566,43 @@ describe('investor readiness pages', () => {
     }))
     expect(createTaskMock.mock.calls[0][0].body).toContain('Source page: Reports Hub / Before Investor Use')
     expect(createTaskMock.mock.calls[0][0].body).toContain('Do not use this in investor material')
+  })
+
+  it('saves the approved investor draft as a Markdown file without unsupported claims', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Approved distributor interview narrative for investor output.',
+      evidenceStatus: 'User Approved',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Competitor Landscape',
+      content: 'Unsupported competitor claim should not be saved to the draft.',
+      evidenceStatus: 'To Verify',
+      source: null,
+    })
+
+    const wrapper = mount(ReportsHubView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save draft file')
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+    await flushPromises()
+
+    expect(mkDirMock).toHaveBeenCalledWith('investor-drafts')
+    expect(writeFileMock).toHaveBeenCalledTimes(1)
+    const [path, content] = writeFileMock.mock.calls[0]
+    expect(path).toMatch(/^investor-drafts\/chemicon-investor-draft-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.md$/)
+    expect(content).toContain('Generated from approved material only')
+    expect(content).toContain('Evidence rule: only verified, user-approved, approved-assumption, or derived-from-assumptions material is included.')
+    expect(content).toContain('Source: Hermes Reports Hub')
+    expect(content).toContain('Approved distributor interview narrative for investor output.')
+    expect(content).toContain('Evidence status: User Approved')
+    expect(content).not.toContain('Unsupported competitor claim should not be saved to the draft.')
+    expect(wrapper.text()).toContain(path)
   })
 
   it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {

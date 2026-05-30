@@ -11,6 +11,7 @@ import {
 } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import { mkDir, writeFile } from '@/api/hermes/files'
 
 interface MissingOutputInput {
   id: string
@@ -25,6 +26,10 @@ const intelligence = useFeasibilityIntelligence()
 const kanbanStore = useKanbanStore()
 const copiedOutline = ref(false)
 const creatingMissingTaskId = ref('')
+const savingDraftFile = ref(false)
+const latestDraftPath = ref('')
+
+const INVESTOR_DRAFT_DIR = 'investor-drafts'
 
 const sections = [
   {
@@ -158,6 +163,50 @@ async function copyApprovedOutline() {
   else message.warning('Clipboard blocked. Use Presentation Builder for manual copy.')
 }
 
+function draftTimestamp(date = new Date()): string {
+  return date.toISOString().replace('T', '-').replace(/[:.]/g, '-').slice(0, 19)
+}
+
+function approvedDraftFilePath(): string {
+  return `${INVESTOR_DRAFT_DIR}/chemicon-investor-draft-${draftTimestamp()}.md`
+}
+
+function buildApprovedDraftMarkdown(): string {
+  return [
+    '# Chemicon Investor Presentation Draft',
+    '',
+    'Generated from approved material only. This is draft text, not final truth.',
+    'Evidence rule: only verified, user-approved, approved-assumption, or derived-from-assumptions material is included.',
+    `Created: ${new Date().toISOString()}`,
+    'Source: Hermes Reports Hub',
+    '',
+    formatInvestorPresentationOutline(slideDrafts.value),
+  ].join('\n')
+}
+
+async function saveApprovedDraftFile() {
+  if (savingDraftFile.value) return
+
+  if (!approvedDraftSections.value.length) {
+    message.warning('No approved investor material is ready to save yet.')
+    return
+  }
+
+  savingDraftFile.value = true
+  try {
+    await mkDir(INVESTOR_DRAFT_DIR)
+    const path = approvedDraftFilePath()
+    await writeFile(path, buildApprovedDraftMarkdown())
+    latestDraftPath.value = path
+    message.success('Approved investor draft saved to Documents')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown file error'
+    message.error(`Could not save investor draft file: ${detail}`)
+  } finally {
+    savingDraftFile.value = false
+  }
+}
+
 function missingInputTaskBody(item: MissingOutputInput): string {
   return [
     `Report / investor output missing input: ${item.title}`,
@@ -228,9 +277,21 @@ async function createMissingInputTask(item: MissingOutputInput) {
             <p class="eyebrow">Approved draft material</p>
             <h3>Investor Output Draft</h3>
           </div>
-          <NButton size="small" secondary type="primary" @click="copyApprovedOutline">
-            {{ copiedOutline ? 'Copied' : 'Copy approved outline' }}
-          </NButton>
+          <div class="panel-actions">
+            <NButton size="small" secondary type="primary" @click="copyApprovedOutline">
+              {{ copiedOutline ? 'Copied' : 'Copy approved outline' }}
+            </NButton>
+            <NButton
+              size="small"
+              secondary
+              type="primary"
+              :disabled="!approvedDraftSections.length"
+              :loading="savingDraftFile"
+              @click="saveApprovedDraftFile"
+            >
+              Save draft file
+            </NButton>
+          </div>
         </div>
         <div v-if="approvedDraftSections.length" class="record-list">
           <article v-for="item in approvedDraftSections.slice(0, 5)" :key="`${item.section}-${item.content}`" class="record-row">
@@ -245,6 +306,9 @@ async function createMissingInputTask(item: MissingOutputInput) {
         <p v-else class="empty-state">
           No investor-safe draft material yet. Stage material in Investor Readiness, Research Review, IRR Calculator,
           or Presentation Builder after approval.
+        </p>
+        <p v-if="latestDraftPath" class="draft-file-note">
+          Saved to Documents: <code>{{ latestDraftPath }}</code>
         </p>
         <RouterLink class="shell-link" :to="{ name: 'hermes.investorPresentation' }">Open Presentation Builder</RouterLink>
       </article>
@@ -444,6 +508,13 @@ async function createMissingInputTask(item: MissingOutputInput) {
   justify-content: space-between;
 }
 
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .record-list {
   display: grid;
   gap: 8px;
@@ -515,6 +586,19 @@ async function createMissingInputTask(item: MissingOutputInput) {
 .empty-state {
   color: $text-secondary;
   line-height: 1.55;
+}
+
+.draft-file-note {
+  padding: 10px;
+  border: 1px solid rgba(var(--success-rgb), 0.3);
+  border-radius: $radius-sm;
+  background: rgba(var(--success-rgb), 0.06);
+  color: $text-secondary;
+
+  code {
+    color: $success;
+    overflow-wrap: anywhere;
+  }
 }
 
 .financial-output-panel {
