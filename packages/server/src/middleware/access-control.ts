@@ -48,15 +48,11 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'view:account',
     'view:kanban',
     'create:task',
-    'view:investor-approved',
   ],
   research_assistant: [
     'view:account',
     'view:kanban',
     'create:task',
-    'view:jobs',
-    'create:job',
-    'view:investor-approved',
   ],
   financial_analyst: [
     'view:account',
@@ -64,13 +60,11 @@ const ROLE_PERMISSIONS: Record<string, Permission[]> = {
     'create:task',
     'view:raw-material-prices',
     'view:costing',
-    'view:investor-approved',
   ],
   regulatory_consultant: [
     'view:account',
     'view:kanban',
     'create:task',
-    'view:investor-approved',
   ],
   investor_viewer: [
     'view:account',
@@ -113,6 +107,7 @@ export function permissionForRequest(ctx: Pick<Context, 'path' | 'method'>): Per
     path === '/api/auth/password') return 'view:account'
   if (path.startsWith('/api/auth/users') || path.startsWith('/api/auth/locked-ips')) return 'view:admin'
 
+  if (path.startsWith('/api/hermes/access-denied')) return 'view:account'
   if (path.startsWith('/api/hermes/investor/portal')) return 'view:investor-approved'
   if (path.startsWith('/api/hermes/memory')) return writing ? 'write:memory' : 'view:memory'
   if (path.startsWith('/api/hermes/sessions') ||
@@ -243,7 +238,7 @@ export async function requireRequestPermission(ctx: Context, next: Next): Promis
     return
   }
 
-  const sensitive = ['view:terminal', 'view:settings', 'view:models', 'view:logs', 'download:files', 'view:memory', 'write:memory']
+  const sensitive = ['view:terminal', 'view:settings', 'view:models', 'view:logs', 'download:files', 'view:memory', 'write:memory', 'view:investor-approved']
   if (sensitive.includes(permission)) {
     auditAccessEvent({
       ctx,

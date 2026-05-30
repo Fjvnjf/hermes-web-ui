@@ -20,6 +20,7 @@ import {
   type UserStatus,
 } from '../db/hermes/users-store'
 import { issueUserJwt } from '../middleware/user-auth'
+import { auditAccessEvent } from '../middleware/access-control'
 import { listProfileNamesFromDisk } from '../services/hermes/hermes-profile'
 
 /**
@@ -284,6 +285,13 @@ export async function createManagedUser(ctx: Context) {
     profiles: isUnscopedOwnerRole(role) || role === 'developer_admin' ? [] : profiles,
     defaultProfile: body.defaultProfile,
   })
+  auditAccessEvent({
+    ctx,
+    action: 'user-create',
+    resource: username,
+    result: 'allowed',
+    reason: `role:${role}`,
+  })
   ctx.status = 201
   ctx.body = { user, users: listUsers() }
 }
@@ -374,6 +382,13 @@ export async function updateManagedUser(ctx: Context) {
     profiles: isUnscopedOwnerRole(nextRole) || nextRole === 'developer_admin' ? [] : profiles,
     defaultProfile: body.defaultProfile,
   })
+  auditAccessEvent({
+    ctx,
+    action: 'user-update',
+    resource: user.username,
+    result: 'allowed',
+    reason: `role:${nextRole};status:${nextStatus}`,
+  })
   ctx.body = { user: findUserById(user.id), users: listUsers() }
 }
 
@@ -402,6 +417,13 @@ export async function deleteManagedUser(ctx: Context) {
   }
 
   deleteUser(user.id)
+  auditAccessEvent({
+    ctx,
+    action: 'user-delete',
+    resource: user.username,
+    result: 'allowed',
+    reason: `role:${user.role}`,
+  })
   ctx.body = { success: true, users: listUsers() }
 }
 

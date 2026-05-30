@@ -1,11 +1,22 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { routePolicyFor } from '@/utils/accessControl'
+import { request } from '@/api/client'
 
 const route = useRoute()
 const attemptedRoute = computed(() => String(route.query.from || 'this page'))
 const policy = computed(() => routePolicyFor(attemptedRoute.value))
+
+onMounted(() => {
+  request('/api/hermes/access-denied', {
+    method: 'POST',
+    body: JSON.stringify({
+      route: attemptedRoute.value,
+      reason: 'frontend-route-guard',
+    }),
+  }).catch(() => {})
+})
 </script>
 
 <template>

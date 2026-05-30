@@ -23,7 +23,7 @@ vi.mock('@/api/client', () => ({
 
 describe('intelligence workspace guardrails', () => {
   it('keeps employee access away from sensitive product, price, memory, terminal, and system routes', () => {
-    expect(canAccessRouteName('hermes.research', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.research', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.kanban', 'employee')).toBe(true)
     expect(canAccessRouteName('hermes.rawMaterialSourcing', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.memory', 'employee')).toBe(false)

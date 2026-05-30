@@ -1,10 +1,14 @@
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
+  auditAccessEvent,
   permissionForRequest,
   requireRequestPermission,
   roleHasPermission,
 } from '../../packages/server/src/middleware/access-control'
+import { config } from '../../packages/server/src/config'
 
 function ctx(path: string, role: string, method = 'GET') {
   return {
@@ -63,7 +67,7 @@ describe('RBAC request permission gate', () => {
   })
 
   it('blocks employees from raw memory/history/files/system APIs but allows tasks', async () => {
-    for (const path of ['/api/hermes/memory', '/api/hermes/sessions', '/api/hermes/files', '/api/hermes/logs']) {
+    for (const path of ['/api/hermes/memory', '/api/hermes/sessions', '/api/hermes/files', '/api/hermes/jobs', '/api/hermes/investor/portal', '/api/hermes/logs']) {
       const request = ctx(path, 'employee')
       const next = vi.fn(async () => {})
       await requireRequestPermission(request, next)
@@ -75,6 +79,14 @@ describe('RBAC request permission gate', () => {
     const next = vi.fn(async () => {})
     await requireRequestPermission(kanban, next)
     expect(next).toHaveBeenCalledOnce()
+  })
+
+  it('keeps research assistants out of raw jobs until job scoping exists', async () => {
+    const jobs = ctx('/api/hermes/jobs', 'research_assistant')
+    const next = vi.fn(async () => {})
+    await requireRequestPermission(jobs, next)
+    expect(jobs.status).toBe(403)
+    expect(next).not.toHaveBeenCalled()
   })
 
   it('lets developer admins use system tools without granting raw business memory', async () => {
@@ -90,5 +102,29 @@ describe('RBAC request permission gate', () => {
     await requireRequestPermission(memory, next)
     expect(memory.status).toBe(403)
     expect(next).not.toHaveBeenCalled()
+  })
+
+  it('writes denied access attempts to the audit log', async () => {
+    const resource = `/api/hermes/memory/audit-test-${Date.now()}`
+    auditAccessEvent({
+      user: { id: 7, username: 'test_employee', role: 'employee' },
+      action: 'GET /api/hermes/memory',
+      resource,
+      permission: 'view:memory',
+      result: 'denied',
+      reason: 'test-denial',
+    })
+
+    const auditFile = join(config.appHome, 'logs', 'access-audit.jsonl')
+    expect(existsSync(auditFile)).toBe(true)
+    const lines = readFileSync(auditFile, 'utf8').trim().split('\n')
+    const event = JSON.parse(lines[lines.length - 1])
+    expect(event).toMatchObject({
+      username: 'test_employee',
+      role: 'employee',
+      resource,
+      result: 'denied',
+      permission: 'view:memory',
+    })
   })
 })

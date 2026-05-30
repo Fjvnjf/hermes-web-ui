@@ -224,7 +224,7 @@ export async function resolveUserProfile(ctx: Context, next: Next): Promise<void
     return
   }
 
-  if (!isUnscopedOwnerRole(user.role) && !userCanAccessProfile(user.id, profileName)) {
+  if (!isUnscopedOwnerRole(user.role) && user.role !== 'developer_admin' && !userCanAccessProfile(user.id, profileName)) {
     ctx.status = 403
     ctx.body = { error: `Profile "${profileName}" is not available for this user` }
     return

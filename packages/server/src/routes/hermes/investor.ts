@@ -1,7 +1,20 @@
 import Router from '@koa/router'
-import { requirePermission } from '../../middleware/access-control'
+import { auditAccessEvent, requirePermission } from '../../middleware/access-control'
 
 export const investorRoutes = new Router()
+
+investorRoutes.post('/api/hermes/access-denied', requirePermission('view:account'), (ctx) => {
+  const body = ctx.request.body as { route?: unknown; reason?: unknown } | undefined
+  const route = String(body?.route || '').slice(0, 160)
+  auditAccessEvent({
+    ctx,
+    action: 'route-denied',
+    resource: route || 'unknown-route',
+    result: 'denied',
+    reason: String(body?.reason || 'frontend-route-guard').slice(0, 120),
+  })
+  ctx.body = { success: true }
+})
 
 investorRoutes.get('/api/hermes/investor/portal', requirePermission('view:investor-approved'), (ctx) => {
   ctx.body = {

@@ -9,6 +9,7 @@ import KanbanCreateForm from '@/components/hermes/kanban/KanbanCreateForm.vue'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useProfilesStore } from '@/stores/hermes/profiles'
 import { withDefaultAssignee } from '@/utils/hermes/kanban-assignees'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 import type { KanbanTaskStatus } from '@/api/hermes/kanban'
 import type { ProfileAvatar } from '@/api/hermes/profiles'
 
@@ -128,10 +129,11 @@ watch(visibleBoardStatuses, statuses => {
 }, { immediate: true })
 
 onMounted(async () => {
+  const canLoadProfiles = canAccessRouteName('hermes.profiles', getFrontendAccessRole())
   await Promise.all([
     kanbanStore.fetchBoards(),
     kanbanStore.fetchCapabilities(),
-    profilesStore.profiles.length === 0 ? profilesStore.fetchProfiles() : Promise.resolve(),
+    canLoadProfiles && profilesStore.profiles.length === 0 ? profilesStore.fetchProfiles() : Promise.resolve(),
   ])
   await applyBoardSelection(routeBoard(), true, true)
   kanbanStore.startEventStream()

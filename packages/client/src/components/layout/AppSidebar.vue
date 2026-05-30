@@ -131,10 +131,9 @@ function handleReloadClient() {
 }
 
 async function handleRefresh() {
-  await Promise.all([
-    appStore.checkConnection(),
-    appStore.reloadModels(),
-  ]);
+  const tasks: Array<Promise<unknown>> = [appStore.checkConnection()];
+  if (canShowRoute('hermes.models')) tasks.push(appStore.reloadModels());
+  await Promise.all(tasks);
 }
 
 // Changelog

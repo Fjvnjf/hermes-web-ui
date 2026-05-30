@@ -14,6 +14,7 @@ import { useSessionSearch } from '@/composables/useSessionSearch'
 import CommandGlyph from '@/components/common/CommandGlyph.vue'
 import { clearApiKey, getApiKey, getBaseUrlValue, hasApiKey } from '@/api/client'
 import CommandLogin from '@/components/auth/CommandLogin.vue'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
@@ -56,7 +57,7 @@ onUnmounted(() => {
 })
 
 watch(authReady, (value, previous) => {
-  if (value && !previous) appStore.loadModels()
+  if (value && !previous && canAccessRouteName('hermes.models', getFrontendAccessRole())) appStore.loadModels()
 })
 
 async function initializeCommandCenter() {
@@ -126,7 +127,7 @@ async function refreshCommandCenter() {
   if (!await refreshAuthState()) return
   await Promise.all([
     appStore.checkConnection(),
-    appStore.reloadModels(),
+    canAccessRouteName('hermes.models', getFrontendAccessRole()) ? appStore.reloadModels() : Promise.resolve(),
   ])
 }
 
