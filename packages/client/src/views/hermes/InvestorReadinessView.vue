@@ -6,11 +6,10 @@ import {
   type DataRoomSourceRecord,
   type EvidenceArea,
   type FeasibilityEvidenceItem,
+  type InvestorRiskRegisterItem,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
 import {
-  isPresentationMaterialAllowed,
-  normalizedMarketClaimStatus,
   presentationSectionForEvidence,
   type IntelligenceEvidenceStatus,
   type SourceReference,
@@ -41,17 +40,6 @@ interface AssumptionRegisterItem {
   evidenceStatus: IntelligenceEvidenceStatus
   detail: string
   source: SourceReference | null
-  routeName: string
-  priority: 1 | 2 | 3
-}
-
-interface RiskRegisterItem {
-  id: string
-  title: string
-  origin: string
-  area: EvidenceArea
-  evidenceStatus: IntelligenceEvidenceStatus | 'Pending Review' | 'Unsupported'
-  detail: string
   routeName: string
   priority: 1 | 2 | 3
 }
@@ -298,117 +286,7 @@ const assumptionRecords = computed<AssumptionRegisterItem[]>(() => {
 })
 
 const visibleAssumptionRecords = computed(() => assumptionRecords.value.slice(0, 8))
-
-function riskPriority(area: EvidenceArea, evidenceStatus: RiskRegisterItem['evidenceStatus']): 1 | 2 | 3 {
-  if (evidenceStatus === 'Missing' || evidenceStatus === 'Unsupported') return 3
-  if (area === 'regulatory' || area === 'factory' || area === 'financial') return 3
-  if (evidenceStatus === 'To Verify' || evidenceStatus === 'Pending Review' || evidenceStatus === 'Hypothesis') return 2
-  return 1
-}
-
-function isWeakStatus(status: IntelligenceEvidenceStatus): boolean {
-  return status === 'Missing' ||
-    status === 'To Verify' ||
-    status === 'Hypothesis' ||
-    status === 'Reference Only'
-}
-
-const riskRegisterItems = computed<RiskRegisterItem[]>(() => {
-  const risks: RiskRegisterItem[] = []
-
-  for (const item of sections.value) {
-    if (!isWeakStatus(item.evidenceStatus)) continue
-    risks.push({
-      id: `evidence-${item.id}`,
-      title: item.label,
-      origin: 'Evidence gap',
-      area: item.id,
-      evidenceStatus: item.evidenceStatus,
-      detail: item.nextAction,
-      routeName: item.routeName,
-      priority: riskPriority(item.id, item.evidenceStatus),
-    })
-  }
-
-  for (const finding of intelligence.state.value.researchFindings) {
-    if (finding.status !== 'Pending Review' && finding.status !== 'To Verify') continue
-    risks.push({
-      id: `finding-${finding.id}`,
-      title: finding.keyClaim,
-      origin: 'Research review',
-      area: finding.area,
-      evidenceStatus: finding.status === 'Pending Review' ? 'Pending Review' : finding.evidenceStatus,
-      detail: finding.riskNote || finding.summary,
-      routeName: 'hermes.researchResultReview',
-      priority: riskPriority(finding.area, finding.status === 'Pending Review' ? 'Pending Review' : finding.evidenceStatus),
-    })
-  }
-
-  for (const model of intelligence.state.value.financialModels.slice(0, 2)) {
-    for (const warning of model.warnings) {
-      risks.push({
-        id: `financial-${model.id}-${warning}`,
-        title: `${model.scenarioName} financial warning`,
-        origin: 'IRR calculator',
-        area: 'financial',
-        evidenceStatus: model.evidenceStatus,
-        detail: warning,
-        routeName: 'hermes.investmentCalculator',
-        priority: riskPriority('financial', model.evidenceStatus),
-      })
-    }
-  }
-
-  for (const claim of intelligence.state.value.marketClaims) {
-    const status = normalizedMarketClaimStatus(claim)
-    if (!isWeakStatus(status)) continue
-    risks.push({
-      id: `market-${claim.id || claim.label}`,
-      title: claim.label,
-      origin: 'Market Intelligence',
-      area: 'market',
-      evidenceStatus: status,
-      detail: claim.value || 'Market claim needs value and source evidence.',
-      routeName: 'hermes.marketIntelligence',
-      priority: riskPriority('market', status),
-    })
-  }
-
-  for (const competitor of intelligence.state.value.competitors) {
-    if (!isWeakStatus(competitor.evidenceStatus) && competitor.marketShare?.trim()) continue
-    risks.push({
-      id: `competitor-${competitor.id}`,
-      title: competitor.companyName,
-      origin: 'Competitor Intelligence',
-      area: 'market',
-      evidenceStatus: isWeakStatus(competitor.evidenceStatus) ? competitor.evidenceStatus : 'To Verify',
-      detail: competitor.marketShare?.trim()
-        ? competitor.notes || 'Competitor record needs source-backed review.'
-        : 'Market share is unknown and must stay To Verify.',
-      routeName: 'hermes.competitorIntelligence',
-      priority: riskPriority('market', isWeakStatus(competitor.evidenceStatus) ? competitor.evidenceStatus : 'To Verify'),
-    })
-  }
-
-  for (const material of intelligence.state.value.presentationMaterials) {
-    if (isPresentationMaterialAllowed(material)) continue
-    risks.push({
-      id: `presentation-${material.id || material.section}`,
-      title: material.section,
-      origin: 'Investor Presentation',
-      area: 'presentation',
-      evidenceStatus: 'Unsupported',
-      detail: material.evidenceStatus === 'Verified'
-        ? 'Verified investor material is missing usable source evidence.'
-        : `Material is marked ${material.evidenceStatus} and is excluded from investor drafts.`,
-      routeName: 'hermes.investorPresentation',
-      priority: riskPriority('presentation', 'Unsupported'),
-    })
-  }
-
-  return risks.sort((a, b) => b.priority - a.priority).slice(0, 10)
-})
-
+const riskRegisterItems = intelligence.riskRegisterItems
 const visibleRiskRegisterItems = computed(() => riskRegisterItems.value.slice(0, 8))
 
 function formatSource(source?: SourceReference | null): string {
@@ -664,7 +542,7 @@ async function createAssumptionTask(item: AssumptionRegisterItem) {
   }
 }
 
-function riskTaskBody(item: RiskRegisterItem): string {
+function riskTaskBody(item: InvestorRiskRegisterItem): string {
   return [
     `Investor risk to mitigate: ${item.title}`,
     `Origin: ${item.origin}`,
@@ -679,7 +557,7 @@ function riskTaskBody(item: RiskRegisterItem): string {
   ].join('\n')
 }
 
-async function createRiskTask(item: RiskRegisterItem) {
+async function createRiskTask(item: InvestorRiskRegisterItem) {
   creatingRiskTaskId.value = item.id
   try {
     await kanbanStore.fetchBoards()

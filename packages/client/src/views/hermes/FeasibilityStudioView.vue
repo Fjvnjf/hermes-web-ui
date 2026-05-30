@@ -251,6 +251,7 @@ const investorWorkflowLinks = [
 
 const readinessScore = intelligence.readinessScore
 const topLiveEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
+const topInvestorRisks = computed(() => intelligence.riskRegisterItems.value.slice(0, 3))
 const pendingResearchReview = computed(() =>
   intelligence.state.value.researchFindings
     .filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
@@ -505,6 +506,11 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
           <strong>{{ deckMaterialsNeedingEvidence.length }}</strong>
           <small>items need review</small>
         </RouterLink>
+        <RouterLink class="live-summary-card" :to="{ name: 'hermes.investorReadiness' }">
+          <span>Investor risks</span>
+          <strong>{{ topInvestorRisks.length }}</strong>
+          <small>live register items</small>
+        </RouterLink>
       </div>
 
       <div class="live-intelligence-grid">
@@ -553,6 +559,25 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
             </RouterLink>
           </div>
           <p v-else class="live-empty">No pending research findings or saved research jobs.</p>
+        </article>
+
+        <article class="live-panel">
+          <div class="mini-panel-head">
+            <h4>Investor Risk Register</h4>
+            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Open risks</RouterLink>
+          </div>
+          <div v-if="topInvestorRisks.length" class="live-list">
+            <RouterLink
+              v-for="risk in topInvestorRisks"
+              :key="risk.id"
+              class="live-row"
+              :to="{ name: risk.routeName }"
+            >
+              <strong>{{ risk.title }}</strong>
+              <span>{{ risk.origin }} / {{ risk.evidenceStatus }} / {{ risk.detail }}</span>
+            </RouterLink>
+          </div>
+          <p v-else class="live-empty">No current investor risks in the local intelligence state.</p>
         </article>
 
         <article class="live-panel">

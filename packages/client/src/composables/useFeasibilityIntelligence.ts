@@ -79,6 +79,19 @@ export interface ResearchReviewFinding {
   reviewedAt?: string
 }
 
+export type InvestorRiskEvidenceStatus = IntelligenceEvidenceStatus | 'Pending Review' | 'Unsupported'
+
+export interface InvestorRiskRegisterItem {
+  id: string
+  title: string
+  origin: string
+  area: EvidenceArea
+  evidenceStatus: InvestorRiskEvidenceStatus
+  detail: string
+  routeName: string
+  priority: 1 | 2 | 3
+}
+
 export interface FinancialModelSnapshot {
   id: string
   scenarioName: string
@@ -268,6 +281,29 @@ function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
 
+function riskPriority(area: EvidenceArea, evidenceStatus: InvestorRiskEvidenceStatus): 1 | 2 | 3 {
+  if (evidenceStatus === 'Missing' || evidenceStatus === 'Unsupported') return 3
+  if (area === 'regulatory' || area === 'factory' || area === 'financial') return 3
+  if (evidenceStatus === 'To Verify' || evidenceStatus === 'Pending Review' || evidenceStatus === 'Hypothesis') return 2
+  return 1
+}
+
+function isWeakStatus(status: IntelligenceEvidenceStatus): boolean {
+  return status === 'Missing' ||
+    status === 'To Verify' ||
+    status === 'Hypothesis' ||
+    status === 'Reference Only'
+}
+
+function routeForRiskEvidenceArea(id: EvidenceArea): string {
+  if (id === 'companyLegal' || id === 'product') return 'hermes.files'
+  if (id === 'factory') return 'hermes.kanban'
+  if (id === 'regulatory') return 'hermes.chat'
+  if (id === 'market') return 'hermes.marketIntelligence'
+  if (id === 'financial') return 'hermes.investmentCalculator'
+  return 'hermes.investorPresentation'
+}
+
 function sourceReferencesEqual(a?: SourceReference | null, b?: SourceReference | null): boolean {
   if (!a?.title || !b?.title) return false
   return a.title.trim() === b.title.trim() &&
@@ -332,6 +368,103 @@ export function useFeasibilityIntelligence() {
   const verifiedDataRoomSourceCount = computed(() =>
     state.value.dataRoomSources.filter(item => item.evidenceStatus === 'Verified').length,
   )
+  const riskRegisterItems = computed<InvestorRiskRegisterItem[]>(() => {
+    const risks: InvestorRiskRegisterItem[] = []
+
+    for (const item of state.value.evidenceItems) {
+      if (!isWeakStatus(item.evidenceStatus)) continue
+      risks.push({
+        id: `evidence-${item.id}`,
+        title: item.label,
+        origin: 'Evidence gap',
+        area: item.id,
+        evidenceStatus: item.evidenceStatus,
+        detail: item.nextAction,
+        routeName: routeForRiskEvidenceArea(item.id),
+        priority: riskPriority(item.id, item.evidenceStatus),
+      })
+    }
+
+    for (const finding of state.value.researchFindings) {
+      if (finding.status !== 'Pending Review' && finding.status !== 'To Verify') continue
+      const evidenceStatus = finding.status === 'Pending Review' ? 'Pending Review' : finding.evidenceStatus
+      risks.push({
+        id: `finding-${finding.id}`,
+        title: finding.keyClaim,
+        origin: 'Research review',
+        area: finding.area,
+        evidenceStatus,
+        detail: finding.riskNote || finding.summary,
+        routeName: 'hermes.researchResultReview',
+        priority: riskPriority(finding.area, evidenceStatus),
+      })
+    }
+
+    for (const model of state.value.financialModels.slice(0, 2)) {
+      for (const warning of model.warnings) {
+        risks.push({
+          id: `financial-${model.id}-${warning}`,
+          title: `${model.scenarioName} financial warning`,
+          origin: 'IRR calculator',
+          area: 'financial',
+          evidenceStatus: model.evidenceStatus,
+          detail: warning,
+          routeName: 'hermes.investmentCalculator',
+          priority: riskPriority('financial', model.evidenceStatus),
+        })
+      }
+    }
+
+    for (const claim of state.value.marketClaims) {
+      const evidenceStatus = normalizedMarketClaimStatus(claim)
+      if (!isWeakStatus(evidenceStatus)) continue
+      risks.push({
+        id: `market-${claim.id || claim.label}`,
+        title: claim.label,
+        origin: 'Market Intelligence',
+        area: 'market',
+        evidenceStatus,
+        detail: claim.value || 'Market claim needs value and source evidence.',
+        routeName: 'hermes.marketIntelligence',
+        priority: riskPriority('market', evidenceStatus),
+      })
+    }
+
+    for (const competitor of state.value.competitors) {
+      const evidenceStatus = isWeakStatus(competitor.evidenceStatus) ? competitor.evidenceStatus : 'To Verify'
+      if (!isWeakStatus(competitor.evidenceStatus) && competitor.marketShare?.trim()) continue
+      risks.push({
+        id: `competitor-${competitor.id}`,
+        title: competitor.companyName,
+        origin: 'Competitor Intelligence',
+        area: 'market',
+        evidenceStatus,
+        detail: competitor.marketShare?.trim()
+          ? competitor.notes || 'Competitor record needs source-backed review.'
+          : 'Market share is unknown and must stay To Verify.',
+        routeName: 'hermes.competitorIntelligence',
+        priority: riskPriority('market', evidenceStatus),
+      })
+    }
+
+    for (const material of state.value.presentationMaterials) {
+      if (isPresentationMaterialAllowed(material)) continue
+      risks.push({
+        id: `presentation-${material.id || material.section}`,
+        title: material.section,
+        origin: 'Investor Presentation',
+        area: 'presentation',
+        evidenceStatus: 'Unsupported',
+        detail: material.evidenceStatus === 'Verified'
+          ? 'Verified investor material is missing usable source evidence.'
+          : `Material is marked ${material.evidenceStatus} and is excluded from investor drafts.`,
+        routeName: 'hermes.investorPresentation',
+        priority: riskPriority('presentation', 'Unsupported'),
+      })
+    }
+
+    return risks.sort((a, b) => b.priority - a.priority).slice(0, 10)
+  })
 
   function updateEvidenceStatus(
     id: EvidenceArea,
@@ -670,6 +803,7 @@ export function useFeasibilityIntelligence() {
     pendingResearchFindings,
     latestFinancialModel,
     verifiedDataRoomSourceCount,
+    riskRegisterItems,
     updateEvidenceStatus,
     addMarketClaim,
     updateMarketClaim,

@@ -104,6 +104,13 @@ const investorSnapshot = computed(() => [
     to: { name: 'hermes.investorReadiness' },
   },
   {
+    label: 'Investor Risks',
+    value: String(intelligence.riskRegisterItems.value.length),
+    note: 'Live risk register',
+    tone: intelligence.riskRegisterItems.value.length > 0 ? 'danger' : 'ok',
+    to: { name: 'hermes.investorReadiness' },
+  },
+  {
     label: 'Research Jobs',
     value: String(intelligence.state.value.researchJobs.length),
     note: 'Created from intelligence pages',
@@ -135,6 +142,7 @@ const investorSnapshot = computed(() => [
 
 const nextBestActions = computed(() => buildInvestorNextActions(intelligence.state.value))
 const topEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
+const topInvestorRisks = computed(() => intelligence.riskRegisterItems.value.slice(0, 4))
 const pendingReviewItems = computed(() =>
   intelligence.state.value.researchFindings
     .filter(item => item.status === 'Pending Review' || item.status === 'To Verify')
@@ -490,6 +498,28 @@ onMounted(() => {
             </RouterLink>
           </div>
           <div v-else class="triage-empty">No missing readiness areas in the current local intelligence state.</div>
+        </article>
+
+        <article class="triage-panel">
+          <div class="panel-title">
+            <div>
+              <h3>Investor Risk Register</h3>
+              <p>Highest-priority risks from evidence gaps, research review, warnings, and unsupported deck material.</p>
+            </div>
+            <RouterLink :to="{ name: 'hermes.investorReadiness' }">Risk register</RouterLink>
+          </div>
+          <div v-if="topInvestorRisks.length" class="triage-list">
+            <RouterLink
+              v-for="risk in topInvestorRisks"
+              :key="risk.id"
+              class="triage-row"
+              :to="{ name: risk.routeName }"
+            >
+              <span>{{ risk.title }}</span>
+              <small>{{ risk.origin }} / {{ risk.evidenceStatus }} / {{ risk.detail }}</small>
+            </RouterLink>
+          </div>
+          <div v-else class="triage-empty">No current investor risks in the local intelligence state.</div>
         </article>
 
         <article class="triage-panel">
