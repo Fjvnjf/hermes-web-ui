@@ -1702,6 +1702,58 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'factory')?.evidenceStatus).toBe('To Verify')
   })
 
+  it('prevents rejected research findings from feeding downstream investor stores', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: [
+        'Competitor: Rejected Softener Co',
+        'Region: China',
+        'Product equivalent: Unsupported equivalent',
+        'Pricing evidence: Unsupported note',
+        'Market share: 12%',
+      ].join('\n'),
+      keyClaim: 'Competitor evidence: Rejected Softener Co',
+      area: 'market',
+      evidenceStatus: 'Verified',
+      confidence: 'high',
+      source: { title: 'Rejected source note', date: '2026-05-30' },
+      suggestedTask: 'Do not create this task',
+      suggestedInvestorMaterial: 'Rejected investor claim should not be staged.',
+      status: 'Rejected',
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const buttonByText = (label: string) => wrapper.findAll('button').find(button => button.text() === label)
+
+    for (const label of [
+      'Approve selected updates',
+      'Add to investor draft',
+      'Create task',
+      'Save research note',
+      'Save as market claim',
+      'Save as competitor record',
+      'Save as data-room evidence',
+      'Mark To Verify',
+      'Reject',
+    ]) {
+      const button = buttonByText(label)
+      expect(button).toBeTruthy()
+      expect(button!.attributes('disabled')).toBeDefined()
+      await button!.trigger('click')
+    }
+    await flushPromises()
+
+    expect(createTaskMock).not.toHaveBeenCalled()
+    expect(saveMemoryMock).not.toHaveBeenCalled()
+    expect(intelligence.state.value.marketClaims).toHaveLength(0)
+    expect(intelligence.state.value.competitors).toHaveLength(0)
+    expect(intelligence.state.value.dataRoomSources).toHaveLength(0)
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+    expect(intelligence.state.value.researchFindings[0].status).toBe('Rejected')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('To Verify')
+  })
+
   it('prefills a To Verify finding draft from a research job without approving it', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchJob({

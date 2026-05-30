@@ -278,7 +278,14 @@ function stageFinding() {
   resetForm()
 }
 
+function blockRejectedFinding(item: ResearchReviewFinding, action: string): boolean {
+  if (item.status !== 'Rejected') return false
+  message.warning(`Rejected findings cannot be ${action}. Stage a new finding if the research should be reconsidered.`)
+  return true
+}
+
 function approveReadinessUpdate(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'approved')) return
   const approved = intelligence.approveResearchFinding(item.id, {
     updateReadiness: true,
     evidenceStatus: item.evidenceStatus,
@@ -292,6 +299,7 @@ function approveReadinessUpdate(item: ResearchReviewFinding) {
 }
 
 function addToInvestorDraft(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'added to the investor draft')) return
   if (!item.suggestedInvestorMaterial?.trim()) {
     message.warning('Add suggested investor material before staging this for the presentation builder')
     return
@@ -308,6 +316,7 @@ function addToInvestorDraft(item: ResearchReviewFinding) {
 }
 
 function markToVerify(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'reopened as To Verify')) return
   intelligence.approveResearchFinding(item.id, { evidenceStatus: 'To Verify' })
   message.info('Finding marked To Verify')
 }
@@ -318,6 +327,7 @@ function rejectFinding(item: ResearchReviewFinding) {
 }
 
 function saveAsMarketClaim(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'saved as a market claim')) return
   savingMarketClaimId.value = item.id
   try {
     const saved = intelligence.addMarketClaim({
@@ -362,6 +372,7 @@ function normalizedMarketShareValue(value: string): string {
 }
 
 function saveAsCompetitorRecord(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'saved as a competitor record')) return
   savingCompetitorId.value = item.id
   try {
     const saved = intelligence.addCompetitor({
@@ -392,10 +403,7 @@ function saveAsCompetitorRecord(item: ResearchReviewFinding) {
 }
 
 function saveAsDataRoomEvidence(item: ResearchReviewFinding) {
-  if (item.status === 'Rejected') {
-    message.warning('Rejected findings cannot be saved as data-room evidence')
-    return
-  }
+  if (blockRejectedFinding(item, 'saved as data-room evidence')) return
   savingDataRoomId.value = item.id
   try {
     const saved = intelligence.addDataRoomSource({
@@ -444,6 +452,7 @@ function formatResearchNoteMemory(item: ResearchReviewFinding): string {
 }
 
 async function saveFindingToMemory(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'saved to Memory')) return
   savingMemoryId.value = item.id
   try {
     const current = await fetchMemory()
@@ -460,6 +469,7 @@ async function saveFindingToMemory(item: ResearchReviewFinding) {
 }
 
 async function createTask(item: ResearchReviewFinding) {
+  if (blockRejectedFinding(item, 'turned into a task')) return
   creatingTaskId.value = item.id
   try {
     await kanbanStore.fetchBoards()
@@ -653,22 +663,23 @@ async function createTask(item: ResearchReviewFinding) {
           <small v-if="item.riskNote">Risk: {{ item.riskNote }}</small>
         </div>
         <div class="finding-actions">
-          <NButton size="tiny" secondary type="primary" @click="approveReadinessUpdate(item)">
+          <NButton size="tiny" secondary type="primary" :disabled="item.status === 'Rejected'" @click="approveReadinessUpdate(item)">
             Approve selected updates
           </NButton>
-          <NButton size="tiny" secondary @click="addToInvestorDraft(item)">
+          <NButton size="tiny" secondary :disabled="item.status === 'Rejected'" @click="addToInvestorDraft(item)">
             Add to investor draft
           </NButton>
-          <NButton size="tiny" secondary :loading="creatingTaskId === item.id" @click="createTask(item)">
+          <NButton size="tiny" secondary :disabled="item.status === 'Rejected'" :loading="creatingTaskId === item.id" @click="createTask(item)">
             Create task
           </NButton>
-          <NButton size="tiny" secondary :loading="savingMemoryId === item.id" @click="saveFindingToMemory(item)">
+          <NButton size="tiny" secondary :disabled="item.status === 'Rejected'" :loading="savingMemoryId === item.id" @click="saveFindingToMemory(item)">
             Save research note
           </NButton>
           <NButton
             v-if="item.area === 'market'"
             size="tiny"
             secondary
+            :disabled="item.status === 'Rejected'"
             :loading="savingMarketClaimId === item.id"
             @click="saveAsMarketClaim(item)"
           >
@@ -678,6 +689,7 @@ async function createTask(item: ResearchReviewFinding) {
             v-if="isCompetitorFinding(item)"
             size="tiny"
             secondary
+            :disabled="item.status === 'Rejected'"
             :loading="savingCompetitorId === item.id"
             @click="saveAsCompetitorRecord(item)"
           >
@@ -686,13 +698,14 @@ async function createTask(item: ResearchReviewFinding) {
           <NButton
             size="tiny"
             secondary
+            :disabled="item.status === 'Rejected'"
             :loading="savingDataRoomId === item.id"
             @click="saveAsDataRoomEvidence(item)"
           >
             Save as data-room evidence
           </NButton>
-          <NButton size="tiny" quaternary @click="markToVerify(item)">Mark To Verify</NButton>
-          <NButton size="tiny" quaternary @click="rejectFinding(item)">Reject</NButton>
+          <NButton size="tiny" quaternary :disabled="item.status === 'Rejected'" @click="markToVerify(item)">Mark To Verify</NButton>
+          <NButton size="tiny" quaternary :disabled="item.status === 'Rejected'" @click="rejectFinding(item)">Reject</NButton>
         </div>
       </article>
     </section>
