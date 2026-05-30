@@ -2071,6 +2071,57 @@ describe('investor readiness pages', () => {
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
   })
 
+  it('creates deeper research jobs from missing investor slide gaps', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const marketSlide = wrapper.findAll('.slide-card').find(card => card.text().includes('Market Evidence'))
+
+    expect(marketSlide).toBeTruthy()
+    const researchButton = marketSlide!.findAll('button').find(button => button.text() === 'Do deeper research')
+    expect(researchButton).toBeTruthy()
+    await researchButton!.trigger('click')
+
+    const job = intelligence.state.value.researchJobs[0]
+    expect(job.title).toBe('Investor slide research: Market Evidence')
+    expect(job.status).toBe('Manual Research Job')
+    expect(job.priority).toBe('high')
+    expect(job.question).toContain('Market Evidence')
+    expect(job.scope).toContain('Current slide status: Missing / To Verify')
+    expect(job.scope).toContain('Do not invent market data')
+    expect(job.sourceRequirements).toContain('Every claim needs a source')
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+  })
+
+  it('creates deeper research jobs from weak investor material without approving it', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Unsupported market evidence captured from a session.',
+      evidenceStatus: 'Verified',
+      source: null,
+    })
+
+    const wrapper = mount(InvestorPresentationBuilderView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const weakMaterialPanel = wrapper.find('.excluded-materials')
+    const researchButton = weakMaterialPanel.findAll('button').find(button => button.text() === 'Do deeper research')
+
+    expect(researchButton).toBeTruthy()
+    await researchButton!.trigger('click')
+
+    const job = intelligence.state.value.researchJobs[0]
+    expect(job.title).toBe('Investor material source review: Market Evidence')
+    expect(job.status).toBe('Manual Research Job')
+    expect(job.question).toContain('Verify, source, improve, or reject')
+    expect(job.scope).toContain('Unsupported market evidence captured from a session')
+    expect(job.scope).toContain('Why it is not investor-ready')
+    expect(job.sourceRequirements).toContain('Unknown market share, market size, pricing, and investor return claims must stay To Verify')
+    expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
+  })
+
   it('lets the presentation builder edit weak material into source-backed investor material', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addPresentationMaterial({

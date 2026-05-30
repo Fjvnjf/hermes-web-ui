@@ -24,6 +24,8 @@ const kanbanStore = useKanbanStore()
 const copiedDraft = ref(false)
 const creatingTaskSection = ref('')
 const creatingMaterialTaskId = ref('')
+const creatingResearchSection = ref('')
+const creatingMaterialResearchId = ref('')
 
 interface MaterialFormState {
   section: string
@@ -77,6 +79,23 @@ function materialExclusionReason(material: PresentationMaterial): string {
 
 function materialTaskKey(material: PresentationMaterial): string {
   return material.id || `${material.section}-${material.content}`.slice(0, 120)
+}
+
+function researchPriorityForText(text: string): 'high' | 'medium' | 'low' {
+  const lower = text.toLowerCase()
+  if (lower.includes('regulatory') || lower.includes('risk') || lower.includes('irr') || lower.includes('financial') || lower.includes('market')) return 'high'
+  if (lower.includes('competitor') || lower.includes('factory') || lower.includes('manufacturing') || lower.includes('product')) return 'medium'
+  return 'low'
+}
+
+function materialResearchKey(material: PresentationMaterial): string {
+  return material.id || `${material.section}-${material.evidenceStatus}-${material.content}`.slice(0, 140)
+}
+
+function materialExcerpt(material: PresentationMaterial): string {
+  const trimmed = material.content.trim()
+  if (!trimmed) return 'No draft text provided.'
+  return trimmed.length > 700 ? `${trimmed.slice(0, 700).trim()}...` : trimmed
 }
 
 function formSource(form: MaterialFormState): PresentationMaterial['source'] {
@@ -211,6 +230,64 @@ async function createMissingProofTask(slide: InvestorSlideDraft) {
   }
 }
 
+function createSlideResearchJob(slide: InvestorSlideDraft) {
+  creatingResearchSection.value = slide.section
+  try {
+    const priority = researchPriorityForText(`${slide.section} ${slide.missingAction}`)
+    intelligence.addResearchJob({
+      title: `Investor slide research: ${slide.section}`,
+      question: slide.status === 'Ready'
+        ? `Find stronger source-backed support, risks, or missing proof for the ${slide.section} investor slide.`
+        : `Find source-backed, investor-safe material needed for the ${slide.section} slide.`,
+      scope: [
+        `Investor presentation section: ${slide.section}`,
+        `Current slide status: ${slide.status}`,
+        `Current gap: ${slide.missingAction}`,
+        'Focus on Chemicon China feasibility only. Do not invent market data, competitor share, pricing, or investor claims.',
+      ].join('\n'),
+      expectedOutput: 'A reviewed research finding with key claims, source title plus URL/date, evidence status, risks, and suggested slide text only if source-backed or explicitly labeled as an assumption.',
+      sourceRequirements: 'Every claim needs a source title plus URL/date, or it must remain To Verify. Investor text must be clearly labeled Verified, User Approved, or Approved Assumption.',
+      priority,
+      schedulePreference: 'Tonight',
+      context: 'Chemicon China Feasibility',
+      status: 'Manual Research Job',
+    })
+    message.success('Research job saved for this investor slide')
+  } finally {
+    creatingResearchSection.value = ''
+  }
+}
+
+function createMaterialResearchJob(material: PresentationMaterial) {
+  const key = materialResearchKey(material)
+  creatingMaterialResearchId.value = key
+  try {
+    const priority = researchPriorityForText(`${material.section} ${material.content} ${material.evidenceStatus}`)
+    intelligence.addResearchJob({
+      title: `Investor material source review: ${material.section}`,
+      question: `Verify, source, improve, or reject this investor material for ${material.section}.`,
+      scope: [
+        `Slide section: ${material.section}`,
+        `Current evidence status: ${material.evidenceStatus}`,
+        `Current source trace: ${materialSourceTrace(material)}`,
+        `Why it is not investor-ready: ${materialExclusionReason(material)}`,
+        '',
+        'Material needing review:',
+        materialExcerpt(material),
+      ].join('\n'),
+      expectedOutput: 'A review-ready finding that either supplies source-backed slide text, labels the material as an approved assumption, creates follow-up tasks, or recommends removal.',
+      sourceRequirements: 'Do not promote unsupported claims. Verified material requires source title plus URL/date. Unknown market share, market size, pricing, and investor return claims must stay To Verify unless sourced.',
+      priority,
+      schedulePreference: 'Tonight',
+      context: 'Chemicon China Feasibility',
+      status: 'Manual Research Job',
+    })
+    message.success('Research job saved for weak investor material')
+  } finally {
+    creatingMaterialResearchId.value = ''
+  }
+}
+
 async function createMaterialEvidenceTask(material: PresentationMaterial) {
   const key = materialTaskKey(material)
   creatingMaterialTaskId.value = key
@@ -311,6 +388,14 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
             @click="createMaterialEvidenceTask(material)"
           >
             Create evidence task
+          </NButton>
+          <NButton
+            size="tiny"
+            secondary
+            :loading="creatingMaterialResearchId === materialResearchKey(material)"
+            @click="createMaterialResearchJob(material)"
+          >
+            Do deeper research
           </NButton>
           <RouterLink :to="{ name: 'hermes.files' }">Add source document</RouterLink>
           <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review source</RouterLink>
@@ -451,6 +536,13 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
             @click="createMissingProofTask(slide)"
           >
             {{ creatingTaskSection === slide.section ? 'Creating task' : 'Create task for missing proof' }}
+          </button>
+          <button
+            type="button"
+            :disabled="creatingResearchSection === slide.section"
+            @click="createSlideResearchJob(slide)"
+          >
+            {{ creatingResearchSection === slide.section ? 'Saving research' : 'Do deeper research' }}
           </button>
           <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review research</RouterLink>
           <RouterLink :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
