@@ -10,13 +10,17 @@ import {
 import { fetchMemory, saveMemory } from '@/api/hermes/skills'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import { useJobsStore } from '@/stores/hermes/jobs'
+import { scheduleForResearchSuggestion } from '@/composables/useSessionCapture'
 import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const jobsStore = useJobsStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingTaskId = ref('')
 const creatingJobTaskId = ref('')
+const schedulingJobId = ref('')
 const importingJobOutputId = ref('')
 const savingMemoryId = ref('')
 const savingMarketClaimId = ref('')
@@ -200,6 +204,33 @@ async function importLatestJobOutput(job: ResearchJobRecord) {
   }
 }
 
+function researchJobSchedulePreference(job: ResearchJobRecord): NonNullable<ResearchJobRecord['schedulePreference']> {
+  return job.schedulePreference || 'Tonight'
+}
+
+function researchJobPrompt(job: ResearchJobRecord): string {
+  return [
+    `Research task: ${job.title}`,
+    '',
+    `Research question: ${job.question}`,
+    `Scope: ${job.scope || 'Source-backed feasibility or investor readiness research.'}`,
+    `Expected output: ${job.expectedOutput || 'Concise research result with sources, evidence status, risks, and follow-up tasks.'}`,
+    `Source requirements: ${job.sourceRequirements || 'Include source title plus URL or publication/access date for every claim.'}`,
+    `Project/context: ${job.context}`,
+    `Priority: ${job.priority || 'medium'}`,
+    `Requested from: Research Result Review`,
+    '',
+    'Output requirements:',
+    '- Separate Verified, User Provided, Assumption, To Verify, Hypothesis, and Reference Only material.',
+    '- Include source title plus URL or publication/access date for every claim that could affect investor material.',
+    '- Do not invent market size, pricing, competitor market share, IRR, regulatory status, or investor claims.',
+    '- If source support is weak or missing, label the claim To Verify and recommend a follow-up task.',
+    '- Produce a concise research result that the user can review in Research Result Review before anything changes dashboard facts.',
+    '',
+    'Do not update Memory, investor readiness, market claims, competitor records, or presentation material automatically.',
+  ].join('\n')
+}
+
 function researchJobPriority(job: ResearchJobRecord): number {
   if (job.priority === 'high') return 3
   if (job.priority === 'medium') return 2
@@ -230,18 +261,25 @@ function researchJobTaskBody(job: ResearchJobRecord): string {
   ].filter(Boolean).join('\n')
 }
 
+async function persistResearchJobAsTask(job: ResearchJobRecord, extraLines: string[] = []) {
+  await kanbanStore.fetchBoards()
+  const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+  kanbanStore.setSelectedBoard(board)
+  await kanbanStore.createTask({
+    title: `Research: ${job.title}`,
+    body: [
+      researchJobTaskBody(job),
+      ...extraLines,
+    ].filter(Boolean).join('\n'),
+    priority: researchJobPriority(job),
+    tenant: job.context || 'Chemicon China Feasibility',
+  })
+}
+
 async function createResearchJobTask(job: ResearchJobRecord) {
   creatingJobTaskId.value = job.id
   try {
-    await kanbanStore.fetchBoards()
-    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
-    kanbanStore.setSelectedBoard(board)
-    await kanbanStore.createTask({
-      title: `Research: ${job.title}`,
-      body: researchJobTaskBody(job),
-      priority: researchJobPriority(job),
-      tenant: job.context || 'Chemicon China Feasibility',
-    })
+    await persistResearchJobAsTask(job)
     intelligence.updateResearchJobStatus(job.id, 'Task Created')
     message.success('Research job task created in Kanban')
   } catch (err) {
@@ -249,6 +287,57 @@ async function createResearchJobTask(job: ResearchJobRecord) {
     message.error(`Could not create research job task: ${detail}`)
   } finally {
     creatingJobTaskId.value = ''
+  }
+}
+
+async function scheduleResearchJob(job: ResearchJobRecord) {
+  schedulingJobId.value = job.id
+  jobOutputStatus.value = { ...jobOutputStatus.value, [job.id]: '' }
+  const schedule = scheduleForResearchSuggestion(researchJobSchedulePreference(job))
+  try {
+    const scheduledJob = await jobsStore.createJob({
+      name: `Research: ${job.title}`,
+      schedule,
+      prompt: researchJobPrompt(job),
+      deliver: 'local',
+      repeat: 1,
+    })
+    const scheduledJobId = scheduledJob.job_id || scheduledJob.id
+    if (!scheduledJobId) throw new Error('Hermes did not return a scheduled job id')
+    intelligence.updateResearchJobSchedule(job.id, {
+      scheduledJobId,
+      schedule,
+      status: 'Scheduled Hermes Job',
+    })
+    jobOutputStatus.value = {
+      ...jobOutputStatus.value,
+      [job.id]: `Scheduled as a Hermes job for ${schedule}. Import the output here before using it as evidence.`,
+    }
+    message.success('Hermes research job scheduled')
+  } catch (err) {
+    const scheduleDetail = err instanceof Error ? err.message : 'Unknown scheduling error'
+    try {
+      await persistResearchJobAsTask(job, [
+        '',
+        `Scheduling attempt failed: ${scheduleDetail}`,
+        'Saved fallback: Kanban research task, not a scheduled Hermes job.',
+      ])
+      intelligence.updateResearchJobStatus(job.id, 'Task Created')
+      jobOutputStatus.value = {
+        ...jobOutputStatus.value,
+        [job.id]: `Scheduling failed, so this was saved as a Kanban research task instead: ${scheduleDetail}`,
+      }
+      message.warning('Scheduling failed; saved as a Kanban research task instead')
+    } catch (fallbackErr) {
+      const fallbackDetail = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown fallback task error'
+      jobOutputStatus.value = {
+        ...jobOutputStatus.value,
+        [job.id]: `Could not schedule job or create fallback task: ${scheduleDetail}; ${fallbackDetail}`,
+      }
+      message.error('Could not schedule research job')
+    }
+  } finally {
+    schedulingJobId.value = ''
   }
 }
 
@@ -544,6 +633,16 @@ async function createTask(item: ResearchReviewFinding) {
           <small v-if="jobOutputStatus[job.id]" class="job-output-status">{{ jobOutputStatus[job.id] }}</small>
         </div>
         <div class="job-actions">
+          <NButton
+            v-if="job.status === 'Later' || job.status === 'Manual Research Job'"
+            size="tiny"
+            secondary
+            type="primary"
+            :loading="schedulingJobId === job.id"
+            @click="scheduleResearchJob(job)"
+          >
+            Schedule Hermes job
+          </NButton>
           <NButton
             size="tiny"
             secondary

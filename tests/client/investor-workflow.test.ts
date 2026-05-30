@@ -55,6 +55,7 @@ const checkConnectionMock = vi.hoisted(() => vi.fn())
 const loadModelsMock = vi.hoisted(() => vi.fn())
 const fetchSessionsMock = vi.hoisted(() => vi.fn())
 const listJobsMock = vi.hoisted(() => vi.fn())
+const createJobMock = vi.hoisted(() => vi.fn())
 const listCronRunsMock = vi.hoisted(() => vi.fn())
 const readCronRunMock = vi.hoisted(() => vi.fn())
 const fetchPerformanceRuntimeMock = vi.hoisted(() => vi.fn())
@@ -73,6 +74,12 @@ vi.mock('@/stores/hermes/kanban', () => ({
   }),
 }))
 
+vi.mock('@/stores/hermes/jobs', () => ({
+  useJobsStore: () => ({
+    createJob: createJobMock,
+  }),
+}))
+
 vi.mock('@/utils/clipboard', () => ({
   copyToClipboard: vi.fn().mockResolvedValue(true),
 }))
@@ -88,6 +95,7 @@ vi.mock('@/api/hermes/sessions', () => ({
 
 vi.mock('@/api/hermes/jobs', () => ({
   listJobs: listJobsMock,
+  createJob: createJobMock,
 }))
 
 vi.mock('@/api/hermes/cron-history', () => ({
@@ -192,6 +200,11 @@ beforeEach(() => {
   loadModelsMock.mockReset().mockResolvedValue(undefined)
   fetchSessionsMock.mockReset().mockResolvedValue([])
   listJobsMock.mockReset().mockResolvedValue([])
+  createJobMock.mockReset().mockResolvedValue({
+    job_id: 'job-scheduled-1',
+    id: 'job-scheduled-1',
+    name: 'Research: DMS regulation in China',
+  })
   listCronRunsMock.mockReset().mockResolvedValue([])
   readCronRunMock.mockReset().mockResolvedValue({
     jobId: 'job-1',
@@ -753,6 +766,25 @@ describe('investor feasibility workflow utilities', () => {
 
     expect(updated?.status).toBe('Task Created')
     expect(intelligence.state.value.researchJobs[0].status).toBe('Task Created')
+  })
+
+  it('records scheduled Hermes job details for deferred research jobs', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      context: 'Chemicon China Feasibility',
+      status: 'Later',
+    })
+
+    const updated = intelligence.updateResearchJobSchedule(saved.id, {
+      scheduledJobId: 'job-1',
+      schedule: '2026-05-30T22:00:00',
+    })
+
+    expect(updated?.status).toBe('Scheduled Hermes Job')
+    expect(updated?.scheduledJobId).toBe('job-1')
+    expect(intelligence.state.value.researchJobs[0].schedule).toBe('2026-05-30T22:00:00')
   })
 
   it('builds honest next actions from current investor evidence state', () => {
@@ -2310,6 +2342,44 @@ describe('investor readiness pages', () => {
     expect((selects[0].element as HTMLSelectElement).value).toBe('regulatory')
     expect((selects[1].element as HTMLSelectElement).value).toBe('To Verify')
     expect(intelligence.state.value.researchFindings).toHaveLength(0)
+  })
+
+  it('schedules a deferred research job as a Hermes job without approving it', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      scope: 'Regulatory classification, permits, SDS, storage, transport, and evidence gaps.',
+      expectedOutput: 'Source-backed research note with citations and follow-up tasks.',
+      sourceRequirements: 'Include source title plus URL or date for every claim.',
+      priority: 'high',
+      schedulePreference: 'Tonight',
+      context: 'Chemicon China Feasibility',
+      status: 'Later',
+    })
+
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const scheduleButton = wrapper.findAll('button').find(button => button.text().includes('Schedule Hermes job'))
+    expect(scheduleButton).toBeTruthy()
+
+    await scheduleButton!.trigger('click')
+    await flushPromises()
+
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Research: DMS regulation in China',
+      deliver: 'local',
+      repeat: 1,
+    }))
+    expect(createJobMock.mock.calls[0][0].schedule).toMatch(/T22:00:00$/)
+    expect(createJobMock.mock.calls[0][0].prompt).toContain('Research question: Verify DMS regulatory status')
+    expect(createJobMock.mock.calls[0][0].prompt).toContain('Do not invent market size')
+    expect(createJobMock.mock.calls[0][0].prompt).toContain('Do not update Memory')
+    expect(intelligence.state.value.researchJobs[0].status).toBe('Scheduled Hermes Job')
+    expect(intelligence.state.value.researchJobs[0].scheduledJobId).toBe('job-scheduled-1')
+    expect(intelligence.state.value.researchFindings).toHaveLength(0)
+    expect(wrapper.text()).toContain('Scheduled as a Hermes job')
   })
 
   it('imports scheduled Hermes job output into the review form without approving it', async () => {

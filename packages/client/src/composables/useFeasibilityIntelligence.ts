@@ -637,6 +637,27 @@ export function useFeasibilityIntelligence() {
     return updated
   }
 
+  function updateResearchJobSchedule(
+    id: string,
+    schedule: Pick<ResearchJobRecord, 'scheduledJobId' | 'schedule'> & { status?: ResearchJobRecord['status'] },
+  ): ResearchJobRecord | null {
+    const index = state.value.researchJobs.findIndex(item => item.id === id)
+    if (index === -1) return null
+    const updated: ResearchJobRecord = {
+      ...state.value.researchJobs[index],
+      scheduledJobId: schedule.scheduledJobId,
+      schedule: schedule.schedule,
+      status: schedule.status || 'Scheduled Hermes Job',
+    }
+    state.value.researchJobs = [
+      ...state.value.researchJobs.slice(0, index),
+      updated,
+      ...state.value.researchJobs.slice(index + 1),
+    ]
+    persist()
+    return updated
+  }
+
   function addResearchFinding(finding: Omit<ResearchReviewFinding, 'id' | 'createdAt' | 'status'> & { status?: ResearchReviewStatus }) {
     const evidenceStatus = finding.evidenceStatus === 'Verified' && !sourceIsUsable(finding.source)
       ? 'To Verify'
@@ -816,6 +837,7 @@ export function useFeasibilityIntelligence() {
     removePresentationMaterial,
     addResearchJob,
     updateResearchJobStatus,
+    updateResearchJobSchedule,
     addResearchFinding,
     approveResearchFinding,
     rejectResearchFinding,
