@@ -176,6 +176,35 @@ function financialSummaryText(): string {
   ].join('\n')
 }
 
+function financialSnapshotSource() {
+  return {
+    title: `IRR calculator ${activeScenario.value} scenario`,
+    date: new Date().toISOString().slice(0, 10),
+  }
+}
+
+function currentFinancialSnapshotInput() {
+  return {
+    scenarioName: activeScenario.value,
+    projectName: scenario.value.projectName,
+    currency: scenario.value.currency,
+    evidenceStatus: financialEvidenceStatus.value,
+    npv: result.value.npv,
+    irr: result.value.irr,
+    mirr: result.value.mirr,
+    investorIrr: result.value.investorIrr,
+    investorMoic: result.value.investorMoic,
+    investorExitProceeds: result.value.investorExitProceeds,
+    fundingGap: result.value.fundingGap,
+    paybackYear: result.value.paybackYear,
+    breakEvenVolumeTon: result.value.breakEvenVolumeTon,
+    capexTotal: result.value.capexTotal,
+    yearOneRevenue: result.value.yearly[0]?.revenue || 0,
+    warnings: result.value.warnings,
+    source: financialSnapshotSource(),
+  }
+}
+
 function financialEvidenceTaskBody(): string {
   return [
     `Financial model evidence task: ${scenario.value.projectName}`,
@@ -202,6 +231,33 @@ function financialEvidenceTaskBody(): string {
     'Tags: Financial Model, Evidence Gap, IRR, Chemicon China Feasibility',
     '',
     'Do not treat IRR, NPV, investor return, or payback as verified investor claims until assumptions are source-backed or explicitly approved.',
+  ].join('\n')
+}
+
+function financialDataRoomNotes(): string {
+  return [
+    `Project: ${scenario.value.projectName}`,
+    `Scenario: ${activeScenario.value}`,
+    `Evidence status: ${financialEvidenceStatus.value}`,
+    `Weak inputs: ${evidenceSummary.value.weak} / ${evidenceSummary.value.total}`,
+    `To Verify inputs: ${evidenceSummary.value.toVerify}`,
+    `Assumption inputs: ${evidenceSummary.value.assumptions}`,
+    `Verified inputs: ${evidenceSummary.value.verified}`,
+    '',
+    `NPV: ${formatCurrency(result.value.npv)}`,
+    `IRR: ${formatPercent(result.value.irr)}`,
+    `MIRR: ${formatPercent(result.value.mirr)}`,
+    `Investor IRR: ${formatPercent(result.value.investorIrr)}`,
+    `Investor MOIC: ${formatMultiple(result.value.investorMoic)}`,
+    `Payback: ${result.value.paybackYear ? `Year ${result.value.paybackYear}` : 'Not reached'}`,
+    `Capex: ${formatCurrency(result.value.capexTotal)}`,
+    `Year 1 revenue: ${formatCurrency(result.value.yearly[0]?.revenue || 0)}`,
+    '',
+    result.value.warnings.length
+      ? `Warnings:\n- ${result.value.warnings.join('\n- ')}`
+      : 'Warnings: none from calculator completeness checks',
+    '',
+    'Registered from IRR / Investment Calculator. Outputs are derived model outputs, not verified investor claims unless the displayed evidence status supports investor use.',
   ].join('\n')
 }
 
@@ -263,30 +319,31 @@ async function createFinancialInputTask(item: InvestmentEvidenceGap) {
 }
 
 function saveFinancialSnapshot() {
-  const saved = intelligence.saveFinancialModelSnapshot({
-    scenarioName: activeScenario.value,
-    projectName: scenario.value.projectName,
-    currency: scenario.value.currency,
-    evidenceStatus: financialEvidenceStatus.value,
-    npv: result.value.npv,
-    irr: result.value.irr,
-    mirr: result.value.mirr,
-    investorIrr: result.value.investorIrr,
-    investorMoic: result.value.investorMoic,
-    investorExitProceeds: result.value.investorExitProceeds,
-    fundingGap: result.value.fundingGap,
-    paybackYear: result.value.paybackYear,
-    breakEvenVolumeTon: result.value.breakEvenVolumeTon,
-    capexTotal: result.value.capexTotal,
-    yearOneRevenue: result.value.yearly[0]?.revenue || 0,
-    warnings: result.value.warnings,
-    source: {
-      title: `IRR calculator ${activeScenario.value} scenario`,
-      date: new Date().toISOString().slice(0, 10),
-    },
-  })
+  const saved = intelligence.saveFinancialModelSnapshot(currentFinancialSnapshotInput())
   void saved
   message.success('Financial model snapshot saved to Investor Readiness')
+}
+
+function registerFinancialModelInDataRoom() {
+  if (!draftableFinancialOutputs.value) {
+    message.warning('Add capex, revenue, and calculable cash flows before registering this model in the data room')
+    return
+  }
+  const snapshot = intelligence.saveFinancialModelSnapshot(currentFinancialSnapshotInput())
+  const saved = intelligence.addDataRoomSource({
+    checklistLabel: 'Financial model with evidence status per input',
+    area: 'financial',
+    evidenceStatus: snapshot.evidenceStatus,
+    source: snapshot.source || financialSnapshotSource(),
+    notes: financialDataRoomNotes(),
+  })
+  if (saved.evidenceStatus === 'To Verify') {
+    message.warning('Financial model registered as To Verify in the data room; resolve weak inputs before investor use')
+  } else if (saved.evidenceStatus === 'Derived from Assumptions') {
+    message.info('Financial model registered as assumption-derived data-room evidence')
+  } else {
+    message.success('Financial model registered in the investor data room')
+  }
 }
 
 function addFinancialSummaryToDraft() {
@@ -294,37 +351,13 @@ function addFinancialSummaryToDraft() {
     message.warning('Add capex, revenue, and calculable cash flows before staging financial output')
     return
   }
-  const saved = intelligence.saveFinancialModelSnapshot({
-    scenarioName: activeScenario.value,
-    projectName: scenario.value.projectName,
-    currency: scenario.value.currency,
-    evidenceStatus: financialEvidenceStatus.value,
-    npv: result.value.npv,
-    irr: result.value.irr,
-    mirr: result.value.mirr,
-    investorIrr: result.value.investorIrr,
-    investorMoic: result.value.investorMoic,
-    investorExitProceeds: result.value.investorExitProceeds,
-    fundingGap: result.value.fundingGap,
-    paybackYear: result.value.paybackYear,
-    breakEvenVolumeTon: result.value.breakEvenVolumeTon,
-    capexTotal: result.value.capexTotal,
-    yearOneRevenue: result.value.yearly[0]?.revenue || 0,
-    warnings: result.value.warnings,
-    source: {
-      title: `IRR calculator ${activeScenario.value} scenario`,
-      date: new Date().toISOString().slice(0, 10),
-    },
-  })
+  const saved = intelligence.saveFinancialModelSnapshot(currentFinancialSnapshotInput())
   void saved
   intelligence.addPresentationMaterial({
     section: 'IRR / Investor Return',
     content: financialSummaryText(),
     evidenceStatus: financialPresentationEvidenceStatus.value,
-    source: {
-      title: `IRR calculator ${activeScenario.value} scenario`,
-      date: new Date().toISOString().slice(0, 10),
-    },
+    source: financialSnapshotSource(),
   })
   if (financialPresentationEvidenceStatus.value === 'To Verify') {
     message.warning('Financial summary staged as To Verify and excluded from investor slides until weak inputs are resolved')
@@ -381,6 +414,7 @@ function addFinancialSummaryToDraft() {
       </article>
       <article class="status-actions">
         <NButton secondary type="primary" @click="saveFinancialSnapshot">Save financial snapshot</NButton>
+        <NButton secondary @click="registerFinancialModelInDataRoom">Register in data room</NButton>
         <NButton secondary @click="addFinancialSummaryToDraft">{{ financialDraftButtonLabel }}</NButton>
         <NButton secondary :loading="creatingFinancialTask" @click="createFinancialEvidenceTask">Create financial evidence task</NButton>
         <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>

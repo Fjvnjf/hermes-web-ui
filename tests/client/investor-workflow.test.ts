@@ -928,6 +928,71 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'financial')?.evidenceStatus).toBe('Assumption')
   })
 
+  it('registers calculable To Verify financial models as data-room evidence without investor approval', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    base.capex.machinery.value = 1000
+    base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    base.variableCostPerTon.rawMaterials.value = 20
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const registerButton = wrapper.findAll('button').find(button => button.text() === 'Register in data room')
+
+    expect(registerButton).toBeTruthy()
+    await registerButton!.trigger('click')
+
+    const source = intelligence.state.value.dataRoomSources[0]
+    expect(source.checklistLabel).toBe('Financial model with evidence status per input')
+    expect(source.area).toBe('financial')
+    expect(source.evidenceStatus).toBe('To Verify')
+    expect(source.source?.title).toBe('IRR calculator Base scenario')
+    expect(source.notes).toContain('Weak inputs:')
+    expect(source.notes).toContain('IRR:')
+    expect(source.notes).toContain('not verified investor claims')
+    expect(intelligence.latestFinancialModel.value?.scenarioName).toBe('Base')
+    expect(intelligence.latestFinancialModel.value?.evidenceStatus).toBe('To Verify')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'financial')?.evidenceStatus).toBe('To Verify')
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+  })
+
+  it('registers assumption-derived financial models with explicit assumption labels', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    markScenarioEvidenceStatus(base, 'Assumption')
+    base.capex.machinery.value = 1000
+    base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    base.variableCostPerTon.rawMaterials.value = 20
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const registerButton = wrapper.findAll('button').find(button => button.text() === 'Register in data room')
+
+    expect(registerButton).toBeTruthy()
+    await registerButton!.trigger('click')
+
+    const source = intelligence.state.value.dataRoomSources[0]
+    expect(source.evidenceStatus).toBe('Derived from Assumptions')
+    expect(source.notes).toContain('Assumption inputs:')
+    expect(source.notes).toContain('Registered from IRR / Investment Calculator')
+    expect(intelligence.latestFinancialModel.value?.evidenceStatus).toBe('Derived from Assumptions')
+    expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
+  })
+
   it('creates targeted Kanban tasks from financial input evidence gaps', async () => {
     const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
     base.products[0].name = 'CWAS / CWMS product mix'
