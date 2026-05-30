@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { darkTheme, NConfigProvider, NMessageProvider, NDialogProvider, NNotificationProvider } from 'naive-ui'
+import { darkTheme, NConfigProvider, NMessageProvider, NDialogProvider, NNotificationProvider, NDrawer, NDrawerContent } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { getThemeOverrides } from '@/styles/theme'
 import { useTheme } from '@/composables/useTheme'
@@ -15,6 +15,7 @@ import CommandGlyph from '@/components/common/CommandGlyph.vue'
 import { clearApiKey, getApiKey, getBaseUrlValue, hasApiKey } from '@/api/client'
 import CommandLogin from '@/components/auth/CommandLogin.vue'
 import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedExecutiveIntelligenceBoard.vue'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
@@ -24,9 +25,11 @@ const { openSessionSearch } = useSessionSearch()
 const ready = ref(false)
 const authReady = ref(false)
 const authChecking = ref(true)
+const executiveBoardOpen = ref(false)
 
 const themeOverrides = computed(() => getThemeOverrides(isDark.value, isComic.value))
 const naiveTheme = computed(() => darkTheme)
+const executiveDrawerWidth = computed(() => typeof window !== 'undefined' && window.innerWidth < 760 ? Math.max(window.innerWidth - 16, 280) : 1100)
 
 const nodeVersionLow = computed(() => {
   const v = appStore.nodeVersion
@@ -179,6 +182,16 @@ useKeyboard()
                     </svg>
                     <span>Search</span>
                   </button>
+                  <button class="topbar-action executive-intel-action" type="button" title="Open Executive Intelligence" aria-label="Executive Intelligence" @click="executiveBoardOpen = true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M4 19V5" />
+                      <path d="M4 19h16" />
+                      <path d="M8 15v-4" />
+                      <path d="M12 15V8" />
+                      <path d="M16 15v-6" />
+                    </svg>
+                    <span>Executive Intelligence</span>
+                  </button>
                   <button class="topbar-action" type="button" title="Open chat" aria-label="Chat" @click="navigateTo('hermes.chat')">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -218,6 +231,14 @@ useKeyboard()
               </header>
               <router-view />
             </main>
+            <NDrawer v-model:show="executiveBoardOpen" :width="executiveDrawerWidth" placement="right">
+              <NDrawerContent title="Executive Intelligence" closable>
+                <PinnedExecutiveIntelligenceBoard compact />
+              </NDrawerContent>
+            </NDrawer>
+            <button class="executive-floating-btn" type="button" title="Executive Intelligence" aria-label="Executive Intelligence" @click="executiveBoardOpen = true">
+              EI
+            </button>
           </div>
           <SessionSearchModal v-if="authReady" />
         </NNotificationProvider>
@@ -403,6 +424,10 @@ useKeyboard()
   }
 }
 
+.executive-floating-btn {
+  display: none;
+}
+
 .node-warning-bar {
   position: absolute;
   top: 0;
@@ -452,6 +477,25 @@ useKeyboard()
 
   .topbar-brand {
     font-size: 12px;
+  }
+
+  .executive-floating-btn {
+    position: fixed;
+    right: 14px;
+    bottom: 14px;
+    z-index: 35;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.65);
+    border-radius: 999px;
+    background: $bg-card;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
   }
 }
 </style>

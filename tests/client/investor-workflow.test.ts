@@ -114,6 +114,7 @@ vi.mock('@/api/hermes/files', () => ({
 
 vi.mock('@/api/client', () => ({
   getActiveProfileName: () => 'default',
+  getStoredUserRole: () => 'super_admin',
   hasApiKey: () => true,
 }))
 
@@ -138,6 +139,7 @@ vi.mock('naive-ui', () => ({
   }),
   NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
   NAlert: { template: '<div class="n-alert"><slot /></div>' },
+  NTag: { template: '<span class="n-tag"><slot /></span>' },
   NInput: { props: ['value'], template: '<input :value="value" @input="$emit(\'update:value\', $event.target.value)" />' },
   NInputNumber: { props: ['value'], template: '<input type="number" :value="value" @input="$emit(\'update:value\', Number($event.target.value))" />' },
 }))

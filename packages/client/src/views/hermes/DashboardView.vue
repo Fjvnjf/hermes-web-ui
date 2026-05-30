@@ -9,6 +9,7 @@ import { getActiveProfileName, hasApiKey } from '@/api/client'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedExecutiveIntelligenceBoard.vue'
 import {
   listRecentCaptureActivities,
   type SessionCaptureActivity,
@@ -442,6 +443,8 @@ onMounted(() => {
         <span v-if="lastUpdated" class="status-chip muted">Updated {{ lastUpdated }}</span>
         <span v-if="loadWarning" class="status-chip warn">{{ loadWarning }}</span>
       </section>
+
+      <PinnedExecutiveIntelligenceBoard />
 
       <section class="workspace-action-grid" aria-label="Research workspace shortcuts">
         <RouterLink v-for="action in workspaceActions" :key="action.label" class="workspace-action" :to="action.to">
