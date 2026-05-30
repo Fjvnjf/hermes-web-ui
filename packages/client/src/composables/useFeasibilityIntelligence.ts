@@ -25,6 +25,7 @@ export interface FeasibilityEvidenceItem extends ReadinessItem {
   description: string
   nextAction: string
   source?: SourceReference | null
+  sourceRecordId?: string | null
   updatedAt?: string
 }
 
@@ -265,6 +266,13 @@ function sourceIsUsable(source?: SourceReference | null): boolean {
   return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
 }
 
+function sourceReferencesEqual(a?: SourceReference | null, b?: SourceReference | null): boolean {
+  if (!a?.title || !b?.title) return false
+  return a.title.trim() === b.title.trim() &&
+    (a.url || '').trim() === (b.url || '').trim() &&
+    (a.date || '').trim() === (b.date || '').trim()
+}
+
 function normalizePresentationMaterial(material: PresentationMaterial, index = 0): PresentationMaterial {
   return {
     ...material,
@@ -323,7 +331,12 @@ export function useFeasibilityIntelligence() {
     state.value.dataRoomSources.filter(item => item.evidenceStatus === 'Verified').length,
   )
 
-  function updateEvidenceStatus(id: EvidenceArea, evidenceStatus: IntelligenceEvidenceStatus, source?: SourceReference | null) {
+  function updateEvidenceStatus(
+    id: EvidenceArea,
+    evidenceStatus: IntelligenceEvidenceStatus,
+    source?: SourceReference | null,
+    sourceRecordId: string | null = null,
+  ) {
     state.value.evidenceItems = state.value.evidenceItems.map(item => {
       if (item.id !== id) return item
       const nextStatus = evidenceStatus === 'Verified' && !sourceIsUsable(source) ? 'To Verify' : evidenceStatus
@@ -331,6 +344,7 @@ export function useFeasibilityIntelligence() {
         ...item,
         evidenceStatus: nextStatus,
         source: source || item.source || null,
+        sourceRecordId,
         updatedAt: nowIso(),
       }
     })
@@ -597,15 +611,44 @@ export function useFeasibilityIntelligence() {
       updatedAt: nowIso(),
     })
     state.value.dataRoomSources = [saved, ...state.value.dataRoomSources]
-    updateEvidenceStatus(saved.area, saved.evidenceStatus, saved.source || null)
+    updateEvidenceStatus(saved.area, saved.evidenceStatus, saved.source || null, saved.id)
     persist()
     return saved
   }
 
+  function reconcileEvidenceAfterDataRoomSourceRemoval(removed: DataRoomSourceRecord) {
+    const evidenceIndex = state.value.evidenceItems.findIndex(item => item.id === removed.area)
+    if (evidenceIndex === -1) return
+
+    const current = state.value.evidenceItems[evidenceIndex]
+    const linkedToRemovedSource = current.sourceRecordId === removed.id ||
+      (!current.sourceRecordId && sourceReferencesEqual(current.source, removed.source))
+
+    if (!linkedToRemovedSource) return
+
+    const fallback = state.value.dataRoomSources.find(record => record.area === removed.area)
+    const nextStatus = fallback?.evidenceStatus || 'To Verify'
+    const nextSource = fallback?.source || null
+
+    state.value.evidenceItems = [
+      ...state.value.evidenceItems.slice(0, evidenceIndex),
+      {
+        ...current,
+        evidenceStatus: nextStatus === 'Verified' && !sourceIsUsable(nextSource) ? 'To Verify' : nextStatus,
+        source: nextSource,
+        sourceRecordId: fallback?.id || null,
+        updatedAt: nowIso(),
+      },
+      ...state.value.evidenceItems.slice(evidenceIndex + 1),
+    ]
+  }
+
   function removeDataRoomSource(id: string): boolean {
+    const removedRecord = state.value.dataRoomSources.find(item => item.id === id)
     const before = state.value.dataRoomSources.length
     state.value.dataRoomSources = state.value.dataRoomSources.filter(item => item.id !== id)
     const removed = state.value.dataRoomSources.length !== before
+    if (removed && removedRecord) reconcileEvidenceAfterDataRoomSourceRemoval(removedRecord)
     if (removed) persist()
     return removed
   }

@@ -1124,6 +1124,62 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('SDS source reviewed for investor data room.')
   })
 
+  it('downgrades readiness when the backing data-room source is removed', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const saved = intelligence.addDataRoomSource({
+      checklistLabel: 'Product TDS/SDS and CAS evidence',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      source: { title: 'CWAS SDS source', date: '2026-05-30' },
+      notes: 'SDS source reviewed for investor data room.',
+    })
+
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')).toMatchObject({
+      evidenceStatus: 'Verified',
+      sourceRecordId: saved.id,
+    })
+
+    expect(intelligence.removeDataRoomSource(saved.id)).toBe(true)
+
+    expect(intelligence.state.value.dataRoomSources).toHaveLength(0)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')).toMatchObject({
+      evidenceStatus: 'To Verify',
+      source: null,
+      sourceRecordId: null,
+    })
+  })
+
+  it('falls back to the next available data-room source when the latest one is removed', () => {
+    const intelligence = useFeasibilityIntelligence()
+    const fallback = intelligence.addDataRoomSource({
+      checklistLabel: 'Product TDS/SDS and CAS evidence',
+      area: 'product',
+      evidenceStatus: 'User Provided',
+      source: { title: 'CWAS TDS user upload', date: '2026-05-29' },
+      notes: 'User-uploaded product document awaiting source review.',
+    })
+    const latest = intelligence.addDataRoomSource({
+      checklistLabel: 'Product TDS/SDS and CAS evidence',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      source: { title: 'CWAS SDS source', date: '2026-05-30' },
+      notes: 'SDS source reviewed for investor data room.',
+    })
+
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')).toMatchObject({
+      evidenceStatus: 'Verified',
+      sourceRecordId: latest.id,
+    })
+
+    expect(intelligence.removeDataRoomSource(latest.id)).toBe(true)
+
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')).toMatchObject({
+      evidenceStatus: 'User Provided',
+      sourceRecordId: fallback.id,
+      source: { title: 'CWAS TDS user upload', date: '2026-05-29' },
+    })
+  })
+
   it('stages saved data-room sources for research review without updating investor draft material', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addDataRoomSource({
