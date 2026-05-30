@@ -1672,6 +1672,15 @@ describe('investor readiness pages', () => {
     expect(content).toContain('Evidence status: User Approved')
     expect(content).not.toContain('Unsupported competitor claim should not be saved to the draft.')
     expect(wrapper.text()).toContain(path)
+
+    const source = intelligence.state.value.dataRoomSources[0]
+    expect(source.checklistLabel).toBe('Investor presentation draft file')
+    expect(source.area).toBe('presentation')
+    expect(source.evidenceStatus).toBe('User Approved')
+    expect(source.source?.title).toBe(path)
+    expect(source.notes).toContain('generated Markdown draft file, not final truth')
+    expect(source.notes).toContain('Each section in the file keeps its own evidence status')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'presentation')?.evidenceStatus).toBe('User Approved')
   })
 
   it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {

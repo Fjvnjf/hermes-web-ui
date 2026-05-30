@@ -198,6 +198,21 @@ async function saveApprovedDraftFile() {
     const path = approvedDraftFilePath()
     await writeFile(path, buildApprovedDraftMarkdown())
     latestDraftPath.value = path
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Investor presentation draft file',
+      area: 'presentation',
+      evidenceStatus: 'User Approved',
+      source: {
+        title: path,
+        date: new Date().toISOString().slice(0, 10),
+      },
+      notes: [
+        'Saved from Reports Hub after user action.',
+        'This is a generated Markdown draft file, not final truth.',
+        'Only approved, verified, or assumption-labeled draft sections are included.',
+        'Each section in the file keeps its own evidence status and source trace.',
+      ].join('\n'),
+    })
     message.success('Approved investor draft saved to Documents')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown file error'
