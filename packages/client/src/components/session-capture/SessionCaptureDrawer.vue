@@ -20,12 +20,14 @@ import {
   contextLabel,
   flattenCaptureDraft,
   formatCaptureSuggestionText,
+  formatResearchSuggestionJobPrompt,
   formatResearchSuggestionTask,
   generateDeepResearchSuggestions,
   generateSessionCaptureDraft,
   markCaptureReviewed,
   markCaptureSkipped,
   saveSessionCaptureSelection,
+  scheduleForResearchSuggestion,
   type CaptureCategory,
   type CaptureContextId,
   type CaptureSuggestion,
@@ -33,6 +35,7 @@ import {
   type SessionCaptureDraft,
 } from '@/composables/useSessionCapture'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import { useJobsStore } from '@/stores/hermes/jobs'
 import type { Message } from '@/stores/hermes/chat'
 import { copyToClipboard } from '@/utils/clipboard'
 
@@ -55,6 +58,7 @@ const emit = defineEmits<{
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
+const jobsStore = useJobsStore()
 const intelligence = useFeasibilityIntelligence()
 const selectedContext = ref<CaptureContextId>(props.initialContext)
 const draft = ref<SessionCaptureDraft | null>(null)
@@ -67,6 +71,7 @@ const saveFullTranscript = ref(false)
 const stageResearchReview = ref(false)
 const hiddenResearchSuggestions = ref<Set<string>>(new Set())
 const creatingResearchTaskId = ref<string | null>(null)
+const schedulingResearchJobId = ref<string | null>(null)
 const researchTaskStatus = ref<Record<string, string>>({})
 
 const captureGroups = computed(() => {
@@ -277,6 +282,15 @@ function researchPriorityNumber(priority: string): number {
   return 1
 }
 
+function captureSource() {
+  return {
+    sessionId: props.sessionId || 'current',
+    sessionTitle: props.sessionTitle,
+    contextLabel: contextLabel(selectedContext.value),
+    capturedAt: new Date(),
+  }
+}
+
 async function createResearchTask(item: DeepResearchSuggestion) {
   creatingResearchTaskId.value = item.id
   researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: '' }
@@ -320,6 +334,89 @@ async function createResearchTask(item: DeepResearchSuggestion) {
     message.warning('Research task needs manual copy fallback.')
   } finally {
     creatingResearchTaskId.value = null
+  }
+}
+
+async function scheduleHermesResearchJob(item: DeepResearchSuggestion) {
+  schedulingResearchJobId.value = item.id
+  researchTaskStatus.value = { ...researchTaskStatus.value, [item.id]: '' }
+  const schedule = scheduleForResearchSuggestion(item.schedulePreference)
+  const source = captureSource()
+  try {
+    const job = await jobsStore.createJob({
+      name: `Research: ${item.title}`,
+      schedule,
+      prompt: formatResearchSuggestionJobPrompt(item, source),
+      deliver: 'local',
+      repeat: 1,
+    })
+    intelligence.addResearchJob({
+      title: item.title,
+      question: item.researchQuestion,
+      scope: item.scope,
+      expectedOutput: item.expectedOutput,
+      sourceRequirements: item.sourceRequirements,
+      priority: item.priority,
+      schedulePreference: item.schedulePreference,
+      scheduledJobId: job.job_id || job.id,
+      schedule,
+      context: contextLabel(selectedContext.value),
+      status: 'Scheduled Hermes Job',
+    })
+    researchTaskStatus.value = {
+      ...researchTaskStatus.value,
+      [item.id]: `Scheduled as a Hermes job for ${schedule}. Review the output before using it as evidence.`,
+    }
+    message.success('Hermes research job scheduled')
+  } catch (err) {
+    const scheduleDetail = err instanceof Error ? err.message : 'Unknown scheduling error'
+    try {
+      await kanbanStore.fetchBoards()
+      const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+      kanbanStore.setSelectedBoard(board)
+      await kanbanStore.createTask({
+        title: `Research: ${item.title}`,
+        body: [
+          formatResearchSuggestionTask(item, source),
+          '',
+          `Scheduling attempt failed: ${scheduleDetail}`,
+          'Saved fallback: Kanban research task, not a scheduled Hermes job.',
+        ].join('\n'),
+        priority: researchPriorityNumber(item.priority),
+        tenant: contextLabel(selectedContext.value),
+      })
+      intelligence.addResearchJob({
+        title: item.title,
+        question: item.researchQuestion,
+        scope: item.scope,
+        expectedOutput: item.expectedOutput,
+        sourceRequirements: item.sourceRequirements,
+        priority: item.priority,
+        schedulePreference: item.schedulePreference,
+        context: contextLabel(selectedContext.value),
+        status: 'Task Created',
+      })
+      researchTaskStatus.value = {
+        ...researchTaskStatus.value,
+        [item.id]: `Scheduling failed, so this was saved as a Kanban research task instead: ${scheduleDetail}`,
+      }
+      message.warning('Scheduling failed; saved as a Kanban research task instead')
+    } catch (fallbackErr) {
+      const fallbackDetail = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown fallback task error'
+      researchTaskStatus.value = {
+        ...researchTaskStatus.value,
+        [item.id]: `Could not schedule job or create fallback task: ${scheduleDetail}; ${fallbackDetail}`,
+      }
+      fallbackText.value = [
+        formatResearchSuggestionJobPrompt(item, source),
+        '',
+        `Scheduling attempt failed: ${scheduleDetail}`,
+        `Kanban fallback failed: ${fallbackDetail}`,
+      ].join('\n')
+      message.error('Could not schedule research job')
+    }
+  } finally {
+    schedulingResearchJobId.value = null
   }
 }
 
@@ -464,7 +561,7 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
           <header>
             <div>
               <h3>Do deeper research?</h3>
-              <p>These suggestions become manual Kanban research tasks unless a real scheduled Jobs integration is added later.</p>
+              <p>Approved suggestions can become one-shot Hermes Jobs. If scheduling fails, the dashboard saves a Kanban research task instead.</p>
             </div>
             <NTag size="small" round>{{ deepResearchSuggestions.length }} suggested</NTag>
           </header>
@@ -479,10 +576,16 @@ function hideResearchSuggestion(item: DeepResearchSuggestion) {
               </div>
             </div>
             <div class="research-actions">
-              <NButton size="tiny" secondary type="primary" :loading="creatingResearchTaskId === item.id" @click="createResearchTask(item)">
-                Yes, create research task
+              <NButton
+                size="tiny"
+                secondary
+                type="primary"
+                :loading="schedulingResearchJobId === item.id"
+                @click="scheduleHermesResearchJob(item)"
+              >
+                Yes, schedule Hermes job
               </NButton>
-              <NButton size="tiny" secondary @click="createResearchTask(item)">Create task instead</NButton>
+              <NButton size="tiny" secondary :loading="creatingResearchTaskId === item.id" @click="createResearchTask(item)">Create task instead</NButton>
               <NButton size="tiny" quaternary @click="deferResearchSuggestion(item)">Later</NButton>
               <NButton size="tiny" quaternary @click="hideResearchSuggestion(item)">No</NButton>
             </div>

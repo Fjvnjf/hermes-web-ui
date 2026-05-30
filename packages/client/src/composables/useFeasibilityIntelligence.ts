@@ -53,8 +53,10 @@ export interface ResearchJobRecord {
   sourceRequirements?: string
   priority?: 'high' | 'medium' | 'low'
   schedulePreference?: 'Tonight' | 'Tomorrow morning' | 'Custom'
+  scheduledJobId?: string
+  schedule?: string
   context: string
-  status: 'Task Created' | 'Manual Research Job' | 'Later'
+  status: 'Task Created' | 'Manual Research Job' | 'Later' | 'Scheduled Hermes Job'
   createdAt: string
 }
 

@@ -7,15 +7,18 @@ import {
 import {
   generateSessionCaptureDraft,
   generateDeepResearchSuggestions,
+  formatResearchSuggestionJobPrompt,
   markCaptureSkipped,
   parseSessionCaptureJson,
   saveSessionCaptureSelection,
+  scheduleForResearchSuggestion,
   shouldPromptForCapture,
 } from '@/composables/useSessionCapture'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import type { Message } from '@/stores/hermes/chat'
 
 const createTaskMock = vi.hoisted(() => vi.fn())
+const createJobMock = vi.hoisted(() => vi.fn())
 const fetchBoardsMock = vi.hoisted(() => vi.fn())
 const setSelectedBoardMock = vi.hoisted(() => vi.fn())
 const fetchMemoryMock = vi.hoisted(() => vi.fn())
@@ -30,6 +33,12 @@ vi.mock('@/stores/hermes/kanban', () => ({
     resolveAvailableBoard: () => 'default',
     setSelectedBoard: setSelectedBoardMock,
     createTask: createTaskMock,
+  }),
+}))
+
+vi.mock('@/stores/hermes/jobs', () => ({
+  useJobsStore: () => ({
+    createJob: createJobMock,
   }),
 }))
 
@@ -102,6 +111,7 @@ describe('Session Capture Assistant', () => {
     window.localStorage.clear()
     useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
     createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
+    createJobMock.mockReset().mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
     fetchBoardsMock.mockReset().mockResolvedValue(undefined)
     setSelectedBoardMock.mockReset()
     fetchMemoryMock.mockReset().mockResolvedValue({ memory: 'Existing memory' })
@@ -261,11 +271,26 @@ describe('Session Capture Assistant', () => {
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
   })
 
-  it('generates deeper research suggestions that can be saved as manual research tasks', () => {
+  it('generates deeper research suggestions that can be scheduled or saved as manual research tasks', () => {
     const suggestions = generateDeepResearchSuggestions(testMessages(), 'chemicon')
 
     expect(suggestions.some(item => item.title.includes('DMS regulation'))).toBe(true)
     expect(suggestions[0].expectedOutput).toContain('Source-backed')
+  })
+
+  it('builds one-shot schedule and safe prompt text for scheduled research jobs', () => {
+    const suggestion = generateDeepResearchSuggestions(testMessages(), 'chemicon')[0]
+    const schedule = scheduleForResearchSuggestion('Tonight', new Date('2026-05-30T12:30:00'))
+    const prompt = formatResearchSuggestionJobPrompt(suggestion, {
+      sessionId: 'session-1',
+      sessionTitle: 'Chemicon feasibility',
+      contextLabel: 'Chemicon China Feasibility',
+      capturedAt: new Date('2026-05-30T12:30:00'),
+    })
+
+    expect(schedule).toBe('2026-05-30T22:00:00')
+    expect(prompt).toContain('Separate Verified, User Provided, Assumption, To Verify, Hypothesis, and Reference Only material')
+    expect(prompt).toContain('Do not update Memory, investor readiness, market claims, competitor records, or presentation material automatically.')
   })
 
   it('renders the capture drawer and saves selected Kanban tasks through the existing store', async () => {
@@ -292,7 +317,7 @@ describe('Session Capture Assistant', () => {
     expect(createTaskMock).toHaveBeenCalled()
   })
 
-  it('records created deep research tasks in the shared feasibility intelligence queue', async () => {
+  it('schedules approved deep research suggestions as Hermes Jobs and records the source job id', async () => {
     const intelligence = useFeasibilityIntelligence()
     const wrapper = mount(SessionCaptureDrawer, {
       props: {
@@ -304,12 +329,18 @@ describe('Session Capture Assistant', () => {
       },
     })
 
-    const researchButton = wrapper.findAll('button').find(button => button.text().includes('Yes, create research task'))
+    const researchButton = wrapper.findAll('button').find(button => button.text().includes('Yes, schedule Hermes job'))
     expect(researchButton).toBeTruthy()
     await researchButton!.trigger('click')
     await flushPromises()
 
-    expect(createTaskMock).toHaveBeenCalled()
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      deliver: 'local',
+      repeat: 1,
+      name: expect.stringContaining('Research: DMS regulation'),
+      prompt: expect.stringContaining('Do not invent market size'),
+    }))
+    expect(createTaskMock).not.toHaveBeenCalled()
     const job = intelligence.state.value.researchJobs.find(item => item.title.includes('DMS regulation'))
     expect(job).toBeTruthy()
     expect(job?.scope).toContain('Regulatory classification')
@@ -317,6 +348,60 @@ describe('Session Capture Assistant', () => {
     expect(job?.sourceRequirements).toContain('Separate verified facts')
     expect(job?.priority).toBe('high')
     expect(job?.schedulePreference).toBe('Tonight')
+    expect(job?.scheduledJobId).toBe('job-1')
+    expect(job?.status).toBe('Scheduled Hermes Job')
+  })
+
+  it('falls back to a Kanban research task when scheduling a Hermes Job fails', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    createJobMock.mockRejectedValueOnce(new Error('cron unavailable'))
+    const wrapper = mount(SessionCaptureDrawer, {
+      props: {
+        show: true,
+        sessionId: 'session-1',
+        sessionTitle: 'Chemicon feasibility',
+        messages: testMessages(),
+        initialContext: 'chemicon',
+      },
+    })
+
+    const researchButton = wrapper.findAll('button').find(button => button.text().includes('Yes, schedule Hermes job'))
+    expect(researchButton).toBeTruthy()
+    await researchButton!.trigger('click')
+    await flushPromises()
+
+    expect(createJobMock).toHaveBeenCalled()
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: expect.stringContaining('Research: DMS regulation'),
+      body: expect.stringContaining('Scheduling attempt failed: cron unavailable'),
+    }))
+    const job = intelligence.state.value.researchJobs.find(item => item.title.includes('DMS regulation'))
+    expect(job?.status).toBe('Task Created')
+    expect(job?.scheduledJobId).toBeUndefined()
+  })
+
+  it('records manually created deep research tasks in the shared feasibility intelligence queue', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const wrapper = mount(SessionCaptureDrawer, {
+      props: {
+        show: true,
+        sessionId: 'session-1',
+        sessionTitle: 'Chemicon feasibility',
+        messages: testMessages(),
+        initialContext: 'chemicon',
+      },
+    })
+
+    const taskButton = wrapper.findAll('button').find(button => button.text().includes('Create task instead'))
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalled()
+    expect(createJobMock).not.toHaveBeenCalled()
+    const job = intelligence.state.value.researchJobs.find(item => item.title.includes('DMS regulation'))
+    expect(job?.status).toBe('Task Created')
+    expect(job?.scope).toContain('Regulatory classification')
   })
 
   it('saves deferred deep research suggestions as Later jobs without creating a task', async () => {

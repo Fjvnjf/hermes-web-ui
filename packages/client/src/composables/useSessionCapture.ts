@@ -931,6 +931,57 @@ export function formatResearchSuggestionTask(item: DeepResearchSuggestion, sourc
   ].join('\n')
 }
 
+function toLocalIsoMinute(value: Date): string {
+  const pad = (input: number) => String(input).padStart(2, '0')
+  return [
+    `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`,
+    `${pad(value.getHours())}:${pad(value.getMinutes())}:00`,
+  ].join('T')
+}
+
+export function scheduleForResearchSuggestion(
+  preference: DeepResearchSuggestion['schedulePreference'],
+  now = new Date(),
+): string {
+  const scheduled = new Date(now)
+  if (preference === 'Tomorrow morning') {
+    scheduled.setDate(scheduled.getDate() + 1)
+    scheduled.setHours(8, 0, 0, 0)
+    return toLocalIsoMinute(scheduled)
+  }
+  if (preference === 'Custom') {
+    scheduled.setHours(scheduled.getHours() + 2, 0, 0, 0)
+    return toLocalIsoMinute(scheduled)
+  }
+  scheduled.setHours(22, 0, 0, 0)
+  if (scheduled <= now) scheduled.setDate(scheduled.getDate() + 1)
+  return toLocalIsoMinute(scheduled)
+}
+
+export function formatResearchSuggestionJobPrompt(item: DeepResearchSuggestion, source: SessionCaptureSource): string {
+  return [
+    `Research task: ${item.title}`,
+    '',
+    `Research question: ${item.researchQuestion}`,
+    `Scope: ${item.scope}`,
+    `Expected output: ${item.expectedOutput}`,
+    `Source requirements: ${item.sourceRequirements}`,
+    `Project/context: ${item.contextLabel}`,
+    `Priority: ${item.priority}`,
+    '',
+    sourceLabel(source),
+    '',
+    'Output requirements:',
+    '- Separate Verified, User Provided, Assumption, To Verify, Hypothesis, and Reference Only material.',
+    '- Include source title plus URL or publication/access date for every claim that could affect investor material.',
+    '- Do not invent market size, pricing, competitor market share, IRR, regulatory status, or investor claims.',
+    '- If source support is weak or missing, label the claim To Verify and recommend a follow-up task.',
+    '- Produce a concise research result that the user can review in Research Result Review before anything changes dashboard facts.',
+    '',
+    'Do not update Memory, investor readiness, market claims, competitor records, or presentation material automatically.',
+  ].join('\n')
+}
+
 function isStringRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }

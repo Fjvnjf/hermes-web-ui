@@ -115,6 +115,8 @@ function researchJobSummary(job: ResearchJobRecord): string {
     job.scope ? `Scope: ${job.scope}` : '',
     job.expectedOutput ? `Expected output: ${job.expectedOutput}` : '',
     job.sourceRequirements ? `Source requirements: ${job.sourceRequirements}` : '',
+    job.scheduledJobId ? `Hermes job id: ${job.scheduledJobId}` : '',
+    job.schedule ? `Scheduled run: ${job.schedule}` : '',
     job.schedulePreference ? `Run time preference: ${job.schedulePreference}` : '',
   ].filter(Boolean).join('\n')
 }
@@ -156,6 +158,8 @@ function researchJobTaskBody(job: ResearchJobRecord): string {
     `Project/context: ${job.context}`,
     `Priority: ${job.priority || (researchJobPriority(job) === 3 ? 'high' : researchJobPriority(job) === 2 ? 'medium' : 'low')}`,
     `Run time preference: ${job.schedulePreference || 'Manual'}`,
+    job.scheduledJobId ? `Hermes scheduled job id: ${job.scheduledJobId}` : '',
+    job.schedule ? `Scheduled run: ${job.schedule}` : '',
     `Current job status: ${job.status}`,
     'Source page: Research Result Review',
     'Tags: Research Job, Evidence Gap, Chemicon China Feasibility',
@@ -434,16 +438,17 @@ async function createTask(item: ResearchReviewFinding) {
           <small v-if="job.scope">Scope: {{ job.scope }}</small>
           <small v-if="job.expectedOutput">Expected output: {{ job.expectedOutput }}</small>
           <small v-if="job.sourceRequirements">Source requirements: {{ job.sourceRequirements }}</small>
+          <small v-if="job.scheduledJobId">Hermes job: {{ job.scheduledJobId }}<template v-if="job.schedule"> / {{ job.schedule }}</template></small>
         </div>
         <div class="job-actions">
           <NButton
             size="tiny"
             secondary
-            :disabled="job.status === 'Task Created'"
+            :disabled="job.status === 'Task Created' || job.status === 'Scheduled Hermes Job'"
             :loading="creatingJobTaskId === job.id"
             @click="createResearchJobTask(job)"
           >
-            {{ job.status === 'Task Created' ? 'Task created' : 'Create research task' }}
+            {{ job.status === 'Scheduled Hermes Job' ? 'Hermes job scheduled' : job.status === 'Task Created' ? 'Task created' : 'Create research task' }}
           </NButton>
           <NButton size="tiny" secondary @click="useJobAsFindingDraft(job)">
             Use as finding draft
