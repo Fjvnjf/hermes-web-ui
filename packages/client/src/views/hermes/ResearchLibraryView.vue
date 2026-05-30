@@ -37,6 +37,8 @@ const links = [
   { label: 'Memory', to: { name: 'hermes.memory' } },
   { label: 'Documents', to: { name: 'hermes.files' } },
   { label: 'Market', to: { name: 'hermes.marketIntelligence' } },
+  { label: 'Raw Materials', to: { name: 'hermes.rawMaterialSourcing' } },
+  { label: 'Export Markets', to: { name: 'hermes.exportMarketOpportunity' } },
   { label: 'Competitors', to: { name: 'hermes.competitorIntelligence' } },
   { label: 'Review Results', to: { name: 'hermes.researchResultReview' } },
 ]

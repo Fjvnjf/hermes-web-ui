@@ -220,6 +220,11 @@ async function createNextActionTask(action: InvestorNextAction) {
 
 const workspaceActions = [
   {
+    label: 'Last 24 Hours',
+    detail: 'Review chats, captures, tasks, jobs, files, and failures from available data.',
+    to: { name: 'hermes.last24Hours' },
+  },
+  {
     label: 'Continue Chat',
     detail: 'Resume Hermes conversation work.',
     to: { name: 'hermes.chat' },
@@ -243,6 +248,16 @@ const workspaceActions = [
     label: 'Open Projects',
     detail: 'Choose the research or feasibility workspace to continue.',
     to: { name: 'hermes.projects' },
+  },
+  {
+    label: 'Raw Material Sourcing',
+    detail: 'Track sourced price entries, supplier evidence, and alerts.',
+    to: { name: 'hermes.rawMaterialSourcing' },
+  },
+  {
+    label: 'Export Markets',
+    detail: 'Research country opportunity with HS-code and trade-proxy warnings.',
+    to: { name: 'hermes.exportMarketOpportunity' },
   },
   {
     label: 'Open Research Library',
@@ -293,6 +308,8 @@ const workstreams = [
     links: [
       { label: 'Library', to: { name: 'hermes.research' } },
       { label: 'Market', to: { name: 'hermes.marketIntelligence' } },
+      { label: 'Raw Materials', to: { name: 'hermes.rawMaterialSourcing' } },
+      { label: 'Export Markets', to: { name: 'hermes.exportMarketOpportunity' } },
       { label: 'Competitors', to: { name: 'hermes.competitorIntelligence' } },
       { label: 'History', to: { name: 'hermes.history' } },
       { label: 'Memory', to: { name: 'hermes.memory' } },

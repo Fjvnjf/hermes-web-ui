@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -10,11 +11,19 @@ const router = createRouter({
     {
       path: '/hermes/dashboard',
       name: 'hermes.dashboard',
+      meta: { sensitivity: 'confidential' },
       component: () => import('@/views/hermes/DashboardView.vue'),
+    },
+    {
+      path: '/hermes/last-24-hours',
+      name: 'hermes.last24Hours',
+      meta: { sensitivity: 'owner-only' },
+      component: () => import('@/views/hermes/Last24HoursView.vue'),
     },
     {
       path: '/hermes/chat',
       name: 'hermes.chat',
+      meta: { sensitivity: 'product-development-secret' },
       component: () => import('@/views/hermes/ChatView.vue'),
     },
     {
@@ -30,6 +39,7 @@ const router = createRouter({
     {
       path: '/hermes/research',
       name: 'hermes.research',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/ResearchLibraryView.vue'),
     },
     {
@@ -50,11 +60,25 @@ const router = createRouter({
     {
       path: '/hermes/market-intelligence',
       name: 'hermes.marketIntelligence',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/MarketIntelligenceView.vue'),
+    },
+    {
+      path: '/hermes/raw-material-sourcing',
+      name: 'hermes.rawMaterialSourcing',
+      meta: { sensitivity: 'confidential' },
+      component: () => import('@/views/hermes/RawMaterialSourcingView.vue'),
+    },
+    {
+      path: '/hermes/export-market-opportunity',
+      name: 'hermes.exportMarketOpportunity',
+      meta: { sensitivity: 'employee-safe' },
+      component: () => import('@/views/hermes/ExportMarketOpportunityView.vue'),
     },
     {
       path: '/hermes/competitor-intelligence',
       name: 'hermes.competitorIntelligence',
+      meta: { sensitivity: 'employee-safe' },
       component: () => import('@/views/hermes/CompetitorIntelligenceView.vue'),
     },
     {
@@ -173,6 +197,17 @@ const router = createRouter({
       component: () => import('@/views/hermes/VersionPreviewView.vue'),
     },
   ],
+})
+
+router.beforeEach((to) => {
+  const routeName = typeof to.name === 'string' ? to.name : ''
+  if (!routeName) return true
+  const role = getFrontendAccessRole()
+  if (canAccessRouteName(routeName, role)) return true
+  const fallback = ['hermes.research', 'hermes.reportsHub', 'hermes.investorReadiness', 'hermes.dashboard']
+    .find(name => canAccessRouteName(name, role))
+  if (!fallback || fallback === routeName) return true
+  return { name: fallback, query: { access: 'restricted' } }
 })
 
 export default router

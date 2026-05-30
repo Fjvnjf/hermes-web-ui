@@ -1864,7 +1864,7 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Approved distributor interview narrative')
     expect(wrapper.text()).toContain('Distributor interview')
     expect(wrapper.text()).toContain('Deck sections ready')
-    expect(wrapper.text()).toContain('1/16')
+    expect(wrapper.text()).toContain('1/20')
     expect(wrapper.text()).toContain('Base')
     expect(wrapper.text()).toContain('Derived from Assumptions')
     expect(wrapper.text()).toContain('Pricing input is still To Verify.')

@@ -65,6 +65,9 @@ const investorReady = computed(() => readinessScore.value >= 70 && missingSlideC
 
 function materialSourceTrace(material: PresentationMaterial): string {
   if (material.source) return formatSourceReference(material.source)
+  if (material.evidenceStatus === 'Investor Approved') return 'Investor approved material'
+  if (material.evidenceStatus === 'Source-backed') return 'Source-backed material requires source title plus URL or date'
+  if (material.evidenceStatus === 'Powerful Assumption') return 'Powerful assumption - not a fact; label must stay visible'
   if (material.evidenceStatus === 'Approved Assumption') return 'Approved assumption - source not required, but label must stay visible'
   if (material.evidenceStatus === 'Derived from Assumptions') return 'Derived from assumption-labeled financial model'
   if (material.evidenceStatus === 'User Approved') return 'User approved - source optional'
@@ -418,7 +421,10 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
         Evidence status
         <select v-model="materialForm.evidenceStatus">
           <option>User Approved</option>
+          <option>Investor Approved</option>
+          <option>Source-backed</option>
           <option>Approved Assumption</option>
+          <option>Powerful Assumption</option>
           <option>Verified</option>
           <option>To Verify</option>
         </select>
@@ -485,7 +491,10 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
             Evidence status
             <select v-model="editMaterialForm.evidenceStatus">
               <option>User Approved</option>
+              <option>Investor Approved</option>
+              <option>Source-backed</option>
               <option>Approved Assumption</option>
+              <option>Powerful Assumption</option>
               <option>Verified</option>
               <option>To Verify</option>
             </select>

@@ -2,11 +2,14 @@ export type IntelligenceEvidenceStatus =
   | 'Missing'
   | 'To Verify'
   | 'Assumption'
+  | 'Powerful Assumption'
+  | 'Source-backed'
   | 'Derived from Assumptions'
   | 'Hypothesis'
   | 'Reference Only'
   | 'User Provided'
   | 'User Approved'
+  | 'Investor Approved'
   | 'Approved Assumption'
   | 'Verified'
 
@@ -111,12 +114,16 @@ export const INVESTOR_PRESENTATION_SECTIONS = [
   'Chemicon Background',
   'Product Plan',
   'China Feasibility',
+  'Raw Material Strategy',
   'Market Evidence',
   'Competitor Landscape',
   'Manufacturing Plan',
+  'Factory / Plant Plan',
   'Regulatory Plan',
+  'Regulatory / EHS',
   'Financial Model',
   'IRR / Investor Return',
+  'IRR / NPV / Payback',
   'Use of Funds',
   'Risk & Mitigation',
   'Evidence / Data Room',
@@ -139,7 +146,7 @@ export function canMarkMarketClaimVerified(claim: MarketClaim): boolean {
 }
 
 export function normalizedMarketClaimStatus(claim: MarketClaim): IntelligenceEvidenceStatus {
-  if (claim.evidenceStatus === 'Verified' && !canMarkMarketClaimVerified(claim)) return 'To Verify'
+  if ((claim.evidenceStatus === 'Verified' || claim.evidenceStatus === 'Source-backed') && !canMarkMarketClaimVerified(claim)) return 'To Verify'
   if (!claim.value?.trim()) return 'To Verify'
   return claim.evidenceStatus
 }
@@ -151,6 +158,7 @@ export function presentationSectionForEvidence(area?: string, text = ''): string
   if (lower.includes('competitor')) return 'Competitor Landscape'
   if (lower.includes('use of funds') || lower.includes('funding')) return 'Use of Funds'
   if (lower.includes('risk') || lower.includes('mitigation')) return 'Risk & Mitigation'
+  if (lower.includes('raw material') || lower.includes('supplier') || lower.includes('sourcing')) return 'Raw Material Strategy'
   if (lower.includes('irr') || lower.includes('npv') || lower.includes('payback') || lower.includes('return')) return 'IRR / Investor Return'
   if (lower.includes('data room') || lower.includes('source document') || lower.includes('evidence room')) return 'Evidence / Data Room'
   if (lower.includes('market') || lower.includes('customer') || lower.includes('demand') || lower.includes('price')) return 'Market Evidence'
@@ -179,15 +187,17 @@ export function formatSourcedMarketShare(
 ): string {
   const trimmed = value?.trim() || ''
   if (!trimmed) return 'To Verify'
-  if (evidenceStatus === 'Assumption' || evidenceStatus === 'Approved Assumption') return `Assumption: ${trimmed}`
-  if ((evidenceStatus === 'Verified' || evidenceStatus === 'User Approved') && sourceIsUsable(source)) return trimmed
+  if (evidenceStatus === 'Assumption' || evidenceStatus === 'Powerful Assumption' || evidenceStatus === 'Approved Assumption') return `${evidenceStatus}: ${trimmed}`
+  if ((evidenceStatus === 'Verified' || evidenceStatus === 'Source-backed' || evidenceStatus === 'User Approved') && sourceIsUsable(source)) return trimmed
   return 'To Verify'
 }
 
 export function isPresentationMaterialAllowed(material: PresentationMaterial): boolean {
   if (!material.content.trim()) return false
-  if (material.evidenceStatus === 'Verified') return sourceIsUsable(material.source)
+  if (material.evidenceStatus === 'Verified' || material.evidenceStatus === 'Source-backed') return sourceIsUsable(material.source)
   return material.evidenceStatus === 'User Approved' ||
+    material.evidenceStatus === 'Investor Approved' ||
+    material.evidenceStatus === 'Powerful Assumption' ||
     material.evidenceStatus === 'Approved Assumption' ||
     material.evidenceStatus === 'Derived from Assumptions'
 }
@@ -200,14 +210,26 @@ export function buildInvestorPresentationDraft(materials: PresentationMaterial[]
       content: material.content,
       evidenceStatus: material.evidenceStatus,
       sourceLabel: material.source?.title ||
-        (material.evidenceStatus === 'Approved Assumption'
+        (material.evidenceStatus === 'Source-backed'
+          ? 'Source-backed material'
+          : material.evidenceStatus === 'Investor Approved'
+            ? 'Investor approved'
+            : material.evidenceStatus === 'Powerful Assumption'
+              ? 'Powerful assumption'
+          : material.evidenceStatus === 'Approved Assumption'
           ? 'Approved assumption'
           : material.evidenceStatus === 'Derived from Assumptions'
             ? 'Derived from assumptions'
             : 'User approved'),
       sourceDetail: material.source
         ? formatSourceReference(material.source)
-        : material.evidenceStatus === 'Approved Assumption'
+        : material.evidenceStatus === 'Source-backed'
+          ? 'Source-backed material requires source title plus URL or date'
+          : material.evidenceStatus === 'Investor Approved'
+            ? 'Investor approved material'
+            : material.evidenceStatus === 'Powerful Assumption'
+              ? 'Powerful assumption - not a fact; source validation still recommended'
+          : material.evidenceStatus === 'Approved Assumption'
           ? 'Approved assumption - source not required, but label must stay visible'
           : material.evidenceStatus === 'Derived from Assumptions'
             ? 'Derived from assumption-labeled financial model'

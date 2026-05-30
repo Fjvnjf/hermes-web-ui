@@ -258,8 +258,12 @@ function removeClaim(claim: MarketClaim) {
       </div>
       <div class="summary-card">
         <strong>{{ sourceReadyCount }}</strong>
-        <span>verified claims</span>
+        <span>source-backed claims</span>
         <small>source required</small>
+      </div>
+      <div class="header-links">
+        <RouterLink :to="{ name: 'hermes.rawMaterialSourcing' }">Raw materials</RouterLink>
+        <RouterLink :to="{ name: 'hermes.exportMarketOpportunity' }">Export markets</RouterLink>
       </div>
     </header>
 
@@ -269,9 +273,11 @@ function removeClaim(claim: MarketClaim) {
         <p>Missing / To Verify until source-backed research is captured and approved.</p>
         <div class="actions">
           <NButton size="tiny" secondary type="primary" :loading="creating === section" @click="createResearchTask(section)">
-            Research this market
+            Yes, do deeper analysis
           </NButton>
+          <button type="button" @click="createResearchTask(section)">Run Tonight</button>
           <RouterLink :to="{ name: 'hermes.kanban' }">Create task</RouterLink>
+          <RouterLink :to="{ name: 'hermes.researchResultReview' }">Later</RouterLink>
           <RouterLink :to="{ name: 'hermes.investorReadiness' }">Add claim to investor review</RouterLink>
         </div>
       </article>
@@ -295,6 +301,8 @@ function removeClaim(claim: MarketClaim) {
         <select v-model="claimForm.evidenceStatus">
           <option>To Verify</option>
           <option>Assumption</option>
+          <option>Powerful Assumption</option>
+          <option>Source-backed</option>
           <option>User Approved</option>
           <option>Verified</option>
         </select>
@@ -404,6 +412,18 @@ function removeClaim(claim: MarketClaim) {
   strong {
     color: $accent-primary;
     font-size: 38px;
+  }
+}
+
+.header-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+
+  a {
+    color: $accent-primary;
+    text-decoration: none;
   }
 }
 

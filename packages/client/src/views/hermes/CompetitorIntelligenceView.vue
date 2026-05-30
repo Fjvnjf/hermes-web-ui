@@ -233,6 +233,8 @@ function addCompetitor() {
           <option>To Verify</option>
           <option>Missing</option>
           <option>Assumption</option>
+          <option>Powerful Assumption</option>
+          <option>Source-backed</option>
           <option>User Approved</option>
           <option>Verified</option>
         </select>

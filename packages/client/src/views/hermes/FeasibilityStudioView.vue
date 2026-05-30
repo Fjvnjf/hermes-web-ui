@@ -15,6 +15,8 @@ type RouteName =
   | 'hermes.investorReadiness'
   | 'hermes.investmentCalculator'
   | 'hermes.marketIntelligence'
+  | 'hermes.rawMaterialSourcing'
+  | 'hermes.exportMarketOpportunity'
   | 'hermes.competitorIntelligence'
   | 'hermes.researchResultReview'
   | 'hermes.investorPresentation'
@@ -248,6 +250,8 @@ const investorWorkflowLinks = [
   { label: 'Investor Readiness', routeName: 'hermes.investorReadiness' as const, description: 'See what is missing before investor material is safe.' },
   { label: 'IRR Calculator', routeName: 'hermes.investmentCalculator' as const, description: 'Model NPV, IRR, MIRR, payback, working capital, and sensitivity.' },
   { label: 'Market Intelligence', routeName: 'hermes.marketIntelligence' as const, description: 'Collect market claims only with source evidence.' },
+  { label: 'Raw Material Sourcing', routeName: 'hermes.rawMaterialSourcing' as const, description: 'Track supplier/source-backed price evidence without exposing formula impact.' },
+  { label: 'Export Markets', routeName: 'hermes.exportMarketOpportunity' as const, description: 'Research country opportunity with HS-code and trade-proxy labels.' },
   { label: 'Competitor Intelligence', routeName: 'hermes.competitorIntelligence' as const, description: 'Track competitors without invented market share.' },
   { label: 'Presentation Builder', routeName: 'hermes.investorPresentation' as const, description: 'Draft from approved material only.' },
 ]
