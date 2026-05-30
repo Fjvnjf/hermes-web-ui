@@ -260,6 +260,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
           Track TEA, DMS, ethoxylates, acids, silicone inputs, stearic acid, and packaging without inventing prices.
           Every saved value stays labeled by evidence status and source type.
         </p>
+        <p class="section-help-text">Track source-backed prices. Unsourced values stay To Verify and high-risk inputs should become tasks before they influence feasibility outputs.</p>
       </div>
       <div class="header-actions">
         <RouterLink class="shell-link" :to="{ name: 'hermes.files' }">Documents</RouterLink>
@@ -283,11 +284,11 @@ async function scheduleResearch(material: RawMaterialRecord) {
           v-for="material in materials"
           :key="material.id"
           class="material-row"
-          :class="{ active: selectedMaterial?.id === material.id }"
+          :class="{ active: selectedMaterial?.id === material.id, risk: material.highRisk, alerting: materialPriceAlert(material).triggered }"
           @click="selectedMaterialId = material.id"
         >
           <strong>{{ material.name }}</strong>
-          <span>{{ material.evidenceStatus }}</span>
+          <span class="status-badge" :class="material.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ material.evidenceStatus }}</span>
           <small v-if="material.highRisk">High regulatory/safety risk</small>
           <small v-else>{{ material.sourceType }}</small>
         </button>
@@ -302,6 +303,11 @@ async function scheduleResearch(material: RawMaterialRecord) {
           </div>
           <span class="status-pill">{{ selectedMaterial.evidenceStatus }}</span>
         </header>
+
+        <section v-if="selectedMaterial.highRisk" class="risk-banner">
+          <strong>DMS / dimethyl sulfate high-risk checkpoint</strong>
+          <span>Verify exact chemical identity, regulatory status, handling rules, and source evidence before using this material in costing, process, or investor material.</span>
+        </section>
 
         <section class="price-grid">
           <article>
@@ -356,7 +362,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
 
         <section class="history-panel">
           <h3>Price history graph</h3>
-          <p v-if="!selectedMaterial.priceHistory.length">No sourced price history yet. Values remain Missing / To Verify.</p>
+          <p v-if="!selectedMaterial.priceHistory.length" class="empty-state-panel">No sourced price history yet. Upload a quote in Documents, create a supplier task, or schedule deeper research before using this value.</p>
           <div v-for="entry in selectedMaterial.priceHistory.slice(0, 10)" :key="entry.id" class="history-row">
             <span>{{ entry.sourceDate || entry.createdAt.slice(0, 10) }}</span>
             <div class="bar-track"><div class="bar" :style="{ width: graphWidth(entry, selectedMaterial.priceHistory) }" /></div>
@@ -401,6 +407,28 @@ async function scheduleResearch(material: RawMaterialRecord) {
   border: 1px solid rgba(128, 162, 190, 0.26);
   background: rgba(5, 14, 24, 0.84);
   border-radius: 8px;
+}
+
+.page-header,
+.summary-card,
+.detail-panel,
+.form-panel,
+.history-panel,
+.action-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card::before,
+.detail-panel::before,
+.form-panel::before,
+.history-panel::before,
+.action-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, #f2c86b, rgba(242, 200, 107, 0.18));
 }
 
 .page-header,
@@ -497,10 +525,24 @@ label,
   text-align: left;
 }
 
+.material-row.risk {
+  border-color: rgba(245, 191, 90, 0.36);
+}
+
+.material-row.alerting {
+  background: rgba(245, 191, 90, 0.08);
+}
+
 .material-row.active,
 .material-row:hover {
   border-color: rgba(56, 213, 255, 0.45);
   background: rgba(56, 213, 255, 0.08);
+}
+
+.material-row .status-badge {
+  width: fit-content;
+  padding: 2px 7px;
+  font-size: 10px;
 }
 
 .detail-panel {

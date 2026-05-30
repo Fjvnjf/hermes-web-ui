@@ -340,6 +340,7 @@ useKeyboard()
   padding: 0 16px;
   background: #080c14;
   border-bottom: 1px solid $border-color;
+  overflow: hidden;
 }
 
 .topbar-title,
@@ -350,6 +351,15 @@ useKeyboard()
   min-width: 0;
 }
 
+.topbar-title {
+  flex: 1 1 220px;
+  overflow: hidden;
+}
+
+.topbar-meta {
+  flex: 0 0 auto;
+}
+
 .topbar-brand {
   color: $accent-primary;
   font-size: 13px;
@@ -357,6 +367,8 @@ useKeyboard()
   letter-spacing: 0.06em;
   text-transform: uppercase;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbar-dot {
@@ -408,6 +420,7 @@ useKeyboard()
   gap: 6px;
   margin-left: auto;
   min-width: 0;
+  flex: 0 1 auto;
 }
 
 .topbar-action {
@@ -473,7 +486,7 @@ useKeyboard()
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1280px) {
   .topbar-action {
     width: 30px;
     justify-content: center;
@@ -482,6 +495,12 @@ useKeyboard()
     span {
       display: none;
     }
+  }
+}
+
+@media (max-width: 1024px) {
+  .topbar-brand {
+    max-width: 210px;
   }
 }
 

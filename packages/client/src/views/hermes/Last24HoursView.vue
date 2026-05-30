@@ -197,6 +197,15 @@ onMounted(refresh)
 
     <p v-if="warning" class="warning">{{ warning }}</p>
 
+    <section class="daily-priority next-action-card" aria-label="Top priority from last 24 hours">
+      <span class="priority-star" aria-hidden="true"></span>
+      <div>
+        <strong>Top priority from last 24 hours</strong>
+        <small>{{ nextActions[0] }}</small>
+      </div>
+      <RouterLink class="shell-link compact" :to="{ name: 'hermes.kanban' }">Open Tasks</RouterLink>
+    </section>
+
     <section class="summary-grid" aria-label="Daily activity counts">
       <article v-for="card in activityCards" :key="card.label" class="summary-card">
         <span>{{ card.label }}</span>
@@ -252,6 +261,7 @@ onMounted(refresh)
   display: flex;
   flex-direction: column;
   gap: 20px;
+  padding: 18px;
 }
 
 .page-header,
@@ -262,6 +272,29 @@ onMounted(refresh)
   background: rgba(5, 14, 24, 0.82);
   border-radius: 8px;
   padding: 18px;
+}
+
+.page-header,
+.brief-panel,
+.detail-grid > article,
+.summary-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card::before,
+.brief-panel::before,
+.detail-grid > article::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, #f2c86b, rgba(242, 200, 107, 0.22));
+}
+
+.daily-priority {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
 }
 
 .page-header {
@@ -328,6 +361,15 @@ li {
   text-decoration: none;
 }
 
+.shell-link.compact {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(128, 162, 190, 0.26);
+  border-radius: 999px;
+}
+
 .warning {
   color: #f5bf5a;
 }
@@ -344,6 +386,10 @@ li + li {
 @media (max-width: 720px) {
   .page-header {
     flex-direction: column;
+  }
+
+  .daily-priority {
+    grid-template-columns: 1fr;
   }
 }
 </style>

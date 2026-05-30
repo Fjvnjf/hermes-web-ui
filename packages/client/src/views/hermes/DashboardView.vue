@@ -156,6 +156,7 @@ const nextBestActions = computed(() =>
   buildInvestorNextActions(intelligence.state.value)
     .filter(action => canUseRouteName(action.routeName))
 )
+const todayPriority = computed(() => nextBestActions.value[0] || null)
 const topEvidenceGaps = computed(() => intelligence.evidenceGaps.value.slice(0, 4))
 const visibleTopEvidenceGaps = computed(() =>
   topEvidenceGaps.value.filter(gap => canUseRouteName(evidenceGapRouteName(gap.id)))
@@ -254,68 +255,87 @@ async function createNextActionTask(action: InvestorNextAction) {
 const workspaceActions = [
   {
     label: 'Last 24 Hours',
+    icon: '24H',
     detail: 'Review chats, captures, tasks, jobs, files, and failures from available data.',
     to: { name: 'hermes.last24Hours' },
   },
   {
     label: 'Continue Chat',
+    icon: 'AI',
     detail: 'Resume Hermes conversation work.',
     to: { name: 'hermes.chat' },
   },
   {
     label: 'Open Feasibility Studio',
+    icon: 'FS',
     detail: 'Work on feasibility drafts, questions, gaps, and outputs.',
     to: { name: 'hermes.feasibility' },
   },
   {
     label: 'Open Investor Readiness',
+    icon: 'IR',
     detail: 'Check evidence gaps, risks, and investor-safe preparation status.',
     to: { name: 'hermes.investorReadiness' },
   },
   {
     label: 'Open IRR Calculator',
+    icon: 'IRR',
     detail: 'Model assumptions, NPV, IRR, MIRR, payback, and sensitivity.',
     to: { name: 'hermes.investmentCalculator' },
   },
   {
     label: 'Open Projects',
+    icon: 'PRJ',
     detail: 'Choose the research or feasibility workspace to continue.',
     to: { name: 'hermes.projects' },
   },
   {
     label: 'Raw Material Sourcing',
+    icon: 'RM',
     detail: 'Track sourced price entries, supplier evidence, and alerts.',
     to: { name: 'hermes.rawMaterialSourcing' },
   },
   {
     label: 'Export Markets',
+    icon: 'EXP',
     detail: 'Research country opportunity with HS-code and trade-proxy warnings.',
     to: { name: 'hermes.exportMarketOpportunity' },
   },
   {
     label: 'Open Research Library',
+    icon: 'RES',
     detail: 'Use history, memory, and saved evidence paths.',
     to: { name: 'hermes.research' },
   },
   {
     label: 'Open Documents',
+    icon: 'DOC',
     detail: 'Access Hermes files and uploaded evidence.',
     to: { name: 'hermes.files' },
   },
   {
     label: 'Open Tasks',
+    icon: 'TASK',
     detail: 'Track work in the existing Kanban board.',
     to: { name: 'hermes.kanban' },
   },
   {
     label: 'Open Reports',
+    icon: 'RPT',
     detail: 'Prepare outputs and check existing usage analytics.',
     to: { name: 'hermes.reportsHub' },
   },
   {
     label: 'Open Memory',
+    icon: 'MEM',
     detail: 'Review retained Hermes memory.',
     to: { name: 'hermes.memory' },
+  },
+  {
+    label: 'Backup Vault',
+    icon: 'BK',
+    detail: 'Owner-only disaster recovery exports with secrets redacted by default.',
+    to: { name: 'hermes.localBackupVault' },
   },
 ]
 
@@ -489,11 +509,37 @@ onMounted(() => {
         <span v-if="loadWarning" class="status-chip warn">{{ loadWarning }}</span>
       </section>
 
+      <section class="executive-brief-card executive-card gold" aria-label="Executive command brief">
+        <div>
+          <p class="executive-eyebrow">Executive Command Brief</p>
+          <h3>Continue from the most important verified workflow</h3>
+          <p>
+            This Home view summarizes real Hermes workspace state only: live routes, capture activity, readiness
+            status, tasks, files, jobs, and model state. No fake business metrics are added here.
+          </p>
+        </div>
+        <RouterLink class="brief-primary-link" :to="{ name: 'hermes.feasibility' }">Open Feasibility Studio</RouterLink>
+      </section>
+
+      <section class="today-priority-strip next-action-card" aria-label="Today's priority">
+        <span class="priority-star" aria-hidden="true"></span>
+        <div v-if="todayPriority">
+          <strong>Today's priority: {{ todayPriority.title }}</strong>
+          <small><span class="priority-separator"> - </span>{{ todayPriority.reason }} / {{ todayPriority.evidenceStatus }} / {{ todayPriority.routeLabel }}</small>
+        </div>
+        <div v-else>
+          <strong>Today's priority: Continue from Chat or Feasibility Studio</strong>
+          <small><span class="priority-separator"> - </span>No urgent evidence-driven action is available in the current workspace state.</small>
+        </div>
+        <RouterLink v-if="todayPriority" :to="{ name: todayPriority.routeName }">Open</RouterLink>
+      </section>
+
       <PinnedExecutiveIntelligenceBoard />
 
       <section class="workspace-action-grid" aria-label="Research workspace shortcuts">
         <RouterLink v-for="action in visibleWorkspaceActions" :key="action.label" class="workspace-action" :to="action.to">
-          <span>{{ action.label }}</span>
+          <span class="action-icon">{{ action.icon }}</span>
+          <span class="action-label">{{ action.label }}</span>
           <small>{{ action.detail }}</small>
         </RouterLink>
       </section>
@@ -859,6 +905,73 @@ onMounted(() => {
   }
 }
 
+.executive-brief-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 16px 18px 16px 22px;
+
+  h3 {
+    margin: 0;
+    color: $accent-primary;
+    font-size: 18px;
+  }
+
+  p {
+    max-width: 850px;
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+}
+
+.executive-eyebrow {
+  color: $accent-info !important;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brief-primary-link,
+.today-priority-strip a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.45);
+  border-radius: 999px;
+  color: $accent-primary;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(var(--accent-primary-rgb), 0.1);
+  }
+}
+
+.today-priority-strip {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  margin-bottom: 12px;
+
+  > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  strong,
+  small {
+    display: block;
+  }
+}
+
 .workspace-action-grid,
 .investor-snapshot-grid,
 .kpi-grid,
@@ -881,6 +994,7 @@ onMounted(() => {
 
 .workspace-action {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
   min-height: 90px;
   padding: 14px;
@@ -894,13 +1008,28 @@ onMounted(() => {
     background: $bg-card-hover;
   }
 
-  span {
+  .action-icon {
+    display: inline-grid;
+    width: 36px;
+    height: 36px;
+    grid-row: span 2;
+    place-items: center;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    color: $accent-primary;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .action-label {
     color: $accent-primary;
     font-size: 14px;
     font-weight: 800;
   }
 
   small {
+    grid-column: 2;
     color: $text-muted;
     font-size: 12px;
     line-height: 1.45;
@@ -1301,6 +1430,12 @@ onMounted(() => {
 
   .dashboard-content {
     padding: 12px;
+  }
+
+  .executive-brief-card,
+  .today-priority-strip {
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .status-strip {

@@ -216,6 +216,7 @@ function addCompetitor() {
           Track product equivalents, certifications, distribution presence, and source links. Pricing/cost fields are
           restricted for employee-style roles. Unknown market share is always displayed as To Verify.
         </p>
+        <p class="section-help-text">Market share must be source-backed or labeled as an assumption. Unknown values stay To Verify and should become research tasks.</p>
       </div>
       <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
     </header>
@@ -261,14 +262,19 @@ function addCompetitor() {
       <p v-if="competitors.length === 0" class="empty-state">
         No competitor records saved yet. Add sourced records above, or create research tasks for unknown competitors.
       </p>
-      <div v-for="competitor in competitors" :key="competitor.id" class="competitor-row">
+      <div
+        v-for="competitor in competitors"
+        :key="competitor.id"
+        class="competitor-row"
+        :class="{ sourced: sourceIsUsable(competitor.source), verify: competitorMarketShareLabel(competitor).includes('To Verify') }"
+      >
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
         <span>{{ competitor.productEquivalent }}</span>
         <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
         <span>{{ competitor.source?.title || 'Source missing' }}</span>
-        <span>{{ competitorMarketShareLabel(competitor) }}</span>
-        <span>{{ competitor.evidenceStatus }}</span>
+        <span class="market-share-label">{{ competitorMarketShareLabel(competitor) }}</span>
+        <span class="status-badge" :class="competitor.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ competitor.evidenceStatus }}</span>
         <span class="row-actions">
           <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">
             Edit
@@ -322,6 +328,24 @@ function addCompetitor() {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
+}
+
+.page-header,
+.competitor-form,
+.competitor-table,
+.detail-grid article {
+  position: relative;
+  overflow: hidden;
+}
+
+.competitor-form::before,
+.competitor-table::before,
+.detail-grid article::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
 }
 
 .page-header {
@@ -406,6 +430,33 @@ function addCompetitor() {
     font-weight: 900;
     text-transform: uppercase;
   }
+
+  &.sourced {
+    border-color: rgba(var(--success-rgb), 0.28);
+  }
+
+  &.verify {
+    background: rgba(var(--accent-primary-rgb), 0.04);
+  }
+}
+
+.market-share-label {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.36);
+  border-radius: 999px;
+  color: $accent-primary;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.competitor-row .status-badge {
+  width: fit-content;
+  padding: 3px 8px;
+  font-size: 10px;
 }
 
 .row-actions {

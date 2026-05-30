@@ -415,6 +415,13 @@ function isRestrictedChecklistItem(group: ChecklistGroup, item: ChecklistItem): 
   return redactSensitiveFields.value && sensitiveChecklistTerms.test(itemSensitivityText(group, item))
 }
 
+function isPriorityChecklistItem(group: ChecklistGroup, item: ChecklistItem): boolean {
+  if (isRestrictedChecklistItem(group, item)) return false
+  return item.status === 'Missing' ||
+    item.status === 'Evidence Needed' ||
+    sensitiveChecklistTerms.test(itemSensitivityText(group, item))
+}
+
 function visibleChecklistLabel(group: ChecklistGroup, item: ChecklistItem): string {
   return isRestrictedChecklistItem(group, item) ? 'Restricted feasibility item' : item.label
 }
@@ -561,6 +568,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <p>
           This page coordinates real Hermes tools. It does not save checklist state or create tasks automatically yet.
         </p>
+        <p class="section-help-text">Use this page to turn missing evidence into tasks, documents, memory notes, or investor-readiness review items.</p>
       </div>
       <div class="workflow-grid">
         <article v-for="(step, index) in visibleWorkflowSteps" :key="step.title" class="workflow-card">
@@ -753,6 +761,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <p>
           Static frontend checklist for planning. Status labels are guidance only and are not saved as project data.
         </p>
+        <p class="section-help-text">Every missing item should become a task or evidence item before it is used in reports or investor material.</p>
       </div>
 
       <div class="checklist-groups">
@@ -762,9 +771,17 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
             <h4>{{ group.title }}</h4>
           </header>
           <div class="checklist-items">
-            <div v-for="item in group.items" :key="`${group.code}-${item.label}`" class="checklist-item">
+            <div
+              v-for="item in group.items"
+              :key="`${group.code}-${item.label}`"
+              class="checklist-item"
+              :class="{ priority: isPriorityChecklistItem(group, item), restricted: isRestrictedChecklistItem(group, item) }"
+            >
               <div class="item-main">
-                <strong>{{ visibleChecklistLabel(group, item) }}</strong>
+                <strong>
+                  <span v-if="isPriorityChecklistItem(group, item)" class="priority-star" aria-label="High priority item"></span>
+                  {{ visibleChecklistLabel(group, item) }}
+                </strong>
                 <p>{{ visibleChecklistAction(group, item) }}</p>
               </div>
               <div class="item-actions">
@@ -914,6 +931,31 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
+}
+
+.studio-hero,
+.workflow-section,
+.live-intelligence-section,
+.guidance-card,
+.checklist-group,
+.investor-section,
+.report-section {
+  position: relative;
+  overflow: hidden;
+}
+
+.studio-hero::before,
+.workflow-section::before,
+.live-intelligence-section::before,
+.guidance-card::before,
+.checklist-group::before,
+.investor-section::before,
+.report-section::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
 }
 
 .studio-hero {
@@ -1223,6 +1265,12 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   background: $bg-panel;
 }
 
+.workflow-card,
+.report-card,
+.live-summary-card {
+  border-color: rgba(var(--accent-primary-rgb), 0.22);
+}
+
 .workflow-card {
   position: relative;
   min-height: 180px;
@@ -1396,10 +1444,21 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
   + .checklist-item {
     border-top: 1px solid $border-color;
   }
+
+  &.priority {
+    background: linear-gradient(90deg, rgba(var(--accent-primary-rgb), 0.08), transparent 42%);
+  }
+
+  &.restricted {
+    opacity: 0.78;
+  }
 }
 
 .item-main {
   strong {
+    display: flex;
+    gap: 7px;
+    align-items: center;
     color: $text-primary;
     font-size: 14px;
   }

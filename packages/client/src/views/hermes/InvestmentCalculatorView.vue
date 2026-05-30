@@ -536,6 +536,7 @@ function addFinancialSummaryToDraft() {
           Frontend calculator for assumptions, cash flow, NPV, IRR, MIRR, payback, break-even, working capital, and
           sensitivity. Outputs are derived from assumptions until every input is source-backed.
         </p>
+        <p class="section-help-text">Outputs are Derived from Assumptions until inputs are verified. Do not use IRR, NPV, payback, or investor returns as investor claims without evidence status review.</p>
       </div>
       <div class="scenario-tabs">
         <button
@@ -553,6 +554,11 @@ function addFinancialSummaryToDraft() {
     <NAlert v-if="result.incomplete" type="warning" :bordered="false" class="model-warning">
       IRR is calculated from incomplete or unverified data. Use this for planning only until source evidence is attached.
     </NAlert>
+
+    <section class="financial-reliability risk-banner">
+      <strong>IRR reliability checkpoint</strong>
+      <span>Financial outputs are planning tools until prices, costs, capex, working capital, tax, and investor terms are source-backed or explicitly approved as assumptions.</span>
+    </section>
 
     <section class="model-status-grid" aria-label="Financial model readiness">
       <article class="status-card">
@@ -897,6 +903,29 @@ function addFinancialSummaryToDraft() {
   background: $bg-card;
 }
 
+.page-header,
+.input-panel,
+.metric-card,
+.investor-return-panel,
+.cashflow-panel,
+.status-card,
+.status-actions {
+  position: relative;
+  overflow: hidden;
+}
+
+.input-panel::before,
+.metric-card::before,
+.investor-return-panel::before,
+.cashflow-panel::before,
+.status-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
+}
+
 .page-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -937,11 +966,16 @@ function addFinancialSummaryToDraft() {
       border-color: $accent-primary;
       color: $bg-primary;
       background: $accent-primary;
+      box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb), 0.12);
     }
   }
 }
 
 .model-warning {
+  margin: 14px 0;
+}
+
+.financial-reliability {
   margin: 14px 0;
 }
 

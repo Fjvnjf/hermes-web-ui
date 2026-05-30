@@ -155,8 +155,12 @@ onMounted(loadStatus)
         <p class="eyebrow">Owner-only disaster recovery</p>
         <h2>Local Backup Vault</h2>
         <p>Download organized ZIP backups of Hermes workspace data without exporting plaintext secrets by default.</p>
+        <p class="section-help-text">Download backups so cloud loss does not destroy your work. Secrets are redacted by default; keep ZIP files private.</p>
       </div>
-      <NButton :loading="loadingStatus" secondary @click="loadStatus">Refresh Status</NButton>
+      <div class="vault-hero-actions">
+        <span class="status-badge owner-only">Owner Only</span>
+        <NButton :loading="loadingStatus" secondary @click="loadStatus">Refresh Status</NButton>
+      </div>
     </section>
 
     <NAlert type="warning" :bordered="false" class="vault-warning">
@@ -282,12 +286,43 @@ onMounted(loadStatus)
 
 .vault-hero,
 .browser-state-panel,
+.schedule-panel,
+.restore-panel,
+.backup-card,
+.status-grid article {
+  position: relative;
+  overflow: hidden;
+}
+
+.vault-hero::before,
+.browser-state-panel::before,
+.schedule-panel::before,
+.restore-panel::before,
+.backup-card::before,
+.status-grid article::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
+}
+
+.vault-hero,
+.browser-state-panel,
 .schedule-panel {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: flex-start;
   padding: 18px;
+}
+
+.vault-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .vault-hero h2,
@@ -319,6 +354,7 @@ onMounted(loadStatus)
 
 .vault-warning {
   border: 1px solid rgba(var(--warning-rgb), 0.35);
+  box-shadow: 0 0 0 1px rgba(var(--warning-rgb), 0.08);
 }
 
 .status-grid {

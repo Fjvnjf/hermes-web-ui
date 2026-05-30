@@ -324,6 +324,7 @@ function removeClaim(claim: MarketClaim) {
           Track market questions without fake market size, growth, CAGR, country ranking, or demand numbers. Claims
           stay To Verify until they have source evidence.
         </p>
+        <p class="section-help-text">Market claims need source title, date, and review before investor use. Use the cards below to create research tasks, not unsupported claims.</p>
       </div>
       <div class="summary-card">
         <strong>{{ sourceReadyCount }}</strong>
@@ -337,7 +338,13 @@ function removeClaim(claim: MarketClaim) {
     </header>
 
     <section class="section-grid">
-      <article v-for="section in visibleSections" :key="section" class="workspace-card">
+      <article
+        v-for="section in visibleSections"
+        :key="section"
+        class="workspace-card"
+        :class="{ priority: section === 'Verified / To Verify Claims' || section === 'Source Library' }"
+      >
+        <span v-if="section === 'Verified / To Verify Claims' || section === 'Source Library'" class="priority-star" aria-label="Investor-relevant research area"></span>
         <h3>{{ section }}</h3>
         <p>Missing / To Verify until source-backed research is captured and approved.</p>
         <div class="actions">
@@ -412,7 +419,9 @@ function removeClaim(claim: MarketClaim) {
         <span>{{ restricted ? 'Restricted market claim' : claim.label }}</span>
         <span>{{ visibleClaimValue(claim) }}</span>
         <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source missing') }}</span>
-        <span>{{ restricted ? 'Restricted' : normalizedMarketClaimStatus(claim) }}</span>
+        <span class="status-badge" :class="restricted ? 'restricted' : normalizedMarketClaimStatus(claim).toLowerCase().replace(/\s+/g, '-')">
+          {{ restricted ? 'Restricted' : normalizedMarketClaimStatus(claim) }}
+        </span>
         <span>{{ restricted ? 'Restricted' : (claim.lastChecked || 'Not checked') }}</span>
         <span class="row-actions">
           <span v-if="restricted" class="restricted-badge">Restricted</span>
@@ -450,6 +459,26 @@ function removeClaim(claim: MarketClaim) {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
+}
+
+.page-header,
+.workspace-card,
+.claim-form,
+.claims-panel,
+.summary-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-card::before,
+.workspace-card.priority::before,
+.claim-form::before,
+.claims-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
 }
 
 .page-header {
@@ -513,6 +542,15 @@ function removeClaim(claim: MarketClaim) {
   h3 {
     margin: 0 0 8px;
     color: $text-primary;
+  }
+}
+
+.workspace-card.priority {
+  border-color: rgba(var(--accent-primary-rgb), 0.34);
+  background: linear-gradient(145deg, rgba(var(--accent-primary-rgb), 0.08), rgba(19, 26, 40, 0.92));
+
+  .priority-star {
+    margin-bottom: 10px;
   }
 }
 
@@ -593,6 +631,12 @@ function removeClaim(claim: MarketClaim) {
   .danger-link {
     color: $error;
   }
+}
+
+.claim-row .status-badge {
+  width: fit-content;
+  padding: 3px 8px;
+  font-size: 10px;
 }
 
 .row-actions {

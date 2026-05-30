@@ -293,6 +293,168 @@ a {
   background: rgba(var(--warning-rgb), 0.10);
 }
 
+.status-badge.owner-only,
+.status-badge.system-admin-only {
+  border-color: rgba(var(--warning-rgb), 0.56);
+  color: $warning;
+  background: rgba(var(--warning-rgb), 0.10);
+}
+
+.status-badge.employee-safe,
+.status-badge.source-backed,
+.status-badge.verified,
+.status-badge.investor-approved,
+.status-badge.user-approved,
+.status-badge.user-provided,
+.status-badge.ready {
+  border-color: rgba(var(--success-rgb), 0.55);
+  color: $success;
+  background: rgba(var(--success-rgb), 0.10);
+}
+
+.status-badge.assumption,
+.status-badge.powerful-assumption,
+.status-badge.approved-assumption,
+.status-badge.derived,
+.status-badge.derived-from-assumptions,
+.status-badge.to-verify,
+.status-badge.reference-only,
+.status-badge.draft,
+.status-badge.needs,
+.status-badge.ready-to-review,
+.status-badge.pending-review {
+  border-color: rgba(var(--accent-primary-rgb), 0.5);
+  color: $accent-primary;
+  background: rgba(var(--accent-primary-rgb), 0.10);
+}
+
+.status-badge.missing,
+.status-badge.restricted,
+.status-badge.blocked,
+.status-badge.rejected {
+  border-color: rgba(var(--error-rgb), 0.5);
+  color: $error;
+  background: rgba(var(--error-rgb), 0.10);
+}
+
+.executive-card,
+.accent-strip-card,
+.next-action-card,
+.empty-state-panel,
+.risk-banner,
+.section-help-text {
+  position: relative;
+}
+
+.executive-card,
+.accent-strip-card,
+.next-action-card,
+.empty-state-panel {
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: $executive-card-bg;
+}
+
+.executive-card::before,
+.accent-strip-card::before,
+.next-action-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: $radius-md 0 0 $radius-md;
+  background: $executive-strip;
+}
+
+.executive-card,
+.accent-strip-card,
+.next-action-card {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(var(--accent-primary-rgb), 0.08);
+}
+
+.accent-strip-card.gold,
+.executive-card.gold {
+  border-color: $accent-gold-border;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(var(--accent-primary-rgb), 0.06);
+}
+
+.priority-star {
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.48);
+  border-radius: 999px;
+  color: $priority-star;
+  background: rgba(var(--accent-primary-rgb), 0.10);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.priority-star::before {
+  content: '★';
+  transform: translateY(-1px);
+}
+
+.section-help-text {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.07);
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.next-action-card {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px 12px 16px;
+  color: $text-primary;
+
+  strong {
+    color: $accent-primary;
+  }
+
+  small,
+  p {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.risk-banner {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px 12px 16px;
+  border: 1px solid rgba(var(--warning-rgb), 0.42);
+  border-left: 3px solid $warning;
+  border-radius: $radius-sm;
+  background: rgba(var(--warning-rgb), 0.08);
+  color: $text-secondary;
+
+  strong {
+    color: $warning;
+  }
+}
+
+.empty-state-panel {
+  padding: 18px;
+  color: $text-secondary;
+  line-height: 1.55;
+}
+
+.executive-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .chat-panel,
 .history-panel,
 .group-chat-panel,

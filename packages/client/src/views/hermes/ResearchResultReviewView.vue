@@ -600,6 +600,7 @@ async function createTask(item: ResearchReviewFinding) {
           Research outputs do not directly update dashboard facts, investor material, or verified claims. Stage a
           finding, check its source, then approve only the updates you want to keep.
         </p>
+        <p class="section-help-text">Approve, reject, create tasks, or save notes from reviewed research only. Missing sources remain To Verify.</p>
       </div>
       <RouterLink class="header-link" :to="{ name: 'hermes.research' }">Research Library</RouterLink>
     </header>
@@ -621,7 +622,7 @@ async function createTask(item: ResearchReviewFinding) {
       <p v-if="researchJobs.length === 0" class="empty-state">
         No research jobs saved yet. Use Review & Capture in Chat or the intelligence pages to create research tasks.
       </p>
-      <div v-for="job in researchJobs.slice(0, 6)" :key="job.id" class="job-row">
+      <div v-for="job in researchJobs.slice(0, 6)" :key="job.id" class="job-row" :class="{ priority: researchJobPriority(job) >= 3 }">
         <div>
           <strong>{{ job.title }}</strong>
           <span>{{ job.status }} / {{ job.context }}<template v-if="job.schedulePreference"> / {{ job.schedulePreference }}</template></span>
@@ -746,11 +747,19 @@ async function createTask(item: ResearchReviewFinding) {
         No research findings staged yet.
       </p>
 
-      <article v-for="item in findings" :key="item.id" class="finding-card">
+      <article
+        v-for="item in findings"
+        :key="item.id"
+        class="finding-card"
+        :class="{ critical: item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify' || !item.source?.title }"
+      >
         <div class="finding-main">
           <div class="finding-title">
-            <h3>{{ item.keyClaim }}</h3>
-            <span>{{ item.status }}</span>
+            <h3>
+              <span v-if="item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify' || !item.source?.title" class="priority-star" aria-label="Needs review"></span>
+              {{ item.keyClaim }}
+            </h3>
+            <span class="status-badge" :class="item.status.toLowerCase().replace(/\s+/g, '-')">{{ item.status }}</span>
           </div>
           <p>{{ item.summary }}</p>
           <div class="finding-meta">
@@ -836,6 +845,28 @@ async function createTask(item: ResearchReviewFinding) {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
+}
+
+.page-header,
+.summary-strip,
+.job-panel,
+.finding-form,
+.review-queue,
+.finding-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-strip::before,
+.job-panel::before,
+.finding-form::before,
+.review-queue::before,
+.finding-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
 }
 
 .page-header {
@@ -944,6 +975,10 @@ async function createTask(item: ResearchReviewFinding) {
     color: $accent-info;
     font-weight: 800;
   }
+
+  &.priority {
+    background: rgba(var(--accent-primary-rgb), 0.05);
+  }
 }
 
 .job-actions {
@@ -995,6 +1030,10 @@ async function createTask(item: ResearchReviewFinding) {
   + .finding-card {
     margin-top: 10px;
   }
+
+  &.critical {
+    border-color: rgba(var(--accent-primary-rgb), 0.34);
+  }
 }
 
 .finding-title {
@@ -1005,11 +1044,14 @@ async function createTask(item: ResearchReviewFinding) {
   justify-content: space-between;
 
   h3 {
+    display: flex;
+    gap: 7px;
+    align-items: center;
     margin: 0;
     color: $text-primary;
   }
 
-  span {
+  > .status-badge {
     border: 1px solid $border-color;
     border-radius: 999px;
     padding: 3px 8px;

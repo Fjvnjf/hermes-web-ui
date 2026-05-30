@@ -681,6 +681,7 @@ function openChangelog() {
   flex-direction: column;
   gap: 1px;
   padding: 0 0 6px;
+  position: relative;
 
   &.nav-group-bottom {
     margin-top: auto;
@@ -708,6 +709,7 @@ function openChangelog() {
   cursor: pointer;
   user-select: none;
   transition: color $transition-fast;
+  border-left: 3px solid transparent;
 
   &:hover {
     color: $accent-primary;
@@ -740,6 +742,7 @@ function openChangelog() {
   font-size: 13px;
   border-radius: 0;
   border-right: 2px solid transparent;
+  border-left: 3px solid transparent;
   cursor: pointer;
   transition: all $transition-fast;
   width: 100%;
@@ -751,9 +754,11 @@ function openChangelog() {
   }
 
   &.active {
-    background-color: rgba(var(--accent-info-rgb), 0.07);
+    background: linear-gradient(90deg, rgba(var(--accent-primary-rgb), 0.12), rgba(var(--accent-info-rgb), 0.06));
+    border-left-color: $accent-primary;
     border-right-color: $accent-info;
     color: $accent-info;
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-primary-rgb), 0.05);
   }
 
   .beta-tag {

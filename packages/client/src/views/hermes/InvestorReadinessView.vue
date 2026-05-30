@@ -89,6 +89,34 @@ const sections = computed<ReadinessSection[]>(() =>
 )
 
 const readinessScore = intelligence.readinessScore
+const readinessStage = computed(() => {
+  if (readinessScore.value >= 85 && (statusCounts.value.Verified || 0) >= 4) {
+    return {
+      label: 'Investor approved',
+      note: 'High readiness score and multiple verified evidence areas. Still review exact source support before sharing.',
+      tone: 'ready',
+    }
+  }
+  if (readinessScore.value >= 70) {
+    return {
+      label: 'Investor draft ready',
+      note: 'Drafting can continue, but unsupported gaps must stay visible in investor material.',
+      tone: 'draft',
+    }
+  }
+  if (readinessScore.value >= 35) {
+    return {
+      label: 'Needs evidence',
+      note: 'Several readiness areas still need source-backed proof, user approval, or clearly labeled assumptions.',
+      tone: 'needs',
+    }
+  }
+  return {
+    label: 'Not ready',
+    note: 'Collect company, product, factory, regulatory, market, financial, and presentation evidence before investor use.',
+    tone: 'blocked',
+  }
+})
 const statusCounts = computed(() => {
   return sections.value.reduce<Record<string, number>>((acc, item) => {
     acc[item.evidenceStatus] = (acc[item.evidenceStatus] || 0) + 1
@@ -793,6 +821,15 @@ defineExpose({
       <RouterLink v-for="link in quickLinks" :key="link.label" :to="link.to">{{ link.label }}</RouterLink>
     </section>
 
+    <section class="readiness-stage-card executive-card" :class="readinessStage.tone" aria-label="Readiness status strip">
+      <div>
+        <p class="eyebrow">Readiness status</p>
+        <h3>{{ readinessStage.label }}</h3>
+        <p>{{ readinessStage.note }}</p>
+      </div>
+      <span class="status-badge" :class="readinessStage.tone">{{ readinessStage.label }}</span>
+    </section>
+
     <section class="status-strip" aria-label="Readiness status summary">
       <span>Verified: {{ statusCounts.Verified || 0 }}</span>
       <span>User Approved: {{ statusCounts['User Approved'] || 0 }}</span>
@@ -878,9 +915,17 @@ defineExpose({
     </section>
 
     <section class="readiness-grid" aria-label="Investor readiness sections">
-      <article v-for="item in sections" :key="item.label" class="readiness-card">
+      <article
+        v-for="item in sections"
+        :key="item.label"
+        class="readiness-card"
+        :class="{ critical: item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify' }"
+      >
         <div class="card-head">
-          <h3>{{ item.label }}</h3>
+          <h3>
+            <span v-if="item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify'" class="priority-star" aria-label="Investor-critical evidence gap"></span>
+            {{ item.label }}
+          </h3>
           <span class="status-pill">{{ item.evidenceStatus }}</span>
         </div>
         <p>{{ item.description }}</p>
@@ -1108,6 +1153,28 @@ defineExpose({
   background: $bg-card;
 }
 
+.page-header,
+.evidence-intake,
+.readiness-card,
+.support-grid article,
+.data-room,
+.score-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.evidence-intake::before,
+.readiness-card::before,
+.support-grid article::before,
+.data-room::before,
+.score-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
+}
+
 .page-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;
@@ -1170,6 +1237,40 @@ defineExpose({
     color: $accent-info;
     text-decoration: none;
     font-weight: 800;
+  }
+}
+
+.readiness-stage-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin: 14px 0;
+  padding: 16px 18px 16px 22px;
+
+  h3 {
+    margin: 0;
+    color: $accent-primary;
+    font-size: 18px;
+  }
+
+  p:not(.eyebrow) {
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+
+  &.ready {
+    border-color: rgba(var(--success-rgb), 0.38);
+  }
+
+  &.draft,
+  &.needs {
+    border-color: rgba(var(--accent-primary-rgb), 0.38);
+  }
+
+  &.blocked {
+    border-color: rgba(var(--error-rgb), 0.32);
   }
 }
 
@@ -1241,10 +1342,18 @@ defineExpose({
   justify-content: space-between;
 
   h3 {
+    display: flex;
+    gap: 7px;
+    align-items: center;
     margin: 0;
     color: $text-primary;
     font-size: 16px;
   }
+}
+
+.readiness-card.critical {
+  border-color: rgba(var(--accent-primary-rgb), 0.34);
+  background: linear-gradient(145deg, rgba(var(--accent-primary-rgb), 0.07), rgba(19, 26, 40, 0.96));
 }
 
 .status-pill {
@@ -1498,6 +1607,10 @@ defineExpose({
 
 @media (max-width: 760px) {
   .page-header {
+    grid-template-columns: 1fr;
+  }
+
+  .readiness-stage-card {
     grid-template-columns: 1fr;
   }
 

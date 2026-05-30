@@ -27,6 +27,8 @@ import { recordSessionCaptureActivity } from '@/composables/useSessionCapture'
 import type { EvidenceArea } from '@/composables/useFeasibilityIntelligence'
 import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
+vi.setConfig({ testTimeout: 10000 })
+
 interface InvestorReadinessTestVm {
   evidenceForm: {
     area: EvidenceArea

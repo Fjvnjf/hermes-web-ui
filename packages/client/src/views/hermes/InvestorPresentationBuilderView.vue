@@ -62,6 +62,20 @@ const readySlideCount = computed(() => slideDrafts.value.filter(slide => slide.s
 const missingSlideCount = computed(() => slideDrafts.value.length - readySlideCount.value)
 const readinessScore = intelligence.readinessScore
 const investorReady = computed(() => readinessScore.value >= 70 && missingSlideCount.value <= 2)
+const investorCriticalSlideSections = new Set([
+  'Executive Summary',
+  'China Feasibility',
+  'Market Evidence',
+  'Manufacturing Plan',
+  'Regulatory Plan',
+  'Financial Model',
+  'IRR / Investor Return',
+  'Risk & Mitigation',
+])
+
+function isInvestorCriticalSlide(section: string): boolean {
+  return investorCriticalSlideSections.has(section)
+}
 
 function materialSourceTrace(material: PresentationMaterial): string {
   if (material.source) return formatSourceReference(material.source)
@@ -338,6 +352,7 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
           This builder prepares investor draft text, not final truth. It excludes unsupported claims and labels
           assumptions visibly. PDF/export can come later only if the existing report system supports it safely.
         </p>
+        <p class="section-help-text">Only verified, user-approved, or visibly approved assumptions should enter investor material. Unsupported claims stay in follow-up, not in the draft.</p>
       </div>
       <div class="readiness-warning">
         <strong>{{ investorReady ? 'Draft pack improving' : 'Not investor-ready yet' }}</strong>
@@ -524,10 +539,18 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
     </section>
 
     <section class="slide-grid">
-      <article v-for="slide in slideDrafts" :key="slide.section" class="slide-card" :class="{ ready: slide.status === 'Ready' }">
+      <article
+        v-for="slide in slideDrafts"
+        :key="slide.section"
+        class="slide-card"
+        :class="{ ready: slide.status === 'Ready', critical: isInvestorCriticalSlide(slide.section) }"
+      >
         <div class="slide-head">
-          <h3>{{ slide.section }}</h3>
-          <span>{{ slide.status }}</span>
+          <h3>
+            <span v-if="isInvestorCriticalSlide(slide.section)" class="priority-star" aria-label="Investor-critical slide"></span>
+            {{ slide.section }}
+          </h3>
+          <span class="status-badge" :class="slide.status.toLowerCase().replace(/\s+/g, '-')">{{ slide.status }}</span>
         </div>
         <p v-if="slide.status !== 'Ready'">{{ slide.missingAction }}</p>
         <div v-else class="slide-materials">
@@ -579,6 +602,29 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
+}
+
+.page-header,
+.readiness-warning,
+.draft-status,
+.material-form,
+.material-manager,
+.managed-material,
+.slide-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.readiness-warning::before,
+.draft-status::before,
+.material-form::before,
+.material-manager::before,
+.slide-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: $executive-strip;
 }
 
 .page-header {
@@ -862,12 +908,20 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
   padding: 16px;
 
   h3 {
+    display: flex;
+    gap: 7px;
+    align-items: center;
     margin: 0 0 8px;
     color: $text-primary;
   }
 
   &.ready {
     border-color: rgba(var(--success-rgb), 0.35);
+  }
+
+  &.critical:not(.ready) {
+    border-color: rgba(var(--accent-primary-rgb), 0.34);
+    background: linear-gradient(145deg, rgba(var(--accent-primary-rgb), 0.07), rgba(19, 26, 40, 0.94));
   }
 }
 
@@ -877,7 +931,7 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
   align-items: start;
   justify-content: space-between;
 
-  span {
+  > .status-badge {
     border: 1px solid $border-color;
     border-radius: 999px;
     padding: 3px 8px;
