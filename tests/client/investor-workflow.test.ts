@@ -1300,6 +1300,37 @@ describe('investor readiness pages', () => {
     expect(finding.suggestedInvestorMaterial).toBe('')
   })
 
+  it('creates a Kanban evidence task from a weak market claim without approving it', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'CWAS China price proof',
+      value: 'Distributor price mentioned in chat but no source attached',
+      evidenceStatus: 'To Verify',
+      source: null,
+      confidence: 'medium',
+    })
+    const wrapper = mount(MarketIntelligenceView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create evidence task')
+
+    expect(taskButton).toBeTruthy()
+    await taskButton!.trigger('click')
+    await flushPromises()
+
+    expect(createTaskMock).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Market evidence: CWAS China price proof',
+      priority: 3,
+      tenant: 'Chemicon China Feasibility',
+    }))
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Market claim evidence gap: CWAS China price proof')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Evidence status: To Verify')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source trace: Source missing')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Do not use market size, CAGR, demand, pricing, country ranking, or customer claims')
+    expect(intelligence.state.value.researchFindings).toHaveLength(0)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('To Verify')
+  })
+
   it('keeps verified readiness evidence To Verify when source is missing', async () => {
     const intelligence = useFeasibilityIntelligence()
     const wrapper = mount(InvestorReadinessView, {

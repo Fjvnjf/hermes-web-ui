@@ -9,6 +9,7 @@ const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
+const creatingClaimTaskId = ref('')
 const editingClaimId = ref<string | null>(null)
 
 const claimForm = ref({
@@ -83,6 +84,56 @@ async function createResearchTask(label: string) {
     message.error(`Could not create task: ${detail}`)
   } finally {
     creating.value = ''
+  }
+}
+
+function marketClaimTaskBody(claim: MarketClaim): string {
+  const status = normalizedMarketClaimStatus(claim)
+  return [
+    `Market claim evidence gap: ${claim.label}`,
+    `Current value/note: ${claim.value?.trim() || 'To Verify'}`,
+    `Evidence status: ${status}`,
+    `Confidence: ${claim.confidence || 'low'}`,
+    `Source trace: ${claim.source?.title || 'Source missing'}`,
+    `Source URL/date: ${[claim.source?.url, claim.source?.date].filter(Boolean).join(' / ') || 'Missing'}`,
+    `Last checked: ${claim.lastChecked || 'Not checked'}`,
+    '',
+    status === 'Verified'
+      ? 'Recommended action: review whether the source supports the exact investor claim before approving downstream use.'
+      : 'Recommended action: collect a usable source title plus URL/date, then stage this claim through Research Result Review before investor use.',
+    'Source page: Market Intelligence / Verified-To Verify Claims',
+    'Tags: Market Intelligence, Evidence Gap, Chemicon China Feasibility',
+    '',
+    'Do not use market size, CAGR, demand, pricing, country ranking, or customer claims in investor material until the evidence status and source are reviewed.',
+  ].join('\n')
+}
+
+function marketClaimTaskPriority(claim: MarketClaim): 1 | 2 | 3 {
+  const status = normalizedMarketClaimStatus(claim)
+  if (status === 'Missing' || status === 'To Verify' || status === 'Hypothesis') return 3
+  if (!claim.source?.title) return 3
+  return 2
+}
+
+async function createClaimEvidenceTask(claim: MarketClaim) {
+  const key = claim.id || claim.label
+  creatingClaimTaskId.value = key
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Market evidence: ${claim.label}`,
+      body: marketClaimTaskBody(claim),
+      priority: marketClaimTaskPriority(claim),
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Market evidence task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create market evidence task: ${detail}`)
+  } finally {
+    creatingClaimTaskId.value = ''
   }
 }
 
@@ -289,6 +340,13 @@ function removeClaim(claim: MarketClaim) {
         <span class="row-actions">
           <button type="button" @click="startEditClaim(claim)">Edit claim</button>
           <button type="button" @click="stageClaimForReview(claim)">Stage for review</button>
+          <button
+            type="button"
+            :disabled="creatingClaimTaskId === (claim.id || claim.label)"
+            @click="createClaimEvidenceTask(claim)"
+          >
+            {{ creatingClaimTaskId === (claim.id || claim.label) ? 'Creating task' : 'Create evidence task' }}
+          </button>
           <button type="button" @click="addClaimToInvestorReview(claim)">Add to investor review</button>
           <button type="button" class="danger-link" @click="removeClaim(claim)">Remove claim</button>
         </span>
