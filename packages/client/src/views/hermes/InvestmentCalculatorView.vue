@@ -15,6 +15,7 @@ import {
 } from '@/utils/investmentCalculator'
 import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
+import { mkDir, writeFile } from '@/api/hermes/files'
 
 type ScenarioKey = 'Lean' | 'Base' | 'Conservative' | 'Aggressive'
 
@@ -27,6 +28,10 @@ const activeScenario = ref<ScenarioKey>('Base')
 const copied = ref(false)
 const creatingFinancialTask = ref(false)
 const creatingGapTaskId = ref('')
+const savingModelFile = ref(false)
+const latestModelFilePath = ref('')
+
+const FINANCIAL_MODEL_DIR = 'financial-models'
 
 function makeScenario(name: ScenarioKey): InvestmentScenarioInput {
   const scenario = createEmptyInvestmentScenario(`Chemicon China Feasibility - ${name}`)
@@ -173,6 +178,136 @@ function financialSummaryText(): string {
     result.value.warnings.length ? `Warnings:\n- ${result.value.warnings.join('\n- ')}` : 'Warnings: none from calculator completeness checks',
     '',
     safetyLabel,
+  ].join('\n')
+}
+
+function modelTimestamp(date = new Date()): string {
+  return date.toISOString().replace('T', '-').replace(/[:.]/g, '-').slice(0, 19)
+}
+
+function financialModelFilePath(): string {
+  const projectSlug = scenario.value.projectName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60) || 'financial-model'
+  return `${FINANCIAL_MODEL_DIR}/${projectSlug}-${activeScenario.value.toLowerCase()}-${modelTimestamp()}.md`
+}
+
+function humanizeKey(value: string): string {
+  return value
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\w/, char => char.toUpperCase())
+}
+
+function formatEvidenceNumber(label: string, item: { value: number; evidenceStatus: EvidenceStatus }, suffix = ''): string {
+  return `- ${label}: ${Number.isFinite(item.value) ? item.value : 0}${suffix} (Evidence: ${item.evidenceStatus})`
+}
+
+function formatEvidencePercent(label: string, item: { value: number; evidenceStatus: EvidenceStatus }): string {
+  return `- ${label}: ${((Number.isFinite(item.value) ? item.value : 0) * 100).toFixed(1)}% (Evidence: ${item.evidenceStatus})`
+}
+
+function formatEvidenceRecord(
+  values: Record<string, { value: number; evidenceStatus: EvidenceStatus }>,
+  labels: Record<string, string> = {},
+  suffix = '',
+): string[] {
+  return Object.entries(values).map(([key, item]) => formatEvidenceNumber(labels[key] || humanizeKey(key), item, suffix))
+}
+
+function buildFinancialModelMarkdown(): string {
+  const product = scenario.value.products[0]
+  const years = result.value.yearly.map(row => [
+    `- Year ${row.year}: revenue ${formatCurrency(row.revenue)}, EBITDA ${formatCurrency(row.ebitda)}, FCF ${formatCurrency(row.freeCashFlow)}, cumulative ${formatCurrency(row.cumulativeCashFlow)}`,
+    `  - Volume: ${row.volumeTon.toFixed(2)} MT`,
+    `  - Working capital requirement: ${formatCurrency(row.workingCapitalRequirement)}`,
+  ].join('\n'))
+  const revenueRows = product.annualVolumeTon.map((volume, index) => [
+    `- Year ${index + 1}: ${Number(volume) || 0} MT`,
+    `  - Selling price / ton: ${formatCurrency(product.sellingPricePerTon[index] || 0)}`,
+    `  - Capacity utilization: ${((product.capacityUtilization[index] || 0) * 100).toFixed(1)}%`,
+  ].join('\n'))
+
+  return [
+    `# Financial Model Record - ${scenario.value.projectName}`,
+    '',
+    'Source: Hermes IRR / Investment Calculator',
+    `Scenario: ${activeScenario.value}`,
+    `Created: ${new Date().toISOString()}`,
+    `Evidence status: ${financialEvidenceStatus.value}`,
+    'Evidence rule: every input remains labeled as Assumption, User Provided, To Verify, or Verified.',
+    'Investor rule: derived outputs are not investor claims unless the inputs are source-backed or explicitly approved.',
+    '',
+    '## Executive Summary',
+    '',
+    financialSummaryText(),
+    '',
+    '## Project Setup',
+    '',
+    `- Currency: ${scenario.value.currency || 'USD'}`,
+    `- Operating years: ${scenario.value.operatingYears}`,
+    `- Timeline years: ${scenario.value.timelineYears}`,
+    formatEvidenceNumber('Setup months', scenario.value.setupMonths, ' months'),
+    formatEvidencePercent('Discount rate', scenario.value.discountRate),
+    formatEvidencePercent('Tax rate', scenario.value.taxRate),
+    formatEvidenceNumber('Terminal / salvage value', scenario.value.salvageValue),
+    '',
+    '## Revenue Assumptions',
+    '',
+    `- Product / mix: ${product.name || 'Unnamed product mix'} (Evidence: ${product.evidenceStatus})`,
+    ...revenueRows,
+    '',
+    '## Variable Cost Assumptions Per Ton',
+    '',
+    ...formatEvidenceRecord(scenario.value.variableCostPerTon, Object.fromEntries(costRows.map(([key, label]) => [key, label]))),
+    '',
+    '## Fixed Annual Costs',
+    '',
+    ...formatEvidenceRecord(scenario.value.annualFixedCosts, Object.fromEntries(fixedRows.map(([key, label]) => [key, label]))),
+    '',
+    '## Capex',
+    '',
+    ...formatEvidenceRecord(scenario.value.capex, Object.fromEntries(capexRows.map(([key, label]) => [key, label]))),
+    '',
+    '## Working Capital',
+    '',
+    formatEvidenceNumber('Raw material inventory days', scenario.value.workingCapital.rawMaterialInventoryDays),
+    formatEvidenceNumber('Finished goods inventory days', scenario.value.workingCapital.finishedGoodsInventoryDays),
+    formatEvidenceNumber('Customer credit days / DSO', scenario.value.workingCapital.customerCreditDays),
+    formatEvidenceNumber('Supplier credit days / DPO', scenario.value.workingCapital.supplierCreditDays),
+    formatEvidenceNumber('Safety cash buffer', scenario.value.workingCapital.safetyCashBuffer),
+    '',
+    '## Investment / Funding',
+    '',
+    formatEvidenceNumber('Investor amount', scenario.value.funding.investorAmount),
+    formatEvidenceNumber('Founder contribution', scenario.value.funding.founderContribution),
+    formatEvidencePercent('Investor equity percent', scenario.value.funding.investorEquityPercent),
+    formatEvidenceNumber('Exit year', scenario.value.funding.exitYear),
+    formatEvidenceNumber('Exit multiple', scenario.value.funding.exitMultiple, 'x'),
+    '',
+    '## Yearly Revenue / Cash Flow',
+    '',
+    ...years,
+    '',
+    '## Sensitivity',
+    '',
+    ...result.value.sensitivity.map(item =>
+      `- ${item.label}: NPV ${formatCurrency(item.npv)}, IRR ${formatPercent(item.irr)}, price factor ${(item.priceFactor * 100).toFixed(0)}%, cost factor ${(item.costFactor * 100).toFixed(0)}%`,
+    ),
+    '',
+    '## Warnings',
+    '',
+    result.value.warnings.length
+      ? result.value.warnings.map(warning => `- ${warning}`).join('\n')
+      : '- No calculator completeness warnings.',
+    '',
+    '## Guardrail',
+    '',
+    'Do not treat IRR, NPV, investor return, payback, revenue, cost, or market-linked assumptions as verified investor claims until the related inputs are source-backed or explicitly user-approved.',
   ].join('\n')
 }
 
@@ -324,6 +459,29 @@ function saveFinancialSnapshot() {
   message.success('Financial model snapshot saved to Investor Readiness')
 }
 
+async function saveFinancialModelFile() {
+  if (savingModelFile.value) return
+  if (!draftableFinancialOutputs.value) {
+    message.warning('Add capex, revenue, and calculable cash flows before saving a financial model file')
+    return
+  }
+
+  savingModelFile.value = true
+  try {
+    await mkDir(FINANCIAL_MODEL_DIR)
+    const path = financialModelFilePath()
+    await writeFile(path, buildFinancialModelMarkdown())
+    latestModelFilePath.value = path
+    intelligence.saveFinancialModelSnapshot(currentFinancialSnapshotInput())
+    message.success('Financial model file saved to Documents')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown file error'
+    message.error(`Could not save financial model file: ${detail}`)
+  } finally {
+    savingModelFile.value = false
+  }
+}
+
 function registerFinancialModelInDataRoom() {
   if (!draftableFinancialOutputs.value) {
     message.warning('Add capex, revenue, and calculable cash flows before registering this model in the data room')
@@ -414,6 +572,7 @@ function addFinancialSummaryToDraft() {
       </article>
       <article class="status-actions">
         <NButton secondary type="primary" @click="saveFinancialSnapshot">Save financial snapshot</NButton>
+        <NButton secondary :disabled="!draftableFinancialOutputs" :loading="savingModelFile" @click="saveFinancialModelFile">Save model file</NButton>
         <NButton secondary @click="registerFinancialModelInDataRoom">Register in data room</NButton>
         <NButton secondary @click="addFinancialSummaryToDraft">{{ financialDraftButtonLabel }}</NButton>
         <NButton secondary :loading="creatingFinancialTask" @click="createFinancialEvidenceTask">Create financial evidence task</NButton>
@@ -423,6 +582,9 @@ function addFinancialSummaryToDraft() {
         </small>
         <small v-else>
           Add capex and revenue until NPV/IRR are calculable before staging output.
+        </small>
+        <small v-if="latestModelFilePath" class="saved-file-note">
+          Saved to Documents: <code>{{ latestModelFilePath }}</code>
         </small>
       </article>
     </section>
@@ -910,6 +1072,18 @@ function addFinancialSummaryToDraft() {
     flex-basis: 100%;
     color: $text-secondary;
     line-height: 1.45;
+  }
+
+  .saved-file-note {
+    padding: 8px 10px;
+    border: 1px solid rgba(var(--success-rgb), 0.3);
+    border-radius: $radius-sm;
+    background: rgba(var(--success-rgb), 0.06);
+
+    code {
+      color: $success;
+      overflow-wrap: anywhere;
+    }
   }
 }
 

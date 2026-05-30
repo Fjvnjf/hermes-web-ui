@@ -1002,6 +1002,44 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.presentationMaterials).toHaveLength(0)
   })
 
+  it('saves calculable financial model assumptions to Documents with evidence guardrails', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
+    markScenarioEvidenceStatus(base, 'Assumption')
+    base.capex.machinery.value = 1000
+    base.products[0].annualVolumeTon = [10, 10, 10, 10, 10]
+    base.products[0].sellingPricePerTon = [100, 100, 100, 100, 100]
+    base.variableCostPerTon.rawMaterials.value = 20
+    window.localStorage.setItem('hermes.investmentCalculator.scenarios.v1', JSON.stringify({
+      Lean: createEmptyInvestmentScenario('Chemicon China Feasibility - Lean'),
+      Base: base,
+      Conservative: createEmptyInvestmentScenario('Chemicon China Feasibility - Conservative'),
+      Aggressive: createEmptyInvestmentScenario('Chemicon China Feasibility - Aggressive'),
+    }))
+    const wrapper = mount(InvestmentCalculatorView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save model file')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+    await flushPromises()
+
+    expect(mkDirMock).toHaveBeenCalledWith('financial-models')
+    expect(writeFileMock).toHaveBeenCalledTimes(1)
+    const [path, content] = writeFileMock.mock.calls[0]
+    expect(path).toMatch(/^financial-models\/chemicon-china-feasibility-base-base-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.md$/)
+    expect(content).toContain('# Financial Model Record - Chemicon China Feasibility - Base')
+    expect(content).toContain('Evidence status: Derived from Assumptions')
+    expect(content).toContain('Raw material cost / ton: 20')
+    expect(content).toContain('Yearly Revenue / Cash Flow')
+    expect(content).toContain('Investor IRR')
+    expect(content).toContain('Do not treat IRR, NPV, investor return, payback, revenue, cost, or market-linked assumptions as verified investor claims')
+    expect(wrapper.text()).toContain(path)
+    expect(intelligence.latestFinancialModel.value?.scenarioName).toBe('Base')
+    expect(intelligence.latestFinancialModel.value?.evidenceStatus).toBe('Derived from Assumptions')
+  })
+
   it('creates targeted Kanban tasks from financial input evidence gaps', async () => {
     const base = createEmptyInvestmentScenario('Chemicon China Feasibility - Base')
     base.products[0].name = 'CWAS / CWMS product mix'
