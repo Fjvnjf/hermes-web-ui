@@ -5,8 +5,11 @@ import { useFeasibilityIntelligence, type EvidenceArea } from '@/composables/use
 import {
   buildInvestorPresentationDraft,
   buildInvestorSlideOutline,
+  formatSourceReference,
+  formatSourcedMarketShare,
   formatInvestorPresentationOutline,
   INVESTOR_PRESENTATION_SECTIONS,
+  normalizedMarketClaimStatus,
   type IntelligenceEvidenceStatus,
 } from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
@@ -27,9 +30,12 @@ const kanbanStore = useKanbanStore()
 const copiedOutline = ref(false)
 const creatingMissingTaskId = ref('')
 const savingDraftFile = ref(false)
+const savingBriefFile = ref(false)
 const latestDraftPath = ref('')
+const latestBriefPath = ref('')
 
 const INVESTOR_DRAFT_DIR = 'investor-drafts'
+const FEASIBILITY_BRIEF_DIR = 'feasibility-briefs'
 
 const sections = [
   {
@@ -85,6 +91,14 @@ const missingSlides = computed(() => slideDrafts.value.filter(slide => slide.sta
 const latestFinancialModel = intelligence.latestFinancialModel
 const evidenceGaps = intelligence.evidenceGaps
 const pendingResearchFindings = intelligence.pendingResearchFindings
+const riskRegisterItems = intelligence.riskRegisterItems
+
+const statusCounts = computed(() =>
+  intelligence.state.value.evidenceItems.reduce<Record<string, number>>((acc, item) => {
+    acc[item.evidenceStatus] = (acc[item.evidenceStatus] || 0) + 1
+    return acc
+  }, {}),
+)
 
 const outputStats = computed(() => [
   {
@@ -171,6 +185,18 @@ function approvedDraftFilePath(): string {
   return `${INVESTOR_DRAFT_DIR}/chemicon-investor-draft-${draftTimestamp()}.md`
 }
 
+function feasibilityBriefFilePath(): string {
+  return `${FEASIBILITY_BRIEF_DIR}/chemicon-feasibility-evidence-brief-${draftTimestamp()}.md`
+}
+
+function formatSource(source?: { title: string, url?: string, date?: string } | null): string {
+  return source ? formatSourceReference(source) : 'Source missing'
+}
+
+function linesOrEmpty(lines: string[], fallback: string): string[] {
+  return lines.length ? lines : [fallback]
+}
+
 function buildApprovedDraftMarkdown(): string {
   return [
     '# Chemicon Investor Presentation Draft',
@@ -181,6 +207,158 @@ function buildApprovedDraftMarkdown(): string {
     'Source: Hermes Reports Hub',
     '',
     formatInvestorPresentationOutline(slideDrafts.value),
+  ].join('\n')
+}
+
+function buildFeasibilityBriefMarkdown(): string {
+  const readinessLines = intelligence.state.value.evidenceItems.flatMap(item => [
+    `### ${item.label}`,
+    `Evidence status: ${item.evidenceStatus}`,
+    `Source trace: ${formatSource(item.source)}`,
+    `Description: ${item.description}`,
+    `Next action: ${item.nextAction}`,
+    '',
+  ])
+
+  const approvedMaterialLines = approvedDraftSections.value.flatMap(item => [
+    `### ${item.section}`,
+    `Evidence status: ${item.evidenceStatus}`,
+    `Source: ${item.sourceDetail || item.sourceLabel}`,
+    item.content,
+    '',
+  ])
+
+  const marketClaimLines = intelligence.state.value.marketClaims.flatMap(claim => [
+    `### ${claim.label}`,
+    `Evidence status: ${normalizedMarketClaimStatus(claim)}`,
+    `Value / claim text: ${claim.value || 'To Verify'}`,
+    `Source: ${formatSource(claim.source)}`,
+    `Confidence: ${claim.confidence || 'medium'}`,
+    `Last checked: ${claim.lastChecked || 'Not recorded'}`,
+    '',
+  ])
+
+  const competitorLines = intelligence.state.value.competitors.flatMap(competitor => [
+    `### ${competitor.companyName}`,
+    `Evidence status: ${competitor.evidenceStatus}`,
+    `Country / region: ${competitor.countryRegion || 'To Verify'}`,
+    `Product equivalent: ${competitor.productEquivalent || 'To Verify'}`,
+    `Active content: ${competitor.activeContent || 'To Verify'}`,
+    `Pricing evidence: ${competitor.pricingEvidence || 'To Verify'}`,
+    `Market share: ${formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)}`,
+    `Source: ${formatSource(competitor.source)}`,
+    `Notes: ${competitor.notes || 'No notes saved.'}`,
+    '',
+  ])
+
+  const dataRoomLines = intelligence.state.value.dataRoomSources.flatMap(record => [
+    `### ${record.checklistLabel}`,
+    `Area: ${record.area}`,
+    `Evidence status: ${record.evidenceStatus}`,
+    `Source: ${formatSource(record.source)}`,
+    `Notes: ${record.notes || 'No review note saved.'}`,
+    `Updated: ${record.updatedAt}`,
+    '',
+  ])
+
+  const riskLines = riskRegisterItems.value.flatMap(item => [
+    `### ${item.title}`,
+    `Origin: ${item.origin}`,
+    `Area: ${item.area}`,
+    `Evidence status: ${item.evidenceStatus}`,
+    `Priority: ${item.priority}`,
+    `Risk detail: ${item.detail}`,
+    '',
+  ])
+
+  const researchLines = pendingResearchFindings.value.flatMap(item => [
+    `### ${item.keyClaim}`,
+    `Status: ${item.status}`,
+    `Evidence status: ${item.evidenceStatus}`,
+    `Confidence: ${item.confidence}`,
+    `Source: ${formatSource(item.source)}`,
+    `Summary: ${item.summary}`,
+    item.riskNote ? `Risk note: ${item.riskNote}` : '',
+    '',
+  ].filter(Boolean))
+
+  const financialLines = latestFinancialModel.value
+    ? [
+        `Scenario: ${latestFinancialModel.value.scenarioName}`,
+        `Evidence status: ${latestFinancialModel.value.evidenceStatus}`,
+        `NPV: ${formatCurrency(latestFinancialModel.value.npv, latestFinancialModel.value.currency)}`,
+        `IRR: ${formatPercent(latestFinancialModel.value.irr)}`,
+        `Payback: ${latestFinancialModel.value.paybackYear ? `Year ${latestFinancialModel.value.paybackYear}` : 'Not reached'}`,
+        `Capex total: ${formatCurrency(latestFinancialModel.value.capexTotal, latestFinancialModel.value.currency)}`,
+        `Year 1 revenue: ${formatCurrency(latestFinancialModel.value.yearOneRevenue, latestFinancialModel.value.currency)}`,
+        `Source: ${formatSource(latestFinancialModel.value.source)}`,
+        latestFinancialModel.value.warnings.length
+          ? `Warnings: ${latestFinancialModel.value.warnings.join('; ')}`
+          : 'Warnings: none recorded',
+      ]
+    : ['No financial model snapshot has been saved yet.']
+
+  return [
+    '# Chemicon China Feasibility Evidence Brief',
+    '',
+    'Generated from the current Hermes feasibility intelligence workspace.',
+    'This is a working evidence brief, not final truth and not an investor claim pack.',
+    'Every item keeps its evidence status. Missing, To Verify, Hypothesis, and Reference Only items must remain out of investor claims.',
+    'Financial outputs are derived from assumptions unless their inputs are source-backed or explicitly approved.',
+    `Created: ${new Date().toISOString()}`,
+    'Project: Chemicon China Feasibility',
+    'Planning scope: Year 1 15,000 MT feasibility; 60,000 MT scale-up remains a scenario until validated.',
+    '',
+    '## Readiness Summary',
+    '',
+    `Investor readiness score: ${intelligence.readinessScore.value}%`,
+    `Verified: ${statusCounts.value.Verified || 0}`,
+    `User Approved: ${statusCounts.value['User Approved'] || 0}`,
+    `User Provided: ${statusCounts.value['User Provided'] || 0}`,
+    `Approved Assumption: ${statusCounts.value['Approved Assumption'] || 0}`,
+    `Assumption: ${statusCounts.value.Assumption || 0}`,
+    `Derived from Assumptions: ${statusCounts.value['Derived from Assumptions'] || 0}`,
+    `To Verify: ${statusCounts.value['To Verify'] || 0}`,
+    `Missing: ${statusCounts.value.Missing || 0}`,
+    '',
+    '## Readiness Evidence Matrix',
+    '',
+    ...readinessLines,
+    '## Latest Financial Snapshot',
+    '',
+    ...financialLines,
+    '',
+    '## Approved Investor Draft Material',
+    '',
+    ...linesOrEmpty(approvedMaterialLines, 'No approved investor draft material is ready yet.'),
+    '',
+    '## Market Claims',
+    '',
+    ...linesOrEmpty(marketClaimLines, 'No market intelligence claims have been saved yet.'),
+    '',
+    '## Competitor Intelligence',
+    '',
+    ...linesOrEmpty(competitorLines, 'No competitor intelligence records have been saved yet.'),
+    '',
+    '## Data-Room Sources',
+    '',
+    ...linesOrEmpty(dataRoomLines, 'No data-room source records have been saved yet.'),
+    '',
+    '## Investor Risk Register',
+    '',
+    ...linesOrEmpty(riskLines, 'No current investor risks are recorded in the local intelligence state.'),
+    '',
+    '## Research Review Queue',
+    '',
+    ...linesOrEmpty(researchLines, 'No pending research findings are waiting for review.'),
+    '',
+    '## Use Rules',
+    '',
+    '- Do not convert this brief into final investor material without reviewing each source.',
+    '- Do not use Missing, To Verify, Hypothesis, or Reference Only items as investor claims.',
+    '- Keep assumptions visibly labeled unless source evidence upgrades them.',
+    '- Unknown competitor market share must remain To Verify.',
+    '- Generated IRR, NPV, payback, revenue, and return outputs are derived model outputs.',
   ].join('\n')
 }
 
@@ -219,6 +397,24 @@ async function saveApprovedDraftFile() {
     message.error(`Could not save investor draft file: ${detail}`)
   } finally {
     savingDraftFile.value = false
+  }
+}
+
+async function saveFeasibilityBriefFile() {
+  if (savingBriefFile.value) return
+
+  savingBriefFile.value = true
+  try {
+    await mkDir(FEASIBILITY_BRIEF_DIR)
+    const path = feasibilityBriefFilePath()
+    await writeFile(path, buildFeasibilityBriefMarkdown())
+    latestBriefPath.value = path
+    message.success('Feasibility evidence brief saved to Documents')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown file error'
+    message.error(`Could not save feasibility brief: ${detail}`)
+  } finally {
+    savingBriefFile.value = false
   }
 }
 
@@ -306,6 +502,14 @@ async function createMissingInputTask(item: MissingOutputInput) {
             >
               Save draft file
             </NButton>
+            <NButton
+              size="small"
+              secondary
+              :loading="savingBriefFile"
+              @click="saveFeasibilityBriefFile"
+            >
+              Save feasibility brief
+            </NButton>
           </div>
         </div>
         <div v-if="approvedDraftSections.length" class="record-list">
@@ -324,6 +528,9 @@ async function createMissingInputTask(item: MissingOutputInput) {
         </p>
         <p v-if="latestDraftPath" class="draft-file-note">
           Saved to Documents: <code>{{ latestDraftPath }}</code>
+        </p>
+        <p v-if="latestBriefPath" class="draft-file-note">
+          Feasibility brief saved to Documents: <code>{{ latestBriefPath }}</code>
         </p>
         <RouterLink class="shell-link" :to="{ name: 'hermes.investorPresentation' }">Open Presentation Builder</RouterLink>
       </article>

@@ -1865,6 +1865,123 @@ describe('investor readiness pages', () => {
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'presentation')?.evidenceStatus).toBe('User Approved')
   })
 
+  it('saves a feasibility evidence brief without approving weak claims', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addPresentationMaterial({
+      section: 'Market Evidence',
+      content: 'Approved distributor interview narrative for the evidence brief.',
+      evidenceStatus: 'User Approved',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+    intelligence.addPresentationMaterial({
+      section: 'Competitor Landscape',
+      content: 'Unsupported investor text should not appear as approved material.',
+      evidenceStatus: 'To Verify',
+      source: null,
+    })
+    intelligence.addMarketClaim({
+      label: 'CWAS price validation note',
+      value: 'Distributor interview supports a pricing note.',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source: { title: 'Distributor interview', date: '2026-05-30' },
+    })
+    intelligence.addMarketClaim({
+      label: 'Unsourced market size claim',
+      value: 'Unsupported market-size text.',
+      evidenceStatus: 'Verified',
+      confidence: 'low',
+      source: null,
+    })
+    intelligence.addCompetitor({
+      companyName: 'Example Softener Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: '90%',
+      pricingEvidence: 'To Verify',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '25%',
+      evidenceStatus: 'Verified',
+      source: null,
+      notes: 'Market share must remain hidden until sourced.',
+    })
+    intelligence.saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Derived from Assumptions',
+      npv: 1000000,
+      irr: 0.24,
+      mirr: 0.18,
+      paybackYear: 3,
+      breakEvenVolumeTon: 4500,
+      capexTotal: 1500000,
+      yearOneRevenue: 8000000,
+      warnings: ['Pricing input is still To Verify.'],
+      source: { title: 'IRR calculator Base scenario', date: '2026-05-30' },
+    })
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Product TDS/SDS and CAS evidence',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      source: { title: 'CWAS SDS source', date: '2026-05-30' },
+      notes: 'SDS source reviewed for feasibility evidence.',
+    })
+    intelligence.addResearchFinding({
+      summary: 'DMS regulatory evidence needs source review.',
+      keyClaim: 'DMS source needed',
+      area: 'regulatory',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+      riskNote: 'Do not use DMS regulatory claims until sourced.',
+    })
+    const beforeScore = intelligence.readinessScore.value
+    const beforeSourceCount = intelligence.state.value.dataRoomSources.length
+
+    const wrapper = mount(ReportsHubView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save feasibility brief')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+    await flushPromises()
+
+    expect(mkDirMock).toHaveBeenCalledWith('feasibility-briefs')
+    expect(writeFileMock).toHaveBeenCalledTimes(1)
+    const [path, content] = writeFileMock.mock.calls[0]
+    expect(path).toMatch(/^feasibility-briefs\/chemicon-feasibility-evidence-brief-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.md$/)
+    expect(content).toContain('# Chemicon China Feasibility Evidence Brief')
+    expect(content).toContain('This is a working evidence brief, not final truth and not an investor claim pack.')
+    expect(content).toContain('Planning scope: Year 1 15,000 MT feasibility; 60,000 MT scale-up remains a scenario until validated.')
+    expect(content).toContain('## Readiness Evidence Matrix')
+    expect(content).toContain('## Latest Financial Snapshot')
+    expect(content).toContain('NPV: $1,000,000')
+    expect(content).toContain('IRR: 24.0%')
+    expect(content).toContain('Pricing input is still To Verify.')
+    expect(content).toContain('Approved distributor interview narrative for the evidence brief.')
+    expect(content).toContain('Evidence status: User Approved')
+    expect(content).toContain('CWAS price validation note')
+    expect(content).toContain('Evidence status: Verified')
+    expect(content).toContain('Unsourced market size claim')
+    expect(content).toContain('Evidence status: To Verify')
+    expect(content).toContain('Example Softener Co')
+    expect(content).toContain('Market share: To Verify')
+    expect(content).toContain('Product TDS/SDS and CAS evidence')
+    expect(content).toContain('CWAS SDS source (2026-05-30)')
+    expect(content).toContain('## Investor Risk Register')
+    expect(content).toContain('Factory evidence')
+    expect(content).toContain('DMS source needed')
+    expect(content).toContain('Do not use DMS regulatory claims until sourced.')
+    expect(content).toContain('Unknown competitor market share must remain To Verify.')
+    expect(content).not.toContain('Unsupported investor text should not appear as approved material.')
+    expect(wrapper.text()).toContain(path)
+    expect(intelligence.readinessScore.value).toBe(beforeScore)
+    expect(intelligence.state.value.dataRoomSources).toHaveLength(beforeSourceCount)
+  })
+
   it('saves a staged research finding as a labeled Memory note without changing readiness', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchFinding({
