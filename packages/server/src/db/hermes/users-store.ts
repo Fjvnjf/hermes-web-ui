@@ -2,7 +2,16 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'crypto'
 import { getDb } from '../index'
 import { USER_PROFILES_TABLE, USERS_TABLE } from './schemas'
 
-export type UserRole = 'super_admin' | 'admin'
+export type UserRole =
+  | 'super_admin'
+  | 'owner'
+  | 'admin'
+  | 'employee'
+  | 'research_assistant'
+  | 'financial_analyst'
+  | 'regulatory_consultant'
+  | 'investor_viewer'
+  | 'developer_admin'
 export type UserStatus = 'active' | 'disabled'
 export type UserId = number | string
 
@@ -41,6 +50,10 @@ export const DEFAULT_PASSWORD = '123456'
 export const DEFAULT_PROFILE_NAME = 'default'
 
 const SCRYPT_KEY_LEN = 64
+
+export function isUnscopedOwnerRole(role: UserRole | string | null | undefined): boolean {
+  return role === 'super_admin' || role === 'owner'
+}
 
 function normalizeUserId(id: UserId): number | null {
   const userId = typeof id === 'number' ? id : Number(id)
@@ -148,8 +161,8 @@ export function countActiveSuperAdmins(excludeUserId?: UserId): number {
   if (!db) return 0
   const exclude = excludeUserId == null ? null : normalizeUserId(excludeUserId)
   const row = exclude
-    ? db.prepare(`SELECT COUNT(*) as count FROM ${USERS_TABLE} WHERE role = 'super_admin' AND status = 'active' AND id != ?`).get(exclude)
-    : db.prepare(`SELECT COUNT(*) as count FROM ${USERS_TABLE} WHERE role = 'super_admin' AND status = 'active'`).get()
+    ? db.prepare(`SELECT COUNT(*) as count FROM ${USERS_TABLE} WHERE role IN ('super_admin', 'owner') AND status = 'active' AND id != ?`).get(exclude)
+    : db.prepare(`SELECT COUNT(*) as count FROM ${USERS_TABLE} WHERE role IN ('super_admin', 'owner') AND status = 'active'`).get()
   return Number((row as { count?: number } | undefined)?.count || 0)
 }
 

@@ -25,7 +25,16 @@ export function hasApiKey(): boolean {
   return !!getApiKey()
 }
 
-export type StoredUserRole = 'super_admin' | 'admin'
+export type StoredUserRole =
+  | 'super_admin'
+  | 'owner'
+  | 'admin'
+  | 'employee'
+  | 'research_assistant'
+  | 'financial_analyst'
+  | 'regulatory_consultant'
+  | 'investor_viewer'
+  | 'developer_admin'
 
 export function getStoredUserRole(): StoredUserRole | null {
   const token = getApiKey()
@@ -35,7 +44,18 @@ export function getStoredUserRole(): StoredUserRole | null {
     const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
     const data = JSON.parse(atob(padded)) as { role?: unknown }
-    return data.role === 'super_admin' || data.role === 'admin' ? data.role : null
+    const role = data.role
+    return role === 'super_admin' ||
+      role === 'owner' ||
+      role === 'admin' ||
+      role === 'employee' ||
+      role === 'research_assistant' ||
+      role === 'financial_analyst' ||
+      role === 'regulatory_consultant' ||
+      role === 'investor_viewer' ||
+      role === 'developer_admin'
+      ? role
+      : null
   } catch {
     return null
   }

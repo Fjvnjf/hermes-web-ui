@@ -31,8 +31,15 @@ const form = reactive({
 })
 
 const roleOptions = computed(() => [
-  { label: t('users.roles.admin'), value: 'admin' },
   { label: t('users.roles.superAdmin'), value: 'super_admin' },
+  { label: 'Owner', value: 'owner' },
+  { label: t('users.roles.admin'), value: 'admin' },
+  { label: 'Employee', value: 'employee' },
+  { label: 'Research Assistant', value: 'research_assistant' },
+  { label: 'Financial Analyst', value: 'financial_analyst' },
+  { label: 'Regulatory Consultant', value: 'regulatory_consultant' },
+  { label: 'Investor Viewer', value: 'investor_viewer' },
+  { label: 'Developer Admin', value: 'developer_admin' },
 ])
 
 const statusOptions = computed(() => [
@@ -100,7 +107,7 @@ async function submit() {
       password: form.password || undefined,
       role: form.role,
       status: form.status,
-      profiles: form.role === 'super_admin' ? [] : form.profiles,
+      profiles: ['super_admin', 'owner', 'admin', 'developer_admin'].includes(form.role) ? [] : form.profiles,
       defaultProfile: form.profiles[0] || null,
     }
     const res = editingUser.value
@@ -250,7 +257,7 @@ onMounted(loadUsers)
         <NFormItem :label="t('users.statusLabel')">
           <NSelect v-model:value="form.status" :options="statusOptions" />
         </NFormItem>
-        <NFormItem v-if="form.role !== 'super_admin'" :label="t('users.profiles')">
+        <NFormItem v-if="!['super_admin', 'owner', 'admin', 'developer_admin'].includes(form.role)" :label="t('users.profiles')">
           <NSelect
             v-model:value="form.profiles"
             multiple

@@ -10,6 +10,7 @@ import {
   deleteUser,
   findUserById,
   findUserByUsername,
+  isUnscopedOwnerRole,
   listUsers,
   updateUser,
   updateUsername,
@@ -188,7 +189,18 @@ export async function removePassword(ctx: Context) {
 }
 
 function normalizeRole(value: unknown): UserRole | null {
-  return value === 'super_admin' || value === 'admin' ? value : null
+  const role = String(value || '')
+  return role === 'super_admin' ||
+    role === 'owner' ||
+    role === 'admin' ||
+    role === 'employee' ||
+    role === 'research_assistant' ||
+    role === 'financial_analyst' ||
+    role === 'regulatory_consultant' ||
+    role === 'investor_viewer' ||
+    role === 'developer_admin'
+    ? role
+    : null
 }
 
 function normalizeStatus(value: unknown): UserStatus | null {
@@ -269,7 +281,7 @@ export async function createManagedUser(ctx: Context) {
     password,
     role,
     status,
-    profiles: role === 'super_admin' ? [] : profiles,
+    profiles: isUnscopedOwnerRole(role) || role === 'developer_admin' ? [] : profiles,
     defaultProfile: body.defaultProfile,
   })
   ctx.status = 201
@@ -335,7 +347,10 @@ export async function updateManagedUser(ctx: Context) {
     ctx.body = { error: 'You cannot disable your own account' }
     return
   }
-  if (user.role === 'super_admin' && user.status === 'active' && (nextRole !== 'super_admin' || nextStatus !== 'active') && countActiveSuperAdmins(user.id) === 0) {
+  if ((user.role === 'super_admin' || user.role === 'owner') &&
+    user.status === 'active' &&
+    (nextRole !== 'super_admin' && nextRole !== 'owner' || nextStatus !== 'active') &&
+    countActiveSuperAdmins(user.id) === 0) {
     ctx.status = 400
     ctx.body = { error: 'At least one active super administrator is required' }
     return
@@ -356,7 +371,7 @@ export async function updateManagedUser(ctx: Context) {
     password: password || undefined,
     role: role || undefined,
     status: status || undefined,
-    profiles: nextRole === 'super_admin' ? [] : profiles,
+    profiles: isUnscopedOwnerRole(nextRole) || nextRole === 'developer_admin' ? [] : profiles,
     defaultProfile: body.defaultProfile,
   })
   ctx.body = { user: findUserById(user.id), users: listUsers() }
@@ -380,7 +395,7 @@ export async function deleteManagedUser(ctx: Context) {
     ctx.body = { error: 'You cannot delete your own account' }
     return
   }
-  if (user.role === 'super_admin' && user.status === 'active' && countActiveSuperAdmins(user.id) === 0) {
+  if ((user.role === 'super_admin' || user.role === 'owner') && user.status === 'active' && countActiveSuperAdmins(user.id) === 0) {
     ctx.status = 400
     ctx.body = { error: 'At least one active super administrator is required' }
     return

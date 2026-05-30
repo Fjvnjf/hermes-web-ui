@@ -6,6 +6,7 @@ import { homedir } from 'os'
 import { getActiveProfileDir } from '../../services/hermes/hermes-profile'
 import { getTerminalConfig, type TerminalConfig } from '../../services/hermes/file-provider'
 import { authenticateUserToken, isAuthEnabled } from '../../middleware/user-auth'
+import { auditAccessEvent, roleHasPermission } from '../../middleware/access-control'
 import { logger } from '../../services/logger'
 
 let pty: any = null
@@ -153,11 +154,32 @@ export function setupTerminalWebSocket(httpServers: HttpServer | HttpServer[]) {
       // Auth check
       if (await isAuthEnabled()) {
         const token = url.searchParams.get('token') || ''
-        if (!await authenticateUserToken(token)) {
+        const user = await authenticateUserToken(token)
+        if (!user) {
           socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
           socket.destroy()
           return
         }
+        if (!roleHasPermission(user.role, 'view:terminal')) {
+          auditAccessEvent({
+            user,
+            action: 'WEBSOCKET /api/hermes/terminal',
+            resource: '/api/hermes/terminal',
+            permission: 'view:terminal',
+            result: 'denied',
+            reason: 'missing-permission',
+          })
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+          socket.destroy()
+          return
+        }
+        auditAccessEvent({
+          user,
+          action: 'WEBSOCKET /api/hermes/terminal',
+          resource: '/api/hermes/terminal',
+          permission: 'view:terminal',
+          result: 'allowed',
+        })
       }
 
       wss.handleUpgrade(req, socket, head, (ws) => {

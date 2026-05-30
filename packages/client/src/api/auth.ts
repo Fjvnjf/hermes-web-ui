@@ -70,7 +70,16 @@ export async function removePassword(): Promise<void> {
   })
 }
 
-export type UserRole = 'super_admin' | 'admin'
+export type UserRole =
+  | 'super_admin'
+  | 'owner'
+  | 'admin'
+  | 'employee'
+  | 'research_assistant'
+  | 'financial_analyst'
+  | 'regulatory_consultant'
+  | 'investor_viewer'
+  | 'developer_admin'
 export type UserStatus = 'active' | 'disabled'
 
 export interface ManagedUser {

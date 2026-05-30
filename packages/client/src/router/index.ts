@@ -9,6 +9,17 @@ const router = createRouter({
       redirect: '/hermes/dashboard',
     },
     {
+      path: '/hermes/access-denied',
+      name: 'hermes.accessDenied',
+      component: () => import('@/views/hermes/AccessDeniedView.vue'),
+    },
+    {
+      path: '/hermes/investor-portal',
+      name: 'hermes.investorPortal',
+      meta: { sensitivity: 'investor-approved' },
+      component: () => import('@/views/hermes/InvestorPortalView.vue'),
+    },
+    {
       path: '/hermes/dashboard',
       name: 'hermes.dashboard',
       meta: { sensitivity: 'confidential' },
@@ -204,10 +215,8 @@ router.beforeEach((to) => {
   if (!routeName) return true
   const role = getFrontendAccessRole()
   if (canAccessRouteName(routeName, role)) return true
-  const fallback = ['hermes.research', 'hermes.reportsHub', 'hermes.investorReadiness', 'hermes.dashboard']
-    .find(name => canAccessRouteName(name, role))
-  if (!fallback || fallback === routeName) return true
-  return { name: fallback, query: { access: 'restricted' } }
+  if (routeName === 'hermes.accessDenied') return true
+  return { name: 'hermes.accessDenied', query: { from: routeName, role } }
 })
 
 export default router

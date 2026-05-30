@@ -212,6 +212,13 @@ function openChangelog() {
             </svg>
             <span>Investor Readiness</span>
           </RouteLinkItem>
+          <RouteLinkItem v-if="canShowRoute('hermes.investorPortal')" class="nav-item" :to="{ name: 'hermes.investorPortal' }" :active="selectedKey === 'hermes.investorPortal'" title="Approved investor-only portal">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3 20 7v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z" />
+              <path d="M9 12l2 2 4-5" />
+            </svg>
+            <span>Investor Portal</span>
+          </RouteLinkItem>
           <RouteLinkItem v-if="canShowRoute('hermes.investmentCalculator')" class="nav-item" :to="{ name: 'hermes.investmentCalculator' }" :active="selectedKey === 'hermes.investmentCalculator'" title="IRR and investment calculator">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 19V5" />

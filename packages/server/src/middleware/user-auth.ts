@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { getToken } from '../services/auth'
 import {
   findUserById,
+  isUnscopedOwnerRole,
   listUserProfiles,
   touchUserLogin,
   userCanAccessProfile,
@@ -137,7 +138,7 @@ export function toAuthenticatedUser(user: Pick<UserRecord, 'id' | 'username' | '
     username: user.username,
     role: user.role,
   }
-  if (user.role !== 'super_admin') {
+  if (!isUnscopedOwnerRole(user.role)) {
     authenticated.profiles = listUserProfiles(user.id).map(profile => profile.profile_name)
   }
   return authenticated
@@ -191,9 +192,9 @@ export async function requireUserJwt(ctx: Context, next: Next): Promise<void> {
 }
 
 export async function requireSuperAdmin(ctx: Context, next: Next): Promise<void> {
-  if (ctx.state.user?.role !== 'super_admin') {
+  if (ctx.state.user?.role !== 'super_admin' && ctx.state.user?.role !== 'owner') {
     ctx.status = 403
-    ctx.body = { error: 'Super administrator privileges are required' }
+    ctx.body = { error: 'Owner privileges are required' }
     return
   }
   await next()
@@ -223,7 +224,7 @@ export async function resolveUserProfile(ctx: Context, next: Next): Promise<void
     return
   }
 
-  if (user.role !== 'super_admin' && !userCanAccessProfile(user.id, profileName)) {
+  if (!isUnscopedOwnerRole(user.role) && !userCanAccessProfile(user.id, profileName)) {
     ctx.status = 403
     ctx.body = { error: `Profile "${profileName}" is not available for this user` }
     return

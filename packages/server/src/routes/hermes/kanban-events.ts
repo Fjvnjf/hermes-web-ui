@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws'
 import type { WebSocket } from 'ws'
 import type { Server as HttpServer, IncomingMessage } from 'http'
 import { authenticateUserToken, isAuthEnabled } from '../../middleware/user-auth'
+import { auditAccessEvent, roleHasPermission } from '../../middleware/access-control'
 import { userCanAccessProfile } from '../../db/hermes/users-store'
 import { logger } from '../../services/logger'
 import * as kanbanCli from '../../services/hermes/hermes-kanban'
@@ -42,6 +43,19 @@ export function setupKanbanEventsWebSocket(httpServers: HttpServer | HttpServer[
         const user = await authenticateUserToken(token)
         if (!user) {
           socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+          socket.destroy()
+          return
+        }
+        if (!roleHasPermission(user.role, 'view:kanban')) {
+          auditAccessEvent({
+            user,
+            action: 'WEBSOCKET /api/hermes/kanban/events',
+            resource: '/api/hermes/kanban/events',
+            permission: 'view:kanban',
+            result: 'denied',
+            reason: 'missing-permission',
+          })
+          socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
           socket.destroy()
           return
         }

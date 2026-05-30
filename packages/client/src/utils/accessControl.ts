@@ -3,10 +3,14 @@ import { getStoredUserRole } from '@/api/client'
 export type FrontendAccessRole =
   | 'owner'
   | 'employee'
+  | 'research_assistant'
+  | 'financial_analyst'
+  | 'regulatory_consultant'
   | 'investor_viewer'
   | 'developer_admin'
 
 export type RouteSensitivity =
+  | 'public-shareable'
   | 'owner-only'
   | 'employee-safe'
   | 'investor-approved'
@@ -25,25 +29,27 @@ export const FRONTEND_ROLE_STORAGE_KEY = 'hermes.frontendAccessRole'
 
 export const ROUTE_ACCESS_POLICIES: RouteAccessPolicy[] = [
   { routeName: 'hermes.dashboard', sensitivity: 'confidential', allowedRoles: ['owner', 'developer_admin'], note: 'Home can include internal activity and evidence gaps.' },
+  { routeName: 'hermes.accessDenied', sensitivity: 'public-shareable', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'investor_viewer', 'developer_admin'], note: 'Safe access denial page.' },
+  { routeName: 'hermes.investorPortal', sensitivity: 'investor-approved', allowedRoles: ['owner', 'investor_viewer'], note: 'Investor-only approved material portal.' },
   { routeName: 'hermes.last24Hours', sensitivity: 'owner-only', allowedRoles: ['owner'], note: 'Daily brief can reveal chats, jobs, memory, files, and failures.' },
   { routeName: 'hermes.chat', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw chats may contain formulas, costs, and strategy.' },
   { routeName: 'hermes.session', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw chat session.' },
   { routeName: 'hermes.history', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw chat history.' },
   { routeName: 'hermes.historySession', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Raw historical session.' },
   { routeName: 'hermes.feasibility', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Feasibility contains unapproved assumptions and gaps.' },
-  { routeName: 'hermes.projects', sensitivity: 'confidential', allowedRoles: ['owner', 'employee'], note: 'Project shell; backend project permissions are still required.' },
-  { routeName: 'hermes.research', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee'], note: 'Research workspace without raw sensitive memory by default.' },
-  { routeName: 'hermes.files', sensitivity: 'confidential', allowedRoles: ['owner', 'employee'], note: 'Raw files need server-side document categories before employee sharing.' },
-  { routeName: 'hermes.kanban', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee'], note: 'Tasks can be employee-safe if project scoped.' },
+  { routeName: 'hermes.projects', sensitivity: 'confidential', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Project shell; backend project permissions are still required.' },
+  { routeName: 'hermes.research', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'regulatory_consultant'], note: 'Research workspace without raw sensitive memory by default.' },
+  { routeName: 'hermes.files', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Raw files are owner-only until document categories are enforced.' },
+  { routeName: 'hermes.kanban', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'], note: 'Tasks are allowed, with backend profile scope still applied.' },
   { routeName: 'hermes.memory', sensitivity: 'product-development-secret', allowedRoles: ['owner'], note: 'Memory can contain durable confidential facts.' },
-  { routeName: 'hermes.reportsHub', sensitivity: 'confidential', allowedRoles: ['owner', 'employee', 'investor_viewer'], note: 'Investor viewers need approved-report filtering before use.' },
+  { routeName: 'hermes.reportsHub', sensitivity: 'confidential', allowedRoles: ['owner', 'employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'investor_viewer'], note: 'Investor viewers need approved-report filtering before use.' },
   { routeName: 'hermes.investorReadiness', sensitivity: 'investor-approved', allowedRoles: ['owner', 'investor_viewer'], note: 'Should show approved/readiness evidence only for investors.' },
-  { routeName: 'hermes.investmentCalculator', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Finance assumptions and IRR scenarios are confidential until approved.' },
-  { routeName: 'hermes.marketIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'investor_viewer'], note: 'Employee/investor views must hide price/cost/formula-sensitive content.' },
-  { routeName: 'hermes.competitorIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'investor_viewer'], note: 'Unknown market share must remain To Verify.' },
+  { routeName: 'hermes.investmentCalculator', sensitivity: 'confidential', allowedRoles: ['owner', 'financial_analyst'], note: 'Finance assumptions and IRR scenarios are confidential until approved.' },
+  { routeName: 'hermes.marketIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'investor_viewer'], note: 'Employee/investor views must hide price/cost/formula-sensitive content.' },
+  { routeName: 'hermes.competitorIntelligence', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'research_assistant', 'investor_viewer'], note: 'Unknown market share must remain To Verify.' },
   { routeName: 'hermes.rawMaterialSourcing', sensitivity: 'confidential', allowedRoles: ['owner'], note: 'Prices, costs, sources, and formula impact are sensitive.' },
   { routeName: 'hermes.exportMarketOpportunity', sensitivity: 'employee-safe', allowedRoles: ['owner', 'employee', 'investor_viewer'], note: 'Trade proxy research can be shared only with source labels.' },
-  { routeName: 'hermes.researchResultReview', sensitivity: 'confidential', allowedRoles: ['owner', 'employee'], note: 'Review queue contains unapproved findings.' },
+  { routeName: 'hermes.researchResultReview', sensitivity: 'confidential', allowedRoles: ['owner', 'research_assistant', 'regulatory_consultant'], note: 'Review queue contains unapproved findings.' },
   { routeName: 'hermes.investorPresentation', sensitivity: 'investor-approved', allowedRoles: ['owner', 'investor_viewer'], note: 'Only approved/source-backed material should render.' },
   { routeName: 'hermes.jobs', sensitivity: 'confidential', allowedRoles: ['owner', 'developer_admin'], note: 'Jobs can run research/automation.' },
   { routeName: 'hermes.channels', sensitivity: 'confidential', allowedRoles: ['owner', 'developer_admin'], note: 'Messaging/channel integrations are internal.' },
@@ -65,9 +71,12 @@ export const ROUTE_ACCESS_POLICIES: RouteAccessPolicy[] = [
 const routePolicyMap = new Map(ROUTE_ACCESS_POLICIES.map(policy => [policy.routeName, policy]))
 
 export function backendRoleToFrontendRole(role: string | null | undefined): FrontendAccessRole {
-  if (role === 'super_admin' || role === 'admin') return 'owner'
+  if (role === 'super_admin' || role === 'owner' || role === 'admin') return 'owner'
   if (role === 'developer_admin') return 'developer_admin'
   if (role === 'investor_viewer') return 'investor_viewer'
+  if (role === 'research_assistant') return 'research_assistant'
+  if (role === 'financial_analyst') return 'financial_analyst'
+  if (role === 'regulatory_consultant') return 'regulatory_consultant'
   if (role === 'employee') return 'employee'
   return 'owner'
 }
@@ -75,7 +84,13 @@ export function backendRoleToFrontendRole(role: string | null | undefined): Fron
 export function getFrontendAccessRole(): FrontendAccessRole {
   if (typeof window !== 'undefined') {
     const stored = window.localStorage.getItem(FRONTEND_ROLE_STORAGE_KEY)
-    if (stored === 'employee' || stored === 'investor_viewer' || stored === 'developer_admin' || stored === 'owner') return stored
+    if (stored === 'employee' ||
+      stored === 'research_assistant' ||
+      stored === 'financial_analyst' ||
+      stored === 'regulatory_consultant' ||
+      stored === 'investor_viewer' ||
+      stored === 'developer_admin' ||
+      stored === 'owner') return stored
   }
   return backendRoleToFrontendRole(getStoredUserRole())
 }

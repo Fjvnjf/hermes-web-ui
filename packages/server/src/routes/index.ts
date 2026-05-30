@@ -1,4 +1,5 @@
 import type { Context, Next } from 'koa'
+import { requireRequestPermission } from '../middleware/access-control'
 
 // Shared route modules
 import { healthRoutes } from './health'
@@ -32,6 +33,7 @@ import { mediaRoutes } from './hermes/media'
 import { proxyRoutes, proxyMiddleware } from './hermes/proxy'
 import { groupChatRoutes, setGroupChatServer } from './hermes/group-chat'
 import { performanceMonitorRoutes } from './hermes/performance-monitor'
+import { investorRoutes } from './hermes/investor'
 
 /**
  * Register all routes on the Koa app.
@@ -47,6 +49,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
 
   // --- Auth middleware: all routes below require authentication ---
   authMiddleware.forEach((middleware) => app.use(middleware))
+  app.use(requireRequestPermission)
 
   // --- Protected routes (auth required) ---
   app.use(authProtectedRoutes.routes())
@@ -74,6 +77,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(kanbanRoutes.routes())             // Must be before proxy
   app.use(mediaRoutes.routes())              // Must be before proxy
   app.use(performanceMonitorRoutes.routes())  // Must be before proxy
+  app.use(investorRoutes.routes())             // Approved investor-only endpoint
   app.use(proxyRoutes.routes())
 
   // Proxy catch-all middleware (must be last)

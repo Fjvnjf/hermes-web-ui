@@ -191,6 +191,7 @@ describe('AppSidebar search entry', () => {
       'hermes.dashboard',
       'hermes.chat',
       'hermes.feasibility',
+      'hermes.investorPortal',
       'hermes.projects',
       'hermes.files',
       'hermes.kanban',
