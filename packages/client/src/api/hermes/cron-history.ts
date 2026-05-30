@@ -5,6 +5,11 @@ export interface RunEntry {
   fileName: string
   runTime: string
   size: number
+  hasOutput?: boolean
+  synthetic?: boolean
+  runCount?: number
+  status?: string | null
+  error?: string | null
 }
 
 export interface RunDetail {

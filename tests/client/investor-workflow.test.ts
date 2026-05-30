@@ -53,6 +53,8 @@ const checkConnectionMock = vi.hoisted(() => vi.fn())
 const loadModelsMock = vi.hoisted(() => vi.fn())
 const fetchSessionsMock = vi.hoisted(() => vi.fn())
 const listJobsMock = vi.hoisted(() => vi.fn())
+const listCronRunsMock = vi.hoisted(() => vi.fn())
+const readCronRunMock = vi.hoisted(() => vi.fn())
 const fetchPerformanceRuntimeMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/stores/hermes/kanban', () => ({
@@ -82,6 +84,11 @@ vi.mock('@/api/hermes/sessions', () => ({
 
 vi.mock('@/api/hermes/jobs', () => ({
   listJobs: listJobsMock,
+}))
+
+vi.mock('@/api/hermes/cron-history', () => ({
+  listCronRuns: listCronRunsMock,
+  readCronRun: readCronRunMock,
 }))
 
 vi.mock('@/api/hermes/performance-monitor', () => ({
@@ -176,6 +183,13 @@ beforeEach(() => {
   loadModelsMock.mockReset().mockResolvedValue(undefined)
   fetchSessionsMock.mockReset().mockResolvedValue([])
   listJobsMock.mockReset().mockResolvedValue([])
+  listCronRunsMock.mockReset().mockResolvedValue([])
+  readCronRunMock.mockReset().mockResolvedValue({
+    jobId: 'job-1',
+    fileName: '2026-05-30T22-00-00.md',
+    runTime: '2026-05-30 22:00:00',
+    content: 'Research output pending.',
+  })
   fetchPerformanceRuntimeMock.mockReset().mockResolvedValue({
     sessions: { active: 0, running: 0 },
     bridge: { reachable: true, workers: [] },
@@ -1665,6 +1679,101 @@ describe('investor readiness pages', () => {
     expect((inputs[0].element as HTMLInputElement).value).toBe('DMS regulation in China')
     expect((selects[0].element as HTMLSelectElement).value).toBe('regulatory')
     expect((selects[1].element as HTMLSelectElement).value).toBe('To Verify')
+    expect(intelligence.state.value.researchFindings).toHaveLength(0)
+  })
+
+  it('imports scheduled Hermes job output into the review form without approving it', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      scope: 'Regulatory classification, permits, SDS, storage, transport, and evidence gaps.',
+      expectedOutput: 'Source-backed research note with citations and follow-up tasks.',
+      sourceRequirements: 'Include source title plus URL or date for every claim.',
+      priority: 'high',
+      schedulePreference: 'Tonight',
+      scheduledJobId: 'job-1',
+      schedule: '2026-05-30T22:00:00',
+      context: 'Chemicon China Feasibility',
+      status: 'Scheduled Hermes Job',
+    })
+    listCronRunsMock.mockResolvedValueOnce([
+      {
+        jobId: 'job-1',
+        fileName: '2026-05-30T22-00-00.md',
+        runTime: '2026-05-30 22:00:00',
+        size: 1200,
+        hasOutput: true,
+      },
+    ])
+    readCronRunMock.mockResolvedValueOnce({
+      jobId: 'job-1',
+      fileName: '2026-05-30T22-00-00.md',
+      runTime: '2026-05-30 22:00:00',
+      content: [
+        'Research output: DMS regulatory status remains To Verify.',
+        'Source: China chemical inventory note, 2026-05-30.',
+        'Recommended task: collect official source link before investor use.',
+      ].join('\n'),
+    })
+
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const importButton = wrapper.findAll('button').find(button => button.text().includes('Import latest output'))
+
+    expect(importButton).toBeTruthy()
+    await importButton!.trigger('click')
+    await flushPromises()
+
+    const textareas = wrapper.findAll('textarea')
+    const inputs = wrapper.findAll('input')
+    const selects = wrapper.findAll('select')
+    expect(listCronRunsMock).toHaveBeenCalledWith('job-1')
+    expect(readCronRunMock).toHaveBeenCalledWith('job-1', '2026-05-30T22-00-00.md')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('Scheduled Hermes research output from DMS regulation in China')
+    expect((textareas[0].element as HTMLTextAreaElement).value).toContain('DMS regulatory status remains To Verify')
+    expect((inputs[0].element as HTMLInputElement).value).toBe('Research result: DMS regulation in China')
+    expect((inputs[1].element as HTMLInputElement).value).toBe('Hermes scheduled job output: DMS regulation in China')
+    expect((inputs[4].element as HTMLInputElement).value).toContain('Review sources and follow-up tasks')
+    expect((selects[0].element as HTMLSelectElement).value).toBe('regulatory')
+    expect((selects[1].element as HTMLSelectElement).value).toBe('To Verify')
+    expect(intelligence.state.value.researchFindings).toHaveLength(0)
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'regulatory')?.evidenceStatus).toBe('Missing')
+  })
+
+  it('does not import scheduler metadata as a verified research result', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'DMS regulation in China',
+      question: 'Verify DMS regulatory status with sources.',
+      scheduledJobId: 'job-1',
+      context: 'Chemicon China Feasibility',
+      status: 'Scheduled Hermes Job',
+    })
+    listCronRunsMock.mockResolvedValueOnce([
+      {
+        jobId: 'job-1',
+        fileName: '__scheduler_metadata__.md',
+        runTime: '2026-05-30 22:00:00',
+        size: 0,
+        hasOutput: false,
+        synthetic: true,
+        status: 'success',
+      },
+    ])
+
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const importButton = wrapper.findAll('button').find(button => button.text().includes('Import latest output'))
+
+    expect(importButton).toBeTruthy()
+    await importButton!.trigger('click')
+    await flushPromises()
+
+    expect(readCronRunMock).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('No readable research output found')
     expect(intelligence.state.value.researchFindings).toHaveLength(0)
   })
 

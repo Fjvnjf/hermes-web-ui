@@ -8,6 +8,7 @@ import {
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
 import { fetchMemory, saveMemory } from '@/api/hermes/skills'
+import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
@@ -16,9 +17,11 @@ const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
 const creatingTaskId = ref('')
 const creatingJobTaskId = ref('')
+const importingJobOutputId = ref('')
 const savingMemoryId = ref('')
 const savingMarketClaimId = ref('')
 const savingCompetitorId = ref('')
+const jobOutputStatus = ref<Record<string, string>>({})
 
 const areaOptions: Array<{ value: EvidenceArea; label: string }> = [
   { value: 'companyLegal', label: 'Company / Legal' },
@@ -136,6 +139,64 @@ function useJobAsFindingDraft(job: ResearchJobRecord) {
     riskNote: 'Do not approve this finding until source-backed research results are reviewed.',
   }
   message.info('Research job copied into the review form as To Verify')
+}
+
+function compactJobOutput(content: string): string {
+  const trimmed = content.replace(/\r\n/g, '\n').trim()
+  if (trimmed.length <= 5000) return trimmed
+  return `${trimmed.slice(0, 5000).trim()}\n\n[Output truncated for review form. Open Jobs for the full run output.]`
+}
+
+async function importLatestJobOutput(job: ResearchJobRecord) {
+  if (!job.scheduledJobId) {
+    message.warning('This research job is not linked to a scheduled Hermes Job yet')
+    return
+  }
+  importingJobOutputId.value = job.id
+  jobOutputStatus.value = { ...jobOutputStatus.value, [job.id]: '' }
+  try {
+    const runs = await listCronRuns(job.scheduledJobId)
+    const latest = runs.find(run => run.hasOutput !== false && !run.synthetic)
+    if (!latest) {
+      const recordedRun = runs[0]
+      const statusDetail = recordedRun?.status || recordedRun?.error || 'No output artifact found yet'
+      jobOutputStatus.value = {
+        ...jobOutputStatus.value,
+        [job.id]: `No readable research output found for this Hermes job yet. Status: ${statusDetail}`,
+      }
+      message.warning('No readable Hermes job output found yet')
+      return
+    }
+    const detail = await readCronRun(latest.jobId, latest.fileName)
+    findingForm.value = {
+      summary: [
+        `Scheduled Hermes research output from ${job.title}`,
+        '',
+        compactJobOutput(detail.content),
+      ].join('\n'),
+      keyClaim: `Research result: ${job.title}`,
+      area: inferAreaFromResearchJob(job),
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      sourceTitle: `Hermes scheduled job output: ${job.title}`,
+      sourceUrl: '',
+      sourceDate: detail.runTime || latest.runTime,
+      suggestedTask: `Review sources and follow-up tasks from scheduled research: ${job.title}`,
+      suggestedInvestorMaterial: '',
+      riskNote: 'Imported from scheduled Hermes job output. Keep To Verify until source evidence is checked and the user approves any dashboard updates.',
+    }
+    jobOutputStatus.value = {
+      ...jobOutputStatus.value,
+      [job.id]: 'Latest Hermes job output loaded into the review form as To Verify. It has not updated readiness or investor material.',
+    }
+    message.success('Latest Hermes job output loaded into review form')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown job output error'
+    jobOutputStatus.value = { ...jobOutputStatus.value, [job.id]: `Could not load job output: ${detail}` }
+    message.error(`Could not load job output: ${detail}`)
+  } finally {
+    importingJobOutputId.value = ''
+  }
 }
 
 function researchJobPriority(job: ResearchJobRecord): number {
@@ -439,6 +500,7 @@ async function createTask(item: ResearchReviewFinding) {
           <small v-if="job.expectedOutput">Expected output: {{ job.expectedOutput }}</small>
           <small v-if="job.sourceRequirements">Source requirements: {{ job.sourceRequirements }}</small>
           <small v-if="job.scheduledJobId">Hermes job: {{ job.scheduledJobId }}<template v-if="job.schedule"> / {{ job.schedule }}</template></small>
+          <small v-if="jobOutputStatus[job.id]" class="job-output-status">{{ jobOutputStatus[job.id] }}</small>
         </div>
         <div class="job-actions">
           <NButton
@@ -452,6 +514,16 @@ async function createTask(item: ResearchReviewFinding) {
           </NButton>
           <NButton size="tiny" secondary @click="useJobAsFindingDraft(job)">
             Use as finding draft
+          </NButton>
+          <NButton
+            v-if="job.scheduledJobId"
+            size="tiny"
+            secondary
+            type="primary"
+            :loading="importingJobOutputId === job.id"
+            @click="importLatestJobOutput(job)"
+          >
+            Import latest output
           </NButton>
         </div>
       </div>
@@ -715,6 +787,11 @@ async function createTask(item: ResearchReviewFinding) {
 
   small {
     color: $text-secondary;
+  }
+
+  .job-output-status {
+    color: $accent-info;
+    font-weight: 800;
   }
 }
 
