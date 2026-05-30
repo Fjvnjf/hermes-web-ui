@@ -1646,6 +1646,61 @@ describe('investor readiness pages', () => {
     expect(competitor.source).toBeNull()
   })
 
+  it('saves source-backed reviewed research as data-room evidence and updates readiness', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'CWAS SDS source confirms product safety document is available for review.',
+      keyClaim: 'CWAS SDS evidence',
+      area: 'product',
+      evidenceStatus: 'Verified',
+      confidence: 'high',
+      source: { title: 'CWAS SDS document', date: '2026-05-30' },
+      status: 'Approved',
+      riskNote: 'Review document quality before investor deck use.',
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save as data-room evidence')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    const source = intelligence.state.value.dataRoomSources[0]
+    expect(source.checklistLabel).toBe('CWAS SDS evidence')
+    expect(source.area).toBe('product')
+    expect(source.evidenceStatus).toBe('Verified')
+    expect(source.notes).toContain('CWAS SDS source confirms')
+    expect(source.notes).toContain('Saved from Research Result Review')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'product')?.evidenceStatus).toBe('Verified')
+  })
+
+  it('keeps unsourced reviewed research To Verify when saved as data-room evidence', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Factory chemical permission appears likely but no source is attached.',
+      keyClaim: 'Factory chemical permission',
+      area: 'factory',
+      evidenceStatus: 'Verified',
+      confidence: 'medium',
+      source: null,
+      status: 'Pending Review',
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'Save as data-room evidence')
+
+    expect(saveButton).toBeTruthy()
+    await saveButton!.trigger('click')
+
+    const source = intelligence.state.value.dataRoomSources[0]
+    expect(source.checklistLabel).toBe('Factory chemical permission')
+    expect(source.evidenceStatus).toBe('To Verify')
+    expect(source.source).toBeNull()
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'factory')?.evidenceStatus).toBe('To Verify')
+  })
+
   it('prefills a To Verify finding draft from a research job without approving it', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchJob({

@@ -21,6 +21,7 @@ const importingJobOutputId = ref('')
 const savingMemoryId = ref('')
 const savingMarketClaimId = ref('')
 const savingCompetitorId = ref('')
+const savingDataRoomId = ref('')
 const jobOutputStatus = ref<Record<string, string>>({})
 
 const areaOptions: Array<{ value: EvidenceArea; label: string }> = [
@@ -390,6 +391,36 @@ function saveAsCompetitorRecord(item: ResearchReviewFinding) {
   }
 }
 
+function saveAsDataRoomEvidence(item: ResearchReviewFinding) {
+  if (item.status === 'Rejected') {
+    message.warning('Rejected findings cannot be saved as data-room evidence')
+    return
+  }
+  savingDataRoomId.value = item.id
+  try {
+    const saved = intelligence.addDataRoomSource({
+      checklistLabel: item.keyClaim,
+      area: item.area,
+      evidenceStatus: item.evidenceStatus,
+      source: item.source || null,
+      notes: [
+        item.summary,
+        item.riskNote ? `Risk note: ${item.riskNote}` : '',
+        `Review status: ${item.status}`,
+        `Confidence: ${item.confidence}`,
+        'Saved from Research Result Review. Treat as dashboard evidence only with the displayed evidence status.',
+      ].filter(Boolean).join('\n'),
+    })
+    if (item.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
+      message.warning('Data-room evidence saved as To Verify because Verified requires usable source evidence')
+    } else {
+      message.success('Research finding saved as data-room evidence')
+    }
+  } finally {
+    savingDataRoomId.value = ''
+  }
+}
+
 function formatResearchNoteMemory(item: ResearchReviewFinding): string {
   return [
     `## Research Review Note - ${item.keyClaim}`,
@@ -651,6 +682,14 @@ async function createTask(item: ResearchReviewFinding) {
             @click="saveAsCompetitorRecord(item)"
           >
             Save as competitor record
+          </NButton>
+          <NButton
+            size="tiny"
+            secondary
+            :loading="savingDataRoomId === item.id"
+            @click="saveAsDataRoomEvidence(item)"
+          >
+            Save as data-room evidence
           </NButton>
           <NButton size="tiny" quaternary @click="markToVerify(item)">Mark To Verify</NButton>
           <NButton size="tiny" quaternary @click="rejectFinding(item)">Reject</NButton>
