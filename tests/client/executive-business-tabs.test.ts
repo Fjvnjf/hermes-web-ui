@@ -80,11 +80,34 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Executive Overview')
     expect(wrapper.text()).toContain('Hermes Executive Intelligence')
     expect(wrapper.text()).toContain('Executive Intelligence Board')
-    expect(wrapper.text()).toContain('Executive Daily Brief')
+    expect(wrapper.text()).toContain('Hermes Daily Brief')
+    expect(wrapper.text()).toContain('No daily brief generated yet')
+    expect(wrapper.text()).toContain('Generate Daily Brief')
+    expect(wrapper.text()).toContain('Revenue Target')
+    expect(wrapper.text()).toContain('EQ Capacity MT/YR')
+    expect(wrapper.text()).toContain('Projected IRR')
+    expect(wrapper.text()).toContain('Payback Period')
+    expect(wrapper.text()).toContain('Blended ASP/MT')
+    expect(wrapper.text()).toContain('NPV @ 12%')
     expect(wrapper.text()).toContain('Generate Investor Brief')
     expect(wrapper.text()).toContain('Backup Now')
     expect(wrapper.text()).toContain('09:00 / 21:00')
     expect(defaultExecutiveRefreshState().schedule).toBe(EXECUTIVE_REFRESH_SCHEDULE)
+  })
+
+  it('shows Hermes Daily Brief items when session capture or research data exists', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchJob({
+      title: 'Night research job',
+      question: 'Verify market source',
+      context: 'Chemicon China Feasibility',
+      status: 'Manual Research Job',
+    })
+
+    const wrapper = mount(ExecutiveOverviewView)
+
+    expect(wrapper.text()).toContain('1 research job record')
+    expect(wrapper.text()).not.toContain('No daily brief generated yet')
   })
 
   it('keeps Investment Analysis values To Verify until an IRR Calculator snapshot exists', () => {
@@ -95,13 +118,46 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Process Equipment Detail')
     expect(wrapper.text()).toContain('Utilities & Buildings Detail')
     expect(wrapper.text()).toContain('Working Capital Detail')
-    expect(wrapper.text()).toContain('Profitability index')
-    expect(wrapper.text()).toContain('5-year ROI')
+    expect(wrapper.text()).toContain('Total Investment')
+    expect(wrapper.text()).toContain('Project IRR')
+    expect(wrapper.text()).toContain('NPV @ 12%')
+    expect(wrapper.text()).toContain('Payback Period')
+    expect(wrapper.text()).toContain('Profitability Index')
+    expect(wrapper.text()).toContain('5-Year ROI')
+    expect(wrapper.text()).toContain('Scenario Selector')
+    expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('Missing / To Verify')
     expect(wrapper.text()).toContain('To Verify')
     expect(wrapper.text()).not.toContain('$135M')
     expect(wrapper.text()).not.toContain('60,000')
     expect(wrapper.text()).not.toContain('50%')
+  })
+
+  it('lets Investment Analysis select scenarios without inventing missing values', async () => {
+    useFeasibilityIntelligence().saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Assumption',
+      npv: 125000,
+      irr: 0.18,
+      mirr: 0.14,
+      investorMoic: 2.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 5000,
+      capexTotal: 2500000,
+      yearOneRevenue: 3000000,
+      warnings: ['Inputs still require source evidence.'],
+      source: null,
+    })
+
+    const wrapper = mount(InvestmentAnalysisView)
+    expect(wrapper.text()).toContain('18.0%')
+    expect(wrapper.text()).toContain('Derived from Assumptions')
+
+    await wrapper.findAll('button').find(button => button.text() === 'Lean')!.trigger('click')
+    expect(wrapper.text()).toContain('Scenario not filled yet')
+    expect(wrapper.text()).toContain('Missing / To Verify')
   })
 
   it('labels saved financial outputs as Derived from Assumptions for investor safety', () => {
@@ -158,7 +214,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Market Segmentation Table')
     expect(wrapper.text()).toContain('Textile Softeners Total')
     expect(wrapper.text()).toContain('Cationic / Ester Quat')
-    expect(wrapper.text()).toContain('Target Provinces / Countries')
+    expect(wrapper.text()).toContain('Target Countries / Provinces')
     expect(wrapper.text()).toContain('Research HS Codes')
     expect(wrapper.text()).toContain('Missing / To Verify')
     expect(wrapper.text()).toContain('Example supplier')
@@ -170,7 +226,7 @@ describe('screenshot-matched executive business tabs', () => {
     const wrapper = mount(CompetitorIntelligenceView)
 
     expect(wrapper.text()).toContain('Product Context Panel')
-    expect(wrapper.text()).toContain('Cationic softeners / CHEMISOFT')
+    expect(wrapper.text()).toContain('Cationic Softeners / CHEMISOFT')
     expect(wrapper.text()).toContain('CHEMISIL HS 200')
     expect(wrapper.text()).toContain('Competitor Landscape Table')
     expect(wrapper.text()).toContain('Competitor Market Share Chart')

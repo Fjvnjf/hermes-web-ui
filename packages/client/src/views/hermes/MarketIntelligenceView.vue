@@ -557,7 +557,7 @@ onMounted(loadRefreshState)
       <div class="target-panel">
         <div class="panel-heading-inline">
           <div>
-            <h3>Target Provinces / Countries</h3>
+            <h3>Target Countries / Provinces</h3>
             <p>HS-code unknowns stay Trade Proxy / To Verify. Do not treat these rows as actual consumption without source proof.</p>
           </div>
           <label>
@@ -867,7 +867,6 @@ onMounted(loadRefreshState)
   span {
     font-size: 11px;
     font-weight: 900;
-    text-transform: uppercase;
   }
 
   strong {

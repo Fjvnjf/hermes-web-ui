@@ -57,8 +57,8 @@ const nextUpdateLabel = computed(() => formatDateTime(refreshState.value.nextRun
 const economicsKpis = computed(() => buildInvestorEconomicsKpis(latestFinancialModel.value, nextUpdateLabel.value))
 const visibleEconomicsKpis = computed(() =>
   redactsSensitiveValues.value
-    ? economicsKpis.value.map(item => item.sensitive ? { ...item, value: 'Restricted', evidenceStatus: 'To Verify' as const, sourceLabel: 'Owner/internal only' } : item)
-    : economicsKpis.value,
+    ? economicsKpis.value.map(item => displayExecutiveKpi(item.sensitive ? { ...item, value: 'Restricted', evidenceStatus: 'To Verify' as const, sourceLabel: 'Owner/internal only' } : item))
+    : economicsKpis.value.map(displayExecutiveKpi),
 )
 const investmentBreakdown = computed(() => buildInvestmentBreakdownRows())
 
@@ -118,8 +118,7 @@ const briefItems = computed(() => [
 const hasDailyBriefSource = computed(() =>
   recentCaptures.value.length > 0 ||
   pendingReviewItems.value.length > 0 ||
-  openResearchJobs.value.length > 0 ||
-  evidenceGaps.value.length > 0,
+  openResearchJobs.value.length > 0,
 )
 
 function loadRefreshState() {
@@ -175,6 +174,21 @@ function marketMetric(label: string, claim: MarketClaim | null) {
     value: marketClaimValue(claim),
     evidenceStatus: claimStatusOrToVerify(claim),
     sourceLabel: marketClaimSourceLabel(claim),
+  }
+}
+
+function displayExecutiveKpi<T extends { key: string; label: string }>(item: T): T {
+  const labels: Record<string, string> = {
+    revenueTarget: 'Revenue Target',
+    capacity: 'EQ Capacity MT/YR',
+    projectIrr: 'Projected IRR',
+    payback: 'Payback Period',
+    blendedAsp: 'Blended ASP/MT',
+    npv: 'NPV @ 12%',
+  }
+  return {
+    ...item,
+    label: labels[item.key] || item.label,
   }
 }
 
@@ -533,7 +547,7 @@ onMounted(() => {
         <article class="board-panel daily-panel">
           <div class="panel-heading">
             <div>
-              <h4>Executive Daily Brief / Action Center</h4>
+              <h4>Hermes Daily Brief / Executive Action Center</h4>
               <p>Brief uses existing activity, captures, jobs, tasks, evidence gaps, and review queues.</p>
             </div>
             <RouterLink :to="{ name: 'hermes.last24Hours' }">Last 24 Hours</RouterLink>
@@ -542,21 +556,21 @@ onMounted(() => {
           <div class="brief-grid">
             <div>
               <h5>Daily Hermes Brief</h5>
-              <p v-if="!hasDailyBriefSource" class="empty-brief">No daily brief generated yet</p>
-              <ul>
+              <p v-if="!hasDailyBriefSource" class="empty-brief">No daily brief generated yet.</p>
+              <ul v-if="hasDailyBriefSource">
                 <li v-for="item in briefItems" :key="item">{{ item }}</li>
               </ul>
               <NButton v-if="!hasDailyBriefSource" size="tiny" secondary @click="syncNow">Generate Daily Brief</NButton>
             </div>
             <div>
-              <h5>Today's Priorities</h5>
+              <h5>Today’s Priorities</h5>
               <ul>
                 <li v-for="gap in evidenceGaps" :key="gap.id">{{ gap.label }} - {{ gap.evidenceStatus }}</li>
                 <li v-if="!evidenceGaps.length">No evidence gaps in current local state.</li>
               </ul>
             </div>
             <div>
-              <h5>Top Risks</h5>
+              <h5>Top Risk</h5>
               <ul>
                 <li v-for="risk in topRisks" :key="risk.id">{{ risk.title }} - {{ risk.evidenceStatus }}</li>
                 <li v-if="!topRisks.length">No current risks in local intelligence state.</li>
@@ -571,6 +585,7 @@ onMounted(() => {
             </span>
           </div>
 
+          <h5 class="actions-heading">One-click Actions</h5>
           <div class="action-grid">
             <NButton size="small" secondary @click="addBoardToInvestorReview('presentation')">Generate Investor Brief</NButton>
             <RouterLink class="board-link" :to="{ name: 'hermes.investmentCalculator' }">Update Financial Model</RouterLink>

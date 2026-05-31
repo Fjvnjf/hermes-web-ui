@@ -110,7 +110,7 @@ export function buildInvestorEconomicsKpis(
   return [
     {
       key: 'totalInvestment',
-      label: 'Total investment',
+      label: 'Total Investment',
       value: formatExecutiveCurrency(snapshot?.capexTotal, currency),
       evidenceStatus: outputStatus,
       sourceLabel,
@@ -130,7 +130,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'npv',
-      label: 'NPV',
+      label: 'NPV @ 12%',
       value: snapshot ? formatExecutiveCurrency(snapshot.npv, currency) : 'Missing / To Verify',
       evidenceStatus: outputStatus,
       sourceLabel,
@@ -140,7 +140,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'payback',
-      label: 'Payback period',
+      label: 'Payback Period',
       value: snapshot?.paybackYear ? `Year ${snapshot.paybackYear}` : 'Missing / To Verify',
       evidenceStatus: outputStatus,
       sourceLabel,
@@ -150,7 +150,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'profitabilityIndex',
-      label: 'Profitability index',
+      label: 'Profitability Index',
       value: 'Missing / To Verify',
       evidenceStatus: 'To Verify',
       sourceLabel: 'Not calculated yet',
@@ -160,7 +160,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'revenueTarget',
-      label: 'Revenue target',
+      label: 'Revenue Target',
       value: formatExecutiveCurrency(snapshot?.yearOneRevenue, currency),
       evidenceStatus: outputStatus,
       sourceLabel,
@@ -170,7 +170,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'capacity',
-      label: 'Capacity',
+      label: 'EQ Capacity MT/YR',
       value: 'Missing / To Verify',
       evidenceStatus: 'To Verify',
       sourceLabel: 'No source-backed capacity record',
@@ -180,7 +180,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'blendedAsp',
-      label: 'Blended ASP',
+      label: 'Blended ASP/MT',
       value: 'Missing / To Verify',
       evidenceStatus: 'To Verify',
       sourceLabel: 'No source-backed ASP record',
@@ -190,7 +190,7 @@ export function buildInvestorEconomicsKpis(
     },
     {
       key: 'fiveYearRoi',
-      label: '5-year ROI',
+      label: '5-Year ROI',
       value: snapshot?.investorMoic && Number.isFinite(snapshot.investorMoic)
         ? `${snapshot.investorMoic.toFixed(2)}x MOIC`
         : 'Missing / To Verify',

@@ -25,13 +25,18 @@ const jobsStore = useJobsStore()
 
 const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
 const savingAction = ref('')
+const selectedScenario = ref('Base')
+const scenarioNames = ['Lean', 'Base', 'Conservative', 'Aggressive'] as const
 
 const role = computed(() => getFrontendAccessRole())
 const redactsFinancials = computed(() => shouldRedactForEmployee(role.value) || role.value === 'investor_viewer' || role.value === 'developer_admin')
 const latestFinancialModel = intelligence.latestFinancialModel
+const selectedFinancialModel = computed(() =>
+  intelligence.state.value.financialModels.find(model => model.scenarioName.toLowerCase().includes(selectedScenario.value.toLowerCase())) || null,
+)
 const nextUpdateLabel = computed(() => formatDateTime(refreshState.value.nextRun))
 const kpis = computed(() =>
-  buildInvestorEconomicsKpis(latestFinancialModel.value, nextUpdateLabel.value)
+  buildInvestorEconomicsKpis(selectedFinancialModel.value, nextUpdateLabel.value)
     .filter(item => ['totalInvestment', 'projectIrr', 'npv', 'payback', 'profitabilityIndex', 'fiveYearRoi'].includes(item.key))
     .map(item => redactsFinancials.value
       ? { ...item, value: item.sensitive ? 'Restricted' : item.value, evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus, sourceLabel: item.sensitive ? 'Owner/financial only' : item.sourceLabel }
@@ -40,8 +45,8 @@ const kpis = computed(() =>
 const breakdownRows = computed(() =>
   buildInvestmentBreakdownRows().map(row => redactsFinancials.value ? { ...row, value: 'Restricted' } : row),
 )
-const financialWarnings = computed(() => latestFinancialModel.value?.warnings || ['No saved financial snapshot. Open the IRR Calculator and save a model before using investment outputs.'])
-const evidenceStatus = computed(() => latestFinancialModel.value ? 'Derived from Assumptions' : 'To Verify')
+const financialWarnings = computed(() => selectedFinancialModel.value?.warnings || ['Scenario not filled yet. Open the IRR Calculator and save this scenario before using investment outputs.'])
+const evidenceStatus = computed(() => selectedFinancialModel.value ? 'Derived from Assumptions' : 'To Verify')
 const processEquipmentRows = computed(() => [
   detailRow('Tanks / reactors / mixers', 'Capacity and metallurgy To Verify'),
   detailRow('Dosing / transfer systems', 'Quote and sizing To Verify'),
@@ -64,7 +69,14 @@ const scenarioCards = computed(() => [
   { name: 'Base', status: latestFinancialModel.value?.scenarioName?.includes('Base') ? evidenceStatus.value : 'To Verify', detail: latestFinancialModel.value?.scenarioName || 'No saved base scenario snapshot.' },
   { name: 'Conservative', status: 'To Verify', detail: 'Use the IRR Calculator to save downside assumptions before investor use.' },
   { name: 'Aggressive', status: 'To Verify', detail: 'Upside case must stay assumption-labeled until source-backed.' },
-])
+].map(card => {
+  const model = intelligence.state.value.financialModels.find(item => item.scenarioName.toLowerCase().includes(card.name.toLowerCase()))
+  return {
+    ...card,
+    status: model ? evidenceStatus.value : card.status,
+    detail: model?.scenarioName || card.detail,
+  }
+}))
 
 function loadRefreshState() {
   if (typeof window === 'undefined') return
@@ -115,11 +127,11 @@ function detailRow(item: string, spec: string) {
 }
 
 function analysisReviewSummary(): string {
-  const model = latestFinancialModel.value
+  const model = selectedFinancialModel.value
   return [
     'Investment Analysis refresh draft',
     `Schedule metadata: ${refreshState.value.scheduleDisplay}`,
-    `Scenario: ${model?.scenarioName || 'No saved scenario'}`,
+    `Scenario: ${model?.scenarioName || `${selectedScenario.value} scenario not filled yet`}`,
     `Evidence status: ${model ? 'Derived from Assumptions' : 'To Verify'}`,
     `NPV: ${model ? model.npv : 'To Verify'}`,
     `IRR: ${model?.irr ?? 'To Verify'}`,
@@ -134,12 +146,12 @@ function stageAnalysisReview() {
     summary: analysisReviewSummary(),
     keyClaim: 'Investment analysis requires financial evidence review',
     area: 'financial',
-    evidenceStatus: latestFinancialModel.value ? 'Derived from Assumptions' : 'To Verify',
+    evidenceStatus: selectedFinancialModel.value ? 'Derived from Assumptions' : 'To Verify',
     confidence: 'medium',
-    source: latestFinancialModel.value?.source || null,
+    source: selectedFinancialModel.value?.source || null,
     suggestedTask: 'Review financial model inputs, source documents, and assumption labels before investor use.',
-    suggestedInvestorMaterial: latestFinancialModel.value
-      ? `Financial model draft: ${latestFinancialModel.value.scenarioName}. Outputs are Derived from Assumptions.`
+    suggestedInvestorMaterial: selectedFinancialModel.value
+      ? `Financial model draft: ${selectedFinancialModel.value.scenarioName}. Outputs are Derived from Assumptions.`
       : '',
     riskNote: 'Financial outputs are sensitive and must not be treated as verified without source evidence.',
   })
@@ -304,10 +316,26 @@ onMounted(loadRefreshState)
       <article class="analysis-panel">
         <div class="panel-title">
           <div>
-            <h3>Scenario Status</h3>
-            <p>Lean, Base, Conservative, and Aggressive scenarios are connected through the IRR Calculator.</p>
+            <h3>Scenario Selector</h3>
+            <p>Lean, Base, Conservative, and Aggressive scenarios switch to saved IRR Calculator snapshots when available.</p>
           </div>
         </div>
+        <div class="scenario-selector" role="radiogroup" aria-label="Investment scenario selector">
+          <button
+            v-for="name in scenarioNames"
+            :key="name"
+            type="button"
+            class="scenario-option"
+            :class="{ selected: selectedScenario === name }"
+            :aria-pressed="selectedScenario === name"
+            @click="selectedScenario = name"
+          >
+            {{ name }}
+          </button>
+        </div>
+        <p v-if="!selectedFinancialModel" class="scenario-empty">
+          Scenario not filled yet
+        </p>
         <div class="scenario-grid">
           <div v-for="scenario in scenarioCards" :key="scenario.name" class="scenario-card">
             <strong>{{ scenario.name }}</strong>
@@ -495,7 +523,6 @@ onMounted(loadRefreshState)
   span {
     font-size: 11px;
     font-weight: 900;
-    text-transform: uppercase;
   }
 
   strong {
@@ -558,7 +585,6 @@ onMounted(loadRefreshState)
   &.head {
     color: $accent-primary;
     font-weight: 900;
-    text-transform: uppercase;
   }
 }
 
@@ -589,7 +615,6 @@ onMounted(loadRefreshState)
     border-top: 0;
     color: $accent-primary;
     font-weight: 900;
-    text-transform: uppercase;
   }
 
   > span {
@@ -608,6 +633,37 @@ onMounted(loadRefreshState)
 .scenario-grid {
   display: grid;
   gap: 8px;
+}
+
+.scenario-selector {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.scenario-option {
+  min-height: 34px;
+  border: 1px solid $border-color;
+  border-radius: 7px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-weight: 900;
+  cursor: pointer;
+
+  &.selected {
+    border-color: $accent-primary;
+    background: rgba(var(--accent-primary-rgb), 0.12);
+    color: $accent-primary;
+    box-shadow: 0 0 0 1px rgba(var(--accent-primary-rgb), 0.18) inset;
+  }
+}
+
+.scenario-empty {
+  margin: 0 0 10px;
+  color: $warning;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .scenario-card {
@@ -645,6 +701,10 @@ onMounted(loadRefreshState)
 
   .detail-row {
     grid-template-columns: 1fr;
+  }
+
+  .scenario-selector {
+    grid-template-columns: 1fr 1fr;
   }
 }
 </style>

@@ -38,8 +38,8 @@ const competitorForm = ref({
 const competitors = computed(() => intelligence.state.value.competitors)
 const competitorSubmitLabel = computed(() => editingCompetitorId.value ? 'Update competitor' : 'Save competitor')
 const productContextRows = [
-  'Cationic softeners / CHEMISOFT',
-  'Silicone softeners / CHEMISIL',
+  'Cationic Softeners / CHEMISOFT',
+  'Silicone Softeners / CHEMISIL',
   'CWAS',
   'CWMS',
   'CSLC',
@@ -634,7 +634,6 @@ function addCompetitor() {
     color: $accent-primary;
     font-size: 12px;
     font-weight: 900;
-    text-transform: uppercase;
   }
 
   &.sourced {
