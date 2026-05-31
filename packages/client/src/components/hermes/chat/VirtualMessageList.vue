@@ -301,6 +301,7 @@ defineExpose({
 
 .virtual-message-list {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--virtual-list-padding);
   display: flex;
@@ -315,5 +316,17 @@ defineExpose({
 
 .virtual-row {
   padding-bottom: var(--virtual-row-gap);
+}
+
+@media (max-width: 768px) {
+  .virtual-message-list {
+    padding: 12px 10px 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .virtual-message-list {
+    padding: 10px 8px 12px;
+  }
 }
 </style>

@@ -1619,6 +1619,7 @@ async function handleSessionModelCustomSubmit() {
 .chat-panel {
   display: flex;
   height: 100%;
+  min-height: 0;
   position: relative;
   background: #060a12;
   color: $text-primary;
@@ -2168,16 +2169,18 @@ async function handleSessionModelCustomSubmit() {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  min-height: 0;
   background: #060a12;
 }
 
 .chat-content-wrapper {
   flex: 1;
+  min-height: 0;
   display: flex;
   overflow: hidden;
   position: relative;
   gap: 12px;
-  padding: 0 16px 12px;
+  padding: 0 14px 10px;
   background: #060a12;
 }
 
@@ -2187,6 +2190,7 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background: #060a12;
   border: 1px solid $border-color;
   border-radius: $radius-md;
@@ -2269,7 +2273,7 @@ async function handleSessionModelCustomSubmit() {
 }
 
 .command-dashboard-strip {
-  padding: 12px 16px 0;
+  padding: 8px 14px 0;
   background: #060a12;
   flex: 0 0 auto;
 }
@@ -2281,8 +2285,8 @@ async function handleSessionModelCustomSubmit() {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
-  padding: 10px 12px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
   background: #09130f;
   border: 1px solid $border-color;
   border-radius: $radius-md;
@@ -2394,13 +2398,13 @@ async function handleSessionModelCustomSubmit() {
 .command-kpis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .command-kpi {
   min-width: 0;
-  padding: 14px;
+  padding: 10px 12px;
   background: $bg-card;
   border: 1px solid $border-color;
   border-radius: $radius-md;
@@ -2409,7 +2413,7 @@ async function handleSessionModelCustomSubmit() {
 .command-kpi-value {
   overflow: hidden;
   color: $accent-primary;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 800;
   line-height: 1.1;
   text-overflow: ellipsis;
@@ -2644,32 +2648,38 @@ async function handleSessionModelCustomSubmit() {
   width: 100%;
 }
 @media (max-width: 768px) {
-  .command-evidence-strip {
-    align-items: stretch;
+  .chat-panel {
+    height: 100%;
+    min-height: 0;
   }
 
-  .evidence-copy {
-    flex-basis: 100%;
-    min-width: 0;
+  .chat-main {
+    min-height: 0;
   }
 
-  .command-strip-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100%;
-    margin-left: 0;
+  .chat-header {
+    min-height: 44px;
   }
 
-  .command-action {
-    width: 100%;
+  .header-session-title {
+    font-size: 13px;
+  }
 
-    &.icon-only {
-      width: 100%;
+  .header-actions {
+    gap: 2px;
+  }
 
-      span {
-        display: inline;
-      }
-    }
+  .command-dashboard-strip {
+    display: none;
+  }
+
+  .chat-content-wrapper {
+    gap: 0;
+    padding: 0 8px 8px;
+  }
+
+  .chat-main-content {
+    border-radius: 8px;
   }
 
   .approval-bar {
@@ -2751,7 +2761,10 @@ async function handleSessionModelCustomSubmit() {
 
 @media (max-width: $breakpoint-mobile) {
   .drawer-button-wrapper {
-    right: 12px;
+    right: 10px;
+    top: auto;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    transform: none;
   }
 
   .drawer-button {

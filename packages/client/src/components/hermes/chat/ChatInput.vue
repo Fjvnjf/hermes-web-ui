@@ -1009,4 +1009,62 @@ function isImage(type: string): boolean {
   border-style: dashed;
   background-color: rgba(var(--accent-info-rgb), 0.04);
 }
+
+@media (max-width: 768px) {
+  .chat-input-area {
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .input-top-bar {
+    gap: 6px;
+    padding-bottom: 6px;
+    flex-wrap: wrap;
+  }
+
+  .context-info {
+    flex: 1 1 auto;
+    min-width: 150px;
+  }
+
+  .context-bar {
+    flex: 1 1 72px;
+    max-width: 110px;
+  }
+
+  .input-wrapper {
+    align-items: flex-end;
+    gap: 8px;
+    padding: 8px 9px;
+  }
+
+  .input-textarea {
+    min-height: 42px;
+    max-height: 30dvh;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  .input-actions {
+    padding-bottom: 1px;
+  }
+
+  .slash-command-dropdown {
+    left: 8px;
+    right: 8px;
+    max-height: min(260px, 46dvh);
+  }
+}
+
+@media (max-width: 420px) {
+  .input-top-bar {
+    .auto-play-speech-switch {
+      margin-left: 0;
+      padding-left: 6px;
+    }
+  }
+
+  .input-wrapper {
+    gap: 6px;
+  }
+}
 </style>

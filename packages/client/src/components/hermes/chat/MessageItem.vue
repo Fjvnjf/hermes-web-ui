@@ -1006,7 +1006,7 @@ onBeforeUnmount(() => {
     align-items: flex-end;
 
     .msg-body {
-      max-width: 75%;
+      max-width: min(82%, 980px);
       position: relative;
       z-index: 1;
     }
@@ -1028,7 +1028,7 @@ onBeforeUnmount(() => {
     gap: 8px;
 
     .msg-body {
-      max-width: 80%;
+      max-width: min(94%, 1180px);
       position: relative;
       z-index: 1;
     }
@@ -1086,9 +1086,9 @@ onBeforeUnmount(() => {
 }
 
 .message-bubble {
-  padding: 10px;
-  font-size: 13px;
-  line-height: 1.5;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.62;
   word-break: break-word;
   border: 1px solid $border-color;
   border-radius: 10px;
@@ -1561,6 +1561,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: $breakpoint-mobile) {
+  .message {
+    width: 100%;
+  }
+
   .message.user .msg-body {
     max-width: 100%;
   }
@@ -1571,6 +1575,50 @@ onBeforeUnmount(() => {
 
   .message.system .msg-body {
     max-width: 100%;
+  }
+
+  .message.assistant {
+    gap: 6px;
+
+    .msg-avatar {
+      width: 30px;
+      height: 30px;
+      margin-top: 1px;
+    }
+  }
+
+  .msg-body {
+    gap: 7px;
+    width: 100%;
+  }
+
+  .message-bubble {
+    width: 100%;
+    padding: 11px 12px;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  .message-meta {
+    opacity: 1;
+  }
+
+  .tool-detail-code-block {
+    :deep(code.hljs) {
+      max-height: 48dvh;
+    }
+  }
+}
+
+@media (max-width: 420px) {
+  .message.assistant {
+    .msg-avatar {
+      display: none;
+    }
+  }
+
+  .message-bubble {
+    padding: 10px 11px;
   }
 }
 </style>

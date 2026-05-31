@@ -80,5 +80,7 @@ watch([routeSessionId, routeProfile], async ([sessionId]) => {
   height: var(--app-content-height, calc(100 * var(--vh)));
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>
