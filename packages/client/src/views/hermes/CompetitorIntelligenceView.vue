@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { NButton, useMessage } from 'naive-ui'
 import {
   type CompetitorIntelligenceRecord,
@@ -8,6 +9,7 @@ import {
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { formatSourcedMarketShare, sourceIsUsable, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 import { redactForEmployee, shouldRedactForEmployee } from '@/utils/accessControl'
+import { defaultExecutiveRefreshState, nextTwiceDailyRefresh, type ExecutiveRefreshState } from '@/utils/executiveIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
@@ -15,6 +17,7 @@ const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
 const editingCompetitorId = ref<string | null>(null)
 const redactSensitiveFields = computed(() => shouldRedactForEmployee())
+const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
 
 const competitorForm = ref({
   companyName: '',
@@ -34,6 +37,34 @@ const competitorForm = ref({
 
 const competitors = computed(() => intelligence.state.value.competitors)
 const competitorSubmitLabel = computed(() => editingCompetitorId.value ? 'Update competitor' : 'Save competitor')
+const productContextRows = [
+  'Cationic softeners / CHEMISOFT',
+  'Silicone softeners / CHEMISIL',
+  'CWAS',
+  'CWMS',
+  'CSLC',
+  'CHEMISIL HS 200',
+  'CHEMISIL 1800 CON',
+].map(product => ({
+  product,
+  formType: 'To Verify',
+  dosing: 'To Verify',
+  ph: 'To Verify',
+  application: 'To Verify',
+  evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
+}))
+const marketShareChartRows = computed(() =>
+  competitors.value
+    .map(competitor => ({
+      competitor,
+      label: competitor.companyName,
+      shareLabel: competitorMarketShareLabel(competitor),
+      numericShare: Number.parseFloat((competitor.marketShare || '').replace(/[^\d.]/g, '')),
+      isAssumption: competitor.evidenceStatus === 'Assumption' || competitor.evidenceStatus === 'Powerful Assumption',
+      isSourceBacked: sourceIsUsable(competitor.source) && competitor.evidenceStatus !== 'To Verify' && competitor.evidenceStatus !== 'Missing',
+    }))
+    .filter(row => Number.isFinite(row.numericShare) && row.numericShare > 0 && (row.isAssumption || row.isSourceBacked)),
+)
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
   return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
@@ -41,6 +72,39 @@ function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): s
 
 function visibleSensitiveValue(value: string): string {
   return String(redactForEmployee(value || 'Missing'))
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return 'Not scheduled'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function syncCompetitorsNow() {
+  const saved = intelligence.addResearchFinding({
+    summary: [
+      'Competitor Intelligence refresh draft',
+      `Competitor records: ${competitors.value.length}`,
+      'Unknown market share stays To Verify.',
+      'Pricing and formula-sensitive fields remain restricted where required.',
+    ].join('\n'),
+    keyClaim: 'Competitor intelligence requires source review',
+    area: 'market',
+    evidenceStatus: 'To Verify',
+    confidence: 'medium',
+    source: null,
+    suggestedTask: 'Review competitor evidence, product equivalents, pricing proof, source links, and market-share labels.',
+    riskNote: 'No competitor market share or price should be used as fact until source-backed or visibly assumption-labeled.',
+  })
+  refreshState.value = {
+    ...refreshState.value,
+    lastRun: new Date().toISOString(),
+    nextRun: nextTwiceDailyRefresh(),
+    lastStatus: `Research review draft staged: ${saved.keyClaim}`,
+    resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + 1,
+  }
+  message.success('Competitor refresh staged for research review')
 }
 
 function resetCompetitorForm() {
@@ -97,6 +161,24 @@ async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
   } finally {
     creating.value = ''
   }
+}
+
+async function createGenericCompetitorTask(title: string, notes: string) {
+  await createResearchTask({
+    id: title.toLowerCase().replace(/\s+/g, '-'),
+    companyName: title,
+    countryRegion: 'To Verify',
+    productEquivalent: 'To Verify',
+    activeContent: 'To Verify',
+    pricingEvidence: 'To Verify',
+    certifications: 'To Verify',
+    distributionPresence: 'To Verify',
+    marketShare: '',
+    evidenceStatus: 'To Verify',
+    source: null,
+    notes,
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
@@ -218,8 +300,33 @@ function addCompetitor() {
         </p>
         <p class="section-help-text">Market share must be source-backed or labeled as an assumption. Unknown values stay To Verify and should become research tasks.</p>
       </div>
-      <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
+      <div class="refresh-card">
+        <span>Last updated: {{ formatDateTime(refreshState.lastRun) }}</span>
+        <span>Next update: {{ formatDateTime(refreshState.nextRun) }}</span>
+        <span>Status: {{ refreshState.lastStatus }}</span>
+        <span>Needs review: {{ refreshState.resultNeedsReviewCount }}</span>
+        <NButton size="tiny" type="primary" @click="syncCompetitorsNow">Sync Now</NButton>
+        <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
+      </div>
     </header>
+
+    <section class="product-context-panel" aria-label="Product context panel">
+      <div>
+        <h3>Product Context Panel</h3>
+        <p>Brochure-backed product context only. Missing form, dosing, pH, and application data stays To Verify.</p>
+      </div>
+      <div class="product-context-row head">
+        <span>Product</span><span>Form / Type</span><span>Dosing</span><span>pH</span><span>Application</span><span>Evidence Status</span>
+      </div>
+      <div v-for="row in productContextRows" :key="row.product" class="product-context-row">
+        <span>{{ row.product }}</span>
+        <span>{{ row.formType }}</span>
+        <span>{{ row.dosing }}</span>
+        <span>{{ row.ph }}</span>
+        <span>{{ row.application }}</span>
+        <span class="status-badge to-verify">{{ row.evidenceStatus }}</span>
+      </div>
+    </section>
 
     <section class="competitor-form" aria-label="Add competitor record">
       <div>
@@ -256,8 +363,9 @@ function addCompetitor() {
     </section>
 
     <section class="competitor-table" aria-label="Competitor list">
+      <h3>Competitor Landscape Table</h3>
       <div class="competitor-row head">
-        <span>Company</span><span>Region</span><span>Equivalent</span><span>Pricing</span><span>Source</span><span>Market share</span><span>Status</span><span>Action</span>
+        <span>Competitor</span><span>HQ / Country</span><span>Market Share</span><span>Price/kg</span><span>Strength</span><span>Weakness</span><span>Source</span><span>Evidence Status</span><span>Action</span>
       </div>
       <p v-if="competitors.length === 0" class="empty-state">
         No competitor records saved yet. Add sourced records above, or create research tasks for unknown competitors.
@@ -270,10 +378,11 @@ function addCompetitor() {
       >
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
-        <span>{{ competitor.productEquivalent }}</span>
-        <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
-        <span>{{ competitor.source?.title || 'Source missing' }}</span>
         <span class="market-share-label">{{ competitorMarketShareLabel(competitor) }}</span>
+        <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
+        <span>{{ competitor.productEquivalent || 'To Verify' }}</span>
+        <span class="weakness-label">{{ competitor.notes || 'To Verify' }}</span>
+        <span>{{ competitor.source?.title || 'Source missing' }}</span>
         <span class="status-badge" :class="competitor.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ competitor.evidenceStatus }}</span>
         <span class="row-actions">
           <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">
@@ -290,6 +399,36 @@ function addCompetitor() {
           </NButton>
         </span>
       </div>
+    </section>
+
+    <section class="market-share-panel" aria-label="Competitor market share chart">
+      <div>
+        <h3>Competitor Market Share Chart</h3>
+        <p>Source-backed bars are green; assumption bars are amber. Unknown shares do not become fake bars.</p>
+      </div>
+      <p v-if="marketShareChartRows.length === 0" class="empty-state">
+        No source-backed competitor share data yet.
+      </p>
+      <div v-for="row in marketShareChartRows" :key="row.competitor.id" class="share-row" :class="{ assumption: row.isAssumption }">
+        <span>{{ row.label }}</span>
+        <div class="share-track">
+          <i :style="{ width: `${Math.min(row.numericShare, 100)}%` }"></i>
+        </div>
+        <strong>{{ row.shareLabel }}</strong>
+      </div>
+    </section>
+
+    <section class="competitor-actions" aria-label="Competitor actions">
+      <NButton size="small" secondary @click="createGenericCompetitorTask('Competitor to verify', 'Research competitor action')">
+        Research Competitor
+      </NButton>
+      <NButton size="small" secondary @click="message.info('Add Source by editing or adding a competitor evidence record above')">Add Source</NButton>
+      <NButton size="small" secondary @click="createGenericCompetitorTask('Competitor verification task', 'Create verification task action')">
+        Create Verification Task
+      </NButton>
+      <RouterLink class="header-link" :to="{ name: 'hermes.researchResultReview' }">Add to Investor Review</RouterLink>
+      <RouterLink class="header-link" :to="{ name: 'hermes.feasibility' }">Compare with CWAS/CWMS</RouterLink>
+      <NButton size="small" secondary @click="syncCompetitorsNow">Schedule Deeper Research</NButton>
     </section>
 
     <section class="detail-grid">
@@ -322,8 +461,11 @@ function addCompetitor() {
 }
 
 .page-header,
+.product-context-panel,
 .competitor-form,
 .competitor-table,
+.market-share-panel,
+.competitor-actions,
 .detail-grid article {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
@@ -331,15 +473,21 @@ function addCompetitor() {
 }
 
 .page-header,
+.product-context-panel,
 .competitor-form,
 .competitor-table,
+.market-share-panel,
+.competitor-actions,
 .detail-grid article {
   position: relative;
   overflow: hidden;
 }
 
+.product-context-panel::before,
 .competitor-form::before,
 .competitor-table::before,
+.market-share-panel::before,
+.competitor-actions::before,
 .detail-grid article::before {
   content: '';
   position: absolute;
@@ -409,6 +557,64 @@ function addCompetitor() {
   font-weight: 800;
 }
 
+.refresh-card {
+  display: grid;
+  gap: 6px;
+  min-width: 240px;
+  padding: 10px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+}
+
+.product-context-panel,
+.market-share-panel,
+.competitor-actions {
+  margin: 14px 0;
+  padding: 16px;
+}
+
+.product-context-panel h3,
+.market-share-panel h3,
+.competitor-table h3 {
+  margin: 0 0 8px;
+  color: $text-primary;
+}
+
+.product-context-panel p,
+.market-share-panel p {
+  color: $text-secondary;
+}
+
+.product-context-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) repeat(4, minmax(90px, 0.8fr)) minmax(110px, auto);
+  gap: 10px;
+  align-items: center;
+  padding: 9px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 .competitor-table {
   margin: 14px 0;
   padding: 16px;
@@ -416,7 +622,7 @@ function addCompetitor() {
 
 .competitor-row {
   display: grid;
-  grid-template-columns: 1.1fr 0.8fr 1fr 0.9fr 0.9fr 0.9fr 0.8fr 170px;
+  grid-template-columns: 1fr 0.75fr 0.85fr 0.85fr 1fr 1fr 0.9fr 0.8fr 170px;
   gap: 10px;
   align-items: center;
   padding: 10px 0;
@@ -438,6 +644,11 @@ function addCompetitor() {
   &.verify {
     background: rgba(var(--accent-primary-rgb), 0.04);
   }
+}
+
+.weakness-label {
+  color: $error;
+  font-weight: 700;
 }
 
 .market-share-label {
@@ -471,6 +682,45 @@ function addCompetitor() {
   color: $text-secondary;
 }
 
+.share-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 2fr) minmax(120px, auto);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &.assumption .share-track i {
+    background: $warning;
+  }
+
+  strong {
+    color: $accent-primary;
+  }
+}
+
+.share-track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(var(--text-muted-rgb), 0.25);
+  overflow: hidden;
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: $success;
+  }
+}
+
+.competitor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -488,7 +738,12 @@ function addCompetitor() {
 
 @media (max-width: 940px) {
   .page-header,
+  .product-context-row,
   .competitor-row {
+    grid-template-columns: 1fr;
+  }
+
+  .share-row {
     grid-template-columns: 1fr;
   }
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ExecutiveOverviewView from '@/views/hermes/ExecutiveOverviewView.vue'
 import InvestmentAnalysisView from '@/views/hermes/InvestmentAnalysisView.vue'
 import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
+import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName } from '@/utils/accessControl'
 import {
@@ -80,6 +81,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Hermes Executive Intelligence')
     expect(wrapper.text()).toContain('Executive Intelligence Board')
     expect(wrapper.text()).toContain('Executive Daily Brief')
+    expect(wrapper.text()).toContain('Generate Investor Brief')
+    expect(wrapper.text()).toContain('Backup Now')
     expect(wrapper.text()).toContain('09:00 / 21:00')
     expect(defaultExecutiveRefreshState().schedule).toBe(EXECUTIVE_REFRESH_SCHEDULE)
   })
@@ -89,6 +92,11 @@ describe('screenshot-matched executive business tabs', () => {
 
     expect(wrapper.text()).toContain('Investment Analysis')
     expect(wrapper.text()).toContain('Investor Economics Control Panel')
+    expect(wrapper.text()).toContain('Process Equipment Detail')
+    expect(wrapper.text()).toContain('Utilities & Buildings Detail')
+    expect(wrapper.text()).toContain('Working Capital Detail')
+    expect(wrapper.text()).toContain('Profitability index')
+    expect(wrapper.text()).toContain('5-year ROI')
     expect(wrapper.text()).toContain('Missing / To Verify')
     expect(wrapper.text()).toContain('To Verify')
     expect(wrapper.text()).not.toContain('$135M')
@@ -145,10 +153,30 @@ describe('screenshot-matched executive business tabs', () => {
     const wrapper = mount(MarketIntelligenceView)
 
     expect(wrapper.text()).toContain('Executive Market Panel')
+    expect(wrapper.text()).toContain('Market Size / Scope')
+    expect(wrapper.text()).toContain('Import Dependence')
+    expect(wrapper.text()).toContain('Market Segmentation Table')
+    expect(wrapper.text()).toContain('Textile Softeners Total')
+    expect(wrapper.text()).toContain('Cationic / Ester Quat')
+    expect(wrapper.text()).toContain('Target Provinces / Countries')
+    expect(wrapper.text()).toContain('Research HS Codes')
     expect(wrapper.text()).toContain('Missing / To Verify')
     expect(wrapper.text()).toContain('Example supplier')
     expect(wrapper.text()).toContain('To Verify')
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
+  })
+
+  it('renders Competitor Intelligence product context, landscape, and source-gated market share chart', () => {
+    const wrapper = mount(CompetitorIntelligenceView)
+
+    expect(wrapper.text()).toContain('Product Context Panel')
+    expect(wrapper.text()).toContain('Cationic softeners / CHEMISOFT')
+    expect(wrapper.text()).toContain('CHEMISIL HS 200')
+    expect(wrapper.text()).toContain('Competitor Landscape Table')
+    expect(wrapper.text()).toContain('Competitor Market Share Chart')
+    expect(wrapper.text()).toContain('No source-backed competitor share data yet.')
+    expect(wrapper.text()).toContain('Research Competitor')
+    expect(wrapper.text()).toContain('Schedule Deeper Research')
   })
 
   it('stages Sync Now as a Research Result Review item instead of silently approving market or finance facts', async () => {

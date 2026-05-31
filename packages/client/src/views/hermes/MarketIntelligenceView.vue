@@ -14,6 +14,7 @@ import {
   EXECUTIVE_INTELLIGENCE_STORAGE_KEY,
   EXECUTIVE_REFRESH_JOB_NAME,
   defaultExecutiveRefreshState,
+  claimStatusOrToVerify,
   marketClaimSourceLabel,
   marketClaimValue,
   nextTwiceDailyRefresh,
@@ -27,6 +28,7 @@ const creating = ref('')
 const creatingClaimTaskId = ref('')
 const editingClaimId = ref<string | null>(null)
 const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
+const growthPeriod = ref('5 years')
 const frontendRole = computed(() => getFrontendAccessRole())
 const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
 const sensitiveMarketTerms = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|margin|irr|npv|payback|formula|cas\s+list|raw\s+material\s+ratio|investor\s+terms|valuation|equity)\b/i
@@ -66,18 +68,34 @@ const visibleClaims = computed(() =>
 )
 const marketSizeClaim = computed(() => findMarketClaim(['market size', 'demand', 'market value', 'consumption']))
 const growthClaim = computed(() => findMarketClaim(['growth', 'cagr']))
-const pricingClaim = computed(() => findMarketClaim(['price', 'pricing', 'asp']))
 const competitorClaimCount = computed(() => intelligence.state.value.competitors.length)
 const executiveMarketMetrics = computed(() => [
-  marketMetric('Market Size', marketSizeClaim.value),
-  marketMetric('Growth / CAGR', growthClaim.value),
-  marketMetric('Pricing Evidence', pricingClaim.value),
+  marketMetric('Market Size / Scope', marketSizeClaim.value),
+  marketMetric('Growth Rate', growthClaim.value),
+  marketMetric('Import Dependence', findMarketClaim(['import dependence', 'import share', 'import reliance'])),
+  marketMetric('Our Target', findMarketClaim(['our target', 'target segment', 'target market'])),
+  marketMetric('Opportunity Score', findMarketClaim(['opportunity score', 'market opportunity'])),
   {
     label: 'Competitor Records',
     value: competitorClaimCount.value ? String(competitorClaimCount.value) : 'To Verify',
     evidenceStatus: competitorClaimCount.value ? 'Reference Only' as IntelligenceEvidenceStatus : 'To Verify' as IntelligenceEvidenceStatus,
     sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'No competitor records',
   },
+])
+const marketSegments = computed(() => [
+  marketSegment('Textile Softeners Total', ['textile softeners total', 'textile softener market']),
+  marketSegment('Cationic / Ester Quat', ['cationic', 'ester quat', 'esterquat']),
+  marketSegment('Silicone Softeners', ['silicone softener']),
+  marketSegment('Non-ionic', ['non-ionic', 'nonionic']),
+  marketSegment('CWAS / CWMS Target Segment', ['cwas', 'cwms', 'target segment']),
+  marketSegment('Export Opportunity', ['export opportunity', 'export market']),
+])
+const targetOpportunityRows = computed(() => [
+  opportunityRow('China provinces', ['china province', 'jiangsu', 'zhejiang', 'guangdong']),
+  opportunityRow('Bangladesh', ['bangladesh']),
+  opportunityRow('Vietnam', ['vietnam']),
+  opportunityRow('India', ['india']),
+  opportunityRow('Pakistan', ['pakistan']),
 ])
 const topCompetitorRows = computed(() => {
   const records = intelligence.state.value.competitors.slice(0, 5)
@@ -155,6 +173,28 @@ function marketMetric(label: string, claim: MarketClaim | null) {
     value: isSensitiveMarketClaim(claim || { label, value: '', evidenceStatus: 'To Verify' }) ? 'Restricted' : marketClaimValue(claim),
     evidenceStatus: claim ? normalizedMarketClaimStatus(claim) : 'To Verify' as IntelligenceEvidenceStatus,
     sourceLabel: claim ? marketClaimSourceLabel(claim) : 'Source missing',
+  }
+}
+
+function marketSegment(label: string, keywords: string[]) {
+  const claim = findMarketClaim(keywords)
+  return {
+    label,
+    value: marketClaimValue(claim),
+    growth: claim?.value?.toLowerCase().includes('growth') ? claim.value : 'To Verify',
+    source: marketClaimSourceLabel(claim),
+    evidenceStatus: claimStatusOrToVerify(claim),
+  }
+}
+
+function opportunityRow(label: string, keywords: string[]) {
+  const claim = findMarketClaim(keywords)
+  return {
+    label,
+    score: claim?.value?.trim() || 'To Verify',
+    period: growthPeriod.value,
+    source: marketClaimSourceLabel(claim),
+    evidenceStatus: claimStatusOrToVerify(claim),
   }
 }
 
@@ -495,6 +535,51 @@ onMounted(loadRefreshState)
         </article>
       </div>
 
+      <div class="segmentation-panel">
+        <div class="panel-heading-inline">
+          <div>
+            <h3>Market Segmentation Table</h3>
+            <p>Segment values remain To Verify until a source title, source date, and review status are attached.</p>
+          </div>
+        </div>
+        <div class="segmentation-row head">
+          <span>Segment</span><span>Size / Value</span><span>Growth</span><span>Source</span><span>Evidence Status</span>
+        </div>
+        <div v-for="segment in marketSegments" :key="segment.label" class="segmentation-row">
+          <span>{{ segment.label }}</span>
+          <span>{{ segment.value }}</span>
+          <span>{{ segment.growth }}</span>
+          <span>{{ segment.source }}</span>
+          <NTag size="small" :type="statusType(segment.evidenceStatus)">{{ segment.evidenceStatus }}</NTag>
+        </div>
+      </div>
+
+      <div class="target-panel">
+        <div class="panel-heading-inline">
+          <div>
+            <h3>Target Provinces / Countries</h3>
+            <p>HS-code unknowns stay Trade Proxy / To Verify. Do not treat these rows as actual consumption without source proof.</p>
+          </div>
+          <label>
+            Growth period
+            <select v-model="growthPeriod">
+              <option>1 year</option>
+              <option>3 years</option>
+              <option>5 years</option>
+              <option>10 years</option>
+            </select>
+          </label>
+        </div>
+        <div class="target-grid">
+          <article v-for="row in targetOpportunityRows" :key="row.label">
+            <span>{{ row.label }}</span>
+            <strong>{{ row.score }}</strong>
+            <small>{{ row.period }} / {{ row.source }}</small>
+            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+          </article>
+        </div>
+      </div>
+
       <div class="competitor-command-table">
         <div class="competitor-row head">
           <span>Manufacturer</span><span>Region</span><span>Product</span><span>Share</span><span>Source</span><span>Status</span>
@@ -521,6 +606,12 @@ onMounted(loadRefreshState)
         <h3>{{ section }}</h3>
         <p>Missing / To Verify until source-backed research is captured and approved.</p>
         <div class="actions">
+          <NButton v-if="section === 'Market Questions'" size="tiny" secondary @click="createResearchTask('Research HS Codes')">
+            Research HS Codes
+          </NButton>
+          <NButton size="tiny" secondary @click="createResearchTask(section)">
+            Research This Market
+          </NButton>
           <NButton size="tiny" secondary type="primary" :loading="creating === section" @click="createResearchTask(section)">
             Yes, do deeper analysis
           </NButton>
@@ -528,6 +619,9 @@ onMounted(loadRefreshState)
           <RouterLink :to="{ name: 'hermes.kanban' }">Create task</RouterLink>
           <RouterLink v-if="canUseRoute('hermes.researchResultReview')" :to="{ name: 'hermes.researchResultReview' }">Later</RouterLink>
           <RouterLink v-if="canUseRoute('hermes.investorReadiness')" :to="{ name: 'hermes.investorReadiness' }">Add claim to investor review</RouterLink>
+          <NButton size="tiny" secondary @click="createResearchTask(`Schedule deeper research: ${section}`)">
+            Schedule Deeper Research
+          </NButton>
         </div>
       </article>
     </section>
@@ -630,7 +724,9 @@ onMounted(loadRefreshState)
 .claims-panel,
 .summary-card,
 .market-command-panel,
-.market-kpi-card {
+.market-kpi-card,
+.segmentation-panel,
+.target-panel {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
@@ -642,7 +738,9 @@ onMounted(loadRefreshState)
 .claims-panel,
 .summary-card,
 .market-command-panel,
-.market-kpi-card {
+.market-kpi-card,
+.segmentation-panel,
+.target-panel {
   position: relative;
   overflow: hidden;
 }
@@ -651,7 +749,9 @@ onMounted(loadRefreshState)
 .workspace-card.priority::before,
 .claim-form::before,
 .claims-panel::before,
-.market-command-panel::before {
+.market-command-panel::before,
+.segmentation-panel::before,
+.target-panel::before {
   content: '';
   position: absolute;
   inset: 0 auto 0 0;
@@ -774,6 +874,101 @@ onMounted(loadRefreshState)
     color: $accent-primary;
     font-size: 21px;
     overflow-wrap: anywhere;
+  }
+}
+
+.segmentation-panel,
+.target-panel {
+  padding: 14px;
+}
+
+.panel-heading-inline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: $text-secondary;
+  }
+
+  label {
+    display: grid;
+    gap: 5px;
+    min-width: 140px;
+    color: $text-secondary;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  select {
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 7px 9px;
+  }
+}
+
+.segmentation-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) minmax(110px, 0.8fr) minmax(90px, 0.7fr) minmax(140px, 1fr) minmax(120px, auto);
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.target-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+  }
+
+  span {
+    color: $text-secondary;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 18px;
+  }
+
+  small {
+    color: $text-muted;
   }
 }
 
@@ -945,8 +1140,13 @@ onMounted(loadRefreshState)
 @media (max-width: 820px) {
   .page-header,
   .market-command-head,
-  .claim-row {
+  .claim-row,
+  .segmentation-row {
     grid-template-columns: 1fr;
+  }
+
+  .panel-heading-inline {
+    display: grid;
   }
 
   .competitor-row {

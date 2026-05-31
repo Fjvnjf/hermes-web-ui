@@ -210,6 +210,8 @@ export function buildInvestmentBreakdownRows(): ExecutiveBreakdownRow[] {
     'Buildings & Civil',
     'Engineering & Project Management',
     'Installation & Commissioning',
+    'Working Capital',
+    'Contingency',
     'Other Costs',
   ].map(label => ({
     label,

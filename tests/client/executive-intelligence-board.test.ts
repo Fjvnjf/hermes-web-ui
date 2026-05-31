@@ -218,6 +218,8 @@ describe('Pinned Executive Intelligence Board', () => {
       expect.objectContaining({ label: 'Buildings & Civil', value: 'To Verify', evidenceStatus: 'To Verify' }),
       expect.objectContaining({ label: 'Engineering & Project Management', value: 'To Verify', evidenceStatus: 'To Verify' }),
       expect.objectContaining({ label: 'Installation & Commissioning', value: 'To Verify', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Working Capital', value: 'To Verify', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Contingency', value: 'To Verify', evidenceStatus: 'To Verify' }),
       expect.objectContaining({ label: 'Other Costs', value: 'To Verify', evidenceStatus: 'To Verify' }),
     ])
   })

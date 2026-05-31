@@ -115,6 +115,12 @@ const briefItems = computed(() => [
   `${openResearchJobs.value.length} research job record${openResearchJobs.value.length === 1 ? '' : 's'}`,
   `${evidenceGaps.value.length} priority evidence gap${evidenceGaps.value.length === 1 ? '' : 's'}`,
 ])
+const hasDailyBriefSource = computed(() =>
+  recentCaptures.value.length > 0 ||
+  pendingReviewItems.value.length > 0 ||
+  openResearchJobs.value.length > 0 ||
+  evidenceGaps.value.length > 0,
+)
 
 function loadRefreshState() {
   if (typeof window === 'undefined') return
@@ -536,9 +542,11 @@ onMounted(() => {
           <div class="brief-grid">
             <div>
               <h5>Daily Hermes Brief</h5>
+              <p v-if="!hasDailyBriefSource" class="empty-brief">No daily brief generated yet</p>
               <ul>
                 <li v-for="item in briefItems" :key="item">{{ item }}</li>
               </ul>
+              <NButton v-if="!hasDailyBriefSource" size="tiny" secondary @click="syncNow">Generate Daily Brief</NButton>
             </div>
             <div>
               <h5>Today's Priorities</h5>
@@ -570,6 +578,7 @@ onMounted(() => {
             <RouterLink class="board-link" :to="{ name: 'hermes.rawMaterialSourcing' }">Review Raw Material Prices</RouterLink>
             <NButton size="small" secondary @click="enableTwiceDailyRefresh">Schedule Night Research</NButton>
             <RouterLink class="board-link" :to="{ name: 'hermes.investorReadiness' }">Open Evidence Gaps</RouterLink>
+            <RouterLink class="board-link" :to="{ name: 'hermes.localBackupVault' }">Backup Now</RouterLink>
             <NButton size="small" secondary @click="createMissingDataTask">Create Task</NButton>
           </div>
         </article>
@@ -816,6 +825,13 @@ onMounted(() => {
     color: $text-secondary;
     font-size: 12px;
   }
+}
+
+.empty-brief {
+  margin: 0 0 8px;
+  color: $text-secondary;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .compact {

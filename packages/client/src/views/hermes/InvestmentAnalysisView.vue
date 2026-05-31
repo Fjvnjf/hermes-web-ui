@@ -42,6 +42,22 @@ const breakdownRows = computed(() =>
 )
 const financialWarnings = computed(() => latestFinancialModel.value?.warnings || ['No saved financial snapshot. Open the IRR Calculator and save a model before using investment outputs.'])
 const evidenceStatus = computed(() => latestFinancialModel.value ? 'Derived from Assumptions' : 'To Verify')
+const processEquipmentRows = computed(() => [
+  detailRow('Tanks / reactors / mixers', 'Capacity and metallurgy To Verify'),
+  detailRow('Dosing / transfer systems', 'Quote and sizing To Verify'),
+  detailRow('QC / lab equipment', 'Specification To Verify'),
+])
+const utilitiesBuildingRows = computed(() => [
+  detailRow('Utilities & Infrastructure', 'Power, steam, water, compressed air To Verify'),
+  detailRow('Buildings & Civil', 'Factory, warehouse, office, safety areas To Verify'),
+  detailRow('Wastewater / safety systems', 'Environmental and fire-system scope To Verify'),
+])
+const workingCapitalRows = computed(() => [
+  detailRow('Inventory days', 'Raw material and finished goods days To Verify'),
+  detailRow('Receivable days', 'Customer credit / DSO To Verify'),
+  detailRow('Payable days', 'Supplier credit / DPO To Verify'),
+  detailRow('Working capital need', 'Derived only after input evidence is reviewed'),
+])
 
 const scenarioCards = computed(() => [
   { name: 'Lean', status: 'To Verify', detail: 'Needs sourced capex, operating cost, volume, and selling-price assumptions.' },
@@ -86,6 +102,16 @@ function statusType(status: IntelligenceEvidenceStatus): 'default' | 'success' |
   if (status === 'Assumption' || status === 'Derived from Assumptions' || status === 'Approved Assumption' || status === 'Powerful Assumption') return 'warning'
   if (status === 'Missing' || status === 'To Verify') return 'error'
   return 'info'
+}
+
+function detailRow(item: string, spec: string) {
+  return {
+    item,
+    spec,
+    cost: redactsFinancials.value ? 'Restricted' : 'To Verify',
+    source: 'Source missing',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+  }
 }
 
 function analysisReviewSummary(): string {
@@ -261,13 +287,16 @@ onMounted(loadRefreshState)
         </div>
         <div class="table-grid">
           <div class="table-row head">
-            <span>Category</span><span>Value</span><span>Status</span><span>Source</span>
+            <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Bar</span><span>Source</span><span>Evidence Status</span>
           </div>
           <div v-for="row in breakdownRows" :key="row.label" class="table-row">
             <span>{{ row.label }}</span>
+            <span>No source-backed line items yet</span>
             <span>{{ row.value }}</span>
-            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+            <span>To Verify</span>
+            <span class="placeholder-bar" aria-label="gray placeholder bar"></span>
             <span>{{ row.sourceLabel }}</span>
+            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
           </div>
         </div>
       </article>
@@ -288,6 +317,45 @@ onMounted(loadRefreshState)
         </div>
       </article>
 
+      <article class="analysis-panel detail-panel">
+        <div class="panel-title">
+          <div>
+            <h3>Process Equipment Detail</h3>
+            <p>Equipment, spec, cost, source, and status remain source-gated.</p>
+          </div>
+        </div>
+        <div class="detail-row head"><span>Equipment</span><span>Spec</span><span>Cost</span><span>Source</span><span>Status</span></div>
+        <div v-for="row in processEquipmentRows" :key="row.item" class="detail-row">
+          <span>{{ row.item }}</span><span>{{ row.spec }}</span><span>{{ row.cost }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+        </div>
+      </article>
+
+      <article class="analysis-panel detail-panel">
+        <div class="panel-title">
+          <div>
+            <h3>Utilities & Buildings Detail</h3>
+            <p>Utility, building, and compliance scope must stay To Verify until quoted.</p>
+          </div>
+        </div>
+        <div class="detail-row head"><span>Item</span><span>Spec</span><span>Cost</span><span>Source</span><span>Status</span></div>
+        <div v-for="row in utilitiesBuildingRows" :key="row.item" class="detail-row">
+          <span>{{ row.item }}</span><span>{{ row.spec }}</span><span>{{ row.cost }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+        </div>
+      </article>
+
+      <article class="analysis-panel detail-panel">
+        <div class="panel-title">
+          <div>
+            <h3>Working Capital Detail</h3>
+            <p>Inventory, receivable, payable, and cash-buffer assumptions are not verified yet.</p>
+          </div>
+        </div>
+        <div class="detail-row head"><span>Item</span><span>Assumption</span><span>Need</span><span>Source</span><span>Status</span></div>
+        <div v-for="row in workingCapitalRows" :key="row.item" class="detail-row">
+          <span>{{ row.item }}</span><span>{{ row.spec }}</span><span>{{ row.cost }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+        </div>
+      </article>
+
       <article class="analysis-panel">
         <div class="panel-title">
           <div>
@@ -298,6 +366,13 @@ onMounted(loadRefreshState)
         <ul class="warning-list">
           <li v-for="warning in financialWarnings" :key="warning">{{ warning }}</li>
         </ul>
+        <div class="analysis-actions">
+          <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
+          <NButton size="small" secondary :loading="savingAction === 'finance-task'" @click="createMissingFinanceTask">Create Missing Cost Task</NButton>
+          <NButton size="small" secondary @click="stageAnalysisReview">Add to Investor Presentation</NButton>
+          <NButton size="small" secondary :loading="savingAction === 'schedule-refresh'" @click="scheduleRefreshJob">Do Deeper Analysis</NButton>
+          <NButton size="small" secondary @click="stageAnalysisReview">Export / Copy Summary</NButton>
+        </div>
       </article>
     </section>
   </div>
@@ -466,7 +541,7 @@ onMounted(loadRefreshState)
 
 .table-row {
   display: grid;
-  grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 1fr) minmax(110px, auto) minmax(140px, 1fr);
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(90px, 0.7fr) minmax(70px, 0.5fr) minmax(70px, 0.5fr) minmax(130px, 1fr) minmax(110px, auto);
   gap: 8px;
   align-items: center;
   padding: 8px;
@@ -485,6 +560,49 @@ onMounted(loadRefreshState)
     font-weight: 900;
     text-transform: uppercase;
   }
+}
+
+.placeholder-bar {
+  display: block;
+  width: 100%;
+  max-width: 88px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(var(--text-muted-rgb), 0.3);
+}
+
+.detail-panel {
+  grid-column: auto;
+}
+
+.detail-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.2fr) minmax(90px, 0.7fr) minmax(110px, 0.8fr) minmax(100px, auto);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.analysis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .scenario-grid {
@@ -522,6 +640,10 @@ onMounted(loadRefreshState)
   }
 
   .table-row {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-row {
     grid-template-columns: 1fr;
   }
 }
