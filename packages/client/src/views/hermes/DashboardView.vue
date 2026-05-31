@@ -260,6 +260,12 @@ async function createNextActionTask(action: InvestorNextAction) {
 
 const workspaceActions = [
   {
+    label: 'Executive Overview',
+    icon: 'EO',
+    detail: 'Open the executive intelligence, market, finance, daily brief, and action board.',
+    to: { name: 'hermes.executiveOverview' },
+  },
+  {
     label: 'Last 24 Hours',
     icon: '24H',
     detail: 'Review chats, captures, tasks, jobs, files, and failures from available data.',
@@ -288,6 +294,18 @@ const workspaceActions = [
     icon: 'IRR',
     detail: 'Model assumptions, NPV, IRR, MIRR, payback, and sensitivity.',
     to: { name: 'hermes.investmentCalculator' },
+  },
+  {
+    label: 'Investment Analysis',
+    icon: 'IA',
+    detail: 'Review investor economics with To Verify and Derived from Assumptions labels.',
+    to: { name: 'hermes.investmentAnalysis' },
+  },
+  {
+    label: 'Market Intelligence',
+    icon: 'MK',
+    detail: 'Track source-backed market claims and competitor proof without fake market data.',
+    to: { name: 'hermes.marketIntelligence' },
   },
   {
     label: 'Open Projects',
@@ -355,8 +373,10 @@ const workstreams = [
     to: { name: 'hermes.feasibility' },
     links: [
       { label: 'Studio', to: { name: 'hermes.feasibility' } },
+      { label: 'Executive Overview', to: { name: 'hermes.executiveOverview' } },
       { label: 'Investor Readiness', to: { name: 'hermes.investorReadiness' } },
       { label: 'IRR', to: { name: 'hermes.investmentCalculator' } },
+      { label: 'Investment Analysis', to: { name: 'hermes.investmentAnalysis' } },
       { label: 'Chat', to: { name: 'hermes.chat' } },
       { label: 'Tasks', to: { name: 'hermes.kanban' } },
     ],

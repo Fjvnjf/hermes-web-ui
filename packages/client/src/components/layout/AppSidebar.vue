@@ -149,12 +149,14 @@ function filterItems(items: NavItem[]) {
 
 const ownerWorkspaceItems: NavItem[] = [
   { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
+  { label: 'Executive Overview', routeName: 'hermes.executiveOverview', symbol: 'EO', title: 'Daily executive economics, market, risk, and action board' },
   { label: 'Last 24 Hours', routeName: 'hermes.last24Hours', symbol: '24', title: 'Owner-only daily activity brief' },
   { label: 'Chat', routeName: 'hermes.chat', symbol: 'CH', activeNames: ['hermes.session'] },
   { label: 'Feasibility Studio', routeName: 'hermes.feasibility', symbol: 'FS', badge: 'Primary', title: 'Main feasibility work area' },
   { label: 'Investor Readiness', routeName: 'hermes.investorReadiness', symbol: 'IR' },
   { label: 'Investor Portal', routeName: 'hermes.investorPortal', symbol: 'IP' },
   { label: 'IRR Calculator', routeName: 'hermes.investmentCalculator', symbol: 'IRR' },
+  { label: 'Investment Analysis', routeName: 'hermes.investmentAnalysis', symbol: 'IA' },
   { label: 'Projects', routeName: 'hermes.projects', symbol: 'PR' },
   { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
   { label: 'Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
@@ -227,6 +229,7 @@ const financialAnalystItems: NavItem[] = [
   { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
   { label: 'My Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
   { label: 'IRR Calculator', routeName: 'hermes.investmentCalculator', symbol: 'IRR' },
+  { label: 'Investment Analysis', routeName: 'hermes.investmentAnalysis', symbol: 'IA' },
   { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },
   { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
 ]

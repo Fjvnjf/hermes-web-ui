@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { NButton, useMessage } from 'naive-ui'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import { NButton, NTag, useMessage } from 'naive-ui'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
@@ -9,6 +10,15 @@ import {
   shouldRedactForEmployee,
 } from '@/utils/accessControl'
 import { normalizedMarketClaimStatus, type IntelligenceEvidenceStatus, type MarketClaim } from '@/utils/investorIntelligence'
+import {
+  EXECUTIVE_INTELLIGENCE_STORAGE_KEY,
+  EXECUTIVE_REFRESH_JOB_NAME,
+  defaultExecutiveRefreshState,
+  marketClaimSourceLabel,
+  marketClaimValue,
+  nextTwiceDailyRefresh,
+  type ExecutiveRefreshState,
+} from '@/utils/executiveIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
@@ -16,6 +26,7 @@ const intelligence = useFeasibilityIntelligence()
 const creating = ref('')
 const creatingClaimTaskId = ref('')
 const editingClaimId = ref<string | null>(null)
+const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
 const frontendRole = computed(() => getFrontendAccessRole())
 const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
 const sensitiveMarketTerms = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|margin|irr|npv|payback|formula|cas\s+list|raw\s+material\s+ratio|investor\s+terms|valuation|equity)\b/i
@@ -53,9 +64,126 @@ const visibleClaims = computed(() =>
     restricted: isSensitiveMarketClaim(claim),
   })),
 )
+const marketSizeClaim = computed(() => findMarketClaim(['market size', 'demand', 'market value', 'consumption']))
+const growthClaim = computed(() => findMarketClaim(['growth', 'cagr']))
+const pricingClaim = computed(() => findMarketClaim(['price', 'pricing', 'asp']))
+const competitorClaimCount = computed(() => intelligence.state.value.competitors.length)
+const executiveMarketMetrics = computed(() => [
+  marketMetric('Market Size', marketSizeClaim.value),
+  marketMetric('Growth / CAGR', growthClaim.value),
+  marketMetric('Pricing Evidence', pricingClaim.value),
+  {
+    label: 'Competitor Records',
+    value: competitorClaimCount.value ? String(competitorClaimCount.value) : 'To Verify',
+    evidenceStatus: competitorClaimCount.value ? 'Reference Only' as IntelligenceEvidenceStatus : 'To Verify' as IntelligenceEvidenceStatus,
+    sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'No competitor records',
+  },
+])
+const topCompetitorRows = computed(() => {
+  const records = intelligence.state.value.competitors.slice(0, 5)
+  if (!records.length) {
+    return [{
+      company: 'Competitor list missing',
+      region: 'To Verify',
+      product: 'To Verify',
+      share: 'To Verify',
+      source: 'Source missing',
+      status: 'To Verify' as IntelligenceEvidenceStatus,
+    }]
+  }
+  return records.map(record => ({
+    company: record.companyName || 'To Verify',
+    region: record.countryRegion || 'To Verify',
+    product: record.productEquivalent || 'To Verify',
+    share: record.marketShare?.trim() && record.source?.title ? record.marketShare : 'To Verify',
+    source: record.source?.title || 'Source missing',
+    status: record.evidenceStatus,
+  }))
+})
 
 function canUseRoute(routeName: string): boolean {
   return canAccessRouteName(routeName, frontendRole.value)
+}
+
+function loadRefreshState() {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(EXECUTIVE_INTELLIGENCE_STORAGE_KEY)
+    refreshState.value = raw
+      ? { ...defaultExecutiveRefreshState(), ...JSON.parse(raw) }
+      : defaultExecutiveRefreshState()
+  } catch {
+    refreshState.value = defaultExecutiveRefreshState()
+  }
+}
+
+function persistRefreshState(patch: Partial<ExecutiveRefreshState>) {
+  refreshState.value = {
+    ...refreshState.value,
+    ...patch,
+    scheduleDisplay: '09:00 and 21:00 local time',
+  }
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(EXECUTIVE_INTELLIGENCE_STORAGE_KEY, JSON.stringify(refreshState.value))
+  }
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return 'Not scheduled'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+function statusType(status: IntelligenceEvidenceStatus): 'default' | 'success' | 'warning' | 'error' | 'info' {
+  if (status === 'Verified' || status === 'Source-backed' || status === 'User Approved' || status === 'Investor Approved') return 'success'
+  if (status === 'Assumption' || status === 'Powerful Assumption' || status === 'Derived from Assumptions' || status === 'Reference Only') return 'warning'
+  if (status === 'Missing' || status === 'To Verify') return 'error'
+  return 'info'
+}
+
+function findMarketClaim(keywords: string[]): MarketClaim | null {
+  return claims.value.find(claim => {
+    const haystack = `${claim.label} ${claim.value || ''}`.toLowerCase()
+    return keywords.some(keyword => haystack.includes(keyword))
+  }) || null
+}
+
+function marketMetric(label: string, claim: MarketClaim | null) {
+  return {
+    label,
+    value: isSensitiveMarketClaim(claim || { label, value: '', evidenceStatus: 'To Verify' }) ? 'Restricted' : marketClaimValue(claim),
+    evidenceStatus: claim ? normalizedMarketClaimStatus(claim) : 'To Verify' as IntelligenceEvidenceStatus,
+    sourceLabel: claim ? marketClaimSourceLabel(claim) : 'Source missing',
+  }
+}
+
+function syncMarketNow() {
+  const saved = intelligence.addResearchFinding({
+    summary: [
+      'Market Intelligence refresh draft',
+      `Refresh job: ${EXECUTIVE_REFRESH_JOB_NAME}`,
+      `Last updated: ${formatDateTime(refreshState.value.lastRun)}`,
+      `Claims available: ${claims.value.length}`,
+      `Competitor records: ${competitorClaimCount.value}`,
+      'Every unsourced market value remains To Verify.',
+    ].join('\n'),
+    keyClaim: 'Market intelligence requires source review',
+    area: 'market',
+    evidenceStatus: 'To Verify',
+    confidence: 'medium',
+    source: null,
+    suggestedTask: 'Review market size, growth, pricing, customer segment, and competitor evidence before investor use.',
+    riskNote: 'Unsourced market values must not be used as verified investor claims.',
+  })
+  persistRefreshState({
+    lastRun: new Date().toISOString(),
+    nextRun: nextTwiceDailyRefresh(),
+    lastStatus: 'Market refresh staged for Research Result Review',
+    resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + 1,
+    localOnly: true,
+  })
+  message.success(`Research review draft staged: ${saved.keyClaim}`)
 }
 
 function isSensitiveMarketClaim(claim: MarketClaim): boolean {
@@ -312,6 +440,8 @@ function removeClaim(claim: MarketClaim) {
   if (removed) message.success('Market claim removed from this browser workspace')
   else message.error('Market claim was not found')
 }
+
+onMounted(loadRefreshState)
 </script>
 
 <template>
@@ -336,6 +466,49 @@ function removeClaim(claim: MarketClaim) {
         <RouterLink :to="{ name: 'hermes.exportMarketOpportunity' }">Export markets</RouterLink>
       </div>
     </header>
+
+    <section class="market-command-panel" aria-label="Market intelligence command panel">
+      <div class="market-command-head">
+        <div>
+          <p class="eyebrow">Executive Market Panel</p>
+          <h3>Market Size, Growth, Pricing, Competitors</h3>
+          <p>
+            This panel mirrors the executive dashboard style, but it refuses to invent market size, CAGR, pricing, or
+            market-share values. Unsourced values stay To Verify.
+          </p>
+        </div>
+        <div class="refresh-card">
+          <span>Last updated: {{ formatDateTime(refreshState.lastRun) }}</span>
+          <span>Next update: {{ formatDateTime(refreshState.nextRun) }}</span>
+          <span>Status: {{ refreshState.lastStatus }}</span>
+          <span>Needs review: {{ refreshState.resultNeedsReviewCount }}</span>
+          <NButton size="tiny" type="primary" @click="syncMarketNow">Sync Now</NButton>
+        </div>
+      </div>
+
+      <div class="market-kpi-grid">
+        <article v-for="metric in executiveMarketMetrics" :key="metric.label" class="market-kpi-card">
+          <span>{{ metric.label }}</span>
+          <strong>{{ metric.value }}</strong>
+          <NTag size="small" :type="statusType(metric.evidenceStatus)">{{ metric.evidenceStatus }}</NTag>
+          <small>{{ metric.sourceLabel }}</small>
+        </article>
+      </div>
+
+      <div class="competitor-command-table">
+        <div class="competitor-row head">
+          <span>Manufacturer</span><span>Region</span><span>Product</span><span>Share</span><span>Source</span><span>Status</span>
+        </div>
+        <div v-for="(row, index) in topCompetitorRows" :key="`${row.company}-${row.product}-${index}`" class="competitor-row">
+          <span>{{ row.company }}</span>
+          <span>{{ row.region }}</span>
+          <span>{{ row.product }}</span>
+          <span>{{ row.share }}</span>
+          <span>{{ row.source }}</span>
+          <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+        </div>
+      </div>
+    </section>
 
     <section class="section-grid">
       <article
@@ -455,7 +628,9 @@ function removeClaim(claim: MarketClaim) {
 .workspace-card,
 .claim-form,
 .claims-panel,
-.summary-card {
+.summary-card,
+.market-command-panel,
+.market-kpi-card {
   border: 1px solid $border-color;
   border-radius: $radius-sm;
   background: $bg-card;
@@ -465,7 +640,9 @@ function removeClaim(claim: MarketClaim) {
 .workspace-card,
 .claim-form,
 .claims-panel,
-.summary-card {
+.summary-card,
+.market-command-panel,
+.market-kpi-card {
   position: relative;
   overflow: hidden;
 }
@@ -473,7 +650,8 @@ function removeClaim(claim: MarketClaim) {
 .summary-card::before,
 .workspace-card.priority::before,
 .claim-form::before,
-.claims-panel::before {
+.claims-panel::before,
+.market-command-panel::before {
   content: '';
   position: absolute;
   inset: 0 auto 0 0;
@@ -524,6 +702,106 @@ function removeClaim(claim: MarketClaim) {
   a {
     color: $accent-primary;
     text-decoration: none;
+  }
+}
+
+.market-command-panel {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 16px;
+}
+
+.market-command-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 14px;
+
+  h3 {
+    margin: 0;
+    color: $warning;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.refresh-card {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 10px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+}
+
+.market-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.market-kpi-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  background: $bg-secondary;
+
+  span,
+  small {
+    color: $text-secondary;
+  }
+
+  span {
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 21px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.competitor-command-table {
+  display: grid;
+  gap: 5px;
+}
+
+.competitor-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(90px, 0.8fr) minmax(120px, 1fr) minmax(80px, 0.7fr) minmax(120px, 1fr) minmax(90px, auto);
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: $radius-sm;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 }
 
@@ -666,7 +944,12 @@ function removeClaim(claim: MarketClaim) {
 
 @media (max-width: 820px) {
   .page-header,
+  .market-command-head,
   .claim-row {
+    grid-template-columns: 1fr;
+  }
+
+  .competitor-row {
     grid-template-columns: 1fr;
   }
 }

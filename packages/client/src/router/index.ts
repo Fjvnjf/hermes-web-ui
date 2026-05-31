@@ -32,6 +32,12 @@ const router = createRouter({
       component: () => import('@/views/hermes/Last24HoursView.vue'),
     },
     {
+      path: '/hermes/executive-overview',
+      name: 'hermes.executiveOverview',
+      meta: { sensitivity: 'employee-safe' },
+      component: () => import('@/views/hermes/ExecutiveOverviewView.vue'),
+    },
+    {
       path: '/hermes/chat',
       name: 'hermes.chat',
       meta: { sensitivity: 'employee-safe' },
@@ -69,6 +75,12 @@ const router = createRouter({
       path: '/hermes/investment-calculator',
       name: 'hermes.investmentCalculator',
       component: () => import('@/views/hermes/InvestmentCalculatorView.vue'),
+    },
+    {
+      path: '/hermes/investment-analysis',
+      name: 'hermes.investmentAnalysis',
+      meta: { sensitivity: 'price-cost-sensitive' },
+      component: () => import('@/views/hermes/InvestmentAnalysisView.vue'),
     },
     {
       path: '/hermes/market-intelligence',

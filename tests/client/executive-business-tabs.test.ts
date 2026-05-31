@@ -1,0 +1,175 @@
+// @vitest-environment jsdom
+import { flushPromises, mount } from '@vue/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import ExecutiveOverviewView from '@/views/hermes/ExecutiveOverviewView.vue'
+import InvestmentAnalysisView from '@/views/hermes/InvestmentAnalysisView.vue'
+import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { canAccessRouteName } from '@/utils/accessControl'
+import {
+  EXECUTIVE_REFRESH_SCHEDULE,
+  buildInvestorEconomicsKpis,
+  competitorMarketShare,
+  defaultExecutiveRefreshState,
+} from '@/utils/executiveIntelligence'
+
+const createTaskMock = vi.hoisted(() => vi.fn())
+const createJobMock = vi.hoisted(() => vi.fn())
+const fetchBoardsMock = vi.hoisted(() => vi.fn())
+const setSelectedBoardMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/stores/hermes/kanban', () => ({
+  DEFAULT_KANBAN_BOARD: 'default',
+  useKanbanStore: () => ({
+    selectedBoard: 'default',
+    fetchBoards: fetchBoardsMock,
+    resolveAvailableBoard: () => 'default',
+    setSelectedBoard: setSelectedBoardMock,
+    createTask: createTaskMock,
+  }),
+}))
+
+vi.mock('@/stores/hermes/jobs', () => ({
+  useJobsStore: () => ({
+    createJob: createJobMock,
+  }),
+}))
+
+vi.mock('@/api/client', () => ({
+  getStoredUserRole: () => 'super_admin',
+}))
+
+vi.mock('naive-ui', () => ({
+  useMessage: () => ({
+    success: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  }),
+  NAlert: { template: '<div class="n-alert"><slot /></div>' },
+  NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+  NTag: { template: '<span class="n-tag"><slot /></span>' },
+}))
+
+vi.mock('vue-router', async (importOriginal) => {
+  const actual = await importOriginal<any>()
+  return {
+    ...actual,
+    RouterLink: {
+      props: ['to'],
+      template: '<a class="router-link"><slot /></a>',
+    },
+  }
+})
+
+describe('screenshot-matched executive business tabs', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    window.localStorage.setItem('hermes.frontendAccessRole', 'owner')
+    useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
+    createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
+    createJobMock.mockReset().mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
+    fetchBoardsMock.mockReset().mockResolvedValue(undefined)
+    setSelectedBoardMock.mockReset()
+  })
+
+  it('renders Executive Overview KPI cards, daily brief, and twice-daily metadata', () => {
+    const wrapper = mount(ExecutiveOverviewView)
+
+    expect(wrapper.text()).toContain('Executive Overview')
+    expect(wrapper.text()).toContain('Hermes Executive Intelligence')
+    expect(wrapper.text()).toContain('Executive Intelligence Board')
+    expect(wrapper.text()).toContain('Executive Daily Brief')
+    expect(wrapper.text()).toContain('09:00 / 21:00')
+    expect(defaultExecutiveRefreshState().schedule).toBe(EXECUTIVE_REFRESH_SCHEDULE)
+  })
+
+  it('keeps Investment Analysis values To Verify until an IRR Calculator snapshot exists', () => {
+    const wrapper = mount(InvestmentAnalysisView)
+
+    expect(wrapper.text()).toContain('Investment Analysis')
+    expect(wrapper.text()).toContain('Investor Economics Control Panel')
+    expect(wrapper.text()).toContain('Missing / To Verify')
+    expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).not.toContain('$135M')
+    expect(wrapper.text()).not.toContain('60,000')
+    expect(wrapper.text()).not.toContain('50%')
+  })
+
+  it('labels saved financial outputs as Derived from Assumptions for investor safety', () => {
+    useFeasibilityIntelligence().saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Assumption',
+      npv: 125000,
+      irr: 0.18,
+      mirr: 0.14,
+      investorMoic: 2.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 5000,
+      capexTotal: 2500000,
+      yearOneRevenue: 3000000,
+      warnings: ['Inputs still require source evidence.'],
+      source: null,
+    })
+
+    const wrapper = mount(InvestmentAnalysisView)
+    expect(wrapper.text()).toContain('Derived from Assumptions')
+    expect(wrapper.text()).toContain('18.0%')
+    expect(buildInvestorEconomicsKpis(useFeasibilityIntelligence().latestFinancialModel.value, 'Tonight')[1].evidenceStatus).toBe('Derived from Assumptions')
+  })
+
+  it('shows Market Intelligence values and competitor market share as To Verify when unsourced', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'China market size',
+      value: '',
+      evidenceStatus: 'Source-backed',
+      source: null,
+    })
+    intelligence.addCompetitor({
+      companyName: 'Example supplier',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: 'To Verify',
+      pricingEvidence: 'To Verify',
+      certifications: 'To Verify',
+      distributionPresence: 'To Verify',
+      marketShare: '',
+      evidenceStatus: 'To Verify',
+      source: null,
+      notes: '',
+    })
+
+    const wrapper = mount(MarketIntelligenceView)
+
+    expect(wrapper.text()).toContain('Executive Market Panel')
+    expect(wrapper.text()).toContain('Missing / To Verify')
+    expect(wrapper.text()).toContain('Example supplier')
+    expect(wrapper.text()).toContain('To Verify')
+    expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
+  })
+
+  it('stages Sync Now as a Research Result Review item instead of silently approving market or finance facts', async () => {
+    const marketWrapper = mount(MarketIntelligenceView)
+    await marketWrapper.findAll('button').find(button => button.text().includes('Sync Now'))!.trigger('click')
+    await flushPromises()
+
+    const investmentWrapper = mount(InvestmentAnalysisView)
+    await investmentWrapper.findAll('button').find(button => button.text().includes('Sync Now'))!.trigger('click')
+    await flushPromises()
+
+    const findings = useFeasibilityIntelligence().pendingResearchFindings.value
+    expect(findings.some(item => item.keyClaim.includes('Market intelligence'))).toBe(true)
+    expect(findings.some(item => item.keyClaim.includes('Investment analysis'))).toBe(true)
+    expect(findings.every(item => item.status === 'Pending Review' || item.status === 'To Verify')).toBe(true)
+  })
+
+  it('keeps employee and investor route access conservative', () => {
+    expect(canAccessRouteName('hermes.executiveOverview', 'employee')).toBe(true)
+    expect(canAccessRouteName('hermes.investmentAnalysis', 'employee')).toBe(false)
+    expect(canAccessRouteName('hermes.investmentAnalysis', 'financial_analyst')).toBe(true)
+    expect(canAccessRouteName('hermes.executiveOverview', 'investor_viewer')).toBe(false)
+  })
+})
