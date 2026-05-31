@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, useMessage } from 'naive-ui'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import {
   type CompetitorIntelligenceRecord,
   useFeasibilityIntelligence,
@@ -309,6 +310,8 @@ function addCompetitor() {
         <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
       </div>
     </header>
+
+    <TrustedSourceAutopilotPanel screen="competitor" title="Competitor Auto Source Status" />
 
     <section class="product-context-panel" aria-label="Product context panel">
       <div>

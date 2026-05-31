@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedExecutiveIntelligenceBoard.vue'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 import {
@@ -93,6 +94,8 @@ const actionLinks = computed(() => [
         {{ link.label }}
       </RouterLink>
     </section>
+
+    <TrustedSourceAutopilotPanel screen="executive" title="Executive Auto Source Status" />
 
     <PinnedExecutiveIntelligenceBoard />
   </div>

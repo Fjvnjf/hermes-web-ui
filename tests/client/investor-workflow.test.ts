@@ -140,6 +140,8 @@ vi.mock('naive-ui', () => ({
     info: vi.fn(),
   }),
   NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+  NDrawer: { template: '<div class="n-drawer"><slot /></div>' },
+  NDrawerContent: { template: '<div class="n-drawer-content"><slot /></div>' },
   NAlert: { template: '<div class="n-alert"><slot /></div>' },
   NTag: { template: '<span class="n-tag"><slot /></span>' },
   NInput: { props: ['value'], template: '<input :value="value" @input="$emit(\'update:value\', $event.target.value)" />' },

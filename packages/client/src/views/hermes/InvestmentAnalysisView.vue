@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NAlert, NButton, NTag, useMessage } from 'naive-ui'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
@@ -279,6 +280,8 @@ onMounted(loadRefreshState)
       <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
       <RouterLink class="analysis-link" :to="{ name: 'hermes.researchResultReview' }">Review Results</RouterLink>
     </section>
+
+    <TrustedSourceAutopilotPanel screen="investment" title="Investment Auto Source Status" />
 
     <section class="kpi-grid" aria-label="Investment analysis KPI cards">
       <article v-for="kpi in kpis" :key="kpi.key" class="kpi-card">

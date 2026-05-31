@@ -170,6 +170,7 @@ const ownerResearchItems: NavItem[] = [
   { label: 'Export Markets', routeName: 'hermes.exportMarketOpportunity', symbol: 'EX' },
   { label: 'Competitors', routeName: 'hermes.competitorIntelligence', symbol: 'CP' },
   { label: 'Research Review', routeName: 'hermes.researchResultReview', symbol: 'RV' },
+  { label: 'Trusted Sources', routeName: 'hermes.trustedSources', symbol: 'TS' },
 ]
 
 const ownerReportItems: NavItem[] = [

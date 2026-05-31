@@ -117,6 +117,12 @@ const router = createRouter({
       component: () => import('@/views/hermes/ResearchResultReviewView.vue'),
     },
     {
+      path: '/hermes/trusted-sources',
+      name: 'hermes.trustedSources',
+      meta: { sensitivity: 'system-admin-only' },
+      component: () => import('@/views/hermes/TrustedSourcesView.vue'),
+    },
+    {
       path: '/hermes/session/:sessionId',
       name: 'hermes.session',
       meta: { sensitivity: 'employee-safe' },

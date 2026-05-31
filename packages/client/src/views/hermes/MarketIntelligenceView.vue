@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NTag, useMessage } from 'naive-ui'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
@@ -506,6 +507,8 @@ onMounted(loadRefreshState)
         <RouterLink :to="{ name: 'hermes.exportMarketOpportunity' }">Export markets</RouterLink>
       </div>
     </header>
+
+    <TrustedSourceAutopilotPanel screen="market" title="Market Auto Source Status" />
 
     <section class="market-command-panel" aria-label="Market intelligence command panel">
       <div class="market-command-head">

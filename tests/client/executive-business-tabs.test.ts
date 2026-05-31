@@ -49,6 +49,8 @@ vi.mock('naive-ui', () => ({
   }),
   NAlert: { template: '<div class="n-alert"><slot /></div>' },
   NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
+  NDrawer: { template: '<div class="n-drawer"><slot /></div>' },
+  NDrawerContent: { template: '<div class="n-drawer-content"><slot /></div>' },
   NTag: { template: '<span class="n-tag"><slot /></span>' },
 }))
 
