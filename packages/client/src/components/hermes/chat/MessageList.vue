@@ -9,6 +9,7 @@ import thinkingImageLight from "@/assets/thinking-light.gif";
 import thinkingImageDark from "@/assets/thinking-dark.gif";
 import { useTheme } from "@/composables/useTheme";
 import { useToolTraceVisibility } from "@/composables/useToolTraceVisibility";
+import { stripVisualResearchPrompt } from "@/utils/visualResearchMode";
 
 const chatStore = useChatStore();
 const { t } = useI18n();
@@ -81,7 +82,7 @@ function removeQueuedMessage(messageId: string) {
 }
 
 function queuedPreview(content: string): string {
-  const normalized = content.replace(/\s+/g, " ").trim();
+  const normalized = stripVisualResearchPrompt(content).replace(/\s+/g, " ").trim();
   return normalized.length > 48 ? `${normalized.slice(0, 48)}...` : normalized;
 }
 

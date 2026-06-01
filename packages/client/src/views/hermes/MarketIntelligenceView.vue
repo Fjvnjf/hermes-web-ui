@@ -119,6 +119,343 @@ const topCompetitorRows = computed(() => {
     status: record.evidenceStatus,
   }))
 })
+const sourceBackedTemplateKpis = [
+  {
+    label: 'China Market',
+    value: 'Largest textile-chemicals consumer',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'S&P Global Textile Chemicals abstract, 2025',
+    note: 'Mainland China accounts for nearly half of global textile chemicals value in 2024; not a textile-softener-only value.',
+  },
+  {
+    label: 'Growth Rate',
+    value: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    source: 'Exact China textile-softener CAGR not source-backed yet',
+    note: 'Use paid/source-backed market report or approved research result before showing a percentage.',
+  },
+  {
+    label: 'Import Dependence',
+    value: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    source: 'UN Comtrade / China Customs HS mapping needed',
+    note: 'No direct textile-softener HS code has been approved for this dashboard yet.',
+  },
+  {
+    label: 'Chemicon Target',
+    value: '15,000 MT Year 1',
+    status: 'User Provided' as IntelligenceEvidenceStatus,
+    source: 'Chemicon feasibility planning assumption',
+    note: 'Volume target only; revenue target remains To Verify until ASP and source-backed model are approved.',
+  },
+]
+const sourceBackedSegments = [
+  {
+    segment: 'Textile Chemicals - Mainland China',
+    size: 'Nearly half of global value',
+    growth: 'Growth slowing',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'S&P Global Textile Chemicals abstract, 2025',
+  },
+  {
+    segment: 'Dyes & Pigments',
+    size: 'Close to 35% of global textile-chemicals value',
+    growth: 'Reference only',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'S&P Global Textile Chemicals abstract, 2025',
+  },
+  {
+    segment: 'Global Esterquats',
+    size: 'USD 2.69B market size value in 2024',
+    growth: '10.3% CAGR 2024-2030',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research esterquats report page',
+  },
+  {
+    segment: 'Fabric Care Esterquats',
+    size: '90.8% of esterquats market share in 2023',
+    growth: 'Reference only',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research esterquats report page',
+  },
+  {
+    segment: 'Cationic / Ester Quat Textile Softeners',
+    size: 'To Verify',
+    growth: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    source: 'China textile-finishing segment source needed',
+  },
+  {
+    segment: 'Silicone / Non-ionic Textile Softeners',
+    size: 'To Verify',
+    growth: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    source: 'Source-backed segment split needed',
+  },
+]
+const sourceBackedTargetRegions = [
+  {
+    region: 'Zhejiang / Shaoxing / Keqiao',
+    value: '8,000+ textile businesses; output value over RMB 100B',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'China gov / Xinhua, Mar 2024',
+  },
+  {
+    region: 'Jiangsu + Zhejiang textile clusters',
+    value: 'Most textile industrial clusters concentrated here',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'SWITCH-Asia / CNIS project page',
+  },
+  {
+    region: 'Huzhou + Shaoxing circular-textile focus',
+    value: 'EU-China circular economy textile project, 2022-2025',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'SWITCH-Asia / CNIS project page',
+  },
+  {
+    region: 'Guangdong / Fujian / Shandong',
+    value: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    source: 'Province-level textile-finishing demand evidence needed',
+  },
+]
+const sourceBackedCompetitorReferences = [
+  {
+    rank: '1',
+    manufacturer: 'Stepan Company',
+    role: 'Listed key esterquats company',
+    capacity: 'To Verify',
+    share: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research',
+  },
+  {
+    rank: '2',
+    manufacturer: 'Kao Chemicals Europe',
+    role: 'Listed key esterquats company',
+    capacity: 'To Verify',
+    share: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research',
+  },
+  {
+    rank: '3',
+    manufacturer: 'Evonik Industries',
+    role: 'Listed key esterquats company',
+    capacity: 'To Verify',
+    share: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research',
+  },
+  {
+    rank: '4',
+    manufacturer: 'BASF SE',
+    role: 'Listed key esterquats company',
+    capacity: 'To Verify',
+    share: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research',
+  },
+  {
+    rank: '5',
+    manufacturer: 'Solvay S.A.',
+    role: 'Listed key esterquats company',
+    capacity: 'To Verify',
+    share: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research',
+  },
+]
+const sourceBackedTemplateSources = [
+  {
+    title: 'China gov / Xinhua - Keqiao textile cluster',
+    detail: 'Keqiao, Shaoxing has 8,000+ textile businesses and output value above RMB 100B.',
+    url: 'https://english.www.gov.cn/news/202403/16/content_WS65f50107c6d0868f4e8e5257.html',
+  },
+  {
+    title: 'SWITCH-Asia / CNIS circular-textile project',
+    detail: 'Jiangsu and Zhejiang concentrate most textile industrial clusters; Shaoxing is an important production and distribution base.',
+    url: 'https://switch-asia.eu/project/transitions-to-circular-economy-practices-in-textile-and-apparel-msmes-along-the-lifecycle-in-huzhou-and-shaoxing/',
+  },
+  {
+    title: 'S&P Global - Textile Chemicals public abstract',
+    detail: 'Mainland China remains the largest textile-chemicals consumer, nearly half of 2024 global value.',
+    url: 'https://www.spglobal.com/content/dam/spglobal/ci/en/documents/products/pdf/CI_0825-SCUP-Textile-Chemicals-Abstract-TOC-June-2025.pdf',
+  },
+  {
+    title: 'Grand View Research - Esterquats report page',
+    detail: 'Global esterquats market size/growth and key company list. China textile-softener split still needs separate verification.',
+    url: 'https://www.grandviewresearch.com/industry-analysis/esterquats-market',
+  },
+  {
+    title: 'WTO / World Bank WITS - textile trade context',
+    detail: 'Use trade datasets to prioritize export-market research. Treat textile/apparel trade as a proxy, not direct softener demand.',
+    url: 'https://wits.worldbank.org/',
+  },
+  {
+    title: 'OECD-FAO Agricultural Outlook - cotton consumption',
+    detail: 'Country-wise cotton mill-use growth is a textile-demand proxy. It is not direct textile-softener consumption.',
+    url: 'https://www.oecd.org/en/publications/oecd-fao-agricultural-outlook-2025-2034_601276cd-en/full-report/cotton_a0374fa8',
+  },
+]
+const globalMarketIntelligenceRows = [
+  {
+    signal: 'China textile-chemicals anchor',
+    finding: 'Mainland China is the largest textile-chemicals consumer and accounts for nearly half of global textile-chemicals value.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'S&P Global Textile Chemicals abstract, June 2025',
+    businessMeaning: 'China is the right first validation market, but textile-softener-only demand remains a separate To Verify question.',
+    nextAction: 'Validate China textile-softener demand by product family and province.',
+  },
+  {
+    signal: 'Global esterquat reference market',
+    finding: 'Grand View Research reports the global esterquats market at USD 2.441B in 2023, with 10.3% CAGR from 2024 to 2030; fabric care held 90.8% share in 2023.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research esterquats report page',
+    businessMeaning: 'Useful for esterquat context only. It does not prove the China textile-softener market size or Chemicon revenue.',
+    nextAction: 'Separate home-care esterquat demand from textile-finishing cationic softener demand.',
+  },
+  {
+    signal: 'Keqiao textile cluster density',
+    finding: 'Keqiao, Shaoxing has more than 8,000 textile businesses and output value above RMB 100B.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'China government / Xinhua, March 2024',
+    businessMeaning: 'Strong target cluster for customer interviews, distributor mapping, and textile-finishing validation.',
+    nextAction: 'Build a Keqiao customer interview list and evidence task queue.',
+  },
+  {
+    signal: 'Textile export geography proxy',
+    finding: 'China, Bangladesh, Vietnam, India, and Turkey are important textile/apparel export hubs in WTO/WITS trade datasets.',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'WTO / World Bank WITS textile and clothing trade data',
+    businessMeaning: 'Export scale is a demand proxy, not direct softener consumption. It should guide research priority, not become a market-size claim.',
+    nextAction: 'Use WITS/UN Comtrade plus local textile-finishing evidence to rank export markets.',
+  },
+]
+const globalOpportunityRegions = [
+  {
+    region: 'China - Zhejiang / Jiangsu / Shaoxing-Keqiao',
+    demandSignal: 'High-density textile manufacturing and finishing cluster.',
+    verifiedEvidence: 'Keqiao 8,000+ textile businesses; Jiangsu/Zhejiang cluster concentration from circular-textile project source.',
+    missingEvidence: 'Softener consumption by mill type, ASP, import dependence, local competitor quotes.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+  },
+  {
+    region: 'Bangladesh',
+    demandSignal: 'Large garment export base and finishing/knitting ecosystem.',
+    verifiedEvidence: 'WTO/WITS textile and clothing trade context.',
+    missingEvidence: 'Textile softener import/local supply map, distributor list, buyer interviews, duty/tax route.',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+  },
+  {
+    region: 'Vietnam',
+    demandSignal: 'Major apparel export hub and potential regional customer base.',
+    verifiedEvidence: 'WTO/WITS textile and clothing trade context.',
+    missingEvidence: 'Finishing chemical demand, existing suppliers, China export feasibility, landed cost.',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+  },
+  {
+    region: 'India / Turkey / Pakistan',
+    demandSignal: 'Textile/apparel manufacturing countries for later export-market research.',
+    verifiedEvidence: 'WTO/WITS trade context only.',
+    missingEvidence: 'Product registration needs, textile-softener buyer segments, price benchmarks, distributor proof.',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+  },
+]
+const countryConsumptionGrowthRows = [
+  {
+    country: 'China',
+    growthSignal: 'Largest base; cotton mill use projected near 2023/24 level',
+    proxyMetric: 'Cotton mill-use proxy / textile-chemicals anchor',
+    sourceBackedEvidence: 'Largest cotton-spinning country; mill use nearly one third of global consumption. Mainland China is also the largest textile-chemicals consumer.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO Agricultural Outlook 2025-2034; S&P Global Textile Chemicals abstract',
+    nextAction: 'Verify China textile-softener consumption by province, application, and product family.',
+  },
+  {
+    country: 'India',
+    growthSignal: 'Positive textile-mill demand signal; higher cotton use forecast in 2024/25',
+    proxyMetric: 'Cotton mill-use proxy',
+    sourceBackedEvidence: 'OECD-FAO expects higher cotton use in India to help drive the 2024/25 global recovery.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO Agricultural Outlook 2025-2034',
+    nextAction: 'Research India textile-finishing clusters, softener suppliers, and import/local supply route.',
+  },
+  {
+    country: 'Vietnam',
+    growthSignal: 'Fastest listed cotton mill-use growth signal: 2.7% p.a.',
+    proxyMetric: 'Cotton mill-use proxy',
+    sourceBackedEvidence: 'OECD-FAO says Vietnam will lead annual growth of cotton mill use at 2.7% p.a.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO Agricultural Outlook 2025-2034',
+    nextAction: 'Validate Vietnam textile-finishing chemical demand, buyer segments, and distributor routes.',
+  },
+  {
+    country: 'Bangladesh',
+    growthSignal: 'Strong cotton mill-use growth signal: 2.1% p.a.',
+    proxyMetric: 'Cotton mill-use proxy / apparel export hub',
+    sourceBackedEvidence: 'OECD-FAO projects Bangladesh cotton mill-use growth at 2.1% p.a.; Bangladesh is a major apparel manufacturing base.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO Agricultural Outlook 2025-2034; WTO/WITS trade context',
+    nextAction: 'Research Bangladesh wet-processing clusters, softener importers, and mill interviews.',
+  },
+  {
+    country: 'Turkey',
+    growthSignal: 'Short-term cotton-use/import signal; exact softener demand not confirmed',
+    proxyMetric: 'Cotton mill-use and textile/apparel trade proxy',
+    sourceBackedEvidence: 'OECD-FAO notes higher cotton use and import purchases in Turkey in the 2024/25 outlook context.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO Agricultural Outlook 2025-2034; WTO/WITS trade context',
+    nextAction: 'Verify Turkey textile-finishing demand, local competitors, regulatory route, and price evidence.',
+  },
+  {
+    country: 'Pakistan',
+    growthSignal: 'Near-term negative cotton-use signal from output decline; textile-softener demand still unknown',
+    proxyMetric: 'Cotton mill-use proxy',
+    sourceBackedEvidence: 'OECD-FAO says 2024/25 global cotton-use gains are partly offset by a significant Pakistan decline driven by output decline.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO Agricultural Outlook 2025-2034',
+    nextAction: 'Check Pakistan textile output recovery, wet-processing demand, and chemical importer evidence.',
+  },
+  {
+    country: 'Indonesia',
+    growthSignal: 'Potential Southeast Asia textile-demand proxy; current exact growth needs update',
+    proxyMetric: 'Older cotton mill-use proxy / textile manufacturing proxy',
+    sourceBackedEvidence: 'Older OECD-FAO outlooks highlighted Indonesia mill-use growth, but a current country-specific update is needed before using a figure.',
+    directSoftenerConsumption: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    source: 'OECD-FAO historical cotton outlook; current verification needed',
+    nextAction: 'Research latest Indonesia cotton mill-use, textile output, and finishing chemical demand.',
+  },
+]
+const marketResearchQuestions = [
+  {
+    question: 'What is the actual China textile-softener demand by cationic, esterquat, silicone, and non-ionic category?',
+    why: 'This is the core market-size question; global textile chemicals and esterquats are only proxies.',
+    evidenceNeeded: 'Paid/source-backed market report, mill interviews, distributor quotes, or customs/trade proxy with clear HS mapping.',
+  },
+  {
+    question: 'Which clusters should Chemicon validate first: Keqiao/Shaoxing, Changzhou/Jiangsu, Foshan/Guangdong, Quanzhou/Fujian, or Shandong?',
+    why: 'Cluster prioritization decides sales travel, distributor outreach, and sample strategy.',
+    evidenceNeeded: 'Cluster production data, finishing mill list, customer interviews, and competitor/distributor presence.',
+  },
+  {
+    question: 'What competitor products are true CWAS/CWMS equivalents?',
+    why: 'Without active content, application, form, and TDS/SDS comparison, pricing comparisons are misleading.',
+    evidenceNeeded: 'TDS/SDS, active content, application guide, sample test results, and customer validation.',
+  },
+  {
+    question: 'What price bands are source-backed and employee-safe to show?',
+    why: 'Pricing can be cost-sensitive and must not appear as fake market proof.',
+    evidenceNeeded: 'Quotes, invoices, distributor screenshots, public listings, source date, and confidentiality label.',
+  },
+]
 
 function canUseRoute(routeName: string): boolean {
   return canAccessRouteName(routeName, frontendRole.value)
@@ -496,6 +833,11 @@ onMounted(loadRefreshState)
           stay To Verify until they have source evidence.
         </p>
         <p class="section-help-text">Market claims need source title, date, and review before investor use. Use the cards below to create research tasks, not unsupported claims.</p>
+        <div class="research-permission-strip" aria-label="Owner research permission">
+          <strong>Owner research permission active</strong>
+          <span>Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.</span>
+          <small>Important data needs source title, URL/date, confidence, evidence status, and review. Unknown or conflicting data remains To Verify.</small>
+        </div>
       </div>
       <div class="summary-card">
         <strong>{{ sourceReadyCount }}</strong>
@@ -509,6 +851,211 @@ onMounted(loadRefreshState)
     </header>
 
     <TrustedSourceAutopilotPanel screen="market" title="Market Auto Source Status" />
+
+    <section class="global-market-intelligence" aria-label="Global market intelligence">
+      <div class="template-header">
+        <div>
+          <p class="eyebrow">Global market intelligence</p>
+          <h3>Textile Softeners, Esterquats, and Export-Market Signals</h3>
+          <p>
+            These rows separate source-backed global context from market-size questions that still need research.
+            They are designed to help Hermes decide what to research next, not to turn proxies into investor facts.
+          </p>
+        </div>
+        <NButton size="small" type="primary" secondary @click="createResearchTask('Global textile softener market validation')">
+          Create global research task
+        </NButton>
+      </div>
+
+      <div class="global-signal-grid">
+        <article v-for="row in globalMarketIntelligenceRows" :key="row.signal" class="global-signal-card">
+          <div>
+            <h4>{{ row.signal }}</h4>
+            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          </div>
+          <p>{{ row.finding }}</p>
+          <small>Source: {{ row.source }}</small>
+          <strong>Business meaning</strong>
+          <span>{{ row.businessMeaning }}</span>
+          <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">
+            {{ row.nextAction }}
+          </NButton>
+        </article>
+      </div>
+
+      <article class="template-panel">
+        <div class="template-panel-title">
+          <div>
+            <h3>Global Opportunity Map</h3>
+            <p>Demand signals are research priorities. They are not direct market-size claims until source-backed by product/category.</p>
+          </div>
+          <RouterLink class="template-link" :to="{ name: 'hermes.exportMarketOpportunity' }">Open Export Markets</RouterLink>
+        </div>
+        <div class="global-opportunity-table">
+          <div class="global-opportunity-row head">
+            <span>Region / cluster</span><span>Demand signal</span><span>Verified evidence</span><span>Missing evidence</span><span>Status</span>
+          </div>
+          <div v-for="region in globalOpportunityRegions" :key="region.region" class="global-opportunity-row">
+            <strong>{{ region.region }}</strong>
+            <span>{{ region.demandSignal }}</span>
+            <span>{{ region.verifiedEvidence }}</span>
+            <span>{{ region.missingEvidence }}</span>
+            <NTag size="small" :type="statusType(region.status)">{{ region.status }}</NTag>
+          </div>
+        </div>
+      </article>
+
+      <article class="template-panel">
+        <div class="template-panel-title">
+          <div>
+            <h3>Country-wise Consumption Growth Tracker</h3>
+            <p>
+              Exact country-level textile-softener consumption growth is not shown as fact yet. Hermes can use online
+              trusted sources to research it, but this table keeps cotton mill-use, textile-chemical, and trade data as
+              proxy signals until direct softener evidence is found.
+            </p>
+          </div>
+          <NButton size="small" type="primary" secondary @click="createResearchTask('Country-wise textile softener consumption growth')">
+            Research country growth
+          </NButton>
+        </div>
+        <div class="country-growth-table">
+          <div class="country-growth-row head">
+            <span>Country</span><span>Growth signal</span><span>Proxy metric</span><span>Source-backed evidence</span><span>Direct softener consumption</span><span>Status</span><span>Next action</span>
+          </div>
+          <div v-for="row in countryConsumptionGrowthRows" :key="row.country" class="country-growth-row">
+            <strong>{{ row.country }}</strong>
+            <span>{{ row.growthSignal }}</span>
+            <span>{{ row.proxyMetric }}</span>
+            <span>{{ row.sourceBackedEvidence }} <small>Source: {{ row.source }}</small></span>
+            <strong class="verify-text">{{ row.directSoftenerConsumption }}</strong>
+            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+            <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">{{ row.nextAction }}</NButton>
+          </div>
+        </div>
+      </article>
+
+      <article class="template-panel">
+        <div class="template-panel-title">
+          <div>
+            <h3>Market Research Questions Hermes Should Answer</h3>
+            <p>Use these as deeper-research prompts. Each answer must return source, date, confidence, and evidence status.</p>
+          </div>
+        </div>
+        <div class="research-question-grid">
+          <article v-for="item in marketResearchQuestions" :key="item.question">
+            <h4>{{ item.question }}</h4>
+            <p>{{ item.why }}</p>
+            <small>Evidence needed: {{ item.evidenceNeeded }}</small>
+            <NButton size="tiny" secondary @click="createResearchTask(item.question)">Research this</NButton>
+          </article>
+        </div>
+      </article>
+    </section>
+
+    <section class="screenshot-market-template" aria-label="Source-backed market intelligence template">
+      <div class="template-header">
+        <div>
+          <p class="eyebrow">Chemicon China template</p>
+          <h3>Market Intelligence Template</h3>
+          <p>
+            Screenshot-style market board populated only with source-backed public facts, user-provided assumptions,
+            or To Verify gaps. Unsupported market size, share, CAGR, province split, and capacity values are not shown
+            as facts.
+          </p>
+        </div>
+        <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review source gaps</RouterLink>
+      </div>
+
+      <div class="template-kpis">
+        <article v-for="kpi in sourceBackedTemplateKpis" :key="kpi.label" class="template-kpi-card">
+          <strong>{{ kpi.value }}</strong>
+          <span>{{ kpi.label }}</span>
+          <NTag size="small" :type="statusType(kpi.status)">{{ kpi.status }}</NTag>
+          <small>{{ kpi.source }}</small>
+          <p>{{ kpi.note }}</p>
+        </article>
+      </div>
+
+      <div class="template-main-grid">
+        <article class="template-panel segmentation-template">
+          <div class="template-panel-title">
+            <h3>Market Segmentation</h3>
+            <span>source-backed / gaps visible</span>
+          </div>
+          <div class="template-table segmentation-template-table">
+            <div class="template-row head">
+              <span>Segment</span><span>Size / scope</span><span>Growth</span><span>Status</span><span>Source</span>
+            </div>
+            <div v-for="segment in sourceBackedSegments" :key="segment.segment" class="template-row">
+              <span>{{ segment.segment }}</span>
+              <span>{{ segment.size }}</span>
+              <span>{{ segment.growth }}</span>
+              <NTag size="small" :type="statusType(segment.status)">{{ segment.status }}</NTag>
+              <span>{{ segment.source }}</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="template-panel target-template">
+          <div class="template-panel-title">
+            <h3>Target Provinces</h3>
+            <span>percent split not verified</span>
+          </div>
+          <div class="target-source-list">
+            <div v-for="region in sourceBackedTargetRegions" :key="region.region" class="target-source-row">
+              <strong>{{ region.region }}</strong>
+              <span>{{ region.value }}</span>
+              <small>{{ region.source }}</small>
+              <NTag size="small" :type="statusType(region.status)">{{ region.status }}</NTag>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <article class="template-panel competitor-template">
+        <div class="template-panel-title">
+          <div>
+            <h3>Ester Quat Manufacturers & Market Share</h3>
+            <p>Company presence is source-backed; capacity and market share remain To Verify until source evidence is attached.</p>
+          </div>
+          <RouterLink class="template-link" :to="{ name: 'hermes.competitorIntelligence' }">Open Competitors</RouterLink>
+        </div>
+        <div class="template-table competitor-template-table">
+          <div class="template-row head">
+            <span>Rank</span><span>Manufacturer</span><span>Source-backed role</span><span>Capacity</span><span>Share</span><span>Status</span><span>Source</span>
+          </div>
+          <div v-for="competitor in sourceBackedCompetitorReferences" :key="competitor.manufacturer" class="template-row">
+            <span>{{ competitor.rank }}</span>
+            <strong>{{ competitor.manufacturer }}</strong>
+            <span>{{ competitor.role }}</span>
+            <span>{{ competitor.capacity }}</span>
+            <span>{{ competitor.share }}</span>
+            <NTag size="small" :type="statusType(competitor.status)">{{ competitor.status }}</NTag>
+            <span>{{ competitor.source }}</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="template-panel source-template">
+        <div class="template-panel-title">
+          <h3>Verified Source Pack</h3>
+          <span>used by this template</span>
+        </div>
+        <div class="source-template-grid">
+          <a
+            v-for="source in sourceBackedTemplateSources"
+            :key="source.url"
+            :href="source.url"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <strong>{{ source.title }}</strong>
+            <span>{{ source.detail }}</span>
+          </a>
+        </div>
+      </article>
+    </section>
 
     <section class="market-command-panel" aria-label="Market intelligence command panel">
       <div class="market-command-head">
@@ -612,19 +1159,11 @@ onMounted(loadRefreshState)
           <NButton v-if="section === 'Market Questions'" size="tiny" secondary @click="createResearchTask('Research HS Codes')">
             Research HS Codes
           </NButton>
-          <NButton size="tiny" secondary @click="createResearchTask(section)">
+          <NButton size="tiny" secondary type="primary" :loading="creating === section" @click="createResearchTask(section)">
             Research This Market
           </NButton>
-          <NButton size="tiny" secondary type="primary" :loading="creating === section" @click="createResearchTask(section)">
-            Yes, do deeper analysis
-          </NButton>
-          <button type="button" @click="createResearchTask(section)">Run Tonight</button>
           <RouterLink :to="{ name: 'hermes.kanban' }">Create task</RouterLink>
-          <RouterLink v-if="canUseRoute('hermes.researchResultReview')" :to="{ name: 'hermes.researchResultReview' }">Later</RouterLink>
           <RouterLink v-if="canUseRoute('hermes.investorReadiness')" :to="{ name: 'hermes.investorReadiness' }">Add claim to investor review</RouterLink>
-          <NButton size="tiny" secondary @click="createResearchTask(`Schedule deeper research: ${section}`)">
-            Schedule Deeper Research
-          </NButton>
         </div>
       </article>
     </section>
@@ -808,11 +1347,381 @@ onMounted(loadRefreshState)
   }
 }
 
+.research-permission-strip {
+  display: grid;
+  gap: 5px;
+  max-width: 900px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(var(--accent-info-rgb), 0.13), rgba(var(--warning-rgb), 0.07));
+
+  strong {
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  span,
+  small {
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+}
+
 .market-command-panel {
   display: grid;
   gap: 12px;
   margin: 14px 0;
   padding: 16px;
+}
+
+.global-market-intelligence {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+}
+
+.global-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.global-signal-card {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(145deg, rgba(var(--accent-info-rgb), 0.08), transparent 44%),
+    $bg-card;
+
+  > div {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  p,
+  span,
+  small {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.global-opportunity-table {
+  overflow-x: auto;
+}
+
+.country-growth-table {
+  overflow-x: auto;
+}
+
+.global-opportunity-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.9fr) minmax(190px, 1fr) minmax(230px, 1.25fr) minmax(260px, 1.35fr) minmax(120px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 980px;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.country-growth-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.6fr) minmax(210px, 1fr) minmax(160px, 0.8fr) minmax(300px, 1.4fr) minmax(150px, 0.75fr) minmax(120px, auto) minmax(230px, 1.05fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 1320px;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    display: block;
+    margin-top: 5px;
+    color: $text-muted;
+    line-height: 1.35;
+  }
+}
+
+.verify-text {
+  color: $accent-primary;
+}
+
+.research-question-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+
+  article {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+  }
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  p,
+  small {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.screenshot-market-template {
+  display: grid;
+  gap: 16px;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.42);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-primary-rgb), 0.06), rgba(var(--accent-info-rgb), 0.035)),
+    $bg-card;
+}
+
+.template-header,
+.template-panel-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  h3 {
+    margin: 0;
+    color: $warning;
+  }
+
+  p {
+    max-width: 860px;
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.template-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-info-rgb), 0.08);
+  color: $accent-info;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.template-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-kpi-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: $radius-sm;
+  background: $bg-secondary;
+  text-align: center;
+
+  strong {
+    color: $accent-primary;
+    font-size: 24px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  span,
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.template-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.85fr);
+  gap: 16px;
+}
+
+.template-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: $bg-secondary;
+}
+
+.template-table {
+  display: grid;
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.template-row {
+  display: grid;
+  gap: 10px;
+  align-items: center;
+  min-width: 760px;
+  padding: 10px 12px;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+  font-size: 12px;
+
+  > span,
+  > strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &.head {
+    border-top: 0;
+    border-bottom: 2px solid rgba(var(--accent-primary-rgb), 0.75);
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.segmentation-template-table .template-row {
+  grid-template-columns: minmax(210px, 1.4fr) minmax(180px, 1fr) minmax(140px, 0.8fr) minmax(120px, auto) minmax(190px, 1fr);
+}
+
+.competitor-template-table .template-row {
+  grid-template-columns: 52px minmax(150px, 1fr) minmax(180px, 1.1fr) minmax(110px, 0.7fr) minmax(100px, 0.7fr) minmax(120px, auto) minmax(140px, 0.8fr);
+}
+
+.target-source-list,
+.source-template-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.target-source-row {
+  display: grid;
+  gap: 5px;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+
+  &:first-child {
+    border-top: 0;
+  }
+
+  strong {
+    color: $text-primary;
+  }
+
+  span,
+  small {
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.source-template-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+
+  a {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-card;
+    text-decoration: none;
+
+    strong {
+      color: $accent-info;
+      font-size: 13px;
+    }
+
+    span {
+      color: $text-secondary;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+  }
 }
 
 .market-command-head {
@@ -1018,6 +1927,10 @@ onMounted(loadRefreshState)
     margin: 0 0 8px;
     color: $text-primary;
   }
+
+  p {
+    min-height: 42px;
+  }
 }
 
 .workspace-card.priority {
@@ -1065,8 +1978,12 @@ onMounted(loadRefreshState)
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 12px;
 
   a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
     border: 1px solid $border-color;
     border-radius: $radius-sm;
     padding: 5px 8px;
@@ -1142,9 +2059,14 @@ onMounted(loadRefreshState)
 @media (max-width: 820px) {
   .page-header,
   .market-command-head,
+  .template-main-grid,
   .claim-row,
   .segmentation-row {
     grid-template-columns: 1fr;
+  }
+
+  .template-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .panel-heading-inline {
@@ -1153,6 +2075,26 @@ onMounted(loadRefreshState)
 
   .competitor-row {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .screenshot-market-template {
+    padding: 12px;
+  }
+
+  .template-header,
+  .template-panel-title {
+    display: grid;
+  }
+
+  .template-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .template-row {
+    grid-template-columns: 1fr !important;
+    min-width: 0;
   }
 }
 </style>

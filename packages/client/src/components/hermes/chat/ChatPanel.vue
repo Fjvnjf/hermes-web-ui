@@ -64,16 +64,9 @@ const selectedSessionKeys = ref<Set<string>>(new Set());
 const showBatchDeleteConfirm = ref(false);
 const isBatchDeleting = ref(false);
 
-// Initialize synchronously from the media query so first paint is correct.
-// On narrow viewports the session list is an absolute-positioned overlay
-// (z-index 10) on top of the chat area; if we default to `true`, onMounted
-// only flips it to `false` AFTER the first render, causing a visible flash
-// where the session list covers the chat content ("auto-fixes after a
-// moment" — that was the race).
-const showSessions = ref(
-  typeof window === "undefined" ||
-    !window.matchMedia("(max-width: 768px)").matches,
-);
+// Keep the chat canvas wide by default. The session browser remains one click
+// away from the header, and mobile still uses it as an overlay.
+const showSessions = ref(false);
 let mobileQuery: MediaQueryList | null = null;
 const isMobile = ref(false);
 const assignedProfileNames = computed(() => getStoredUserProfiles());
@@ -1827,7 +1820,7 @@ async function handleSessionModelCustomSubmit() {
 }
 
 .session-list {
-  width: 252px;
+  width: 232px;
   border-right: 1px solid $border-color;
   display: flex;
   flex-direction: column;
@@ -2179,8 +2172,8 @@ async function handleSessionModelCustomSubmit() {
   display: flex;
   overflow: hidden;
   position: relative;
-  gap: 12px;
-  padding: 0 14px 10px;
+  gap: 8px;
+  padding: 0 8px 8px;
   background: #060a12;
 }
 
@@ -2192,8 +2185,8 @@ async function handleSessionModelCustomSubmit() {
   min-width: 0;
   min-height: 0;
   background: #060a12;
-  border: 1px solid $border-color;
-  border-radius: $radius-md;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.16);
+  border-radius: 8px;
 }
 
 .chat-header {
@@ -2675,7 +2668,7 @@ async function handleSessionModelCustomSubmit() {
 
   .chat-content-wrapper {
     gap: 0;
-    padding: 0 8px 8px;
+    padding: 0 6px 6px;
   }
 
   .chat-main-content {

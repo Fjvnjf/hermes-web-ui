@@ -750,6 +750,8 @@ onMounted(() => {
 
 .table-block {
   margin-top: 12px;
+  min-width: 0;
+  overflow-x: auto;
 
   h5 {
     margin: 0 0 8px;
@@ -762,6 +764,7 @@ onMounted(() => {
 .mini-table {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .mini-row {
@@ -787,6 +790,7 @@ onMounted(() => {
 
 .competitor-table .mini-row {
   grid-template-columns: 48px minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(80px, 0.8fr) minmax(90px, auto);
+  min-width: 620px;
 }
 
 .mini-head {
@@ -891,6 +895,7 @@ onMounted(() => {
   .market-panel .mini-row,
   .competitor-table .mini-row {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
 }
 </style>

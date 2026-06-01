@@ -292,6 +292,17 @@ async function renderMermaidDiagrams(): Promise<void> {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
+      theme: 'dark',
+      themeVariables: {
+        background: '#060a12',
+        primaryColor: '#101827',
+        primaryTextColor: '#e5edf8',
+        primaryBorderColor: '#3e5f8a',
+        lineColor: '#68baf7',
+        secondaryColor: '#142033',
+        tertiaryColor: '#0b111d',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      },
     })
   } catch {
     if (unmounted || generation !== renderGeneration) return
@@ -495,19 +506,38 @@ function closeTextPreview(): void {
 @use '@/styles/variables' as *;
 
 .markdown-body {
-  font-size: 14px;
-  line-height: 1.65;
+  font-size: 14.5px;
+  line-height: 1.7;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
   overflow-x: auto;
 
   p {
-    margin: 0 0 8px;
+    margin: 0 0 10px;
 
     &:last-child {
       margin-bottom: 0;
     }
+  }
+
+  h1, h2, h3 {
+    margin: 14px 0 8px;
+    color: $accent-primary;
+    font-weight: 900;
+    line-height: 1.18;
+  }
+
+  h1 {
+    font-size: 22px;
+  }
+
+  h2 {
+    font-size: 19px;
+  }
+
+  h3 {
+    font-size: 16px;
   }
 
   ul, ol {
@@ -540,12 +570,14 @@ function closeTextPreview(): void {
 
   img {
     display: block;
-    max-width: 200px;
-    max-height: 160px;
+    max-width: min(760px, 100%);
+    max-height: 70vh;
     object-fit: contain;
     cursor: pointer;
-    border-radius: 4px;
-    margin: 8px 0;
+    border: 1px solid $border-color;
+    border-radius: 7px;
+    margin: 12px 0;
+    background: rgba(0, 0, 0, 0.22);
   }
 
   .markdown-video-container {
@@ -652,15 +684,19 @@ function closeTextPreview(): void {
   table {
     width: 100%;
     border-collapse: collapse;
-    margin: 8px 0;
+    margin: 12px 0 14px;
     display: block;
     overflow-x: auto;
+    border: 1px solid $border-color;
+    border-radius: 8px;
+    background: rgba(var(--accent-primary-rgb), 0.025);
 
     th, td {
-      padding: 6px 12px;
-      border: 1px solid $border-color;
+      padding: 8px 12px;
+      border: 1px solid rgba(var(--accent-info-rgb), 0.16);
       text-align: left;
       font-size: 13px;
+      vertical-align: top;
     }
 
     th {
@@ -681,15 +717,19 @@ function closeTextPreview(): void {
   }
 
   .mermaid-diagram {
-    margin: 10px 0;
-    padding: 14px;
-    border: 1px solid $border-color;
+    margin: 14px 0;
+    padding: 18px;
+    min-height: 120px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.28);
     border-radius: 8px;
-    background: rgba(var(--accent-primary-rgb), 0.04);
+    background:
+      linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), rgba(var(--accent-primary-rgb), 0.035)),
+      #060a12;
     overflow-x: auto;
 
     svg {
-      max-width: 100%;
+      min-width: min(680px, 100%);
+      max-width: none;
       height: auto;
       display: block;
       margin: 0 auto;

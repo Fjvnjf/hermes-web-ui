@@ -54,6 +54,333 @@ const productContextRows = [
   application: 'To Verify',
   evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
 }))
+const screenshotCompetitorKpis = [
+  {
+    label: 'Profiled Suppliers',
+    value: '8',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    note: 'Publicly visible textile-softener / textile-auxiliary competitors and research targets.',
+  },
+  {
+    label: 'EU Avg Price',
+    value: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    note: 'Do not show a $/kg benchmark until source-backed distributor or quote evidence is attached.',
+  },
+  {
+    label: 'Chemicon Target',
+    value: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    note: 'Target price needs approved ASP/costing evidence before it appears as a number.',
+  },
+  {
+    label: 'Price Edge',
+    value: 'To Verify',
+    status: 'To Verify' as IntelligenceEvidenceStatus,
+    note: 'No edge percentage is shown until competitor price and Chemicon target are both verified.',
+  },
+]
+const screenshotProductFamilies = [
+  {
+    title: 'Cationic Softeners - CHEMISOFT',
+    subtitle: 'Ester quat / cationic softener comparison template',
+    rows: [
+      {
+        product: 'CWAS',
+        form: 'To Verify',
+        dosing: 'To Verify',
+        ph: 'To Verify',
+        application: 'Textile finishing softener context',
+        status: 'To Verify' as IntelligenceEvidenceStatus,
+      },
+      {
+        product: 'CWMS',
+        form: 'To Verify',
+        dosing: 'To Verify',
+        ph: 'To Verify',
+        application: 'Textile softener comparison item',
+        status: 'To Verify' as IntelligenceEvidenceStatus,
+      },
+      {
+        product: 'CSLC',
+        form: 'To Verify',
+        dosing: 'To Verify',
+        ph: 'To Verify',
+        application: 'Textile softener comparison item',
+        status: 'To Verify' as IntelligenceEvidenceStatus,
+      },
+    ],
+  },
+  {
+    title: 'Silicone Softeners - CHEMISIL',
+    subtitle: 'Silicone finishing / hydrophilic softener comparison template',
+    rows: [
+      {
+        product: 'CHEMISIL HS 200',
+        form: 'To Verify',
+        dosing: 'To Verify',
+        ph: 'To Verify',
+        application: 'Hydrophilic silicone softener benchmark',
+        status: 'To Verify' as IntelligenceEvidenceStatus,
+      },
+      {
+        product: 'CHEMISIL 1800 CON',
+        form: 'To Verify',
+        dosing: 'To Verify',
+        ph: 'To Verify',
+        application: 'Amino-modified silicone benchmark',
+        status: 'To Verify' as IntelligenceEvidenceStatus,
+      },
+    ],
+  },
+]
+const sourceBackedCompetitorTemplateRows = [
+  {
+    competitor: 'Transfar Chemicals',
+    hq: 'China',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'China textile chemicals / auxiliaries presence',
+    weakness: 'Product equivalents, price, and share need source evidence',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'Transfar Chemicals official site',
+    sourceUrl: 'https://www.transfarchem.com/en/',
+  },
+  {
+    competitor: 'WACKER',
+    hq: 'Germany',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'Silicone textile softener portfolio',
+    weakness: 'China softener share and price need verification',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'WACKER FINISH WR 1200 product page',
+    sourceUrl: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
+  },
+  {
+    competitor: 'RUDOLF Group',
+    hq: 'Germany',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'High-performance silicone softeners for textile applications',
+    weakness: 'China share, channel pricing, and equivalent grade need verification',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'RUDOLF RUCOFIN technology page',
+    sourceUrl: 'https://rudolf.com/tr/technologies/rucofin',
+  },
+  {
+    competitor: 'CHT Group',
+    hq: 'Germany',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'Textile solutions and auxiliaries supplier',
+    weakness: 'Equivalent products, price, and China distribution need verification',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'CHT Group company page',
+    sourceUrl: 'https://www.cht.com/en/cht-group/company',
+  },
+  {
+    competitor: 'Archroma',
+    hq: 'Switzerland',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'Finishing portfolio includes silicone and non-yellowing softeners',
+    weakness: 'Market share and local price need verification',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'Archroma finishing solutions',
+    sourceUrl: 'https://www.archroma.com/textile-effects/solutions/finishing',
+  },
+  {
+    competitor: 'Zschimmer & Schwarz',
+    hq: 'Germany',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'Textile auxiliaries including softeners and finishing products',
+    weakness: 'China share, product equivalent, and pricing need verification',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'Zschimmer & Schwarz textile auxiliaries',
+    sourceUrl: 'https://www.zschimmer-schwarz.com/en/fibre-textile-auxiliaries/textile-auxiliaries',
+  },
+  {
+    competitor: 'Pulcra Chemicals',
+    hq: 'Germany / global',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'Specialty chemicals for fiber, textile, and leather industries',
+    weakness: 'Softener equivalent, China pricing, and share need verification',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    sourceTitle: 'Pulcra Chemicals official site',
+    sourceUrl: 'https://www.pulcra-chemicals.com/',
+  },
+  {
+    competitor: 'Kao Chemicals Europe',
+    hq: 'Japan / Europe',
+    share: 'To Verify',
+    price: 'To Verify',
+    strength: 'Listed public esterquats company reference',
+    weakness: 'Textile-softener relevance, China share, and price need verification',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    sourceTitle: 'Grand View Research esterquats report page',
+    sourceUrl: 'https://www.grandviewresearch.com/industry-analysis/esterquats-market',
+  },
+]
+const competitorResearchQueue = [
+  'Liansheng local textile auxiliary suppliers',
+  'Huangma ester / textile auxiliary suppliers',
+  'Pulcra China textile finishing grades',
+  'Kao esterquat textile relevance',
+  'Transfar CWAS/CWMS equivalent products',
+]
+const competitorSourcePack = [
+  {
+    title: 'Transfar Chemicals official site',
+    detail: 'Confirms Transfar textile-chemicals business presence. Product equivalents, price, and share still need evidence.',
+    url: 'https://www.transfarchem.com/en/',
+  },
+  {
+    title: 'WACKER textile softener product page',
+    detail: 'WACKER FINISH WR 1200 is positioned as active substance in softener formulations for PES fibers/textiles.',
+    url: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
+  },
+  {
+    title: 'RUDOLF RUCOFIN page',
+    detail: 'RUDOLF identifies RUCOFIN as high-performance silicone softeners for textile applications.',
+    url: 'https://rudolf.com/tr/technologies/rucofin',
+  },
+  {
+    title: 'CHT Group company page',
+    detail: 'CHT describes itself as a strategic partner of the textile industry and supplier for textile auxiliary formulators.',
+    url: 'https://www.cht.com/en/cht-group/company',
+  },
+  {
+    title: 'Archroma finishing solutions',
+    detail: 'Archroma lists fabric finishing products including SILIGEN, SOLUSOFT, and ULTRATEX softener families.',
+    url: 'https://www.archroma.com/textile-effects/solutions/finishing',
+  },
+  {
+    title: 'Zschimmer & Schwarz textile auxiliaries',
+    detail: 'Zschimmer & Schwarz lists textile auxiliaries, softeners, and finishing products.',
+    url: 'https://www.zschimmer-schwarz.com/en/fibre-textile-auxiliaries/textile-auxiliaries',
+  },
+  {
+    title: 'Pulcra Chemicals official site',
+    detail: 'Pulcra describes specialty chemicals for fiber, textile, and leather industries.',
+    url: 'https://www.pulcra-chemicals.com/',
+  },
+  {
+    title: 'Grand View Research esterquats report page',
+    detail: 'Lists key esterquats companies; textile-softener relevance, China market share, and pricing still need separate verification.',
+    url: 'https://www.grandviewresearch.com/industry-analysis/esterquats-market',
+  },
+]
+const globalCompetitorMatrixRows = [
+  {
+    company: 'Archroma',
+    category: 'Global textile effects / finishing supplier',
+    sourceBackedFact: 'Finishing portfolio includes silicone and non-yellowing softener families such as SILIGEN, SOLUSOFT, and ULTRATEX.',
+    strategicThreat: 'Broad finishing portfolio, brand trust, sustainability positioning, and textile-mill relationships.',
+    evidenceGaps: 'China softener share, distributor/channel pricing, exact CWAS/CWMS equivalent products.',
+    nextAction: 'Collect Archroma TDS/SDS and local distributor price evidence.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Archroma finishing solutions',
+  },
+  {
+    company: 'WACKER',
+    category: 'Silicone technology supplier',
+    sourceBackedFact: 'WACKER FINISH WR 1200 is positioned as an active substance in softener formulations for PES fibers/textiles.',
+    strategicThreat: 'Strong silicone chemistry capability and premium formulation inputs.',
+    evidenceGaps: 'Finished softener competitor role, China channels, textile-mill adoption, pricing.',
+    nextAction: 'Map WACKER silicone softener actives against CHEMISIL products.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'WACKER FINISH WR 1200 product page',
+  },
+  {
+    company: 'RUDOLF Group',
+    category: 'Textile auxiliary / finishing specialist',
+    sourceBackedFact: 'RUCOFIN is presented as high-performance silicone softeners for textile applications.',
+    strategicThreat: 'Application know-how, textile finishing reputation, and premium performance positioning.',
+    evidenceGaps: 'China market share, equivalent grades, customer segments, quote evidence.',
+    nextAction: 'Create a RUDOLF product-equivalence table with TDS/SDS sources.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'RUDOLF RUCOFIN page',
+  },
+  {
+    company: 'CHT Group',
+    category: 'Global textile auxiliaries supplier',
+    sourceBackedFact: 'CHT describes itself as a strategic partner of the textile industry and supplier for textile auxiliary formulators.',
+    strategicThreat: 'Broad textile value-chain coverage and formulation support.',
+    evidenceGaps: 'Equivalent products, China softener share, local price, distributor strength.',
+    nextAction: 'Research CHT China/Bangladesh/Vietnam textile softener product portfolio.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'CHT Group company page',
+  },
+  {
+    company: 'Zschimmer & Schwarz',
+    category: 'Textile auxiliaries / softeners',
+    sourceBackedFact: 'Official textile auxiliaries pages list softeners and finishing products.',
+    strategicThreat: 'Specialized textile auxiliary portfolio and product breadth.',
+    evidenceGaps: 'China sales footprint, direct product equivalent, pricing and share.',
+    nextAction: 'Verify Zschimmer product equivalents and local distributor evidence.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Zschimmer & Schwarz textile auxiliaries',
+  },
+  {
+    company: 'Pulcra Chemicals',
+    category: 'Fiber, textile, and leather specialty chemicals',
+    sourceBackedFact: 'Pulcra positions itself as a specialty-chemicals supplier for fiber, textile, and leather industries.',
+    strategicThreat: 'Global textile network and application-focused chemical portfolio.',
+    evidenceGaps: 'CWAS/CWMS equivalent grades, China/Bangladesh/Vietnam price proof, customer proof.',
+    nextAction: 'Research Pulcra softener families and export-market distributor presence.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Pulcra Chemicals official site',
+  },
+  {
+    company: 'Transfar Chemicals',
+    category: 'China local textile-chemicals competitor',
+    sourceBackedFact: 'Official site supports Transfar Chemicals as a China chemicals/textile-chemicals research target.',
+    strategicThreat: 'Local presence, potential cost/logistics advantage, and China customer familiarity.',
+    evidenceGaps: 'Exact softener product equivalents, local price, quality/performance proof, share.',
+    nextAction: 'Research Transfar CWAS/CWMS equivalents and customer references.',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Transfar Chemicals official site',
+  },
+  {
+    company: 'Stepan / Kao / Evonik / BASF / Syensqo',
+    category: 'Esterquat active and global reference companies',
+    sourceBackedFact: 'Grand View Research lists these as key esterquats companies.',
+    strategicThreat: 'Upstream esterquat know-how, global brand, and active-ingredient supply references.',
+    evidenceGaps: 'Textile-softener relevance, China textile market share, product equivalents, pricing.',
+    nextAction: 'Separate home-care esterquat suppliers from textile-finishing competitors.',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research esterquats report page',
+  },
+]
+const competitorAnalysisCategories = [
+  {
+    title: 'Global formulation houses',
+    competitors: 'Archroma, CHT, RUDOLF, Zschimmer & Schwarz, Pulcra',
+    whatToLearn: 'Product breadth, active content, application positioning, sustainability claims, local distributors, mill references.',
+    risk: 'They may beat Chemicon on technical support and brand trust even if price is higher.',
+  },
+  {
+    title: 'Silicone technology suppliers',
+    competitors: 'WACKER plus silicone-focused product families from global auxiliary suppliers',
+    whatToLearn: 'Hydrophilic silicone, amino silicone, softness/hand-feel claims, yellowing behavior, washing durability.',
+    risk: 'CHEMISIL claims need TDS/SDS and test data before competing against premium silicone portfolios.',
+  },
+  {
+    title: 'China local suppliers',
+    competitors: 'Transfar and additional local suppliers still to verify',
+    whatToLearn: 'Local price bands, batch sizes, lead time, customer trust, quality consistency, after-sales support.',
+    risk: 'Local suppliers may define the price floor and buyer expectations in Zhejiang/Jiangsu clusters.',
+  },
+  {
+    title: 'Esterquat active references',
+    competitors: 'Stepan, Kao, Evonik, BASF, Syensqo and other listed esterquat companies',
+    whatToLearn: 'Raw-material/active strategy, esterquat quality references, and whether textile finishing relevance exists.',
+    risk: 'Home-care esterquat data can mislead textile-softener planning if not separated from CWAS/CWMS use cases.',
+  },
+]
 const marketShareChartRows = computed(() =>
   competitors.value
     .map(competitor => ({
@@ -73,6 +400,10 @@ function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): s
 
 function visibleSensitiveValue(value: string): string {
   return String(redactForEmployee(value || 'Missing'))
+}
+
+function statusClass(status: IntelligenceEvidenceStatus): string {
+  return status.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 }
 
 function formatDateTime(value: string | null | undefined): string {
@@ -312,6 +643,157 @@ function addCompetitor() {
     </header>
 
     <TrustedSourceAutopilotPanel screen="competitor" title="Competitor Auto Source Status" />
+
+    <section class="screenshot-competitor-template" aria-label="Source-backed competitor dashboard template">
+      <div class="template-hero">
+        <div>
+          <p class="eyebrow">Chemicon China template</p>
+          <h3>Competitors Tab Template</h3>
+          <p>
+            Screenshot-style competitor board using verified public source references where available. Market share,
+            price/kg, product equivalence, and local supplier claims remain To Verify until source evidence is attached.
+          </p>
+        </div>
+        <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review competitor evidence</RouterLink>
+      </div>
+
+      <div class="template-kpi-strip">
+        <article v-for="kpi in screenshotCompetitorKpis" :key="kpi.label" class="template-kpi-card">
+          <strong>{{ kpi.value }}</strong>
+          <span>{{ kpi.label }}</span>
+          <small class="status-badge" :class="statusClass(kpi.status)">{{ kpi.status }}</small>
+          <p>{{ kpi.note }}</p>
+        </article>
+      </div>
+
+      <div class="template-product-grid">
+        <article v-for="family in screenshotProductFamilies" :key="family.title" class="template-panel product-family-panel">
+          <div class="template-panel-title">
+            <h3>{{ family.title }}</h3>
+            <span>{{ family.subtitle }}</span>
+          </div>
+          <div class="template-product-row head">
+            <span>Product</span><span>Form</span><span>Dosing</span><span>pH</span><span>Application</span><span>Status</span>
+          </div>
+          <div v-for="row in family.rows" :key="`${family.title}-${row.product}`" class="template-product-row">
+            <strong>{{ row.product }}</strong>
+            <span>{{ row.form }}</span>
+            <span>{{ row.dosing }}</span>
+            <span>{{ row.ph }}</span>
+            <span>{{ row.application }}</span>
+            <span class="status-badge" :class="statusClass(row.status)">{{ row.status }}</span>
+          </div>
+        </article>
+      </div>
+
+      <section class="template-panel source-backed-landscape" aria-label="Source-backed competitor landscape">
+        <div class="template-panel-title">
+          <div>
+            <h3>Competitor Landscape - China Softener Market</h3>
+            <p>Public-source competitor presence; unsupported shares and prices stay as evidence gaps.</p>
+          </div>
+          <NButton size="small" secondary @click="syncCompetitorsNow">Sync / stage review</NButton>
+        </div>
+        <div class="template-landscape-table">
+          <div class="template-landscape-row head">
+            <span>Competitor</span><span>HQ</span><span>Share</span><span>Price/kg</span><span>Strength</span><span>Weakness / gap</span><span>Source</span>
+          </div>
+          <div v-for="row in sourceBackedCompetitorTemplateRows" :key="row.competitor" class="template-landscape-row">
+            <strong>{{ row.competitor }}</strong>
+            <span>{{ row.hq }}</span>
+            <span class="verify-pill">{{ row.share }}</span>
+            <span class="verify-pill">{{ row.price }}</span>
+            <span>{{ row.strength }}</span>
+            <span class="weakness-label">{{ row.weakness }}</span>
+            <a :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">{{ row.sourceTitle }}</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="template-panel source-backed-share-panel" aria-label="Competitor market share evidence chart">
+        <div class="template-panel-title">
+          <div>
+            <h3>Competitor Market Share</h3>
+            <p>No market-share bars are treated as facts until source-backed evidence is approved.</p>
+          </div>
+          <RouterLink class="template-link" :to="{ name: 'hermes.marketIntelligence' }">Open Market Intelligence</RouterLink>
+        </div>
+        <div v-for="row in sourceBackedCompetitorTemplateRows" :key="`${row.competitor}-share`" class="template-share-row">
+          <span>{{ row.competitor }}</span>
+          <div class="template-share-track"><i></i></div>
+          <strong>To Verify</strong>
+        </div>
+      </section>
+
+      <div class="template-source-grid">
+        <article v-for="source in competitorSourcePack" :key="source.url" class="template-source-card">
+          <h4>{{ source.title }}</h4>
+          <p>{{ source.detail }}</p>
+          <a :href="source.url" target="_blank" rel="noopener noreferrer">Open source</a>
+        </article>
+      </div>
+
+      <section class="template-panel research-queue-panel" aria-label="Competitor verification queue">
+        <div class="template-panel-title">
+          <h3>Competitor Verification Queue</h3>
+          <span>research tasks needed</span>
+        </div>
+        <div class="queue-list">
+          <span v-for="item in competitorResearchQueue" :key="item">{{ item }}</span>
+        </div>
+      </section>
+    </section>
+
+    <section class="global-competitor-analysis" aria-label="Global competitor analysis">
+      <div class="template-hero">
+        <div>
+          <p class="eyebrow">Global competitor analysis</p>
+          <h3>Supplier Types, Strategic Threats, and Evidence Gaps</h3>
+          <p>
+            This analysis separates confirmed public-source facts from still-missing market-share, price, and
+            product-equivalence evidence. It should guide research and sales positioning, not replace verified proof.
+          </p>
+        </div>
+        <NButton size="small" type="primary" secondary @click="createGenericCompetitorTask('Global competitor analysis', 'Verify competitor categories, product equivalents, price evidence, and source-backed market-share gaps')">
+          Create competitor research task
+        </NButton>
+      </div>
+
+      <div class="competitor-category-grid">
+        <article v-for="category in competitorAnalysisCategories" :key="category.title">
+          <h4>{{ category.title }}</h4>
+          <strong>{{ category.competitors }}</strong>
+          <p>{{ category.whatToLearn }}</p>
+          <small>Risk: {{ category.risk }}</small>
+        </article>
+      </div>
+
+      <article class="template-panel">
+        <div class="template-panel-title">
+          <div>
+            <h3>Global Competitor Matrix</h3>
+            <p>Source-backed public facts are separated from research gaps. Price and market share remain To Verify.</p>
+          </div>
+        </div>
+        <div class="global-competitor-table">
+          <div class="global-competitor-row head">
+            <span>Company / group</span><span>Category</span><span>Source-backed fact</span><span>Strategic threat</span><span>Evidence gaps</span><span>Next action</span><span>Status</span><span>Source</span>
+          </div>
+          <div v-for="row in globalCompetitorMatrixRows" :key="row.company" class="global-competitor-row">
+            <strong>{{ row.company }}</strong>
+            <span>{{ row.category }}</span>
+            <span>{{ row.sourceBackedFact }}</span>
+            <span>{{ row.strategicThreat }}</span>
+            <span class="weakness-label">{{ row.evidenceGaps }}</span>
+            <NButton size="tiny" secondary @click="createGenericCompetitorTask(row.company, row.nextAction)">
+              {{ row.nextAction }}
+            </NButton>
+            <span class="status-badge" :class="statusClass(row.status)">{{ row.status }}</span>
+            <span>{{ row.source }}</span>
+          </div>
+        </div>
+      </article>
+    </section>
 
     <section class="product-context-panel" aria-label="Product context panel">
       <div>
@@ -577,6 +1059,345 @@ function addCompetitor() {
   }
 }
 
+.screenshot-competitor-template {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+}
+
+.global-competitor-analysis {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+}
+
+.template-hero,
+.template-panel,
+.template-kpi-card,
+.template-source-card {
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), transparent 36%),
+    $bg-card;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
+}
+
+.template-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border-color: rgba(var(--accent-primary-rgb), 0.38);
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 24px;
+  }
+
+  p {
+    margin: 8px 0 0;
+    max-width: 880px;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.template-link,
+.template-source-card a,
+.template-landscape-row a {
+  color: $accent-info;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.template-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-kpi-card {
+  min-height: 150px;
+  padding: 18px;
+  border-color: rgba(var(--accent-primary-rgb), 0.32);
+
+  strong {
+    display: block;
+    color: $accent-primary;
+    font-size: clamp(24px, 3vw, 36px);
+    line-height: 1.05;
+  }
+
+  span {
+    display: block;
+    margin-top: 10px;
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 8px 0 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.template-product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.template-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: $executive-strip;
+  }
+}
+
+.template-panel-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  border-bottom: 1px solid $border-color;
+  padding-bottom: 12px;
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.template-product-row,
+.template-landscape-row {
+  display: grid;
+  gap: 10px;
+  align-items: center;
+  border-top: 1px solid $border-color;
+  padding: 10px 0;
+  color: $text-secondary;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.template-product-row {
+  grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(80px, 0.8fr)) minmax(90px, auto);
+}
+
+.template-landscape-table {
+  overflow-x: auto;
+}
+
+.template-landscape-row {
+  grid-template-columns: minmax(150px, 1fr) minmax(90px, 0.65fr) minmax(95px, 0.65fr) minmax(95px, 0.65fr) minmax(180px, 1.15fr) minmax(200px, 1.25fr) minmax(160px, 0.95fr);
+  min-width: 1120px;
+}
+
+.verify-pill,
+.status-badge {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: $accent-primary;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.status-badge.source-backed {
+  border-color: rgba(var(--success-rgb), 0.36);
+  color: $success;
+}
+
+.status-badge.reference-only {
+  border-color: rgba(var(--accent-info-rgb), 0.36);
+  color: $accent-info;
+}
+
+.status-badge.to-verify {
+  color: $accent-primary;
+}
+
+.template-share-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1fr) minmax(90px, auto);
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  strong {
+    color: $accent-primary;
+    font-size: 12px;
+  }
+}
+
+.template-share-track {
+  height: 12px;
+  border: 1px dashed rgba(var(--accent-primary-rgb), 0.38);
+  border-radius: 999px;
+  background: rgba(var(--text-muted-rgb), 0.12);
+  overflow: hidden;
+
+  i {
+    display: block;
+    width: 8%;
+    height: 100%;
+    border-radius: inherit;
+    background: repeating-linear-gradient(
+      90deg,
+      rgba(var(--accent-primary-rgb), 0.42),
+      rgba(var(--accent-primary-rgb), 0.42) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+  }
+}
+
+.template-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.template-source-card {
+  padding: 14px;
+
+  h4 {
+    margin: 0 0 8px;
+    color: $text-primary;
+  }
+
+  p {
+    margin: 0 0 10px;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.queue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  span {
+    border: 1px solid $border-color;
+    border-radius: 999px;
+    padding: 6px 10px;
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 800;
+  }
+}
+
+.competitor-category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+
+  article {
+    display: grid;
+    gap: 8px;
+    padding: 14px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.26);
+    border-radius: $radius-sm;
+    background:
+      linear-gradient(145deg, rgba(var(--accent-info-rgb), 0.08), transparent 44%),
+      $bg-card;
+  }
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  strong {
+    color: $accent-primary;
+  }
+
+  p,
+  small {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.global-competitor-table {
+  overflow-x: auto;
+}
+
+.global-competitor-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(190px, 1fr) minmax(260px, 1.35fr) minmax(240px, 1.25fr) minmax(230px, 1.2fr) minmax(210px, 1fr) minmax(120px, auto) minmax(170px, 0.9fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 1580px;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 .product-context-panel,
 .market-share-panel,
 .competitor-actions {
@@ -621,13 +1442,15 @@ function addCompetitor() {
 .competitor-table {
   margin: 14px 0;
   padding: 16px;
+  overflow-x: auto;
 }
 
 .competitor-row {
   display: grid;
-  grid-template-columns: 1fr 0.75fr 0.85fr 0.85fr 1fr 1fr 0.9fr 0.8fr 170px;
+  grid-template-columns: minmax(130px, 1fr) minmax(100px, 0.75fr) minmax(120px, 0.9fr) minmax(110px, 0.85fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(120px, 0.9fr) minmax(110px, auto) minmax(220px, 1.15fr);
   gap: 10px;
   align-items: center;
+  min-width: 1040px;
   padding: 10px 0;
   border-top: 1px solid $border-color;
   color: $text-secondary;
@@ -673,8 +1496,10 @@ function addCompetitor() {
 }
 
 .row-actions {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .empty-state {
@@ -740,13 +1565,41 @@ function addCompetitor() {
 
 @media (max-width: 940px) {
   .page-header,
+  .template-hero,
+  .template-product-grid,
   .product-context-row,
   .competitor-row {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
 
+  .template-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .template-panel-title {
+    display: grid;
+  }
+
+  .template-product-row,
+  .template-landscape-row,
   .share-row {
     grid-template-columns: 1fr;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .competitor-view {
+    padding: 12px;
+  }
+
+  .template-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .template-kpi-card {
+    min-height: auto;
   }
 }
 </style>

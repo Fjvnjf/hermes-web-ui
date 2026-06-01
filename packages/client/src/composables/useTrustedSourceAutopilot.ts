@@ -47,7 +47,17 @@ export interface TrustedSourceRefreshResult {
   message: string
 }
 
+export interface FullDashboardAutopilotResult {
+  snapshots: TrustedSourceSnapshot[]
+  researchJobCreated: boolean
+  reviewItemCount: number
+  message: string
+}
+
 const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
+export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
+export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
+const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor']
 
 const state = ref<TrustedSourceAutopilotState>({
   sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })),
@@ -441,15 +451,72 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
 
 function screenRefreshPrompt(screen: AutopilotScreen): string {
   const common = [
+    'Owner-approved research permission: Hermes may search trusted public/company/regulatory sources and stage findings for review.',
+    'Source priority: official regulator/government pages, company product pages/catalogs, filings, uploaded evidence, then reputable market-reference sources.',
     'Use only trusted or cited sources. Do not invent values.',
     'Every claim must include source title, URL or date, evidence status, confidence, and extraction date.',
+    'Summarize important data visually with source matrices, Markdown tables, evidence-gap checklists, and Mermaid charts when useful.',
     'If source conflicts, unknown source, or large movement is detected, create Research Result Review item instead of approving material.',
     'Do not update investor-approved material silently.',
+    'Do not mark anything Verified without source evidence and user review.',
   ]
   if (screen === 'executive') return ['Refresh Executive Overview from internal Hermes activity: sessions, Kanban, Jobs, Files, Memory-safe summaries, Research Result Review, Investor Readiness, and IRR status.', ...common].join('\n')
   if (screen === 'market') return ['Refresh Market Intelligence using official trade/statistical sources first, then market references. Label uncertain HS-code data as Trade Proxy / To Verify.', ...common].join('\n')
   if (screen === 'investment') return ['Refresh Investment Analysis from saved IRR Calculator snapshots and user/source-backed files only. Never pull IRR/NPV/payback from random web sources.', ...common].join('\n')
   return ['Refresh Competitor Intelligence using official company/product pages, filings, catalogs, regulator/certification sources, and source-backed market reports. Unknown market share stays To Verify.', ...common].join('\n')
+}
+
+function fullDashboardAutopilotPrompt(): string {
+  const mappedFields = FULL_DASHBOARD_SCREENS
+    .map(screen => {
+      const fields = SCREEN_FIELD_MAPPINGS[screen].map(item => `- ${item.field}`).join('\n')
+      return `${screenLabel(screen)}:\n${fields}`
+    })
+    .join('\n\n')
+
+  return [
+    'Full Dashboard Trusted Source Autopilot',
+    '',
+    'Mission: research and refresh the Hermes feasibility intelligence dashboard automatically using trusted online sources and existing Hermes workspace evidence.',
+    '',
+    'Dashboard areas to cover:',
+    mappedFields,
+    '',
+    'Additional research areas:',
+    '- Raw Material Sourcing: TEA, DMS / dimethyl sulfate, stearic acid, PDMS silicone oil, acetic acid, ethoxylates, packaging.',
+    '- Supplier Scorecards: Wilmar Oleochemicals, KLK OLEO, BASF, Dow, WACKER, DMS candidate suppliers, Bangladesh acetic acid supplier shortlist.',
+    '- Export Market Opportunity: country-wise textile/chemical trade proxies, HS-code candidates, growth indicators, import/export signals.',
+    '- Regulatory: SDS/TDS/CAS, DMS safety/regulatory status, China import/storage/use requirements, factory chemical approvals.',
+    '- Investor Readiness: evidence gaps, source coverage, risk register, data-room checklist, presentation-ready material only when source-backed.',
+    '',
+    'Trusted source priority:',
+    '1. Official government/regulator/statistical/trade sources: UN Comtrade, ITC, World Bank, WTO, OECD, China Customs/NBS/MOFCOM/MEE/MEM/MIIT, ECHA, PubChem, EPA CompTox, NITE.',
+    '2. Official company/product pages and catalogs: BASF, Dow, WACKER, Wilmar, KLK OLEO, Evonik, Stepan, Kao, CHT, Archroma, Transfar, Zschimmer & Schwarz, Pulcra.',
+    '3. Supplier evidence: uploaded quotes, PI, invoice, TDS, SDS, COA, email quote, distributor letter.',
+    '4. Market references and price references: ICIS, Argus, S&P Global, SunSirs, ECHEMI, ChemAnalyst, Trade Map. Treat as market reference, not final procurement truth.',
+    '5. Public listings such as Alibaba/Made-in-China are weak references only and must stay Reference Only / To Verify.',
+    '',
+    'Output requirements:',
+    '- Produce a concise executive summary plus structured sections for each dashboard area.',
+    '- Use Markdown tables, source matrices, evidence-gap tables, and Mermaid charts where useful.',
+    '- Every claim must include: value, source title, URL or publication/access date, source tier, confidence, evidence status, and last checked date.',
+    '- Mark missing values as Missing / To Verify.',
+    '- Mark trade proxies as Trade Proxy / To Verify until HS code methodology is reviewed.',
+    '- Mark financial outputs as Derived from Assumptions unless they come from an approved internal IRR scenario.',
+    '- Mark supplier prices, payment terms, quality scores, and reliability scores as To Verify unless quote/TDS/SDS/COA evidence is attached.',
+    '- Mark competitor market share as To Verify unless the source explicitly supports it.',
+    '- Separate Verified, Official Data, Source-backed, Market Reference, Supplier Evidence, Reference Only, Assumption, Derived from Assumptions, and To Verify.',
+    '',
+    'Safety rules:',
+    '- Do not invent market size, growth rate, consumption, pricing, supplier score, market share, IRR, NPV, payback, formula, CAS list, or regulatory status.',
+    '- Do not treat paid reports, public listings, or unsourced web snippets as verified facts.',
+    '- Do not expose formulas, raw material ratios, supplier confidential pricing, investor terms, product-development secrets, API keys, or system secrets.',
+    '- Do not silently approve investor material.',
+    '- Dashboard updates should be review-ready. Unsupported or sensitive findings go to Research Result Review before they become investor-approved truth.',
+    '',
+    'Preferred machine-readable appendix:',
+    'Return a JSON block named dashboard_updates with arrays: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
+  ].join('\n')
 }
 
 function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): TrustedSourceRefreshResult {
@@ -598,6 +665,53 @@ async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: strin
   }
 }
 
+async function runFullDashboardDataEngine(jobId?: string): Promise<FullDashboardAutopilotResult> {
+  ensureLoaded()
+  const intelligence = useFeasibilityIntelligence()
+  const results: TrustedSourceRefreshResult[] = []
+
+  for (const screen of FULL_DASHBOARD_SCREENS) {
+    results.push(await runTrustedSourceDataEngine(screen, jobId))
+  }
+
+  const snapshots = results.map(result => result.snapshot)
+  const reviewItemCount = snapshots.reduce((total, snapshot) => (
+    total + snapshot.claims.filter(claim => claim.reviewRequired).length + snapshot.conflicts.length
+  ), 0)
+
+  intelligence.addResearchFinding({
+    summary: [
+      'Full dashboard trusted-source autopilot run.',
+      `Screens checked: ${FULL_DASHBOARD_SCREENS.map(screenLabel).join(', ')}`,
+      `Snapshots created: ${snapshots.length}`,
+      `Review/fallback items: ${reviewItemCount}`,
+      jobId ? `Hermes scheduled job id: ${jobId}` : 'No scheduled job id; local source snapshot only.',
+      '',
+      'Raw material, supplier, export market, regulatory, investor readiness, and presentation research are included in the scheduled Hermes job prompt.',
+      'No fake values were inserted. Missing fields remain Missing / To Verify, Trade Proxy, or Derived from Assumptions.',
+    ].join('\n'),
+    keyClaim: 'Full dashboard autopilot produced review-ready source snapshots',
+    area: 'market',
+    evidenceStatus: 'To Verify',
+    confidence: 'medium',
+    source: {
+      title: 'Full Dashboard Trusted Source Autopilot',
+      date: nowIso().slice(0, 10),
+    },
+    suggestedTask: 'Review source-backed claims and fallback items before using them in investor-ready material.',
+    riskNote: 'Autopilot researches automatically, but unsupported or sensitive values are not promoted to verified dashboard facts.',
+  })
+
+  return {
+    snapshots,
+    researchJobCreated: !!jobId,
+    reviewItemCount,
+    message: jobId
+      ? 'Full dashboard autopilot scheduled and source snapshots created'
+      : 'Full dashboard source snapshot created; schedule a Hermes job for online research',
+  }
+}
+
 function screenLabel(screen: AutopilotScreen): string {
   if (screen === 'executive') return 'Executive Overview'
   if (screen === 'market') return 'Market Intelligence'
@@ -640,6 +754,8 @@ export function useTrustedSourceAutopilot() {
     snapshotsForScreen,
     lastSnapshotForScreen,
     activeSourcesForScreen,
+    fullDashboardAutopilotPrompt,
+    runFullDashboardDataEngine,
     registerCandidate,
     updateSource,
     applyTrustedSourceClaim,

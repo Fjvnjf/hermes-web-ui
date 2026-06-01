@@ -19,6 +19,7 @@ import {
 import { useGlobalSpeech } from "@/composables/useSpeech";
 import { useVoiceSettings } from "@/composables/useVoiceSettings";
 import { speedToEdgeRate, hzToEdgePitch } from "@/utils/ttsHelpers";
+import { stripVisualResearchPrompt } from "@/utils/visualResearchMode";
 
 const TOOL_PAYLOAD_DISPLAY_LIMIT = 1000;
 const JSON_STRING_DISPLAY_LIMIT = 200;
@@ -129,14 +130,17 @@ const isContentBlockArray = computed(() => contentBlocks.value !== null);
 // Extract text content from ContentBlock[] for display
 const displayText = computed(() => {
   if (!isContentBlockArray.value) {
-    return props.message.content || '';
+    return props.message.role === 'user'
+      ? stripVisualResearchPrompt(props.message.content || '')
+      : props.message.content || '';
   }
 
   // Extract text from blocks
-  return contentBlocks.value!
+  const text = contentBlocks.value!
     .map(block => getBlockText(block))
     .filter(Boolean)
     .join('\n');
+  return props.message.role === 'user' ? stripVisualResearchPrompt(text) : text
 });
 
 // Extract files from ContentBlock[]
@@ -189,7 +193,9 @@ const assistantProfileAvatar = computed(() => profilesStore.profiles.find(profil
 // Copy entire bubble content
 const copyableContent = computed(() => {
   if (props.message.role === 'tool') return null
-  const content = props.message.content || ''
+  const content = props.message.role === 'user'
+    ? stripVisualResearchPrompt(props.message.content || '')
+    : props.message.content || ''
   if (!content.trim()) return null
   return content
 })
@@ -1006,7 +1012,7 @@ onBeforeUnmount(() => {
     align-items: flex-end;
 
     .msg-body {
-      max-width: min(82%, 980px);
+      max-width: min(92%, 1240px);
       position: relative;
       z-index: 1;
     }
@@ -1028,9 +1034,15 @@ onBeforeUnmount(() => {
     gap: 8px;
 
     .msg-body {
-      max-width: min(94%, 1180px);
+      width: min(100%, 1600px);
+      max-width: 100%;
       position: relative;
       z-index: 1;
+    }
+
+    .msg-content,
+    .message-bubble {
+      width: 100%;
     }
 
     .msg-avatar {
@@ -1076,7 +1088,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  max-width: 85%;
+  max-width: 100%;
 }
 
 .msg-content {
@@ -1086,7 +1098,7 @@ onBeforeUnmount(() => {
 }
 
 .message-bubble {
-  padding: 12px 14px;
+  padding: 14px 16px;
   font-size: 14px;
   line-height: 1.62;
   word-break: break-word;
@@ -1220,14 +1232,14 @@ onBeforeUnmount(() => {
   border: 1px solid $border-light;
 
   &.image {
-    max-width: 200px;
+    max-width: min(520px, 100%);
   }
 }
 
 .msg-attachment-thumb {
   display: block;
-  max-width: 200px;
-  max-height: 160px;
+  max-width: min(520px, 100%);
+  max-height: 420px;
   object-fit: contain;
   cursor: pointer;
 }

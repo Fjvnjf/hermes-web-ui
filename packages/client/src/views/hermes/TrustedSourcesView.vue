@@ -1,11 +1,31 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { NButton, NSelect, NSwitch, useMessage } from 'naive-ui'
-import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
+import { useJobsStore } from '@/stores/hermes/jobs'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import {
+  FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+  FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+  useTrustedSourceAutopilot,
+} from '@/composables/useTrustedSourceAutopilot'
 import type { TrustedSourceDataType, TrustedSourceTier } from '@/utils/trustedSources'
+
+const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
+
+interface FullAutopilotStatus {
+  enabled: boolean
+  scheduledJobId: string
+  lastRun: string
+  lastStatus: string
+}
 
 const message = useMessage()
 const autopilot = useTrustedSourceAutopilot()
+const jobsStore = useJobsStore()
+const intelligence = useFeasibilityIntelligence()
+const fullAutopilotSaving = ref(false)
+const fullAutopilotStatus = ref(loadFullAutopilotStatus())
 
 const form = ref({
   name: '',
@@ -43,8 +63,44 @@ const groupedSources = computed(() => ({
   tier4: autopilot.state.value.sources.filter(source => source.tier === 'tier4-public-listing'),
   candidates: autopilot.state.value.sources.filter(source => source.tier === 'candidate-source'),
 }))
+type SourceGroupKey = 'tier1' | 'tier2' | 'tier3' | 'tier4' | 'candidates'
+
+const sourceGroupLabels: Record<SourceGroupKey, string> = {
+  tier1: 'Tier 1 - Official / High Trust',
+  tier2: 'Tier 2 - Market Reference',
+  tier3: 'Tier 3 - Supplier Evidence',
+  tier4: 'Tier 4 - Public Listing / Weak Evidence',
+  candidates: 'Candidate Sources / To Verify',
+}
 const activeSourceCount = computed(() => autopilot.activeSources.value.length)
 const needsReviewCount = computed(() => autopilot.needsReviewSnapshots.value.length)
+const fullAutopilotSnapshotCount = computed(() => autopilot.state.value.snapshots.length)
+const fullAutopilotReviewCount = computed(() => autopilot.needsReviewSnapshots.value.length)
+
+function loadFullAutopilotStatus(): FullAutopilotStatus {
+  if (typeof window === 'undefined') {
+    return { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
+  }
+  try {
+    const raw = window.localStorage.getItem(FULL_AUTOPILOT_STATUS_KEY)
+    return raw
+      ? { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet', ...JSON.parse(raw) }
+      : { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
+  } catch {
+    return { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
+  }
+}
+
+function persistFullAutopilotStatus(patch: Partial<FullAutopilotStatus>) {
+  fullAutopilotStatus.value = { ...fullAutopilotStatus.value, ...patch }
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(FULL_AUTOPILOT_STATUS_KEY, JSON.stringify(fullAutopilotStatus.value))
+  }
+}
+
+function sourceGroupLabel(key: string | number): string {
+  return sourceGroupLabels[String(key) as SourceGroupKey] || String(key)
+}
 
 function addSource() {
   if (!form.value.name.trim() || !form.value.domain.trim()) {
@@ -66,6 +122,65 @@ function addSource() {
   form.value = { name: '', domain: '', tier: 'candidate-source', dataType: 'market_size', notes: '' }
   message.success('Trusted source saved')
 }
+
+async function enableFullDashboardAutopilot() {
+  fullAutopilotSaving.value = true
+  try {
+    const job = await jobsStore.createJob({
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      prompt: autopilot.fullDashboardAutopilotPrompt(),
+      deliver: 'local',
+    })
+    const scheduledJobId = job.job_id || job.id
+    await autopilot.runFullDashboardDataEngine(scheduledJobId)
+    intelligence.addResearchJob({
+      title: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      question: 'Automatically research trusted online sources and existing evidence to refresh the whole dashboard.',
+      scope: 'Executive Overview, Market Intelligence, Competitor Intelligence, Investment Analysis, Raw Material Sourcing, Supplier Scorecards, Export Markets, Regulatory, Investor Readiness, and Presentation Builder inputs.',
+      expectedOutput: 'Source-backed dashboard update candidates, evidence gaps, suggested tasks, and review-ready investor material candidates.',
+      sourceRequirements: 'Every value needs source title plus URL/date and evidence status. Missing, conflicting, sensitive, or weak-source claims remain To Verify or go to Research Result Review.',
+      priority: 'high',
+      schedulePreference: 'Custom',
+      scheduledJobId,
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      context: 'Chemicon China Feasibility',
+      status: 'Scheduled Hermes Job',
+    })
+    persistFullAutopilotStatus({
+      enabled: true,
+      scheduledJobId,
+      lastRun: new Date().toISOString(),
+      lastStatus: 'Scheduled Hermes job active; online research output will be review-ready and source-labeled.',
+    })
+    message.success('Full dashboard autopilot enabled')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
+    await autopilot.runFullDashboardDataEngine()
+    persistFullAutopilotStatus({
+      enabled: false,
+      lastRun: new Date().toISOString(),
+      lastStatus: `Scheduling failed; local source snapshot created instead. ${detail}`,
+    })
+    message.warning('Scheduling failed; created local source snapshots for review instead')
+  } finally {
+    fullAutopilotSaving.value = false
+  }
+}
+
+async function runFullDashboardSnapshotNow() {
+  fullAutopilotSaving.value = true
+  try {
+    const result = await autopilot.runFullDashboardDataEngine(fullAutopilotStatus.value.scheduledJobId || undefined)
+    persistFullAutopilotStatus({
+      lastRun: new Date().toISOString(),
+      lastStatus: `${result.message}. Review items: ${result.reviewItemCount}.`,
+    })
+    message.success('Full dashboard source snapshot created')
+  } finally {
+    fullAutopilotSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -86,6 +201,75 @@ function addSource() {
       </div>
     </header>
 
+    <section class="source-permission-panel" aria-label="Research permission and evidence rules">
+      <div>
+        <p class="eyebrow">Research permission</p>
+        <h3>Hermes can research trusted sources</h3>
+        <p>
+          Owner-approved research is active for public, company, regulatory, supplier, and uploaded evidence sources.
+          Findings can stage dashboard updates only when source evidence and review rules are preserved.
+        </p>
+      </div>
+      <div class="permission-flow" aria-label="Trusted source research flow">
+        <span>Research trusted sources</span>
+        <span>Extract important data</span>
+        <span>Attach evidence label</span>
+        <span>Send uncertain items to review</span>
+        <span>Update dashboard after approval</span>
+      </div>
+      <ul class="permission-rule-list">
+        <li>Important numbers require source title, URL or source date, confidence, evidence status, and review trail.</li>
+        <li>Weak, conflicting, sensitive, or candidate-source findings go to Research Result Review instead of becoming facts.</li>
+        <li>Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.</li>
+      </ul>
+    </section>
+
+    <section class="full-autopilot-panel" aria-label="Full dashboard trusted source autopilot">
+      <div class="full-autopilot-copy">
+        <p class="eyebrow">Full dashboard autopilot</p>
+        <h3>Automatic Source Research For The Whole Dashboard</h3>
+        <p>
+          Enable once and Hermes will research trusted online sources on schedule, create source-labeled dashboard
+          snapshots, and route weak, conflicting, sensitive, or missing values to Research Result Review. This removes
+          manual copy-paste while keeping fake numbers out of Market Intelligence, Competitors, supplier scorecards,
+          investment analysis, and investor material.
+        </p>
+      </div>
+      <div class="full-autopilot-status">
+        <article>
+          <span>Status</span>
+          <strong>{{ fullAutopilotStatus.enabled ? 'Scheduled' : 'Not Scheduled' }}</strong>
+        </article>
+        <article>
+          <span>Schedule</span>
+          <strong>07:00 / 19:00</strong>
+        </article>
+        <article>
+          <span>Snapshots</span>
+          <strong>{{ fullAutopilotSnapshotCount }}</strong>
+        </article>
+        <article>
+          <span>Needs Review</span>
+          <strong>{{ fullAutopilotReviewCount }}</strong>
+        </article>
+      </div>
+      <ul class="autopilot-rule-list">
+        <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
+        <li>Fills only source-backed/API/internal-safe fields automatically; unsupported values stay Missing / To Verify.</li>
+        <li>Supplier prices, quality, reliability, payment terms, IRR, market share, and investor claims require evidence labels and review.</li>
+      </ul>
+      <div class="full-autopilot-actions">
+        <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
+        <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
+        <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Open Review Queue</RouterLink>
+        <RouterLink class="autopilot-link" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw Material Scorecards</RouterLink>
+      </div>
+      <p class="autopilot-status-note">
+        {{ fullAutopilotStatus.lastStatus }}
+        <span v-if="fullAutopilotStatus.scheduledJobId"> Job: {{ fullAutopilotStatus.scheduledJobId }}</span>
+      </p>
+    </section>
+
     <section class="source-form">
       <h3>Add Source</h3>
       <label>Name<input v-model="form.name" type="text" placeholder="Official agency, company, supplier, source portal" /></label>
@@ -98,12 +282,21 @@ function addSource() {
 
     <section class="source-groups">
       <article v-for="(sources, key) in groupedSources" :key="key" class="source-group">
-        <h3>{{ String(key).replace(/([0-9])/, ' $1 ').replace('tier', 'Tier ') }}</h3>
+        <div class="source-group-header">
+          <h3>{{ sourceGroupLabel(key) }}</h3>
+          <span>{{ sources.length }} sources</span>
+        </div>
         <div v-for="source in sources" :key="source.source_id" class="source-row">
           <div>
             <strong>{{ source.name }}</strong>
-            <span>{{ source.domain }} / {{ source.connector_type }} / {{ source.update_frequency }} / {{ source.confidence_default }}</span>
-            <span>{{ source.data_types_supported.join(', ') }} / auto-update: {{ source.auto_update_allowed ? 'allowed' : 'review only' }}</span>
+            <span class="source-domain">{{ source.domain }}</span>
+            <div class="source-meta" aria-label="Source connector metadata">
+              <span>Connector: {{ source.connector_type }}</span>
+              <span>Frequency: {{ source.update_frequency }}</span>
+              <span>Confidence: {{ source.confidence_default }}</span>
+              <span>Auto Update: {{ source.auto_update_allowed ? 'Allowed' : 'Review only' }}</span>
+            </div>
+            <span>{{ source.data_types_supported.join(', ') }}</span>
             <small>{{ source.notes }}</small>
             <small>Last checked: {{ source.last_checked || 'Never' }} / Failure: {{ source.last_failure || 'None' }}</small>
           </div>
@@ -128,6 +321,8 @@ function addSource() {
 }
 
 .sources-header,
+.source-permission-panel,
+.full-autopilot-panel,
 .source-form,
 .source-group {
   border: 1px solid $border-color;
@@ -174,6 +369,156 @@ function addSource() {
     color: $accent-primary;
     font-size: 26px;
   }
+}
+
+.source-permission-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.75fr);
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 16px;
+  border-color: rgba(var(--accent-info-rgb), 0.32);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.1), transparent 46%),
+    $bg-card;
+
+  h3 {
+    margin: 0;
+    color: $accent-info;
+  }
+
+  p {
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.permission-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-content: start;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 8px;
+    border: 1px solid rgba(var(--warning-rgb), 0.36);
+    border-radius: 999px;
+    background: rgba(var(--warning-rgb), 0.08);
+    color: $warning;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.permission-rule-list {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 9px 10px;
+    border: 1px solid $border-color;
+    border-radius: 7px;
+    background: $bg-secondary;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.full-autopilot-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 16px;
+  border-color: rgba(var(--accent-primary-rgb), 0.42);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.14), rgba(var(--accent-info-rgb), 0.05) 46%, transparent),
+    $bg-card;
+
+  h3 {
+    margin: 0;
+    color: $warning;
+  }
+
+  p {
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.full-autopilot-copy {
+  max-width: 980px;
+}
+
+.full-autopilot-status {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    gap: 6px;
+    padding: 12px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+    border-radius: 8px;
+    background: rgba(var(--accent-primary-rgb), 0.07);
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 18px;
+  }
+}
+
+.autopilot-rule-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    padding: 9px 10px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.22);
+    border-radius: 7px;
+    background: rgba(var(--accent-info-rgb), 0.06);
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.full-autopilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.autopilot-link {
+  color: $accent-info;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.autopilot-status-note {
+  margin: 0 !important;
+  color: $warning !important;
 }
 
 .source-form {
@@ -233,6 +578,20 @@ function addSource() {
   }
 }
 
+.source-group-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
 .source-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -256,12 +615,37 @@ function addSource() {
   }
 }
 
+.source-domain {
+  color: $accent-info !important;
+  font-weight: 800;
+}
+
+.source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 2px 7px;
+    border: 1px solid $border-color;
+    border-radius: 999px;
+    background: rgba(var(--accent-info-rgb), 0.07);
+    color: $text-secondary;
+    font-size: 11px;
+    font-weight: 800;
+  }
+}
+
 @media (max-width: 760px) {
   .trusted-sources-view {
     padding: 12px;
   }
 
   .sources-header,
+  .source-permission-panel,
   .source-form {
     grid-template-columns: 1fr;
   }

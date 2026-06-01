@@ -5,6 +5,8 @@ import ExecutiveOverviewView from '@/views/hermes/ExecutiveOverviewView.vue'
 import InvestmentAnalysisView from '@/views/hermes/InvestmentAnalysisView.vue'
 import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
+import RawMaterialSourcingView from '@/views/hermes/RawMaterialSourcingView.vue'
+import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName } from '@/utils/accessControl'
 import {
@@ -51,6 +53,8 @@ vi.mock('naive-ui', () => ({
   NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
   NDrawer: { template: '<div class="n-drawer"><slot /></div>' },
   NDrawerContent: { template: '<div class="n-drawer-content"><slot /></div>' },
+  NSelect: { template: '<div class="n-select"><slot /></div>' },
+  NSwitch: { template: '<button class="n-switch" v-bind="$attrs" @click="$emit(\'update:value\', true)"><slot /></button>' },
   NTag: { template: '<span class="n-tag"><slot /></span>' },
 }))
 
@@ -126,10 +130,18 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Payback Period')
     expect(wrapper.text()).toContain('Profitability Index')
     expect(wrapper.text()).toContain('5-Year ROI')
+    expect(wrapper.text()).toContain('Project analysis template')
+    expect(wrapper.text()).toContain('Scale-Up Esterquat Plant Project Analysis Template')
+    expect(wrapper.text()).toContain('Investment Breakdown - Esterquat Plant')
+    expect(wrapper.text()).toContain('Reactors, columns, exchangers, tanks, pumps, packaging')
+    expect(wrapper.text()).toContain('Vendor quotes needed')
     expect(wrapper.text()).toContain('Scenario Selector')
     expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('Missing / To Verify')
     expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).not.toContain('$16M')
+    expect(wrapper.text()).not.toContain('$49.8M')
+    expect(wrapper.text()).not.toContain('4.1x')
     expect(wrapper.text()).not.toContain('$135M')
     expect(wrapper.text()).not.toContain('60,000')
     expect(wrapper.text()).not.toContain('50%')
@@ -209,8 +221,25 @@ describe('screenshot-matched executive business tabs', () => {
     })
 
     const wrapper = mount(MarketIntelligenceView)
+    const marketText = wrapper.text()
+    const marketTextLower = marketText.toLowerCase()
 
     expect(wrapper.text()).toContain('Executive Market Panel')
+    expect(wrapper.text()).toContain('Owner research permission active')
+    expect(wrapper.text()).toContain('Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.')
+    expect(wrapper.text()).toContain('Unknown or conflicting data remains To Verify')
+    expect(marketTextLower).toContain('global market intelligence')
+    expect(wrapper.text()).toContain('Textile Softeners, Esterquats, and Export-Market Signals')
+    expect(wrapper.text()).toContain('China textile-chemicals anchor')
+    expect(wrapper.text()).toContain('Global esterquat reference market')
+    expect(wrapper.text()).toContain('Global Opportunity Map')
+    expect(wrapper.text()).toContain('Country-wise Consumption Growth Tracker')
+    expect(wrapper.text()).toContain('Direct softener consumption')
+    expect(wrapper.text()).toContain('Cotton mill-use proxy')
+    expect(wrapper.text()).toContain('Vietnam')
+    expect(wrapper.text()).toContain('Bangladesh')
+    expect(wrapper.text()).toContain('OECD-FAO Agricultural Outlook 2025-2034')
+    expect(wrapper.text()).toContain('Market Research Questions Hermes Should Answer')
     expect(wrapper.text()).toContain('Market Size / Scope')
     expect(wrapper.text()).toContain('Import Dependence')
     expect(wrapper.text()).toContain('Market Segmentation Table')
@@ -224,8 +253,23 @@ describe('screenshot-matched executive business tabs', () => {
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
   })
 
+  it('documents trusted-source research permission and evidence rules', () => {
+    const wrapper = mount(TrustedSourcesView)
+
+    expect(wrapper.text()).toContain('Hermes can research trusted sources')
+    expect(wrapper.text()).toContain('Owner-approved research is active')
+    expect(wrapper.text()).toContain('Research trusted sources')
+    expect(wrapper.text()).toContain('Extract important data')
+    expect(wrapper.text()).toContain('Attach evidence label')
+    expect(wrapper.text()).toContain('Send uncertain items to review')
+    expect(wrapper.text()).toContain('Update dashboard after approval')
+    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
+  })
+
   it('renders Competitor Intelligence product context, landscape, and source-gated market share chart', () => {
     const wrapper = mount(CompetitorIntelligenceView)
+    const competitorText = wrapper.text()
+    const competitorTextLower = competitorText.toLowerCase()
 
     expect(wrapper.text()).toContain('Product Context Panel')
     expect(wrapper.text()).toContain('Cationic Softeners / CHEMISOFT')
@@ -233,8 +277,59 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Competitor Landscape Table')
     expect(wrapper.text()).toContain('Competitor Market Share Chart')
     expect(wrapper.text()).toContain('No source-backed competitor share data yet.')
+    expect(wrapper.text()).toContain('Competitors Tab Template')
+    expect(wrapper.text()).toContain('Transfar Chemicals')
+    expect(wrapper.text()).toContain('WACKER')
+    expect(wrapper.text()).toContain('RUDOLF Group')
+    expect(wrapper.text()).toContain('CHT Group')
+    expect(wrapper.text()).toContain('Archroma')
+    expect(wrapper.text()).toContain('Zschimmer & Schwarz')
+    expect(wrapper.text()).toContain('Market share, price/kg, product equivalence, and local supplier claims remain To Verify')
+    expect(competitorTextLower).toContain('global competitor analysis')
+    expect(wrapper.text()).toContain('Supplier Types, Strategic Threats, and Evidence Gaps')
+    expect(wrapper.text()).toContain('Global formulation houses')
+    expect(wrapper.text()).toContain('Silicone technology suppliers')
+    expect(wrapper.text()).toContain('China local suppliers')
+    expect(wrapper.text()).toContain('Global Competitor Matrix')
+    expect(wrapper.text()).toContain('Source-backed public facts are separated from research gaps')
+    expect(wrapper.text()).toContain('Archroma')
+    expect(wrapper.text()).toContain('WACKER')
+    expect(wrapper.text()).not.toContain('$18-22')
+    expect(wrapper.text()).not.toContain('12%')
     expect(wrapper.text()).toContain('Research Competitor')
     expect(wrapper.text()).toContain('Schedule Deeper Research')
+  })
+
+  it('renders supplier scorecards as source-gated raw material verification targets', () => {
+    const wrapper = mount(RawMaterialSourcingView)
+    const text = wrapper.text()
+
+    expect(text).toContain('Supplier Scorecards - Key Raw Materials')
+    expect(text).toContain('Stearic Acid TP / Stearic acid 1842')
+    expect(text).toContain('Triethanolamine / TEA')
+    expect(text).toContain('PDMS Silicone Oil / 1000 cSt target')
+    expect(text).toContain('Dimethyl Sulfate / DMS')
+    expect(text).toContain('Acetic Acid')
+    expect(text).toContain('Wilmar Oleochemicals')
+    expect(text).toContain('KLK OLEO')
+    expect(text).toContain('BASF')
+    expect(text).toContain('Dow')
+    expect(text).toContain('WACKER')
+    expect(text).toContain('Candidate Source')
+    expect(text).toContain('Pending quote')
+    expect(text).toContain('Pending regulatory review')
+    expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
+    expect(text).toContain('Enable Supplier Autopilot')
+    expect(text).toContain('Full dashboard autopilot')
+    expect(text).toContain('Verify Supplier')
+    expect(text).toContain('To Verify')
+    expect(text).not.toContain('$1,180')
+    expect(text).not.toContain('$1,210')
+    expect(text).not.toContain('$1,450')
+    expect(text).not.toContain('$3,200')
+    expect(text).not.toContain('$3,350')
+    expect(text).not.toContain('$890')
+    expect(text).not.toContain('10.0')
   })
 
   it('stages Sync Now as a Research Result Review item instead of silently approving market or finance facts', async () => {

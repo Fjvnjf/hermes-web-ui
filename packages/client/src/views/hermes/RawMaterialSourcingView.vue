@@ -5,6 +5,7 @@ import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { EXECUTIVE_REFRESH_SCHEDULE } from '@/utils/executiveIntelligence'
 import {
   RAW_MATERIALS_STORAGE_KEY,
   calculatePriceAlert,
@@ -18,7 +19,24 @@ import {
   type RawMaterialRecord,
   type RawMaterialSourceType,
 } from '@/utils/intelligenceWorkflow'
+import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 import { accessControlWarning, shouldRedactForEmployee } from '@/utils/accessControl'
+
+interface SupplierScorecardRow {
+  supplier: string
+  region: string
+  material: string
+  pricePerTon: string
+  quality: string
+  reliability: string
+  payment: string
+  score: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  sourceTitle: string
+  sourceUrl?: string
+  nextAction: string
+  highRisk?: boolean
+}
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
@@ -37,6 +55,107 @@ const sourceTypes: RawMaterialSourceType[] = [
   'Alibaba/Made-in-China reference',
   'Manual entry',
   'Paid source',
+]
+
+const supplierScorecardRows: SupplierScorecardRow[] = [
+  {
+    supplier: 'Wilmar Oleochemicals',
+    region: 'Malaysia / Singapore',
+    material: 'Stearic Acid TP / Stearic acid 1842',
+    pricePerTon: 'To Verify',
+    quality: 'TDS/SDS needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending quote',
+    evidenceStatus: 'Candidate Source',
+    sourceTitle: 'Wilmar Oleochemicals official source',
+    sourceUrl: 'https://www.wilmar-international.com/oleochemicals',
+    nextAction: 'Request quote, TDS, SDS, COA, MOQ, lead time, and payment terms for stearic acid.',
+  },
+  {
+    supplier: 'KLK OLEO',
+    region: 'Malaysia / Global',
+    material: 'Stearic Acid TP / PALMERA stearic acid',
+    pricePerTon: 'To Verify',
+    quality: 'TDS/SDS needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending quote',
+    evidenceStatus: 'Candidate Source',
+    sourceTitle: 'KLK OLEO product source',
+    sourceUrl: 'https://www.klkoleo.com/products/',
+    nextAction: 'Confirm stearic acid grade match, China delivery route, quote validity, and payment terms.',
+  },
+  {
+    supplier: 'BASF',
+    region: 'Germany / Asia supply network',
+    material: 'Triethanolamine / TEA',
+    pricePerTon: 'To Verify',
+    quality: 'TDS/SDS needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending quote',
+    evidenceStatus: 'Candidate Source',
+    sourceTitle: 'BASF amines / triethanolamine source',
+    sourceUrl: 'https://products.basf.com/global/en/ci/triethanolamine',
+    nextAction: 'Verify TEA grade, SDS, China availability, distributor channel, quote, and lead time.',
+  },
+  {
+    supplier: 'Dow',
+    region: 'United States / Global',
+    material: 'PDMS Silicone Oil / 1000 cSt target',
+    pricePerTon: 'To Verify',
+    quality: 'TDS/SDS needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending quote',
+    evidenceStatus: 'Candidate Source',
+    sourceTitle: 'Dow silicone product search',
+    sourceUrl: 'https://www.dow.com/en-us/pdp.dowsil-sh-200-fluid-1000-cst.850505z.html',
+    nextAction: 'Confirm PDMS viscosity, textile softener suitability, distributor quote, and technical documents.',
+  },
+  {
+    supplier: 'WACKER',
+    region: 'Germany / China',
+    material: 'PDMS Silicone Oil / Silicone fluid target',
+    pricePerTon: 'To Verify',
+    quality: 'TDS/SDS needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending quote',
+    evidenceStatus: 'Candidate Source',
+    sourceTitle: 'WACKER silicone fluids source',
+    sourceUrl: 'https://www.wacker.com/h/en-gb/silicone-fluids-emulsions/linear-silicone-fluids/wacker-eco-ak-1000/p/000100490',
+    nextAction: 'Confirm matching silicone fluid grade, China supply, quote, SDS, TDS, and application notes.',
+  },
+  {
+    supplier: 'Nantong DMS supplier candidate',
+    region: 'China',
+    material: 'Dimethyl Sulfate / DMS',
+    pricePerTon: 'To Verify',
+    quality: 'SDS/regulatory proof needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending regulatory review',
+    evidenceStatus: 'To Verify',
+    sourceTitle: 'PubChem identity and hazard reference',
+    sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
+    nextAction: 'Verify supplier identity, exact CAS, legal status, transport/storage rules, SDS, and permit requirements before any quote is used.',
+    highRisk: true,
+  },
+  {
+    supplier: 'Bangladesh local acetic acid supplier shortlist',
+    region: 'Bangladesh',
+    material: 'Acetic Acid',
+    pricePerTon: 'To Verify',
+    quality: 'TDS/SDS needed',
+    reliability: 'To Verify',
+    payment: 'To Verify',
+    score: 'Pending supplier shortlist',
+    evidenceStatus: 'To Verify',
+    sourceTitle: 'Local quote and document evidence needed',
+    nextAction: 'Identify local suppliers, request quote, SDS, TDS, COA, delivery terms, and tax/VAT details.',
+  },
 ]
 
 const priceForm = ref({
@@ -101,6 +220,11 @@ function priceDisplay(value: number | null | undefined, currency: string): strin
   if (employeeRedaction.value) return 'Restricted in Employee View'
   if (!value) return 'Missing / To Verify'
   return `${currency} ${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+}
+
+function sensitiveSupplierDisplay(value: string): string {
+  if (employeeRedaction.value) return 'Restricted in Employee View'
+  return value
 }
 
 function trendLabel(material: RawMaterialRecord, days: number): string {
@@ -205,6 +329,113 @@ async function createTask(material: RawMaterialRecord, reason: string) {
   }
 }
 
+function supplierScorecardTaskBody(row: SupplierScorecardRow): string {
+  return [
+    `Verify supplier scorecard evidence for ${row.supplier}.`,
+    `Supplier: ${row.supplier}`,
+    `Region: ${row.region}`,
+    `Material: ${row.material}`,
+    `Current price/T: ${row.pricePerTon}`,
+    `Quality evidence: ${row.quality}`,
+    `Reliability evidence: ${row.reliability}`,
+    `Payment terms: ${row.payment}`,
+    `Score: ${row.score}`,
+    `Evidence status: ${row.evidenceStatus}`,
+    `Source: ${row.sourceTitle}`,
+    `Source URL: ${row.sourceUrl || 'Missing / upload supplier document'}`,
+    row.highRisk ? 'Risk flag: DMS/dimethyl sulfate requires regulatory, safety, transport, and permit verification before use.' : '',
+    `Recommended next action: ${row.nextAction}`,
+    'Do not use screenshot prices, payment terms, quality scores, reliability scores, or supplier rankings until quote/TDS/SDS/COA evidence is attached.',
+    'Tags: Supplier Scorecard, Raw Material Sourcing, Chemicon China Feasibility',
+  ].filter(Boolean).join('\n')
+}
+
+function supplierScorecardAutopilotPrompt(): string {
+  const rows = supplierScorecardRows.map(row => [
+    `Supplier: ${row.supplier}`,
+    `Region: ${row.region}`,
+    `Material: ${row.material}`,
+    `Current dashboard price/T: ${row.pricePerTon}`,
+    `Current dashboard score: ${row.score}`,
+    `Evidence status: ${row.evidenceStatus}`,
+    `Starting source: ${row.sourceTitle} ${row.sourceUrl || ''}`.trim(),
+    `Required action: ${row.nextAction}`,
+  ].join('\n')).join('\n\n')
+
+  return [
+    'Supplier Scorecards - Key Raw Materials Autopilot',
+    '',
+    'Research all supplier scorecard rows for Chemicon China feasibility using trusted online sources and supplier evidence.',
+    '',
+    rows,
+    '',
+    'Trusted source rules:',
+    '- Official supplier/company product pages and catalogs can identify supplier/product candidates.',
+    '- Quote, PI, invoice, email quote, TDS, SDS, COA, distributor letter, or paid/source-backed price reference is required before filling price/T, payment terms, quality score, reliability score, or total score.',
+    '- Public listings such as Alibaba/Made-in-China are Reference Only and must not become procurement truth.',
+    '- DMS / dimethyl sulfate requires chemical identity, CAS, SDS, regulatory/safety, transport/storage, and permit checks before any quote is used.',
+    '',
+    'Output requirements:',
+    '- Return a supplier scorecard table with supplier, material, price/T, quality evidence, reliability evidence, payment terms, score, source title, URL/date, confidence, and evidence status.',
+    '- Use Missing / To Verify where evidence is absent.',
+    '- Recommend Kanban tasks for missing quote/TDS/SDS/COA/regulatory evidence.',
+    '- Do not invent supplier prices, scores, payment terms, delivery terms, quality ratings, or reliability ratings.',
+    '- Do not expose formula ratios, formula costs, or supplier confidential data in employee-safe output.',
+  ].join('\n')
+}
+
+async function createSupplierScorecardTask(row: SupplierScorecardRow) {
+  savingKey.value = `${row.supplier}-${row.material}-scorecard`
+  try {
+    await kanbanStore.fetchBoards()
+    const board = kanbanStore.resolveAvailableBoard(kanbanStore.selectedBoard || DEFAULT_KANBAN_BOARD)
+    kanbanStore.setSelectedBoard(board)
+    await kanbanStore.createTask({
+      title: `Supplier scorecard: ${row.supplier} / ${row.material}`,
+      body: supplierScorecardTaskBody(row),
+      priority: row.highRisk ? 3 : 2,
+      tenant: 'Chemicon China Feasibility',
+    })
+    message.success('Supplier scorecard task created in Kanban')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown task error'
+    message.error(`Could not create supplier task: ${detail}`)
+  } finally {
+    savingKey.value = ''
+  }
+}
+
+async function enableSupplierScorecardAutopilot() {
+  savingKey.value = 'supplier-scorecard-autopilot'
+  try {
+    const job = await jobsStore.createJob({
+      name: 'Supplier Scorecard Autopilot - Key Raw Materials',
+      schedule: EXECUTIVE_REFRESH_SCHEDULE,
+      prompt: supplierScorecardAutopilotPrompt(),
+      deliver: 'local',
+    })
+    intelligence.addResearchJob({
+      title: 'Supplier Scorecard Autopilot - Key Raw Materials',
+      question: 'Automatically research source-backed supplier scorecards for Chemicon key raw materials.',
+      scope: 'Stearic acid, TEA, PDMS silicone oil, DMS, acetic acid, supplier price/quality/reliability/payment evidence, source gaps, and regulatory risk.',
+      expectedOutput: 'Supplier scorecard table with source title, URL/date, confidence, evidence status, and tasks for missing supplier evidence.',
+      sourceRequirements: 'Quote/TDS/SDS/COA/distributor evidence required for supplier score, price, payment, quality, and reliability. Public listings are Reference Only.',
+      priority: 'high',
+      schedulePreference: 'Custom',
+      scheduledJobId: job.job_id || job.id,
+      schedule: EXECUTIVE_REFRESH_SCHEDULE,
+      context: 'Chemicon China Feasibility',
+      status: 'Scheduled Hermes Job',
+    })
+    message.success('Supplier scorecard autopilot scheduled')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
+    message.error(`Could not schedule supplier autopilot: ${detail}`)
+  } finally {
+    savingKey.value = ''
+  }
+}
+
 function tonightSchedule(): string {
   const date = new Date()
   date.setHours(22, 0, 0, 0)
@@ -276,6 +507,86 @@ async function scheduleResearch(material: RawMaterialRecord) {
         <strong>{{ card.value }}</strong>
         <small>{{ card.note }}</small>
       </article>
+    </section>
+
+    <section class="supplier-scorecard-panel" aria-label="Supplier scorecards - key raw materials">
+      <header class="scorecard-header">
+        <div>
+          <p class="eyebrow">Supplier scorecards</p>
+          <h3>Supplier Scorecards - Key Raw Materials</h3>
+          <p>
+            Screenshot-style supplier board for stearic acid, TEA, PDMS silicone oil, DMS, and acetic acid.
+            Supplier names and product targets are source/candidate-backed; prices, quality scores, reliability,
+            payment terms, and total scores remain To Verify until quote/TDS/SDS/COA evidence is attached.
+          </p>
+        </div>
+        <div class="scorecard-actions">
+          <NButton
+            size="small"
+            type="primary"
+            :loading="savingKey === 'supplier-scorecard-autopilot'"
+            @click="enableSupplierScorecardAutopilot"
+          >
+            Enable Supplier Autopilot
+          </NButton>
+          <RouterLink class="shell-link" :to="{ name: 'hermes.files' }">Upload supplier evidence</RouterLink>
+          <RouterLink class="shell-link" :to="{ name: 'hermes.kanban' }">Open supplier tasks</RouterLink>
+          <RouterLink class="shell-link" :to="{ name: 'hermes.trustedSources' }">Full dashboard autopilot</RouterLink>
+        </div>
+      </header>
+
+      <div class="supplier-scorecard-table-wrap">
+        <div class="supplier-scorecard-table">
+          <div class="supplier-scorecard-row head">
+            <span>Supplier</span>
+            <span>Material</span>
+            <span>Price/T</span>
+            <span>Quality</span>
+            <span>Reliability</span>
+            <span>Payment</span>
+            <span>Score</span>
+            <span>Source / Evidence</span>
+            <span>Action</span>
+          </div>
+          <div
+            v-for="row in supplierScorecardRows"
+            :key="`${row.supplier}-${row.material}`"
+            class="supplier-scorecard-row"
+            :class="{ risk: row.highRisk }"
+          >
+            <div>
+              <strong>{{ row.supplier }}</strong>
+              <small>{{ row.region }}</small>
+            </div>
+            <span>{{ row.material }}</span>
+            <span class="verify-value">{{ sensitiveSupplierDisplay(row.pricePerTon) }}</span>
+            <span>{{ row.quality }}</span>
+            <span>{{ row.reliability }}</span>
+            <span>{{ sensitiveSupplierDisplay(row.payment) }}</span>
+            <span class="score-pill">{{ row.score }}</span>
+            <div>
+              <a v-if="row.sourceUrl" class="supplier-source-link" :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">
+                {{ row.evidenceStatus }}
+              </a>
+              <span v-else class="verify-value">{{ row.evidenceStatus }}</span>
+              <small>{{ row.sourceTitle }}</small>
+            </div>
+            <NButton
+              size="tiny"
+              secondary
+              :loading="savingKey === `${row.supplier}-${row.material}-scorecard`"
+              @click="createSupplierScorecardTask(row)"
+            >
+              Verify Supplier
+            </NButton>
+          </div>
+        </div>
+      </div>
+
+      <p class="scorecard-footnote">
+        Do not use screenshot prices or supplier scores as verified facts. Supplier scorecards become actionable
+        through Kanban tasks and uploaded evidence, not through unsourced dashboard numbers.
+      </p>
     </section>
 
     <section class="workspace-grid">
@@ -399,6 +710,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
 
 .page-header,
 .summary-card,
+.supplier-scorecard-panel,
 .material-list,
 .detail-panel,
 .form-panel,
@@ -420,6 +732,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
 }
 
 .summary-card::before,
+.supplier-scorecard-panel::before,
 .detail-panel::before,
 .form-panel::before,
 .history-panel::before,
@@ -432,6 +745,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
 }
 
 .page-header,
+.supplier-scorecard-panel,
 .detail-panel,
 .form-panel,
 .history-panel,
@@ -441,14 +755,16 @@ async function scheduleResearch(material: RawMaterialRecord) {
 
 .page-header,
 .detail-header,
-.action-panel {
+.action-panel,
+.scorecard-header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
 }
 
 .header-actions,
-.action-row {
+.action-row,
+.scorecard-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -499,6 +815,80 @@ label,
   display: block;
   margin-top: 6px;
   color: #f6fbff;
+}
+
+.supplier-scorecard-panel {
+  border-color: rgba(242, 200, 107, 0.55);
+  background:
+    linear-gradient(135deg, rgba(242, 200, 107, 0.06), transparent 42%),
+    rgba(5, 14, 24, 0.9);
+}
+
+.supplier-scorecard-table-wrap {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+.supplier-scorecard-table {
+  min-width: 1180px;
+}
+
+.supplier-scorecard-row {
+  display: grid;
+  grid-template-columns: 1.45fr 1.55fr 0.85fr 0.95fr 0.95fr 0.85fr 1fr 1.35fr 128px;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid rgba(128, 162, 190, 0.18);
+  padding: 12px 14px;
+  color: #c8d4e3;
+}
+
+.supplier-scorecard-row.head {
+  border-bottom: 2px solid rgba(242, 200, 107, 0.78);
+  color: #f2c86b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.supplier-scorecard-row.risk {
+  background: rgba(255, 94, 94, 0.06);
+}
+
+.supplier-scorecard-row strong {
+  color: #f6fbff;
+}
+
+.supplier-scorecard-row small {
+  display: block;
+  margin-top: 3px;
+}
+
+.verify-value {
+  color: #f5bf5a;
+  font-weight: 700;
+}
+
+.score-pill {
+  width: fit-content;
+  border: 1px solid rgba(245, 191, 90, 0.36);
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #f5bf5a;
+  font-size: 12px;
+}
+
+.supplier-source-link {
+  color: #38d5ff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.scorecard-footnote {
+  margin: 14px 0 0;
+  border-top: 1px solid rgba(242, 200, 107, 0.25);
+  padding-top: 12px;
+  color: #f5bf5a;
 }
 
 .workspace-grid {
@@ -598,6 +988,7 @@ select {
 @media (max-width: 900px) {
   .workspace-grid,
   .page-header,
+  .scorecard-header,
   .detail-header,
   .action-panel {
     grid-template-columns: 1fr;

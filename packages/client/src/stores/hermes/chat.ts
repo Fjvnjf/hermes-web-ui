@@ -10,6 +10,7 @@ import { useSettingsStore } from './settings'
 import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
 import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { stripVisualResearchPrompt } from '@/utils/visualResearchMode'
 
 // Re-export ContentBlock for convenience
 export type ContentBlock = ContentBlockImport
@@ -265,7 +266,7 @@ function mapHermesMessages(msgs: HermesMessage[]): Message[] {
     result.push({
       id: String(msg.id),
       role: msg.role,
-      content: msg.content || '',
+      content: msg.role === 'user' ? stripVisualResearchPrompt(msg.content || '') : msg.content || '',
       timestamp: Math.round(msg.timestamp * 1000),
       reasoning: msg.reasoning ? msg.reasoning : undefined,
       systemType: msg.role === 'command' ? 'command' : undefined,
@@ -1330,6 +1331,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function sendMessage(content: string, attachments?: Attachment[]) {
     if ((!content.trim() && !(attachments && attachments.length > 0))) return
+    const visibleContent = stripVisualResearchPrompt(content.trim())
 
     primeCompletionBellIfEnabled()
 
@@ -1353,7 +1355,7 @@ export const useChatStore = defineStore('chat', () => {
     const userMsg: Message = {
       id: uid(),
       role: isBridgeSlashCommand ? 'command' : 'user',
-      content: content.trim(),
+      content: visibleContent,
       timestamp: Date.now(),
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
       queued: shouldQueue,

@@ -2,8 +2,13 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
+import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
-import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
+import {
+  FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+  FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+  useTrustedSourceAutopilot,
+} from '@/composables/useTrustedSourceAutopilot'
 import {
   DEFAULT_TRUSTED_SOURCES,
   classifySourceCandidate,
@@ -37,7 +42,7 @@ vi.mock('naive-ui', () => ({
   NButton: { template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>' },
   NDrawer: { template: '<div v-if="show" class="n-drawer"><slot /></div>', props: ['show'] },
   NDrawerContent: { template: '<div class="n-drawer-content"><slot /></div>' },
-  NSelect: { template: '<select />' },
+  NSelect: { props: ['value', 'options'], template: '<div class="n-select"></div>' },
   NSwitch: { template: '<input type="checkbox" />' },
   NTag: { template: '<span class="n-tag"><slot /></span>' },
 }))
@@ -200,6 +205,35 @@ describe('Trusted Source Autopilot', () => {
     expect(result.snapshot.review_required).toBe(true)
   })
 
+  it('builds a full dashboard autopilot prompt for online research without allowing fake values', () => {
+    const prompt = useTrustedSourceAutopilot().fullDashboardAutopilotPrompt()
+
+    expect(prompt).toContain(FULL_DASHBOARD_AUTOPILOT_JOB_NAME)
+    expect(FULL_DASHBOARD_AUTOPILOT_SCHEDULE).toBe('0 7,19 * * *')
+    expect(prompt).toContain('Raw Material Sourcing')
+    expect(prompt).toContain('Supplier Scorecards')
+    expect(prompt).toContain('UN Comtrade')
+    expect(prompt).toContain('PubChem')
+    expect(prompt).toContain('Wilmar')
+    expect(prompt).toContain('WACKER')
+    expect(prompt).toContain('Do not invent market size')
+    expect(prompt).toContain('competitor market share as To Verify')
+  })
+
+  it('runs full dashboard data engine snapshots across the dashboard and queues review', async () => {
+    const autopilot = useTrustedSourceAutopilot()
+    const intelligence = useFeasibilityIntelligence()
+    const result = await autopilot.runFullDashboardDataEngine('job-full-dashboard')
+
+    expect(result.snapshots).toHaveLength(4)
+    expect(result.reviewItemCount).toBeGreaterThan(0)
+    expect(autopilot.lastSnapshotForScreen('executive')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('investment')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('competitor')).not.toBeNull()
+    expect(intelligence.pendingResearchFindings.value.some(item => item.keyClaim.includes('Full dashboard autopilot'))).toBe(true)
+  })
+
   it('sends conflicting trusted-source updates to Research Result Review', () => {
     const autopilot = useTrustedSourceAutopilot()
     const intelligence = useFeasibilityIntelligence()
@@ -350,5 +384,22 @@ describe('Trusted Source Autopilot', () => {
     await vi.dynamicImportSettled()
 
     expect(autopilot.lastSnapshotForScreen('market')?.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
+  })
+
+  it('renders full dashboard autopilot controls in Trusted Sources and runs snapshots', async () => {
+    const autopilot = useTrustedSourceAutopilot()
+    const wrapper = mount(TrustedSourcesView)
+
+    expect(wrapper.text()).toContain('Full dashboard autopilot')
+    expect(wrapper.text()).toContain('Automatic Source Research For The Whole Dashboard')
+    expect(wrapper.text()).toContain('Enable Full Autopilot')
+    expect(wrapper.text()).toContain('Run Source Snapshot Now')
+    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
+
+    await wrapper.findAll('button').find(button => button.text().includes('Run Source Snapshot Now'))!.trigger('click')
+    await vi.dynamicImportSettled()
+
+    expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
+    expect(wrapper.text()).toContain('Needs Review')
   })
 })

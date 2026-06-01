@@ -115,6 +115,16 @@ async function syncNow() {
       </div>
     </div>
 
+    <div class="research-permission-card">
+      <strong>Research permission active</strong>
+      <span>Hermes may use trusted public, company, regulatory, and uploaded evidence sources for this screen.</span>
+      <ul>
+        <li>Important values need source title, URL/date, confidence, and evidence status.</li>
+        <li>Unknown or conflicting data stays To Verify and goes to review instead of becoming fact.</li>
+        <li>Outputs should use source matrices, tables, charts, and evidence-gap checklists when useful.</li>
+      </ul>
+    </div>
+
     <div class="autopilot-metrics">
       <button type="button" @click="openDrawer()">
         <span>Last successful refresh</span>
@@ -143,6 +153,7 @@ async function syncNow() {
     </div>
 
     <div v-if="latestSnapshot?.claims.length" class="claim-strip">
+      <p class="claim-strip-title">Tracked fields</p>
       <button v-for="claim in latestSnapshot.claims" :key="claim.id" type="button" @click="openDrawer(claim)">
         <span>{{ claim.label }}</span>
         <strong>{{ claim.value }}</strong>
@@ -193,10 +204,13 @@ async function syncNow() {
   display: grid;
   gap: 12px;
   margin-bottom: 12px;
-  padding: 14px;
+  padding: 16px;
   border: 1px solid rgba(var(--accent-primary-rgb), 0.35);
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), rgba(var(--accent-info-rgb), 0.05));
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), rgba(var(--accent-info-rgb), 0.04)),
+    $bg-card;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
   color: $text-primary;
 }
 
@@ -209,14 +223,16 @@ async function syncNow() {
   h3 {
     margin: 0;
     color: $warning;
-    font-size: 16px;
+    font-size: 18px;
+    line-height: 1.2;
   }
 
   p {
-    margin: 4px 0 0;
+    max-width: 820px;
+    margin: 6px 0 0;
     color: $text-secondary;
-    font-size: 12px;
-    line-height: 1.45;
+    font-size: 13px;
+    line-height: 1.55;
   }
 }
 
@@ -244,6 +260,9 @@ async function syncNow() {
 
 .autopilot-status {
   padding: 10px;
+  align-self: stretch;
+  border-color: rgba(var(--accent-primary-rgb), 0.32);
+  background: rgba(var(--accent-primary-rgb), 0.08);
 
   strong {
     color: $accent-primary;
@@ -251,11 +270,60 @@ async function syncNow() {
   }
 }
 
+.research-permission-card {
+  display: grid;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.26);
+  border-radius: 7px;
+  background: rgba(var(--accent-info-rgb), 0.055);
+
+  strong {
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  span,
+  li {
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  ul {
+    display: grid;
+    gap: 4px;
+    margin: 0;
+    padding-left: 18px;
+  }
+}
+
 .autopilot-metrics,
 .claim-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.autopilot-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.claim-strip {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  max-height: 260px;
+  overflow: auto;
+  padding-top: 4px;
+}
+
+.claim-strip-title {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+  color: $text-muted;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
 }
 
 .autopilot-metrics button,
@@ -263,6 +331,13 @@ async function syncNow() {
   padding: 9px;
   text-align: left;
   cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.16s ease;
+
+  &:hover {
+    border-color: rgba(var(--accent-primary-rgb), 0.45);
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    transform: translateY(-1px);
+  }
 
   strong {
     overflow-wrap: anywhere;
@@ -275,6 +350,7 @@ async function syncNow() {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .autopilot-link {
@@ -353,6 +429,10 @@ async function syncNow() {
   .autopilot-metrics,
   .claim-strip {
     grid-template-columns: 1fr;
+  }
+
+  .trusted-autopilot {
+    padding: 12px;
   }
 }
 </style>

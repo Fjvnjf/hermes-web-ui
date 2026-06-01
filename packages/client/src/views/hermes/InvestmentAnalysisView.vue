@@ -64,6 +64,72 @@ const workingCapitalRows = computed(() => [
   detailRow('Payable days', 'Supplier credit / DPO To Verify'),
   detailRow('Working capital need', 'Derived only after input evidence is reviewed'),
 ])
+const projectAnalysisTemplateKpis = computed(() => kpis.value)
+const projectAnalysisTemplateTitle = computed(() =>
+  selectedFinancialModel.value
+    ? `${selectedFinancialModel.value.scenarioName} Project Analysis`
+    : 'Scale-Up Esterquat Plant Project Analysis Template',
+)
+const projectAnalysisBreakdownTemplateRows = computed(() => [
+  {
+    category: 'Process Equipment',
+    icon: 'Wrench',
+    keyItems: 'Reactors, columns, exchangers, tanks, pumps, packaging',
+    source: 'Vendor quotes needed',
+  },
+  {
+    category: 'Utilities & Infrastructure',
+    icon: 'Bolt',
+    keyItems: 'Steam, cooling, electrical, nitrogen, WWTP, fire systems',
+    source: 'Utility and plant-scope evidence needed',
+  },
+  {
+    category: 'Buildings & Civil',
+    icon: 'Plant',
+    keyItems: 'Production, warehouse, admin, tank farm, roads',
+    source: 'Factory/location quote needed',
+  },
+  {
+    category: 'Engineering & Project Mgmt',
+    icon: 'Set square',
+    keyItems: 'Basic/detailed engineering, PM, EPC overhead',
+    source: 'Engineering proposal needed',
+  },
+  {
+    category: 'Installation & Commissioning',
+    icon: 'Tools',
+    keyItems: 'Erection, piping, E&I, start-up, training',
+    source: 'EPC or contractor quote needed',
+  },
+  {
+    category: 'Other Costs',
+    icon: 'Clipboard',
+    keyItems: 'Permits, initial inventory, working capital, contingency',
+    source: 'Legal, permit, and working-capital model needed',
+  },
+].map(row => ({
+  ...row,
+  amount: redactsFinancials.value ? 'Restricted' : 'To Verify',
+  percent: redactsFinancials.value ? 'Restricted' : 'To Verify',
+  evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
+})))
+const projectAnalysisDetailCards = computed(() => [
+  {
+    title: 'Process Equipment Detail',
+    accent: 'Wrench',
+    rows: processEquipmentRows.value,
+  },
+  {
+    title: 'Utilities & Buildings Detail',
+    accent: 'Bolt',
+    rows: utilitiesBuildingRows.value,
+  },
+  {
+    title: 'Working Capital Detail',
+    accent: 'Clipboard',
+    rows: workingCapitalRows.value,
+  },
+])
 
 const scenarioCards = computed(() => [
   { name: 'Lean', status: 'To Verify', detail: 'Needs sourced capex, operating cost, volume, and selling-price assumptions.' },
@@ -290,6 +356,80 @@ onMounted(loadRefreshState)
         <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ kpi.evidenceStatus }}</NTag>
         <small>{{ kpi.sourceLabel }}</small>
       </article>
+    </section>
+
+    <section class="project-analysis-template" aria-label="Project analysis template">
+      <div class="template-hero">
+        <div>
+          <p class="eyebrow">Project analysis template</p>
+          <h3>{{ projectAnalysisTemplateTitle }}</h3>
+          <p>
+            Screenshot-style investment analysis board. Saved IRR Calculator scenarios can feed the KPI cards, while
+            plant line items stay To Verify until quotes, source files, and user-approved assumptions are attached.
+          </p>
+        </div>
+        <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
+      </div>
+
+      <div class="template-kpi-grid">
+        <article v-for="kpi in projectAnalysisTemplateKpis" :key="`template-${kpi.key}`" class="template-kpi-card">
+          <strong>{{ kpi.value }}</strong>
+          <span>{{ kpi.label }}</span>
+          <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ kpi.evidenceStatus }}</NTag>
+          <small>{{ kpi.sourceLabel }}</small>
+        </article>
+      </div>
+
+      <article class="template-panel investment-breakdown-template">
+        <div class="template-panel-title">
+          <div>
+            <h3>Investment Breakdown - Esterquat Plant</h3>
+            <p>Use this as the project-analysis template. It does not assert capex totals until source-backed data exists.</p>
+          </div>
+          <NButton size="small" secondary :loading="savingAction === 'finance-task'" @click="createMissingFinanceTask">
+            Create Cost Evidence Task
+          </NButton>
+        </div>
+        <div class="template-breakdown-table">
+          <div class="template-breakdown-row head">
+            <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Bar</span><span>Source</span><span>Evidence Status</span>
+          </div>
+          <div v-for="row in projectAnalysisBreakdownTemplateRows" :key="row.category" class="template-breakdown-row">
+            <strong><span>{{ row.icon }}</span> {{ row.category }}</strong>
+            <span>{{ row.keyItems }}</span>
+            <span>{{ row.amount }}</span>
+            <span>{{ row.percent }}</span>
+            <span class="template-placeholder-bar" aria-label="To Verify bar"></span>
+            <span>{{ row.source }}</span>
+            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+          </div>
+          <div class="template-breakdown-row total">
+            <strong>Total</strong>
+            <span>{{ selectedFinancialModel?.projectName || 'Project scope and location To Verify' }}</span>
+            <span>{{ selectedFinancialModel && !redactsFinancials ? projectAnalysisTemplateKpis[0]?.value : redactsFinancials ? 'Restricted' : 'To Verify' }}</span>
+            <span>{{ selectedFinancialModel && !redactsFinancials ? 'Derived' : redactsFinancials ? 'Restricted' : 'To Verify' }}</span>
+            <span class="template-placeholder-bar"></span>
+            <span>{{ selectedFinancialModel?.source?.title || 'IRR Calculator / source missing' }}</span>
+            <NTag size="small" :type="statusType(evidenceStatus)">{{ evidenceStatus }}</NTag>
+          </div>
+        </div>
+      </article>
+
+      <div class="template-detail-grid">
+        <article v-for="card in projectAnalysisDetailCards" :key="card.title" class="template-panel template-detail-panel">
+          <div class="template-panel-title compact">
+            <h3>{{ card.accent }} {{ card.title }}</h3>
+            <span>source-gated</span>
+          </div>
+          <div class="template-detail-row head"><span>Item</span><span>Spec / assumption</span><span>Cost</span><span>Status</span></div>
+          <div v-for="row in card.rows" :key="`${card.title}-${row.item}`" class="template-detail-row">
+            <strong>{{ row.item }}</strong>
+            <span>{{ row.spec }}</span>
+            <span>{{ row.cost }}</span>
+            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="analysis-grid">
@@ -535,6 +675,205 @@ onMounted(loadRefreshState)
   }
 }
 
+.project-analysis-template {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 14px;
+}
+
+.template-hero,
+.template-kpi-card,
+.template-panel {
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), transparent 36%),
+    $bg-card;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
+}
+
+.template-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border-color: rgba(var(--accent-primary-rgb), 0.38);
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 24px;
+  }
+
+  p {
+    margin: 8px 0 0;
+    max-width: 860px;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.template-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.template-kpi-card {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 16px;
+  border-color: rgba(var(--accent-primary-rgb), 0.32);
+
+  strong {
+    color: $accent-primary;
+    font-size: clamp(22px, 2.4vw, 34px);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.template-panel {
+  position: relative;
+  overflow: hidden;
+  padding: 16px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: $executive-strip;
+  }
+}
+
+.template-panel-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  border-bottom: 1px solid $border-color;
+  padding-bottom: 12px;
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  &.compact {
+    align-items: center;
+  }
+}
+
+.template-breakdown-table {
+  overflow-x: auto;
+}
+
+.template-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(320px, 1.45fr) minmax(120px, 0.7fr) minmax(86px, 0.45fr) minmax(90px, 0.45fr) minmax(190px, 1fr) minmax(130px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 1150px;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  &.total {
+    border-top-color: rgba(var(--accent-primary-rgb), 0.6);
+    color: $text-primary;
+    font-weight: 900;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  strong span {
+    color: $accent-primary;
+  }
+}
+
+.template-placeholder-bar {
+  display: block;
+  width: 64px;
+  height: 8px;
+  border: 1px dashed rgba(var(--accent-primary-rgb), 0.45);
+  border-radius: 999px;
+  background: rgba(var(--text-muted-rgb), 0.12);
+}
+
+.template-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-detail-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.1fr) minmax(90px, 0.6fr) minmax(90px, auto);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 .analysis-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -567,6 +906,8 @@ onMounted(loadRefreshState)
 .table-grid {
   display: grid;
   gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .table-row {
@@ -574,6 +915,7 @@ onMounted(loadRefreshState)
   grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(90px, 0.7fr) minmax(70px, 0.5fr) minmax(70px, 0.5fr) minmax(130px, 1fr) minmax(110px, auto);
   gap: 8px;
   align-items: center;
+  min-width: 780px;
   padding: 8px;
   border-radius: 6px;
   background: $bg-secondary;
@@ -684,8 +1026,18 @@ onMounted(loadRefreshState)
 
 @media (max-width: 900px) {
   .analysis-hero,
+  .template-hero,
+  .template-detail-grid,
   .analysis-grid {
     grid-template-columns: 1fr;
+  }
+
+  .template-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .template-panel-title {
+    display: grid;
   }
 
   .analysis-panel:last-child {
@@ -700,10 +1052,21 @@ onMounted(loadRefreshState)
 
   .table-row {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .detail-row {
     grid-template-columns: 1fr;
+  }
+
+  .template-kpi-grid,
+  .template-breakdown-row,
+  .template-detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .template-breakdown-row {
+    min-width: 0;
   }
 
   .scenario-selector {

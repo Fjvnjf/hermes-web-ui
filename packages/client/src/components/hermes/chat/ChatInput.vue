@@ -9,6 +9,7 @@ import { NButton, NTooltip, NSwitch, NModal, NInputNumber, useMessage } from 'na
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
+import { buildVisualResearchPrompt, VISUAL_RESEARCH_STORAGE_KEY } from '@/utils/visualResearchMode'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -90,6 +91,7 @@ function startResize(e: MouseEvent) {
 
 // 自动播放语音开关
 const autoPlaySpeech = ref(false)
+const visualResearchMode = ref(true)
 
 // 从 localStorage 读取设置
 onMounted(() => {
@@ -99,6 +101,9 @@ onMounted(() => {
     // 同步到 chat store
     chatStore.setAutoPlaySpeech(autoPlaySpeech.value)
   }
+
+  const savedVisualMode = localStorage.getItem(VISUAL_RESEARCH_STORAGE_KEY)
+  visualResearchMode.value = savedVisualMode === null ? true : savedVisualMode === 'true'
 })
 
 // 监听变化并保存
@@ -106,6 +111,10 @@ watch(autoPlaySpeech, (value) => {
   localStorage.setItem('autoPlaySpeech', String(value))
   // 通知 chat store
   chatStore.setAutoPlaySpeech(value)
+})
+
+watch(visualResearchMode, (value) => {
+  localStorage.setItem(VISUAL_RESEARCH_STORAGE_KEY, String(value))
 })
 
 const canSend = computed(() => inputText.value.trim() || attachments.value.length > 0)
@@ -348,10 +357,15 @@ function handleDrop(e: DragEvent) {
 // --- Send ---
 
 function handleSend() {
-  const text = inputText.value.trim()
-  if (!text && attachments.value.length === 0) return
+  const visibleText = inputText.value.trim()
+  if (!visibleText && attachments.value.length === 0) return
 
-  chatStore.sendMessage(text, attachments.value.length > 0 ? attachments.value : undefined)
+  const shouldUseVisualResearch = visualResearchMode.value && !visibleText.startsWith('/')
+  const sendText = shouldUseVisualResearch
+    ? buildVisualResearchPrompt(visibleText || 'Analyze the attached material with source-backed visual research output.')
+    : visibleText
+
+  chatStore.sendMessage(sendText, attachments.value.length > 0 ? attachments.value : undefined)
   inputText.value = ''
   attachments.value = []
   slashActive.value = false
@@ -471,6 +485,27 @@ function isImage(type: string): boolean {
         </template>
         {{ t('chat.attachFiles') }}
       </NTooltip>
+
+      <div class="visual-research-switch" :class="{ active: visualResearchMode }">
+        <NTooltip trigger="hover">
+          <template #trigger>
+            <div class="switch-label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18" />
+                <path d="M7 15l3-3 3 2 5-7" />
+                <path d="M18 7h-4" />
+              </svg>
+              <span>Visual research</span>
+            </div>
+          </template>
+          Ask Hermes to use trusted sources, evidence labels, tables, diagrams, and visual summaries when useful.
+        </NTooltip>
+        <NSwitch
+          v-model:value="visualResearchMode"
+          size="small"
+          :round="false"
+        />
+      </div>
 
       <div class="auto-play-speech-switch">
         <NTooltip trigger="hover">
@@ -685,6 +720,7 @@ function isImage(type: string): boolean {
 .input-top-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 0 0 8px;
   color: $text-muted;
@@ -715,6 +751,31 @@ function isImage(type: string): boolean {
   :deep(.n-switch),
   :deep(.n-switch__rail) {
     margin-right: 0;
+  }
+}
+
+.visual-research-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.22);
+  border-radius: 7px;
+  background: rgba(var(--accent-info-rgb), 0.05);
+
+  &.active {
+    border-color: rgba(var(--accent-primary-rgb), 0.42);
+    background: rgba(var(--accent-primary-rgb), 0.08);
+  }
+
+  .switch-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: $text-secondary;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
   }
 }
 
@@ -935,6 +996,21 @@ function isImage(type: string): boolean {
   gap: 6px;
   flex-shrink: 0;
   align-items: center;
+}
+
+@media (max-width: 720px) {
+  .visual-research-switch {
+    padding: 3px 6px;
+
+    .switch-label span {
+      display: none;
+    }
+  }
+
+  .context-info,
+  .context-bar {
+    display: none;
+  }
 }
 
 .slash-command-dropdown {
