@@ -81,10 +81,10 @@ async function createResearchJob() {
       deliver: 'local',
       prompt: autopilot.screenRefreshPrompt(props.screen),
     })
-    autopilot.createRefreshSnapshot(props.screen, job.job_id || job.id)
+    await autopilot.runTrustedSourceDataEngine(props.screen, job.job_id || job.id)
     message.success('Trusted source refresh job created')
   } catch (err) {
-    autopilot.createRefreshSnapshot(props.screen)
+    await autopilot.runTrustedSourceDataEngine(props.screen)
     const detail = err instanceof Error ? err.message : 'job API unavailable'
     message.warning(`Job scheduling fallback recorded: ${detail}`)
   } finally {

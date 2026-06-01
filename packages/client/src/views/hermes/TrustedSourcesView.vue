@@ -59,6 +59,7 @@ function addSource() {
   autopilot.updateSource(saved.source_id, {
     tier: form.value.tier,
     confidence_default: form.value.tier === 'tier1-official' ? 'high' : form.value.tier === 'candidate-source' || form.value.tier === 'tier4-public-listing' ? 'low' : 'medium',
+    auto_update_allowed: form.value.tier === 'tier1-official' || form.value.tier === 'tier2-market-reference' || form.value.tier === 'tier3-supplier-evidence',
     requires_review: form.value.tier === 'candidate-source' || form.value.tier === 'tier4-public-listing',
     notes: form.value.notes || 'Owner-added trusted source registry record.',
   })
@@ -101,7 +102,8 @@ function addSource() {
         <div v-for="source in sources" :key="source.source_id" class="source-row">
           <div>
             <strong>{{ source.name }}</strong>
-            <span>{{ source.domain }} / {{ source.data_type }} / {{ source.confidence_default }}</span>
+            <span>{{ source.domain }} / {{ source.connector_type }} / {{ source.update_frequency }} / {{ source.confidence_default }}</span>
+            <span>{{ source.data_types_supported.join(', ') }} / auto-update: {{ source.auto_update_allowed ? 'allowed' : 'review only' }}</span>
             <small>{{ source.notes }}</small>
             <small>Last checked: {{ source.last_checked || 'Never' }} / Failure: {{ source.last_failure || 'None' }}</small>
           </div>

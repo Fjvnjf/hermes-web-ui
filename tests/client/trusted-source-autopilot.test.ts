@@ -5,9 +5,16 @@ import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSource
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 import {
+  DEFAULT_TRUSTED_SOURCES,
   classifySourceCandidate,
   evidenceStatusForTier,
 } from '@/utils/trustedSources'
+import {
+  SCREEN_FIELD_MAPPINGS,
+  createMissingFieldClaim,
+  preferredSourceForField,
+  runConnector,
+} from '@/utils/trustedSourceConnectors'
 import { canAccessRouteName } from '@/utils/accessControl'
 
 vi.mock('@/api/client', () => ({
@@ -73,6 +80,85 @@ describe('Trusted Source Autopilot', () => {
     }).tier).toBe('candidate-source')
   })
 
+  it('seeds a real 100-plus trusted source registry with connector metadata', () => {
+    expect(DEFAULT_TRUSTED_SOURCES.length).toBeGreaterThanOrEqual(100)
+    expect(DEFAULT_TRUSTED_SOURCES.every(source => source.url && source.connector_type && source.data_types_supported.length)).toBe(true)
+    expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'world-bank-indicators-api' && source.connector_type === 'API')).toBe(true)
+    expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'supplier-uploaded-quote' && source.connector_type === 'supplier_quote')).toBe(true)
+    expect(DEFAULT_TRUSTED_SOURCES.some(source => source.tier === 'tier4-public-listing' && source.requires_review)).toBe(true)
+  })
+
+  it('defines source mappings for the four screenshot dashboard screens', () => {
+    expect(SCREEN_FIELD_MAPPINGS.executive.map(item => item.field)).toContain('Revenue Target')
+    expect(SCREEN_FIELD_MAPPINGS.market.map(item => item.field)).toContain('Market Size / Scope')
+    expect(SCREEN_FIELD_MAPPINGS.investment.map(item => item.field)).toContain('Project IRR')
+    expect(SCREEN_FIELD_MAPPINGS.competitor.map(item => item.field)).toContain('Market Share Chart')
+  })
+
+  it('builds connector skeletons that return normalized To Verify claims instead of fake values', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'un-comtrade-plus')!
+    const { claims } = await runConnector({
+      screen: 'market',
+      field: 'Market Size / Scope',
+      source,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(claims[0]).toMatchObject({
+      screen: 'market',
+      field: 'Market Size / Scope',
+      value: 'Trade Proxy / To Verify',
+      source_id: 'un-comtrade-plus',
+      evidence_status: 'Trade Proxy',
+      review_required: true,
+    })
+    expect(claims[0].value).not.toContain('$3.2B')
+  })
+
+  it('fetches and normalizes a World Bank API claim when fetch is available', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-indicators-api')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [null, [{ date: '2025', value: 4.25 }]],
+    } as Response)
+    const { claims } = await runConnector({
+      screen: 'market',
+      field: 'Growth Rate',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalled()
+    expect(claims[0].value).toBe('4.25%')
+    expect(claims[0].evidence_status).toBe('Official Data')
+    expect(claims[0].review_required).toBe(true)
+  })
+
+  it('gracefully falls back when a connector cannot fetch', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-indicators-api')!
+    const { claims } = await runConnector({
+      screen: 'market',
+      field: 'Growth Rate',
+      source,
+      fetchImpl: vi.fn().mockRejectedValue(new Error('network blocked')),
+    })
+
+    expect(claims[0].value).toBe('Research Required / To Verify')
+    expect(claims[0].method).toBe('fallback')
+    expect(claims[0].review_required).toBe(true)
+  })
+
+  it('selects preferred sources and creates missing field claims with action path metadata', () => {
+    const preferred = preferredSourceForField('market', 'Market Size / Scope', DEFAULT_TRUSTED_SOURCES)
+    expect(preferred?.source_id).toMatch(/comtrade|world-bank/)
+
+    const missing = createMissingFieldClaim('competitor', 'Market Share Chart')
+    expect(missing.value).toBe('Missing / To Verify')
+    expect(missing.review_required).toBe(true)
+    expect(missing.notes).toContain('Create research job')
+  })
+
   it('maps source tiers to evidence labels without pretending weak sources are verified', () => {
     expect(evidenceStatusForTier('tier1-official')).toBe('Trusted Source Auto-Updated')
     expect(evidenceStatusForTier('tier2-market-reference')).toBe('Market Reference')
@@ -102,6 +188,16 @@ describe('Trusted Source Autopilot', () => {
     expect(snapshot.claims[0].source.date).toBe('2026-05-31')
     expect(intelligence.state.value.marketClaims[0].label).toBe('China textile softener import proxy')
     expect(intelligence.state.value.marketClaims[0].evidenceStatus).toBe('Trusted Source Auto-Updated')
+  })
+
+  it('runs the data engine across mapped fields without injecting fake screenshot values', async () => {
+    const autopilot = useTrustedSourceAutopilot()
+    const result = await autopilot.runTrustedSourceDataEngine('market')
+
+    expect(result.snapshot.claims.length).toBeGreaterThanOrEqual(SCREEN_FIELD_MAPPINGS.market.length)
+    expect(result.snapshot.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
+    expect(result.snapshot.claims.every(claim => !claim.value.includes('$3.2B'))).toBe(true)
+    expect(result.snapshot.review_required).toBe(true)
   })
 
   it('sends conflicting trusted-source updates to Research Result Review', () => {
@@ -242,5 +338,17 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('2026-05-31')
     expect(wrapper.text()).toContain('Confidence')
     expect(wrapper.text()).toContain('Disable Auto Update for this field')
+  })
+
+  it('creates a real data-engine snapshot from the Sync Now control', async () => {
+    const autopilot = useTrustedSourceAutopilot()
+    const wrapper = mount(TrustedSourceAutopilotPanel, {
+      props: { screen: 'market', title: 'Market Auto Source Status' },
+    })
+
+    await wrapper.findAll('button').find(button => button.text().includes('Sync Now'))!.trigger('click')
+    await vi.dynamicImportSettled()
+
+    expect(autopilot.lastSnapshotForScreen('market')?.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
   })
 })

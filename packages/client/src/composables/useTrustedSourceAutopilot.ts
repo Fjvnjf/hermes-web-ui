@@ -1,6 +1,13 @@
 import { computed, ref } from 'vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import {
+  SCREEN_FIELD_MAPPINGS,
+  createMissingFieldClaim,
+  preferredSourceForField,
+  runConnector,
+  type NormalizedTrustedSourceClaim,
+} from '@/utils/trustedSourceConnectors'
+import {
   DEFAULT_TRUSTED_SOURCES,
   classifySourceCandidate,
   evidenceStatusForTier,
@@ -65,7 +72,8 @@ function mergeState(raw: Partial<TrustedSourceAutopilotState> | null): TrustedSo
   const sourceMap = new Map(defaults.map(source => [source.source_id, source]))
   for (const source of savedSources) {
     if (!source?.source_id) continue
-    sourceMap.set(source.source_id, { ...sourceMap.get(source.source_id), ...source })
+    const fallback = defaults.find(item => normalizeDomain(item.domain) === normalizeDomain(source.domain)) || defaults[0]
+    sourceMap.set(source.source_id, { ...fallback, ...source })
   }
   return {
     sources: Array.from(sourceMap.values()),
@@ -144,6 +152,165 @@ function latestClaim(screen: AutopilotScreen, label: string): TrustedSourceSnaps
     if (snapshot.screen !== screen) continue
     const match = snapshot.claims.find(claim => claim.label.toLowerCase() === label.toLowerCase())
     if (match) return match
+  }
+  return null
+}
+
+function claimFromNormalized(claim: NormalizedTrustedSourceClaim): TrustedSourceSnapshotClaim {
+  return {
+    id: claim.claim_id,
+    label: claim.field,
+    value: claim.value,
+    evidenceStatus: claim.evidence_status,
+    confidence: claim.confidence,
+    source: {
+      title: claim.source_name,
+      url: claim.source_url,
+      date: claim.source_date,
+    },
+    dataType: claim.data_type,
+    reviewRequired: claim.review_required,
+    sensitive: claim.sensitive,
+    notes: [
+      claim.notes,
+      `Method: ${claim.method}`,
+      `Fetched at: ${claim.fetched_at}`,
+      claim.unit ? `Unit: ${claim.unit}` : '',
+    ].filter(Boolean).join('\n'),
+  }
+}
+
+function normalizedInternalClaim(input: {
+  screen: AutopilotScreen
+  field: string
+  value: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence?: 'low' | 'medium' | 'high'
+  sourceName: string
+  sourceUrl?: string
+  sourceDate?: string
+  dataType: TrustedSourceDataType
+  notes: string
+  sensitive?: boolean
+}): NormalizedTrustedSourceClaim {
+  const fetchedAt = nowIso()
+  return {
+    claim_id: idFrom('claim', `${input.screen}-${input.field}`),
+    screen: input.screen,
+    field: input.field,
+    value: input.value,
+    source_id: 'internal-hermes-workspace',
+    source_name: input.sourceName,
+    source_url: input.sourceUrl,
+    source_date: input.sourceDate || fetchedAt.slice(0, 10),
+    fetched_at: fetchedAt,
+    evidence_status: input.evidenceStatus,
+    confidence: input.confidence || 'medium',
+    method: 'internal',
+    notes: input.notes,
+    review_required: input.evidenceStatus === 'To Verify' || input.evidenceStatus === 'Missing' || input.evidenceStatus === 'Derived from Assumptions',
+    data_type: input.dataType,
+    sensitive: input.sensitive,
+  }
+}
+
+function internalClaimForField(screen: AutopilotScreen, field: string): NormalizedTrustedSourceClaim | null {
+  const intelligence = useFeasibilityIntelligence()
+  const financial = intelligence.latestFinancialModel.value
+  if ((screen === 'executive' || screen === 'investment') && financial) {
+    const sourceName = financial.source?.title || 'IRR Calculator saved scenario'
+    const sourceUrl = financial.source?.url
+    const sourceDate = financial.source?.date || financial.createdAt.slice(0, 10)
+    const financeValues: Record<string, string> = {
+      'Revenue Target': `${financial.currency} ${financial.yearOneRevenue.toLocaleString()}`,
+      'Projected IRR': financial.irr === null ? 'To Verify' : `${financial.irr.toFixed(2)}%`,
+      'Payback Period': financial.paybackYear === null ? 'To Verify' : `${financial.paybackYear.toFixed(1)} years`,
+      'NPV @ 12%': `${financial.currency} ${financial.npv.toLocaleString()}`,
+      'Total Investment': `${financial.currency} ${financial.capexTotal.toLocaleString()}`,
+      'Project IRR': financial.irr === null ? 'To Verify' : `${financial.irr.toFixed(2)}%`,
+      'Profitability Index': 'Derived from Assumptions',
+      '5-Year ROI': 'Derived from Assumptions',
+      'Investment Breakdown': 'Derived from saved IRR scenario',
+    }
+    if (financeValues[field]) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: financeValues[field],
+        evidenceStatus: 'Derived from Assumptions',
+        sourceName,
+        sourceUrl,
+        sourceDate,
+        dataType: 'financial_data',
+        notes: 'Internal financial model output. It is not pulled from external web data and remains Derived from Assumptions until reviewed.',
+        sensitive: true,
+      })
+    }
+  }
+  if (screen === 'executive') {
+    const executiveValues: Record<string, string> = {
+      'Hermes Daily Brief': `${intelligence.state.value.researchFindings.length} research results, ${intelligence.state.value.researchJobs.length} research jobs, ${intelligence.state.value.dataRoomSources.length} data-room sources`,
+      'Today’s Priorities': intelligence.evidenceGaps.value.slice(0, 3).map(item => item.label).join('; ') || 'No activity / To Verify',
+      'Top Risk': intelligence.riskRegisterItems.value.slice(0, 2).map(item => `${item.title} - ${item.evidenceStatus}`).join('; ') || 'Missing / To Verify',
+    }
+    if (executiveValues[field]) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: executiveValues[field],
+        evidenceStatus: 'Reference Only',
+        confidence: 'medium',
+        sourceName: 'Hermes internal workspace activity',
+        dataType: 'internal_activity',
+        notes: 'Generated from local Hermes activity, tasks, research jobs, memory-safe summaries, and readiness evidence.',
+      })
+    }
+  }
+  if (screen === 'market') {
+    const claim = intelligence.state.value.marketClaims.find(item => {
+      const text = `${item.label} ${item.value || ''}`.toLowerCase()
+      return field.toLowerCase().split(/\s+|\/|-/).some(part => part.length > 3 && text.includes(part))
+    })
+    if (claim?.value) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: claim.value,
+        evidenceStatus: claim.evidenceStatus,
+        confidence: claim.confidence || 'low',
+        sourceName: claim.source?.title || 'Saved Market Intelligence claim',
+        sourceUrl: claim.source?.url,
+        sourceDate: claim.source?.date || claim.lastChecked,
+        dataType: 'market_size',
+        notes: 'Loaded from saved Market Intelligence claim. Unsourced claims remain To Verify.',
+      })
+    }
+  }
+  if (screen === 'competitor') {
+    const competitors = intelligence.state.value.competitors
+    if (field === 'Competitors Profiled') {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: competitors.length ? String(competitors.length) : 'Missing / To Verify',
+        evidenceStatus: competitors.length ? 'Reference Only' : 'To Verify',
+        sourceName: 'Competitor Intelligence records',
+        dataType: 'competitor_data',
+        notes: 'Count of local competitor records. It is a workspace status, not market share.',
+      })
+    }
+    if (field === 'Source Coverage / Confidence') {
+      const sourced = competitors.filter(item => item.source?.title && (item.source.url || item.source.date)).length
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: competitors.length ? `${sourced}/${competitors.length} records sourced` : 'Missing / To Verify',
+        evidenceStatus: sourced ? 'Reference Only' : 'To Verify',
+        sourceName: 'Competitor Intelligence records',
+        dataType: 'competitor_data',
+        notes: 'Source coverage summary. Market share remains To Verify unless source-backed.',
+      })
+    }
   }
   return null
 }
@@ -341,6 +508,96 @@ function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): Trusted
   }
 }
 
+async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: string): Promise<TrustedSourceRefreshResult> {
+  ensureLoaded()
+  const intelligence = useFeasibilityIntelligence()
+  const normalizedClaims: NormalizedTrustedSourceClaim[] = []
+  const sourceIds = new Set<string>()
+  let researchJobFallbacks = 0
+
+  for (const mapping of SCREEN_FIELD_MAPPINGS[screen]) {
+    const internal = internalClaimForField(screen, mapping.field)
+    if (internal) {
+      normalizedClaims.push(internal)
+      sourceIds.add(internal.source_id)
+      continue
+    }
+
+    const source = preferredSourceForField(screen, mapping.field, state.value.sources)
+    if (source && mapping.autoUpdateAllowed && source.auto_update_allowed && source.connector_type === 'API') {
+      const { claims } = await runConnector({
+        screen,
+        field: mapping.field,
+        source,
+      })
+      normalizedClaims.push(...claims.map(claim => ({ ...claim, sensitive: claim.sensitive || mapping.sensitive })))
+      sourceIds.add(source.source_id)
+      updateSource(source.source_id, { last_checked: nowIso(), last_failure: null })
+      continue
+    }
+
+    if (source) {
+      const missing = createMissingFieldClaim(screen, mapping.field)
+      normalizedClaims.push({
+        ...missing,
+        source_id: source.source_id,
+        source_name: source.name,
+        source_url: source.url,
+        source_date: nowIso().slice(0, 10),
+        notes: `${missing.notes} Preferred source: ${source.name}. Connector type ${source.connector_type} requires Hermes research job/manual review before field update.`,
+      })
+      sourceIds.add(source.source_id)
+      researchJobFallbacks += 1
+      continue
+    }
+
+    normalizedClaims.push(createMissingFieldClaim(screen, mapping.field))
+    researchJobFallbacks += 1
+  }
+
+  const snapshotClaims = normalizedClaims.map(claimFromNormalized)
+  const snapshot = createSnapshot({
+    screen,
+    claims: snapshotClaims,
+    sourceIds: Array.from(sourceIds).filter(id => id !== 'missing-source'),
+    jobId,
+    reviewRequired: normalizedClaims.some(claim => claim.review_required),
+  })
+
+  const reviewNeeded = normalizedClaims.filter(claim => claim.review_required)
+  if (reviewNeeded.length) {
+    intelligence.addResearchFinding({
+      summary: [
+        `${screenLabel(screen)} trusted-source data engine run.`,
+        `Fields checked: ${normalizedClaims.length}`,
+        `Review/fallback items: ${reviewNeeded.length}`,
+        `Research job fallbacks: ${researchJobFallbacks}`,
+        'No fake values were inserted. Missing fields remain To Verify/Missing or Trade Proxy.',
+      ].join('\n'),
+      keyClaim: `${screen === 'market' ? 'Market intelligence' : screen === 'investment' ? 'Investment analysis' : screenLabel(screen)} trusted-source refresh produced review items`,
+      area: screen === 'investment' ? 'financial' : screen === 'executive' ? 'presentation' : 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: {
+        title: 'Trusted Source Data Engine',
+        date: nowIso().slice(0, 10),
+      },
+      suggestedTask: 'Review source-backed claims, connector fallbacks, sensitive visibility, and missing fields before investor use.',
+      riskNote: 'Autopilot does not mark unsupported data Verified and does not overwrite investor-approved material automatically.',
+    })
+  }
+
+  return {
+    snapshot,
+    researchJobCreated: !!jobId,
+    message: jobId
+      ? 'Trusted source data engine scheduled and snapshot created'
+      : researchJobFallbacks
+        ? 'Trusted source data engine created review/fallback items'
+        : 'Trusted source data engine refreshed source-backed fields',
+  }
+}
+
 function screenLabel(screen: AutopilotScreen): string {
   if (screen === 'executive') return 'Executive Overview'
   if (screen === 'market') return 'Market Intelligence'
@@ -387,6 +644,7 @@ export function useTrustedSourceAutopilot() {
     updateSource,
     applyTrustedSourceClaim,
     createRefreshSnapshot,
+    runTrustedSourceDataEngine,
     resetTrustedSourceAutopilotForTests,
   }
 }
