@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NSelect, NSwitch, useMessage } from 'naive-ui'
 import { useJobsStore } from '@/stores/hermes/jobs'
@@ -25,6 +25,7 @@ const autopilot = useTrustedSourceAutopilot()
 const jobsStore = useJobsStore()
 const intelligence = useFeasibilityIntelligence()
 const fullAutopilotSaving = ref(false)
+const importingLatestOutput = ref(false)
 const fullAutopilotStatus = ref(loadFullAutopilotStatus())
 
 const form = ref({
@@ -181,6 +182,41 @@ async function runFullDashboardSnapshotNow() {
     fullAutopilotSaving.value = false
   }
 }
+
+async function importLatestDashboardResearchOutput(showMessages = true) {
+  if (!fullAutopilotStatus.value.scheduledJobId) {
+    if (showMessages) message.warning('Enable Full Dashboard Autopilot first so Hermes has a scheduled job id')
+    return
+  }
+  importingLatestOutput.value = true
+  try {
+    const result = await autopilot.importLatestFullDashboardRunOutput(fullAutopilotStatus.value.scheduledJobId)
+    persistFullAutopilotStatus({
+      lastRun: result.runImported ? new Date().toISOString() : fullAutopilotStatus.value.lastRun,
+      lastStatus: `${result.message}. Auto-filled: ${result.autoFilledCount}. Needs review: ${result.reviewItemCount}.`,
+    })
+    if (!showMessages) return
+    if (result.runImported) {
+      message.success('Latest Hermes research output imported into the source-gated dashboard pipeline')
+    } else {
+      message.warning(result.message)
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown import error'
+    persistFullAutopilotStatus({
+      lastStatus: `Could not import latest Hermes research output: ${detail}`,
+    })
+    if (showMessages) message.error(`Could not import latest Hermes research output: ${detail}`)
+  } finally {
+    importingLatestOutput.value = false
+  }
+}
+
+onMounted(() => {
+  if (fullAutopilotStatus.value.enabled && fullAutopilotStatus.value.scheduledJobId) {
+    void importLatestDashboardResearchOutput(false)
+  }
+})
 </script>
 
 <template>
@@ -211,17 +247,24 @@ async function runFullDashboardSnapshotNow() {
         </p>
       </div>
       <div class="permission-flow" aria-label="Trusted source research flow">
-        <span>Research trusted sources</span>
+        <span>Twice-daily trusted research</span>
         <span>Extract important data</span>
         <span>Attach evidence label</span>
-        <span>Send uncertain items to review</span>
-        <span>Update dashboard after approval</span>
+        <span>Auto-stage critical items</span>
+        <span>Fill only safe source-backed fields</span>
       </div>
       <ul class="permission-rule-list">
         <li>Important numbers require source title, URL or source date, confidence, evidence status, and review trail.</li>
         <li>Weak, conflicting, sensitive, or candidate-source findings go to Research Result Review instead of becoming facts.</li>
         <li>Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.</li>
       </ul>
+      <div class="policy-tier-strip" aria-label="Official-first source ranking policy">
+        <span>Tier 1: official / regulator / trade</span>
+        <span>Tier 2: official company / product</span>
+        <span>Tier 3: uploaded supplier evidence</span>
+        <span>Tier 4: paid / reputable market reference</span>
+        <span>Tier 5: public listing / weak reference</span>
+      </div>
     </section>
 
     <section class="full-autopilot-panel" aria-label="Full dashboard trusted source autopilot">
@@ -255,12 +298,14 @@ async function runFullDashboardSnapshotNow() {
       </div>
       <ul class="autopilot-rule-list">
         <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
+        <li>Runs on the existing Hermes Jobs scheduler at 07:00 and 19:00; no separate database or backend migration is required.</li>
         <li>Fills only source-backed/API/internal-safe fields automatically; unsupported values stay Missing / To Verify.</li>
-        <li>Supplier prices, quality, reliability, payment terms, IRR, market share, and investor claims require evidence labels and review.</li>
+        <li>Supplier prices, quality, reliability, payment terms, IRR, market size, growth, market share, regulatory status, and investor claims are auto-staged for review unless source policy allows safe filling.</li>
       </ul>
       <div class="full-autopilot-actions">
         <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
         <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
+        <NButton tertiary :loading="importingLatestOutput" @click="importLatestDashboardResearchOutput(true)">Import Latest Output</NButton>
         <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Open Review Queue</RouterLink>
         <RouterLink class="autopilot-link" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw Material Scorecards</RouterLink>
       </div>
@@ -430,6 +475,23 @@ async function runFullDashboardSnapshotNow() {
     background: $bg-secondary;
     color: $text-secondary;
     line-height: 1.45;
+  }
+}
+
+.policy-tier-strip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 7px;
+
+  span {
+    padding: 8px 9px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+    border-radius: 6px;
+    background: rgba(var(--accent-primary-rgb), 0.055);
+    color: $warning;
+    font-size: 11px;
+    font-weight: 850;
   }
 }
 

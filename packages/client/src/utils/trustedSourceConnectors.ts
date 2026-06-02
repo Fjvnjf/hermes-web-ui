@@ -5,6 +5,7 @@ import {
   type TrustedSourceDataType,
   type TrustedSourceRecord,
 } from '@/utils/trustedSources'
+import { sortSourcesByDashboardPolicy } from '@/utils/dashboardAutopilotPolicy'
 import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
 export interface NormalizedTrustedSourceClaim {
@@ -315,9 +316,7 @@ export function preferredSourceForField(
     (mapping.preferredDataTypes.some(type => source.data_types_supported.includes(type)) ||
       mapping.fallbackDataTypes.some(type => source.data_types_supported.includes(type))),
   )
-  return allowed.find(source => mapping.preferredDataTypes.some(type => source.data_types_supported.includes(type)) && source.auto_update_allowed) ||
-    allowed.find(source => mapping.fallbackDataTypes.some(type => source.data_types_supported.includes(type))) ||
-    null
+  return sortSourcesByDashboardPolicy(allowed, mapping.preferredDataTypes, mapping.fallbackDataTypes)[0] || null
 }
 
 export function createMissingFieldClaim(screen: AutopilotScreen, field: string): NormalizedTrustedSourceClaim {

@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
-import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { type EvidenceArea, useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import {
   SCREEN_FIELD_MAPPINGS,
   createMissingFieldClaim,
@@ -22,6 +23,15 @@ import {
   type TrustedSourceSnapshot,
   type TrustedSourceSnapshotClaim,
 } from '@/utils/trustedSources'
+import {
+  buildDashboardUpdateCandidate,
+  coerceDashboardConfidence,
+  coerceDashboardDataType,
+  coerceDashboardEvidenceStatus,
+  extractDashboardResearchUpdates,
+  type DashboardResearchUpdateGroup,
+  type DashboardResearchUpdateItem,
+} from '@/utils/dashboardAutopilotPolicy'
 import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
 interface TrustedSourceAutopilotState {
@@ -54,10 +64,31 @@ export interface FullDashboardAutopilotResult {
   message: string
 }
 
+export interface DashboardResearchImportResult {
+  parsedItemCount: number
+  autoFilledCount: number
+  reviewItemCount: number
+  snapshotCount: number
+  runImported: boolean
+  message: string
+  errors: string[]
+}
+
 const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor']
+const DASHBOARD_RESEARCH_GROUPS: DashboardResearchUpdateGroup[] = [
+  'marketClaims',
+  'competitorRecords',
+  'rawMaterialSignals',
+  'supplierScorecards',
+  'regulatoryFindings',
+  'financialEvidence',
+  'evidenceGaps',
+  'suggestedTasks',
+  'investorMaterialCandidates',
+]
 
 const state = ref<TrustedSourceAutopilotState>({
   sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })),
@@ -167,8 +198,27 @@ function latestClaim(screen: AutopilotScreen, label: string): TrustedSourceSnaps
 }
 
 function claimFromNormalized(claim: NormalizedTrustedSourceClaim): TrustedSourceSnapshotClaim {
+  const sourceRecord = state.value.sources.find(source => source.source_id === claim.source_id) || null
+  const update = buildDashboardUpdateCandidate({
+    screen: claim.screen,
+    field: claim.field,
+    value: claim.value,
+    source: {
+      title: claim.source_name,
+      url: claim.source_url,
+      date: claim.source_date,
+    },
+    sourceId: claim.source_id,
+    fetchedAt: claim.fetched_at,
+    evidenceStatus: claim.evidence_status,
+    confidence: claim.confidence,
+    reviewRequired: claim.review_required,
+    dataType: claim.data_type,
+    sensitive: claim.sensitive,
+  }, sourceRecord)
   return {
     id: claim.claim_id,
+    fieldKey: update.fieldKey,
     label: claim.field,
     value: claim.value,
     evidenceStatus: claim.evidence_status,
@@ -178,14 +228,21 @@ function claimFromNormalized(claim: NormalizedTrustedSourceClaim): TrustedSource
       url: claim.source_url,
       date: claim.source_date,
     },
+    sourceTier: update.sourceTier,
+    sourceTierLabel: update.sourceTierLabel,
+    lastChecked: update.lastChecked,
+    riskReason: update.riskReason,
     dataType: claim.data_type,
-    reviewRequired: claim.review_required,
-    sensitive: claim.sensitive,
+    reviewRequired: update.reviewRequired,
+    sensitive: update.sensitive,
     notes: [
       claim.notes,
       `Method: ${claim.method}`,
       `Fetched at: ${claim.fetched_at}`,
       claim.unit ? `Unit: ${claim.unit}` : '',
+      `Dashboard field: ${update.fieldKey}`,
+      `Autopilot action: ${update.action}`,
+      `Risk reason: ${update.riskReason}`,
     ].filter(Boolean).join('\n'),
   }
 }
@@ -383,7 +440,7 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
   const hasConflict = !!previous && previous.value.trim() !== input.value.trim() && previous.evidenceStatus !== 'Candidate Source'
   const largeChange = changePercent !== null && Math.abs(changePercent) >= (input.dataType === 'price_data' ? 5 : 10)
   const sensitiveVisibilityRisk = !!input.sensitive || isSensitiveAutopilotDataType(input.dataType)
-  const reviewRequired = sourceRequiresReview(sourceRecord, {
+  const baseReviewRequired = sourceRequiresReview(sourceRecord, {
     hasConflict,
     largeChange,
     investorApprovedImpact: input.investorApprovedImpact,
@@ -391,8 +448,27 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
     overwritesUserApprovedAssumption: input.overwriteUserApprovedAssumption,
   })
   const evidenceStatus = evidenceStatusForTier(sourceRecord.tier, hasConflict)
+  const update = buildDashboardUpdateCandidate({
+    screen: input.screen,
+    field: input.label,
+    value: input.value,
+    source: input.source,
+    sourceId: sourceRecord.source_id,
+    fetchedAt: nowIso(),
+    evidenceStatus,
+    confidence: sourceRecord.confidence_default,
+    reviewRequired: baseReviewRequired,
+    dataType: input.dataType,
+    sensitive: sensitiveVisibilityRisk,
+    hasConflict,
+    largeChange,
+    investorApprovedImpact: input.investorApprovedImpact,
+    overwritesUserApprovedAssumption: input.overwriteUserApprovedAssumption,
+  }, sourceRecord)
+  const reviewRequired = update.reviewRequired
   const claim: TrustedSourceSnapshotClaim = {
     id: idFrom('claim', input.label),
+    fieldKey: update.fieldKey,
     label: input.label,
     value: input.value,
     previousValue: previous?.value,
@@ -400,10 +476,14 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
     evidenceStatus,
     confidence: sourceRecord.confidence_default,
     source: input.source,
+    sourceTier: update.sourceTier,
+    sourceTierLabel: update.sourceTierLabel,
+    lastChecked: update.lastChecked,
+    riskReason: update.riskReason,
     dataType: input.dataType,
     reviewRequired,
-    sensitive: sensitiveVisibilityRisk,
-    notes: input.notes,
+    sensitive: update.sensitive,
+    notes: [input.notes, `Dashboard field: ${update.fieldKey}`, `Autopilot action: ${update.action}`, `Risk reason: ${update.riskReason}`].filter(Boolean).join('\n'),
   }
   const snapshot = createSnapshot({
     screen: input.screen,
@@ -429,10 +509,15 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
     intelligence.addResearchFinding({
       summary: [
         `Autopilot ${hasConflict ? 'conflict' : 'review'} for ${input.label}`,
+        `Proposed dashboard field: ${update.fieldKey}`,
         `Value: ${input.value}`,
         previous?.value ? `Previous value: ${previous.value}` : 'Previous value: none',
         `Source: ${input.source.title}`,
+        input.source.url ? `Source URL: ${input.source.url}` : '',
+        `Source tier: ${update.sourceTierLabel}`,
+        `Confidence: ${sourceRecord.confidence_default}`,
         `Evidence status: ${evidenceStatus}`,
+        `Risk reason: ${update.riskReason}`,
       ].join('\n'),
       keyClaim: `${hasConflict ? 'Conflict Detected' : 'Trusted source review'}: ${input.label}`,
       area: input.screen === 'investment' ? 'financial' : input.screen === 'competitor' || input.screen === 'market' ? 'market' : 'presentation',
@@ -532,17 +617,37 @@ function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): Trusted
     dataType: screen === 'executive' ? 'internal_activity' : screen === 'investment' ? 'financial_data' : screen === 'competitor' ? 'competitor_data' : 'market_size',
     screen,
   })
+  const refreshEvidenceStatus: IntelligenceEvidenceStatus = screen === 'executive' ? 'Reference Only' : 'To Verify'
+  const refreshDataType: TrustedSourceDataType = screen === 'executive' ? 'internal_activity' : screen === 'investment' ? 'financial_data' : screen === 'competitor' ? 'competitor_data' : 'market_size'
+  const update = buildDashboardUpdateCandidate({
+    screen,
+    field: `${screenLabel(screen)} refresh status`,
+    value: jobId ? 'Scheduled Hermes Job' : 'Task fallback',
+    source: internalSource,
+    sourceId: source.source_id,
+    fetchedAt: nowIso(),
+    evidenceStatus: refreshEvidenceStatus,
+    confidence: screen === 'executive' ? 'medium' : 'low',
+    reviewRequired: screen !== 'executive',
+    dataType: refreshDataType,
+    sensitive: screen === 'investment',
+  }, source)
   const claim: TrustedSourceSnapshotClaim = {
     id: idFrom('claim', `${screen}-refresh`),
+    fieldKey: update.fieldKey,
     label: `${screenLabel(screen)} refresh status`,
     value: jobId ? 'Scheduled Hermes Job' : 'Task fallback',
-    evidenceStatus: screen === 'executive' ? 'Reference Only' : 'To Verify',
+    evidenceStatus: refreshEvidenceStatus,
     confidence: screen === 'executive' ? 'medium' : 'low',
     source: internalSource,
-    dataType: screen === 'executive' ? 'internal_activity' : screen === 'investment' ? 'financial_data' : screen === 'competitor' ? 'competitor_data' : 'market_size',
-    reviewRequired: screen !== 'executive',
-    sensitive: screen === 'investment',
-    notes: screenRefreshPrompt(screen),
+    sourceTier: update.sourceTier,
+    sourceTierLabel: update.sourceTierLabel,
+    lastChecked: update.lastChecked,
+    riskReason: update.riskReason,
+    dataType: refreshDataType,
+    reviewRequired: update.reviewRequired,
+    sensitive: update.sensitive,
+    notes: [screenRefreshPrompt(screen), `Dashboard field: ${update.fieldKey}`, `Autopilot action: ${update.action}`, `Risk reason: ${update.riskReason}`].join('\n'),
   }
   const snapshot = createSnapshot({
     screen,
@@ -573,6 +678,57 @@ function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): Trusted
     researchJobCreated: !!jobId,
     message: jobId ? 'Trusted source refresh job scheduled' : 'Trusted source refresh fallback recorded',
   }
+}
+
+function reviewLineForNormalizedClaim(claim: NormalizedTrustedSourceClaim): string {
+  const sourceRecord = state.value.sources.find(source => source.source_id === claim.source_id) || null
+  const update = buildDashboardUpdateCandidate({
+    screen: claim.screen,
+    field: claim.field,
+    value: claim.value,
+    source: {
+      title: claim.source_name,
+      url: claim.source_url,
+      date: claim.source_date,
+    },
+    sourceId: claim.source_id,
+    fetchedAt: claim.fetched_at,
+    evidenceStatus: claim.evidence_status,
+    confidence: claim.confidence,
+    reviewRequired: claim.review_required,
+    dataType: claim.data_type,
+    sensitive: claim.sensitive,
+  }, sourceRecord)
+  return [
+    `- ${update.fieldKey}: ${claim.value}`,
+    `source=${claim.source_name}`,
+    claim.source_url ? `url=${claim.source_url}` : '',
+    `tier=${update.sourceTierLabel}`,
+    `confidence=${claim.confidence}`,
+    `status=${claim.evidence_status}`,
+    `risk=${update.riskReason}`,
+  ].filter(Boolean).join(' | ')
+}
+
+function normalizedClaimNeedsDashboardReview(claim: NormalizedTrustedSourceClaim): boolean {
+  const sourceRecord = state.value.sources.find(source => source.source_id === claim.source_id) || null
+  return buildDashboardUpdateCandidate({
+    screen: claim.screen,
+    field: claim.field,
+    value: claim.value,
+    source: {
+      title: claim.source_name,
+      url: claim.source_url,
+      date: claim.source_date,
+    },
+    sourceId: claim.source_id,
+    fetchedAt: claim.fetched_at,
+    evidenceStatus: claim.evidence_status,
+    confidence: claim.confidence,
+    reviewRequired: claim.review_required,
+    dataType: claim.data_type,
+    sensitive: claim.sensitive,
+  }, sourceRecord).reviewRequired
 }
 
 async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: string): Promise<TrustedSourceRefreshResult> {
@@ -628,17 +784,21 @@ async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: strin
     claims: snapshotClaims,
     sourceIds: Array.from(sourceIds).filter(id => id !== 'missing-source'),
     jobId,
-    reviewRequired: normalizedClaims.some(claim => claim.review_required),
+    reviewRequired: snapshotClaims.some(claim => claim.reviewRequired),
   })
 
-  const reviewNeeded = normalizedClaims.filter(claim => claim.review_required)
+  const reviewNeeded = normalizedClaims.filter(normalizedClaimNeedsDashboardReview)
   if (reviewNeeded.length) {
+    const reviewRows = reviewNeeded.slice(0, 10).map(reviewLineForNormalizedClaim)
     intelligence.addResearchFinding({
       summary: [
         `${screenLabel(screen)} trusted-source data engine run.`,
         `Fields checked: ${normalizedClaims.length}`,
         `Review/fallback items: ${reviewNeeded.length}`,
         `Research job fallbacks: ${researchJobFallbacks}`,
+        '',
+        'Proposed dashboard updates:',
+        ...reviewRows,
         'No fake values were inserted. Missing fields remain To Verify/Missing or Trade Proxy.',
       ].join('\n'),
       keyClaim: `${screen === 'market' ? 'Market intelligence' : screen === 'investment' ? 'Investment analysis' : screenLabel(screen)} trusted-source refresh produced review items`,
@@ -712,6 +872,391 @@ async function runFullDashboardDataEngine(jobId?: string): Promise<FullDashboard
   }
 }
 
+function asText(value: unknown, fallback = 'To Verify'): string {
+  if (typeof value === 'string') return value.trim() || fallback
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (value && typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return fallback
+    }
+  }
+  return fallback
+}
+
+function groupDefaultScreen(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem): AutopilotScreen {
+  if (item.screen === 'executive' || item.screen === 'market' || item.screen === 'investment' || item.screen === 'competitor') return item.screen
+  if (group === 'financialEvidence') return 'investment'
+  if (group === 'competitorRecords') return 'competitor'
+  if (group === 'investorMaterialCandidates') return 'executive'
+  return 'market'
+}
+
+function groupDefaultDataType(group: DashboardResearchUpdateGroup): TrustedSourceDataType {
+  if (group === 'competitorRecords') return 'competitor_data'
+  if (group === 'financialEvidence') return 'financial_data'
+  if (group === 'supplierScorecards') return 'supplier_quote'
+  if (group === 'rawMaterialSignals') return 'price_data'
+  if (group === 'regulatoryFindings') return 'regulatory_data'
+  if (group === 'investorMaterialCandidates') return 'document_evidence'
+  if (group === 'suggestedTasks' || group === 'evidenceGaps') return 'document_evidence'
+  return 'market_size'
+}
+
+function groupDefaultArea(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem): EvidenceArea {
+  const text = [
+    item.field,
+    item.label,
+    item.title,
+    item.section,
+    item.content,
+    item.notes,
+    item.recommendedAction,
+  ].map(value => asText(value, '')).join(' ').toLowerCase()
+
+  if (group === 'financialEvidence') return 'financial'
+  if (group === 'regulatoryFindings' || text.includes('regulatory') || text.includes('dms') || text.includes('permit')) return 'regulatory'
+  if (group === 'investorMaterialCandidates') return 'presentation'
+  if (text.includes('factory') || text.includes('plant') || text.includes('machine')) return 'factory'
+  if (text.includes('sds') || text.includes('tds') || text.includes('cas') || text.includes('product') || text.includes('cwas') || text.includes('cwms')) return 'product'
+  if (text.includes('company') || text.includes('license') || text.includes('bank')) return 'companyLegal'
+  return 'market'
+}
+
+function sourceFromDashboardItem(item: DashboardResearchUpdateItem, fallbackTitle: string): SourceReference {
+  return {
+    title: asText(item.sourceTitle || item.sourceName, fallbackTitle),
+    url: asText(item.sourceUrl, ''),
+    date: asText(item.sourceDate || item.lastChecked, nowIso().slice(0, 10)),
+  }
+}
+
+function dashboardItemField(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem, index: number): string {
+  const explicit = item.proposedDashboardField || item.field || item.label || item.title || item.section
+  if (explicit) return asText(explicit)
+  if (group === 'competitorRecords') return `Competitor record: ${asText(item.companyName, `record ${index + 1}`)}`
+  if (group === 'supplierScorecards') return `Supplier scorecard: ${asText(item.supplier, `supplier ${index + 1}`)}`
+  if (group === 'rawMaterialSignals') return `Raw material signal: ${asText(item.material, `material ${index + 1}`)}`
+  return `${group} item ${index + 1}`
+}
+
+function dashboardItemValue(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem): string {
+  if (item.value != null) return asText(item.value)
+  if (group === 'competitorRecords') {
+    return [
+      item.companyName ? `Company: ${asText(item.companyName)}` : '',
+      item.countryRegion ? `Region: ${asText(item.countryRegion)}` : '',
+      item.productEquivalent ? `Product equivalent: ${asText(item.productEquivalent)}` : '',
+      item.marketShare ? `Market share: ${asText(item.marketShare)}` : '',
+      item.pricingEvidence ? `Pricing: ${asText(item.pricingEvidence)}` : '',
+    ].filter(Boolean).join('; ') || 'To Verify'
+  }
+  if (group === 'supplierScorecards') {
+    return [
+      item.supplier ? `Supplier: ${asText(item.supplier)}` : '',
+      item.material ? `Material: ${asText(item.material)}` : '',
+      item.pricingEvidence ? `Pricing: ${asText(item.pricingEvidence)}` : 'Pricing: To Verify',
+    ].filter(Boolean).join('; ') || 'To Verify'
+  }
+  return asText(item.content || item.notes || item.recommendedAction)
+}
+
+function groupHumanLabel(group: DashboardResearchUpdateGroup): string {
+  if (group === 'marketClaims') return 'Market claims'
+  if (group === 'competitorRecords') return 'Competitor records'
+  if (group === 'rawMaterialSignals') return 'Raw material signals'
+  if (group === 'supplierScorecards') return 'Supplier scorecards'
+  if (group === 'regulatoryFindings') return 'Regulatory findings'
+  if (group === 'financialEvidence') return 'Financial evidence'
+  if (group === 'evidenceGaps') return 'Evidence gaps'
+  if (group === 'suggestedTasks') return 'Suggested tasks'
+  return 'Investor material candidates'
+}
+
+function dashboardItemLooksSensitive(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem): boolean {
+  if (group === 'financialEvidence' || group === 'supplierScorecards' || group === 'rawMaterialSignals') return true
+  const text = [
+    item.field,
+    item.label,
+    item.title,
+    item.value,
+    item.pricingEvidence,
+    item.marketShare,
+    item.notes,
+    item.content,
+  ].map(value => asText(value, '')).join(' ').toLowerCase()
+  return /price|pricing|cost|quote|supplier price|landed|margin|formula|ratio|irr|npv|payback|investment|market share|dms|cas|regulatory/.test(text)
+}
+
+function researchFindingSummary(input: {
+  group: DashboardResearchUpdateGroup
+  claim: TrustedSourceSnapshotClaim
+  item: DashboardResearchUpdateItem
+}): string {
+  return [
+    `Imported by Full Dashboard Trusted Source Autopilot from ${groupHumanLabel(input.group)}.`,
+    `Dashboard field: ${input.claim.fieldKey || input.claim.label}`,
+    `Proposed value: ${input.claim.value}`,
+    `Source: ${input.claim.source.title}`,
+    input.claim.source.url ? `Source URL: ${input.claim.source.url}` : '',
+    input.claim.source.date ? `Source date: ${input.claim.source.date}` : '',
+    input.claim.sourceTierLabel ? `Source tier: ${input.claim.sourceTierLabel}` : '',
+    `Confidence: ${input.claim.confidence}`,
+    `Evidence status: ${input.claim.evidenceStatus}`,
+    input.claim.riskReason ? `Risk reason: ${input.claim.riskReason}` : '',
+    input.item.notes ? `Notes: ${input.item.notes}` : '',
+    input.item.recommendedAction ? `Recommended action: ${input.item.recommendedAction}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+function prepareDashboardResearchClaim(
+  group: DashboardResearchUpdateGroup,
+  item: DashboardResearchUpdateItem,
+  index: number,
+): { claim: TrustedSourceSnapshotClaim; sourceId: string; screen: AutopilotScreen; area: EvidenceArea; action: 'auto-fill' | 'stage-review' } {
+  const screen = groupDefaultScreen(group, item)
+  const dataType = coerceDashboardDataType(item.dataType, groupDefaultDataType(group))
+  const field = dashboardItemField(group, item, index)
+  const value = dashboardItemValue(group, item)
+  const source = sourceFromDashboardItem(item, 'Hermes trusted-source research output')
+  const sourceRecord = findSourceByReference(source) || registerCandidate({
+    name: source.title,
+    url: source.url,
+    dataType,
+    screen,
+  })
+  const evidenceStatus = coerceDashboardEvidenceStatus(item.evidenceStatus, evidenceStatusForTier(sourceRecord.tier))
+  const update = buildDashboardUpdateCandidate({
+    screen,
+    field,
+    value,
+    source,
+    sourceId: sourceRecord.source_id,
+    fetchedAt: asText(item.lastChecked, nowIso()),
+    evidenceStatus,
+    confidence: coerceDashboardConfidence(item.confidence || sourceRecord.confidence_default),
+    reviewRequired: item.reviewRequired,
+    dataType,
+    sensitive: !!item.sensitive || dashboardItemLooksSensitive(group, item),
+    investorApprovedImpact: group === 'investorMaterialCandidates',
+  }, sourceRecord)
+  const claim: TrustedSourceSnapshotClaim = {
+    id: idFrom('claim', `${group}-${field}`),
+    fieldKey: update.fieldKey,
+    label: field,
+    value,
+    evidenceStatus,
+    confidence: update.confidence,
+    source,
+    sourceTier: update.sourceTier,
+    sourceTierLabel: update.sourceTierLabel,
+    lastChecked: update.lastChecked,
+    riskReason: update.riskReason,
+    dataType,
+    reviewRequired: update.reviewRequired,
+    sensitive: update.sensitive,
+    notes: [
+      `Imported group: ${group}`,
+      item.riskReason ? `Research risk reason: ${item.riskReason}` : '',
+      item.notes ? `Research notes: ${item.notes}` : '',
+      item.recommendedAction ? `Recommended action: ${item.recommendedAction}` : '',
+      `Autopilot action: ${update.action}`,
+      `Risk reason: ${update.riskReason}`,
+    ].filter(Boolean).join('\n'),
+  }
+  return {
+    claim,
+    sourceId: sourceRecord.source_id,
+    screen,
+    area: groupDefaultArea(group, item),
+    action: update.action,
+  }
+}
+
+function applySafeDashboardResearchItem(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem, claim: TrustedSourceSnapshotClaim): boolean {
+  if (claim.reviewRequired || claim.sensitive) return false
+  const intelligence = useFeasibilityIntelligence()
+
+  if (group === 'marketClaims' || group === 'rawMaterialSignals') {
+    intelligence.addMarketClaim({
+      label: claim.label,
+      value: claim.value,
+      evidenceStatus: claim.evidenceStatus,
+      confidence: claim.confidence,
+      source: claim.source,
+      lastChecked: claim.lastChecked?.slice(0, 10) || nowIso().slice(0, 10),
+    })
+    return true
+  }
+
+  if (group === 'competitorRecords' && item.companyName) {
+    intelligence.addCompetitor({
+      companyName: asText(item.companyName),
+      countryRegion: asText(item.countryRegion, 'To Verify'),
+      productEquivalent: asText(item.productEquivalent, 'To Verify'),
+      activeContent: asText(item.activeContent, 'To Verify'),
+      pricingEvidence: asText(item.pricingEvidence, 'To Verify'),
+      certifications: asText(item.certifications, 'To Verify'),
+      distributionPresence: asText(item.distributionPresence, 'To Verify'),
+      marketShare: '',
+      evidenceStatus: claim.evidenceStatus,
+      source: claim.source,
+      notes: [
+        item.notes ? asText(item.notes) : '',
+        'Imported by Full Dashboard Trusted Source Autopilot. Market share remains To Verify unless separately source-backed and reviewed.',
+      ].filter(Boolean).join('\n'),
+    })
+    return true
+  }
+
+  return false
+}
+
+function stageDashboardResearchItem(
+  group: DashboardResearchUpdateGroup,
+  item: DashboardResearchUpdateItem,
+  claim: TrustedSourceSnapshotClaim,
+  area: EvidenceArea,
+) {
+  useFeasibilityIntelligence().addResearchFinding({
+    summary: researchFindingSummary({ group, claim, item }),
+    keyClaim: `Dashboard update: ${claim.label}`,
+    area,
+    evidenceStatus: claim.evidenceStatus,
+    confidence: claim.confidence,
+    source: claim.source,
+    suggestedTask: asText(item.recommendedAction, `Review ${claim.label} and approve only source-backed dashboard changes.`),
+    suggestedInvestorMaterial: group === 'investorMaterialCandidates' ? asText(item.content || item.value, '') : '',
+    riskNote: claim.riskReason || 'Review required by trusted-source policy.',
+  })
+}
+
+function importDashboardResearchOutput(content: string, jobId?: string): DashboardResearchImportResult {
+  ensureLoaded()
+  const payload = extractDashboardResearchUpdates(content)
+  if (!payload) {
+    return {
+      parsedItemCount: 0,
+      autoFilledCount: 0,
+      reviewItemCount: 0,
+      snapshotCount: 0,
+      runImported: false,
+      message: 'No dashboard_updates JSON block found in Hermes research output',
+      errors: ['Missing dashboard_updates JSON block'],
+    }
+  }
+
+  const claimsByScreen = new Map<AutopilotScreen, TrustedSourceSnapshotClaim[]>()
+  const sourceIdsByScreen = new Map<AutopilotScreen, Set<string>>()
+  let parsedItemCount = 0
+  let autoFilledCount = 0
+  let reviewItemCount = 0
+  const errors: string[] = []
+
+  for (const group of DASHBOARD_RESEARCH_GROUPS) {
+    const items = payload[group] || []
+    items.forEach((item, index) => {
+      parsedItemCount += 1
+      try {
+        const prepared = prepareDashboardResearchClaim(group, item, index)
+        const existing = claimsByScreen.get(prepared.screen) || []
+        claimsByScreen.set(prepared.screen, [...existing, prepared.claim])
+        const sourceIds = sourceIdsByScreen.get(prepared.screen) || new Set<string>()
+        sourceIds.add(prepared.sourceId)
+        sourceIdsByScreen.set(prepared.screen, sourceIds)
+
+        if (prepared.action === 'auto-fill' && applySafeDashboardResearchItem(group, item, prepared.claim)) {
+          autoFilledCount += 1
+        } else {
+          stageDashboardResearchItem(group, item, prepared.claim, prepared.area)
+          reviewItemCount += 1
+        }
+      } catch (err) {
+        errors.push(`${group}[${index}]: ${err instanceof Error ? err.message : 'Unknown import error'}`)
+      }
+    })
+  }
+
+  const snapshots: TrustedSourceSnapshot[] = []
+  for (const [screen, claims] of claimsByScreen.entries()) {
+    snapshots.push(createSnapshot({
+      screen,
+      claims,
+      sourceIds: Array.from(sourceIdsByScreen.get(screen) || []),
+      jobId,
+      reviewRequired: claims.some(claim => claim.reviewRequired),
+    }))
+  }
+
+  useFeasibilityIntelligence().addResearchFinding({
+    summary: [
+      'Full dashboard trusted-source research output imported.',
+      `Parsed items: ${parsedItemCount}`,
+      `Auto-filled low-risk items: ${autoFilledCount}`,
+      `Review-gated items: ${reviewItemCount}`,
+      `Snapshots created: ${snapshots.length}`,
+      jobId ? `Hermes scheduled job id: ${jobId}` : '',
+      'Critical or sensitive claims were not silently approved.',
+    ].filter(Boolean).join('\n'),
+    keyClaim: 'Full dashboard research output imported into source-gated dashboard pipeline',
+    area: 'market',
+    evidenceStatus: reviewItemCount > 0 ? 'To Verify' : 'Source-backed',
+    confidence: reviewItemCount > 0 ? 'medium' : 'high',
+    source: {
+      title: 'Hermes scheduled trusted-source research output',
+      date: nowIso().slice(0, 10),
+    },
+    suggestedTask: reviewItemCount > 0
+      ? 'Review staged dashboard updates before using them in investor material.'
+      : 'Check auto-filled source labels and keep investor material approval separate.',
+    riskNote: 'Importer applies official-first source ranking and review-gates critical dashboard truth.',
+  })
+
+  return {
+    parsedItemCount,
+    autoFilledCount,
+    reviewItemCount,
+    snapshotCount: snapshots.length,
+    runImported: true,
+    message: `Imported ${parsedItemCount} dashboard update item${parsedItemCount === 1 ? '' : 's'} from Hermes research output`,
+    errors,
+  }
+}
+
+async function importLatestFullDashboardRunOutput(jobId?: string): Promise<DashboardResearchImportResult> {
+  if (!jobId) {
+    return {
+      parsedItemCount: 0,
+      autoFilledCount: 0,
+      reviewItemCount: 0,
+      snapshotCount: 0,
+      runImported: false,
+      message: 'No scheduled Hermes job id is available yet',
+      errors: ['Missing scheduled job id'],
+    }
+  }
+
+  const runs = await listCronRuns(jobId)
+  const latest = runs.find(run => run.hasOutput !== false && !run.synthetic)
+  if (!latest) {
+    const recordedRun = runs[0]
+    const detail = recordedRun?.status || recordedRun?.error || 'No readable output artifact found yet'
+    return {
+      parsedItemCount: 0,
+      autoFilledCount: 0,
+      reviewItemCount: 0,
+      snapshotCount: 0,
+      runImported: false,
+      message: `No readable Hermes research output found yet. ${detail}`,
+      errors: [detail],
+    }
+  }
+
+  const detail = await readCronRun(latest.jobId, latest.fileName)
+  return importDashboardResearchOutput(detail.content, jobId)
+}
+
 function screenLabel(screen: AutopilotScreen): string {
   if (screen === 'executive') return 'Executive Overview'
   if (screen === 'market') return 'Market Intelligence'
@@ -760,6 +1305,8 @@ export function useTrustedSourceAutopilot() {
     updateSource,
     applyTrustedSourceClaim,
     createRefreshSnapshot,
+    importDashboardResearchOutput,
+    importLatestFullDashboardRunOutput,
     runTrustedSourceDataEngine,
     resetTrustedSourceAutopilotForTests,
   }

@@ -20,7 +20,15 @@ import {
   preferredSourceForField,
   runConnector,
 } from '@/utils/trustedSourceConnectors'
+import {
+  buildDashboardUpdateCandidate,
+  dashboardFieldKey,
+  dashboardSourceTier,
+  extractDashboardResearchUpdates,
+  sortSourcesByDashboardPolicy,
+} from '@/utils/dashboardAutopilotPolicy'
 import { canAccessRouteName } from '@/utils/accessControl'
+import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 
 vi.mock('@/api/client', () => ({
   getStoredUserRole: () => 'super_admin',
@@ -30,6 +38,11 @@ vi.mock('@/stores/hermes/jobs', () => ({
   useJobsStore: () => ({
     createJob: vi.fn().mockResolvedValue({ id: 'job-1', job_id: 'job-1' }),
   }),
+}))
+
+vi.mock('@/api/hermes/cron-history', () => ({
+  listCronRuns: vi.fn(),
+  readCronRun: vi.fn(),
 }))
 
 vi.mock('naive-ui', () => ({
@@ -56,6 +69,7 @@ vi.mock('vue-router', () => ({
 
 describe('Trusted Source Autopilot', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     window.localStorage.clear()
     window.localStorage.setItem('hermes.frontendAccessRole', 'owner')
     useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
@@ -164,6 +178,79 @@ describe('Trusted Source Autopilot', () => {
     expect(missing.notes).toContain('Create research job')
   })
 
+  it('ranks official and company sources ahead of weak marketplace references', () => {
+    const official = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'un-comtrade-plus')!
+    const company = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'basf')!
+    const weakListing = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id.includes('alibaba'))!
+    const ranked = sortSourcesByDashboardPolicy([weakListing, company, official], ['trade_data', 'company_data'], ['price_data'])
+
+    expect(ranked[0].source_id).toBe('un-comtrade-plus')
+    expect(dashboardSourceTier(official)).toBe('tier1-official')
+    expect(dashboardSourceTier(company)).toBe('tier2-company-official')
+    expect(dashboardSourceTier(weakListing)).toBe('tier5-public-listing')
+  })
+
+  it('auto-fills only low-risk source-backed fields and stages critical values for review', () => {
+    const company = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'basf')!
+    const lowRisk = buildDashboardUpdateCandidate({
+      screen: 'competitor',
+      field: 'Competitors Profiled',
+      value: 'BASF official textile chemical presence confirmed',
+      source: { title: 'BASF official', url: 'https://www.basf.com/', date: '2026-06-01' },
+      evidenceStatus: 'Source-backed',
+      confidence: 'medium',
+      dataType: 'company_data',
+      reviewRequired: false,
+    }, company)
+    const critical = buildDashboardUpdateCandidate({
+      screen: 'competitor',
+      field: 'Market Share Chart',
+      value: '12%',
+      source: { title: 'BASF official', url: 'https://www.basf.com/', date: '2026-06-01' },
+      evidenceStatus: 'Source-backed',
+      confidence: 'medium',
+      dataType: 'competitor_data',
+      reviewRequired: false,
+    }, company)
+
+    expect(lowRisk.fieldKey).toBe(dashboardFieldKey('competitor', 'Competitors Profiled'))
+    expect(lowRisk.action).toBe('auto-fill')
+    expect(lowRisk.reviewRequired).toBe(false)
+    expect(critical.action).toBe('stage-review')
+    expect(critical.reviewRequired).toBe(true)
+    expect(critical.riskReason).toContain('critical dashboard claim')
+  })
+
+  it('stages fake-looking screenshot values and unsupported financial/supplier values instead of approving them', () => {
+    const marketRef = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'marketsandmarkets')!
+    const fakeMarketSize = buildDashboardUpdateCandidate({
+      screen: 'market',
+      field: 'Market Size / Scope',
+      value: '$3.2B',
+      source: { title: 'Template screenshot', date: '2026-06-01' },
+      evidenceStatus: 'Market Reference',
+      confidence: 'low',
+      dataType: 'market_size',
+      reviewRequired: false,
+    }, marketRef)
+    const supplierPrice = buildDashboardUpdateCandidate({
+      screen: 'market',
+      field: 'Supplier price / DMS',
+      value: '$890/T',
+      source: { title: 'Alibaba listing', url: 'https://www.alibaba.com/example', date: '2026-06-01' },
+      evidenceStatus: 'Reference Only',
+      confidence: 'low',
+      dataType: 'supplier_quote',
+      reviewRequired: false,
+      sensitive: true,
+    }, DEFAULT_TRUSTED_SOURCES.find(item => item.source_id.includes('alibaba')))
+
+    expect(fakeMarketSize.action).toBe('stage-review')
+    expect(fakeMarketSize.riskReason).toContain('matches old screenshot/template number')
+    expect(supplierPrice.action).toBe('stage-review')
+    expect(supplierPrice.riskReason).toContain('sensitive price/cost/financial/regulatory data')
+  })
+
   it('maps source tiers to evidence labels without pretending weak sources are verified', () => {
     expect(evidenceStatusForTier('tier1-official')).toBe('Trusted Source Auto-Updated')
     expect(evidenceStatusForTier('tier2-market-reference')).toBe('Market Reference')
@@ -220,6 +307,125 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('competitor market share as To Verify')
   })
 
+  it('extracts dashboard_updates JSON from Hermes markdown job output', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '```json',
+      JSON.stringify({
+        dashboard_updates: {
+          marketClaims: [{
+            field: 'Target Countries / Provinces',
+            value: 'Zhejiang textile cluster source-backed',
+            sourceTitle: 'China National Bureau of Statistics',
+            sourceUrl: 'https://www.stats.gov.cn/',
+            evidenceStatus: 'Official Data',
+          }],
+        },
+      }),
+      '```',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toHaveLength(1)
+    expect(payload?.marketClaims?.[0].field).toBe('Target Countries / Provinces')
+  })
+
+  it('imports Hermes research output, auto-fills safe official data, and stages critical claims for review', () => {
+    const autopilot = useTrustedSourceAutopilot()
+    const intelligence = useFeasibilityIntelligence()
+    const output = [
+      'Full dashboard research result.',
+      '',
+      '```json',
+      JSON.stringify({
+        dashboard_updates: {
+          marketClaims: [{
+            field: 'Target Countries / Provinces',
+            value: 'Zhejiang, Jiangsu, Guangdong textile clusters',
+            sourceTitle: 'China National Bureau of Statistics',
+            sourceUrl: 'https://www.stats.gov.cn/',
+            sourceDate: '2026-06-01',
+            evidenceStatus: 'Official Data',
+            confidence: 'high',
+            dataType: 'company_data',
+          }],
+          financialEvidence: [{
+            field: 'Project IRR',
+            value: '60%',
+            sourceTitle: 'Hermes research output',
+            sourceDate: '2026-06-01',
+            evidenceStatus: 'Derived from Assumptions',
+            confidence: 'medium',
+            dataType: 'financial_data',
+          }],
+          supplierScorecards: [{
+            supplier: 'Example supplier',
+            material: 'DMS',
+            pricingEvidence: '$890/T',
+            sourceTitle: 'Alibaba listing',
+            sourceUrl: 'https://www.alibaba.com/example',
+            evidenceStatus: 'Reference Only',
+            confidence: 'low',
+            dataType: 'supplier_quote',
+          }],
+        },
+      }),
+      '```',
+    ].join('\n')
+
+    const result = autopilot.importDashboardResearchOutput(output, 'job-full-dashboard')
+
+    expect(result.runImported).toBe(true)
+    expect(result.parsedItemCount).toBe(3)
+    expect(result.autoFilledCount).toBe(1)
+    expect(result.reviewItemCount).toBe(2)
+    expect(result.snapshotCount).toBeGreaterThan(0)
+    expect(intelligence.state.value.marketClaims.some(claim => claim.label === 'Target Countries / Provinces')).toBe(true)
+    expect(intelligence.state.value.financialModels).toHaveLength(0)
+    expect(intelligence.pendingResearchFindings.value.some(item => item.keyClaim.includes('Project IRR'))).toBe(true)
+    expect(intelligence.pendingResearchFindings.value.some(item => item.summary.includes('Supplier scorecard'))).toBe(true)
+  })
+
+  it('imports the latest scheduled Hermes output artifact automatically when available', async () => {
+    vi.mocked(listCronRuns).mockResolvedValue([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-02T07-00-00.md',
+      runTime: '2026-06-02 07:00:00',
+      size: 1024,
+      hasOutput: true,
+    }])
+    vi.mocked(readCronRun).mockResolvedValue({
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-02T07-00-00.md',
+      runTime: '2026-06-02 07:00:00',
+      content: JSON.stringify({
+        dashboard_updates: {
+          competitorRecords: [{
+            companyName: 'BASF',
+            countryRegion: 'Germany',
+            productEquivalent: 'Textile softener portfolio',
+            activeContent: 'To Verify',
+            certifications: 'Official company/product source',
+            distributionPresence: 'Global',
+            sourceTitle: 'BASF official',
+            sourceUrl: 'https://www.basf.com/',
+            evidenceStatus: 'Source-backed',
+            confidence: 'medium',
+            dataType: 'company_data',
+          }],
+        },
+      }),
+    })
+
+    const result = await useTrustedSourceAutopilot().importLatestFullDashboardRunOutput('job-full-dashboard')
+
+    expect(listCronRuns).toHaveBeenCalledWith('job-full-dashboard')
+    expect(readCronRun).toHaveBeenCalledWith('job-full-dashboard', '2026-06-02T07-00-00.md')
+    expect(result.runImported).toBe(true)
+    expect(result.autoFilledCount).toBe(1)
+    expect(useFeasibilityIntelligence().state.value.competitors[0].companyName).toBe('BASF')
+  })
+
   it('runs full dashboard data engine snapshots across the dashboard and queues review', async () => {
     const autopilot = useTrustedSourceAutopilot()
     const intelligence = useFeasibilityIntelligence()
@@ -231,6 +437,12 @@ describe('Trusted Source Autopilot', () => {
     expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
     expect(autopilot.lastSnapshotForScreen('investment')).not.toBeNull()
     expect(autopilot.lastSnapshotForScreen('competitor')).not.toBeNull()
+    expect(result.snapshots[0].claims[0]).toMatchObject({
+      fieldKey: expect.any(String),
+      sourceTier: expect.any(String),
+      lastChecked: expect.any(String),
+      riskReason: expect.any(String),
+    })
     expect(intelligence.pendingResearchFindings.value.some(item => item.keyClaim.includes('Full dashboard autopilot'))).toBe(true)
   })
 
@@ -370,6 +582,9 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('UN Comtrade')
     expect(wrapper.text()).toContain('Source date')
     expect(wrapper.text()).toContain('2026-05-31')
+    expect(wrapper.text()).toContain('Source tier')
+    expect(wrapper.text()).toContain('Dashboard field')
+    expect(wrapper.text()).toContain('Risk reason')
     expect(wrapper.text()).toContain('Confidence')
     expect(wrapper.text()).toContain('Disable Auto Update for this field')
   })
@@ -395,6 +610,10 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('Enable Full Autopilot')
     expect(wrapper.text()).toContain('Run Source Snapshot Now')
     expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
+    expect(wrapper.text()).toContain('Tier 1: official / regulator / trade')
+    expect(wrapper.text()).toContain('Tier 2: official company / product')
+    expect(wrapper.text()).toContain('Tier 5: public listing / weak reference')
+    expect(wrapper.text()).toContain('07:00 / 19:00')
 
     await wrapper.findAll('button').find(button => button.text().includes('Run Source Snapshot Now'))!.trigger('click')
     await vi.dynamicImportSettled()

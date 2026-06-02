@@ -54,6 +54,7 @@ export interface TrustedSourceRecord {
 
 export interface TrustedSourceSnapshotClaim {
   id: string
+  fieldKey?: string
   label: string
   value: string
   previousValue?: string
@@ -61,6 +62,10 @@ export interface TrustedSourceSnapshotClaim {
   evidenceStatus: IntelligenceEvidenceStatus
   confidence: 'low' | 'medium' | 'high'
   source: SourceReference
+  sourceTier?: string
+  sourceTierLabel?: string
+  lastChecked?: string
+  riskReason?: string
   dataType: TrustedSourceDataType
   reviewRequired: boolean
   sensitive?: boolean

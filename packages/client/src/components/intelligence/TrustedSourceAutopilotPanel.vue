@@ -105,7 +105,8 @@ async function syncNow() {
         <h3>{{ title || 'Auto Source Status' }}</h3>
         <p>
           Trusted sources can update fields automatically with source, date, confidence, and evidence labels.
-          Conflicts, unknown sources, investor-approved changes, and sensitive visibility risks go to review.
+          Critical claims such as market size, growth, share, supplier price, IRR, NPV, and regulatory status
+          are auto-staged for review unless the official-first policy says they are safe to fill.
         </p>
       </div>
       <div class="autopilot-status">
@@ -120,7 +121,7 @@ async function syncNow() {
       <span>Hermes may use trusted public, company, regulatory, and uploaded evidence sources for this screen.</span>
       <ul>
         <li>Important values need source title, URL/date, confidence, and evidence status.</li>
-        <li>Unknown or conflicting data stays To Verify and goes to review instead of becoming fact.</li>
+        <li>Unknown, conflicting, weak-source, sensitive, or investor-impacting data goes to review instead of becoming fact.</li>
         <li>Outputs should use source matrices, tables, charts, and evidence-gap checklists when useful.</li>
       </ul>
     </div>
@@ -170,12 +171,16 @@ async function syncNow() {
           <dl>
             <dt>Source</dt><dd>{{ selectedClaim.source.title }}</dd>
             <dt>URL / file</dt><dd>{{ selectedClaim.source.url || 'Not provided' }}</dd>
+            <dt>Source tier</dt><dd>{{ selectedClaim.sourceTierLabel || selectedClaim.sourceTier || 'To Verify' }}</dd>
+            <dt>Dashboard field</dt><dd>{{ selectedClaim.fieldKey || selectedClaim.label }}</dd>
             <dt>Source date</dt><dd>{{ selectedClaim.source.date || 'To Verify' }}</dd>
+            <dt>Last checked</dt><dd>{{ formatDateTime(selectedClaim.lastChecked || latestSnapshot?.generated_at) }}</dd>
             <dt>Extraction time</dt><dd>{{ formatDateTime(latestSnapshot?.generated_at) }}</dd>
             <dt>Confidence</dt><dd>{{ selectedClaim.confidence }}</dd>
             <dt>Previous value</dt><dd>{{ selectedClaim.previousValue || 'None' }}</dd>
             <dt>Change %</dt><dd>{{ selectedClaim.changePercent === null || selectedClaim.changePercent === undefined ? 'n/a' : `${selectedClaim.changePercent.toFixed(1)}%` }}</dd>
             <dt>Review status</dt><dd>{{ selectedClaim.reviewRequired ? 'Needs Review' : 'Auto-updated' }}</dd>
+            <dt>Risk reason</dt><dd>{{ selectedClaim.riskReason || 'low-risk source-backed field' }}</dd>
           </dl>
           <p v-if="selectedClaim.sensitive" class="sensitive-note">Sensitive value. Employee/investor views must redact this field.</p>
           <NButton secondary type="warning" @click="disableSelectedSource">Disable Auto Update for this field</NButton>

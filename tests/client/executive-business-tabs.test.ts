@@ -258,11 +258,11 @@ describe('screenshot-matched executive business tabs', () => {
 
     expect(wrapper.text()).toContain('Hermes can research trusted sources')
     expect(wrapper.text()).toContain('Owner-approved research is active')
-    expect(wrapper.text()).toContain('Research trusted sources')
+    expect(wrapper.text()).toContain('Twice-daily trusted research')
     expect(wrapper.text()).toContain('Extract important data')
     expect(wrapper.text()).toContain('Attach evidence label')
-    expect(wrapper.text()).toContain('Send uncertain items to review')
-    expect(wrapper.text()).toContain('Update dashboard after approval')
+    expect(wrapper.text()).toContain('Auto-stage critical items')
+    expect(wrapper.text()).toContain('Fill only safe source-backed fields')
     expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
   })
 
