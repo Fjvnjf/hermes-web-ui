@@ -1,7 +1,10 @@
 import { existsSync } from 'fs'
+import { execFile } from 'child_process'
 import { mkdir, readdir, readFile, rename, stat, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
+import { promisify } from 'util'
 import { logger } from '../logger'
+import { getHermesBin } from './hermes-path'
 import { getActiveProfileName, getProfileDir } from './hermes-profile'
 import {
   readDashboardIntelligenceState,
@@ -9,6 +12,11 @@ import {
 } from './intelligence-state'
 
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
+export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
+
+const execFileAsync = promisify(execFile)
+const CREATE_TIMEOUT_MS = 60_000
+const RUN_TIMEOUT_MS = 15 * 60_000
 
 const DASHBOARD_UPDATE_GROUPS = [
   'marketClaims',
@@ -201,6 +209,18 @@ interface IngestOptions {
   maxFilesPerJob?: number
 }
 
+export interface FullDashboardAutopilotScheduleResult {
+  profile: string
+  jobId: string | null
+  created: boolean
+  firstRunStarted: boolean
+  firstRunError: string
+}
+
+interface ScheduleOptions {
+  startFirstRun?: boolean
+}
+
 let intervalTimer: ReturnType<typeof setInterval> | null = null
 let initialTimer: ReturnType<typeof setTimeout> | null = null
 let ingestRunning = false
@@ -226,6 +246,59 @@ function firstString(...values: unknown[]): string {
 
 function getJobId(job: CronJobRecord): string {
   return firstString(job.job_id, job.id)
+}
+
+function fullDashboardAutopilotPrompt(): string {
+  return [
+    'Full Dashboard Trusted Source Autopilot',
+    '',
+    'Mission: automatically research and refresh the Hermes feasibility intelligence dashboard using trusted online sources and existing Hermes workspace evidence.',
+    'Do the online research yourself using available web/search/source tools. Do not ask the user to manually search, copy, or paste source data.',
+    'If browsing/search is unavailable, state that limitation and return evidence gaps/tasks instead of fabricating data.',
+    '',
+    'Dashboard areas to cover:',
+    '- Executive Overview: revenue target, EQ capacity MT/YR, projected IRR, payback period, blended ASP/MT, NPV @ 12%, daily brief, priorities, top risk.',
+    '- Market Intelligence: market size/scope, growth rate, import dependence, target countries/provinces, country-wise consumption/growth, segmentation, opportunity score.',
+    '- Competitor Intelligence: cationic softeners/CHEMISOFT, silicone softeners/CHEMISIL, competitor landscape, product equivalents, pricing evidence, certifications, distribution, market share only when source-backed.',
+    '- Investment Analysis: total investment, IRR, NPV, payback, profitability index, 5-year ROI, investment breakdown, working capital, scenarios.',
+    '- Raw Material Sourcing and Supplier Scorecards: TEA, DMS/dimethyl sulfate, stearic acid, PDMS silicone oil, acetic acid, ethoxylates, packaging, supplier quotes/evidence.',
+    '- Export Market Opportunity: country-wise textile/chemical trade proxies, HS-code candidates, growth indicators, import/export signals.',
+    '- Regulatory: SDS/TDS/CAS, DMS safety/regulatory status, China import/storage/use requirements, factory chemical approvals.',
+    '- Investor Readiness and Presentation Builder: evidence gaps, risk register, data-room checklist, presentation-ready material only when source-backed or user approved.',
+    '',
+    'Trusted source priority:',
+    '1. Tier 1: official government/regulator/statistical/trade sources such as UN Comtrade, ITC, World Bank, WTO, OECD, China Customs/NBS/MOFCOM/MEE/MEM/MIIT, ECHA, PubChem, EPA CompTox, NITE.',
+    '2. Tier 2: official company/product pages and catalogs such as BASF, Dow, WACKER, Wilmar, KLK OLEO, Evonik, Stepan, Kao, CHT, Archroma, Transfar, Zschimmer & Schwarz, Pulcra.',
+    '3. Tier 3: uploaded supplier evidence such as quotes, PI, invoice, TDS, SDS, COA, email quote, distributor letter.',
+    '4. Tier 4: paid/reputable market references such as ICIS, Argus, S&P Global, SunSirs, ECHEMI, ChemAnalyst, Trade Map. Treat as market reference, not final procurement truth.',
+    '5. Tier 5: public listings/marketplaces such as Alibaba/Made-in-China are weak references only and must stay Reference Only / To Verify.',
+    '',
+    'Output requirements:',
+    '- Produce a concise summary plus structured sections for each dashboard area.',
+    '- Use Markdown tables, evidence-gap tables, source matrices, and Mermaid charts where useful.',
+    '- Every claim must include value, source title, URL or publication/access date, source tier, confidence, evidence status, and last checked date.',
+    '- Mark missing values as Missing / To Verify.',
+    '- Mark trade proxies as Trade Proxy / To Verify until HS-code methodology is reviewed.',
+    '- Mark financial outputs as Derived from Assumptions unless tied to an approved internal IRR scenario.',
+    '- Mark supplier prices, payment terms, quality scores, and reliability scores as To Verify unless quote/TDS/SDS/COA evidence is attached.',
+    '- Mark competitor market share as To Verify unless the source explicitly supports it.',
+    '',
+    'Machine-readable dashboard_updates schema:',
+    '- Put the appendix in one fenced ```json block.',
+    '- The top-level object must be: { "dashboard_updates": { ... } }.',
+    '- Use these arrays only: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
+    '- Each item should include fieldKey when known, field/title/label, value, sourceTitle, sourceUrl or sourceDate, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, riskReason, dataType, and sensitive when applicable.',
+    '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep proxy values To Verify.',
+    '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '',
+    'Safety rules:',
+    '- Do not invent market size, growth rate, consumption, pricing, supplier score, market share, IRR, NPV, payback, formula, CAS list, or regulatory status.',
+    '- Do not treat paid reports, public listings, or unsourced snippets as verified facts.',
+    '- Do not expose formulas, raw material ratios, supplier confidential pricing, investor terms, product-development secrets, API keys, or system secrets.',
+    '- Do not silently approve investor material.',
+    '- Unsupported, weak-source, conflicting, sensitive, financial, supplier-price, regulatory, market-share, and investor-impact findings must be review-ready, not automatically approved.',
+  ].join('\n')
 }
 
 export function isFullDashboardAutopilotJobRecord(job: CronJobRecord | null | undefined): boolean {
@@ -254,6 +327,84 @@ async function readCronJobs(profile: string): Promise<CronJobRecord[]> {
   } catch (err) {
     logger.warn(err, '[dashboard-autopilot] failed to read cron jobs')
     return []
+  }
+}
+
+function findCreatedJob(beforeJobs: CronJobRecord[], afterJobs: CronJobRecord[]): CronJobRecord | null {
+  const beforeIds = new Set(beforeJobs.map(getJobId).filter(Boolean))
+  return afterJobs.find(job => isFullDashboardAutopilotJobRecord(job) && !beforeIds.has(getJobId(job))) ||
+    afterJobs.find(isFullDashboardAutopilotJobRecord) ||
+    null
+}
+
+async function runHermesCron(profile: string, args: string[], timeoutMs: number): Promise<void> {
+  const profileDir = getProfileDir(profile || 'default')
+  try {
+    await execFileAsync(getHermesBin(), args, {
+      cwd: process.cwd(),
+      env: { ...process.env, HERMES_HOME: profileDir },
+      timeout: timeoutMs,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    })
+  } catch (error: any) {
+    const stderr = String(error?.stderr || '').trim()
+    const stdout = String(error?.stdout || '').trim()
+    throw new Error(stderr || stdout || error?.message || 'Hermes cron command failed')
+  }
+}
+
+export async function ensureFullDashboardAutopilotScheduled(
+  profileInput?: string,
+  options: ScheduleOptions = {},
+): Promise<FullDashboardAutopilotScheduleResult> {
+  const profile = profileInput || getActiveProfileName() || 'default'
+  const beforeJobs = await readCronJobs(profile)
+  const existing = beforeJobs.find(isFullDashboardAutopilotJobRecord)
+  const existingJobId = existing ? getJobId(existing) : ''
+  if (existingJobId) {
+    return {
+      profile,
+      jobId: existingJobId,
+      created: false,
+      firstRunStarted: false,
+      firstRunError: '',
+    }
+  }
+
+  await runHermesCron(profile, [
+    'cron',
+    'create',
+    '--name',
+    FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+    '--deliver',
+    'local',
+    FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    fullDashboardAutopilotPrompt(),
+  ], CREATE_TIMEOUT_MS)
+
+  const createdJob = findCreatedJob(beforeJobs, await readCronJobs(profile))
+  const jobId = createdJob ? getJobId(createdJob) : ''
+  let firstRunStarted = false
+  let firstRunError = ''
+
+  if (options.startFirstRun && jobId) {
+    try {
+      await runHermesCron(profile, ['cron', 'run', jobId], RUN_TIMEOUT_MS)
+      firstRunStarted = true
+      await ingestFullDashboardAutopilotOutputs(profile, { jobId, maxFilesPerJob: 5 })
+    } catch (err) {
+      firstRunError = err instanceof Error ? err.message : 'Hermes cron run failed'
+      logger.warn({ err, profile, jobId }, '[dashboard-autopilot] first trusted-source run could not start')
+    }
+  }
+
+  return {
+    profile,
+    jobId: jobId || null,
+    created: true,
+    firstRunStarted,
+    firstRunError,
   }
 }
 
@@ -774,7 +925,17 @@ async function safeIngestActiveProfile(): Promise<void> {
   if (ingestRunning) return
   ingestRunning = true
   try {
-    const result = await ingestFullDashboardAutopilotOutputs(getActiveProfileName(), { maxFilesPerJob: 10 })
+    const profile = getActiveProfileName()
+    const schedule = await ensureFullDashboardAutopilotScheduled(profile, { startFirstRun: true })
+    if (schedule.created) {
+      logger.info({
+        profile: schedule.profile,
+        jobId: schedule.jobId,
+        firstRunStarted: schedule.firstRunStarted,
+        firstRunError: schedule.firstRunError || undefined,
+      }, '[dashboard-autopilot] ensured trusted-source schedule')
+    }
+    const result = await ingestFullDashboardAutopilotOutputs(profile, { maxFilesPerJob: 10 })
     if (result.importedRuns > 0 || result.autoFilledCount > 0 || result.stagedReviewCount > 0) {
       logger.info({
         profile: result.profile,

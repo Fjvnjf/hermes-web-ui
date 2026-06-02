@@ -1,9 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+
+const execFileMock = vi.hoisted(() => vi.fn())
+
+vi.mock('child_process', () => ({
+  execFile: execFileMock,
+}))
+
+vi.mock('../../packages/server/src/services/hermes/hermes-path', () => ({
+  detectHermesRootHome: () => process.env.HERMES_HOME || '',
+  getHermesBin: () => '/fake/bin/hermes',
+}))
+
 import {
+  FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   dashboardSourceTierRank,
+  ensureFullDashboardAutopilotScheduled,
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
@@ -41,6 +55,7 @@ describe('dashboard autopilot output ingestion', () => {
   let hermesHome = ''
 
   beforeEach(() => {
+    execFileMock.mockReset()
     hermesHome = mkdtempSync(join(tmpdir(), 'hermes-dashboard-autopilot-'))
     process.env.HERMES_HOME = hermesHome
   })
@@ -216,5 +231,113 @@ describe('dashboard autopilot output ingestion', () => {
     expect(envelope?.state.marketClaims).toHaveLength(1)
     const registry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'imported-runs.json'), 'utf-8')
     expect(registry).toContain('job-full-dashboard/2026-06-02T09-00-00.000000+00-00.md')
+  })
+
+  it('creates the twice-daily full dashboard schedule when no job exists', async () => {
+    execFileMock.mockImplementation((_bin, args: string[], opts, cb) => {
+      expect(opts.env.HERMES_HOME).toBe(hermesHome)
+      expect(args[0]).toBe('cron')
+      if (args[1] === 'create') writeFullDashboardJob(hermesHome, 'created-full-dashboard')
+      cb(null, '', '')
+    })
+
+    const result = await ensureFullDashboardAutopilotScheduled('default')
+
+    expect(result).toMatchObject({
+      jobId: 'created-full-dashboard',
+      created: true,
+      firstRunStarted: false,
+    })
+    const createArgs = execFileMock.mock.calls[0][1] as string[]
+    expect(createArgs.slice(0, 7)).toEqual([
+      'cron',
+      'create',
+      '--name',
+      'Full Dashboard Trusted Source Autopilot',
+      '--deliver',
+      'local',
+      FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    ])
+    const prompt = createArgs[7]
+    expect(prompt).toContain('Do the online research yourself')
+    expect(prompt).toContain('Executive Overview')
+    expect(prompt).toContain('Market Intelligence')
+    expect(prompt).toContain('Competitor Intelligence')
+    expect(prompt).toContain('Investment Analysis')
+    expect(prompt).toContain('Raw Material Sourcing')
+    expect(prompt).toContain('Supplier Scorecards')
+    expect(prompt).toContain('Export Market Opportunity')
+    expect(prompt).toContain('Regulatory')
+    expect(prompt).toContain('Investor Readiness')
+    expect(prompt).toContain('Presentation Builder')
+    expect(prompt).toContain('dashboard_updates')
+    expect(prompt).toContain('Do not invent market size')
+  })
+
+  it('reuses an existing full dashboard schedule without creating a duplicate', async () => {
+    writeFullDashboardJob(hermesHome, 'existing-full-dashboard')
+
+    const result = await ensureFullDashboardAutopilotScheduled('default', { startFirstRun: true })
+
+    expect(result).toMatchObject({
+      jobId: 'existing-full-dashboard',
+      created: false,
+      firstRunStarted: false,
+    })
+    expect(execFileMock).not.toHaveBeenCalled()
+  })
+
+  it('can start the first created run and import its review-gated output', async () => {
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'create') {
+        writeFullDashboardJob(hermesHome, 'created-full-dashboard')
+      }
+      if (args[1] === 'run') {
+        writeRunOutput(hermesHome, 'created-full-dashboard', '2026-06-02T19-00-00.000000+00-00.md', {
+          dashboard_updates: {
+            marketClaims: [{
+              label: 'Official low-risk textile reference',
+              value: 'Official source located',
+              sourceTitle: 'Official textile reference',
+              sourceUrl: 'https://example.gov.cn/textile',
+              sourceTier: 'Tier 1 - Official / regulator / trade source',
+              confidence: 'high',
+              evidenceStatus: 'Official Data',
+              dataType: 'company_data',
+            }],
+            financialEvidence: [{
+              field: 'NPV @ 12%',
+              value: '$49.8M',
+              sourceTitle: 'Screenshot placeholder',
+              sourceTier: 'candidate-source',
+              confidence: 'low',
+              evidenceStatus: 'Derived from Assumptions',
+              dataType: 'financial_data',
+            }],
+          },
+        })
+      }
+      cb(null, '', '')
+    })
+
+    const result = await ensureFullDashboardAutopilotScheduled('default', { startFirstRun: true })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      jobId: 'created-full-dashboard',
+      created: true,
+      firstRunStarted: true,
+      firstRunError: '',
+    })
+    expect(execFileMock.mock.calls.map(call => call[1][1])).toEqual(['create', 'run'])
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({ label: 'Official low-risk textile reference' }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('NPV @ 12%'),
+        status: 'Pending Review',
+      }),
+    ])
   })
 })
