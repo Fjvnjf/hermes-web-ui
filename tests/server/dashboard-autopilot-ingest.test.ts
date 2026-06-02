@@ -222,18 +222,45 @@ describe('dashboard autopilot output ingestion', () => {
       expect.objectContaining({
         keyClaim: expect.stringContaining('China market size'),
         status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          screen: 'market',
+          proposedDashboardField: 'Market Size / Scope',
+          value: '$3.2B',
+          sourceTier: 'tier5-public-listing',
+        }),
       }),
       expect.objectContaining({
         keyClaim: expect.stringContaining('Project IRR'),
         status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'financialEvidence',
+          screen: 'investment',
+          proposedDashboardField: 'Project IRR',
+          value: '60%',
+          dataType: 'financial_data',
+        }),
       }),
       expect.objectContaining({
         keyClaim: expect.stringContaining('Supplier scorecard - Wilmar'),
         status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'supplierScorecards',
+          screen: 'raw-material-sourcing',
+          supplier: 'Wilmar',
+          material: 'Stearic Acid TP',
+          value: '$1,180/t',
+        }),
       }),
       expect.objectContaining({
         keyClaim: expect.stringContaining('Transfar'),
         status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          screen: 'competitor',
+          companyName: 'Transfar',
+          marketShare: '12%',
+        }),
       }),
     ]))
 

@@ -1764,6 +1764,86 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('DMS regulation source needed')
   })
 
+  it('applies approved autopilot market findings to Market Intelligence without manual copy-paste', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Official source identified a relevant textile-sector reference for market scope.',
+      keyClaim: 'Market Scope: Official textile sector reference',
+      area: 'market',
+      evidenceStatus: 'Source-backed',
+      confidence: 'high',
+      source: { title: 'Official textile source', url: 'https://example.gov/textile' },
+      dashboardTarget: {
+        group: 'marketClaims',
+        screen: 'market',
+        field: 'Market Size / Scope',
+        proposedDashboardField: 'Market Size / Scope',
+        value: 'Official textile-sector source located',
+        sourceTier: 'tier1-official',
+        dataType: 'company_data',
+      },
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const approveButton = wrapper.findAll('button').find(button => button.text() === 'Approve selected updates')
+
+    expect(approveButton).toBeTruthy()
+    expect(wrapper.text()).toContain('Target: market / Market Size / Scope')
+    await approveButton!.trigger('click')
+
+    const finding = intelligence.state.value.researchFindings[0]
+    const claim = intelligence.state.value.marketClaims[0]
+    expect(finding.status).toBe('Approved')
+    expect(finding.dashboardAppliedAt).toBeTruthy()
+    expect(claim.label).toBe('Market Size / Scope')
+    expect(claim.value).toBe('Official textile-sector source located')
+    expect(claim.evidenceStatus).toBe('Source-backed')
+    expect(claim.source?.title).toBe('Official textile source')
+    expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Source-backed')
+  })
+
+  it('applies approved autopilot competitor findings to Competitor Intelligence', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Official company pages identify product family and distribution presence; share remains sourced from review target.',
+      keyClaim: 'Competitor evidence: Example Softener Co',
+      area: 'market',
+      evidenceStatus: 'Source-backed',
+      confidence: 'high',
+      source: { title: 'Official competitor product page', url: 'https://example.com/product' },
+      dashboardTarget: {
+        group: 'competitorRecords',
+        screen: 'competitor',
+        field: 'Example Softener Co',
+        companyName: 'Example Softener Co',
+        countryRegion: 'China',
+        productEquivalent: 'Cationic softener',
+        activeContent: '90% active content',
+        pricingEvidence: 'To Verify',
+        certifications: 'To Verify',
+        distributionPresence: 'Official product page and distributor mention',
+        marketShare: '',
+        sourceTier: 'tier2-company-official',
+        dataType: 'competitor_data',
+      },
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    const approveButton = wrapper.findAll('button').find(button => button.text() === 'Approve selected updates')
+
+    await approveButton!.trigger('click')
+
+    const competitor = intelligence.state.value.competitors[0]
+    expect(intelligence.state.value.researchFindings[0].dashboardAppliedAt).toBeTruthy()
+    expect(competitor.companyName).toBe('Example Softener Co')
+    expect(competitor.productEquivalent).toBe('Cationic softener')
+    expect(competitor.distributionPresence).toBe('Official product page and distributor mention')
+    expect(competitor.evidenceStatus).toBe('Source-backed')
+    expect(formatMarketShare(competitor.marketShare)).toBe('To Verify')
+  })
+
   it('surfaces real research intelligence records in Research Library', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addResearchJob({

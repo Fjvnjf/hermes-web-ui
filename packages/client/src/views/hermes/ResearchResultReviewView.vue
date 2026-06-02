@@ -378,10 +378,13 @@ function approveReadinessUpdate(item: ResearchReviewFinding) {
   const approved = intelligence.approveResearchFinding(item.id, {
     updateReadiness: true,
     evidenceStatus: item.evidenceStatus,
+    applyDashboardUpdate: true,
   })
   if (!approved) return
   if (approved.status === 'To Verify') {
     message.warning('Finding remains To Verify; readiness was not marked as verified without source evidence')
+  } else if (intelligence.state.value.researchFindings.find(finding => finding.id === item.id)?.dashboardAppliedAt) {
+    message.success('Approved finding and applied it to the dashboard evidence')
   } else {
     message.success('Approved finding and updated investor readiness')
   }
@@ -767,6 +770,8 @@ async function createTask(item: ResearchReviewFinding) {
             <span>{{ item.evidenceStatus }}</span>
             <span>Confidence: {{ item.confidence }}</span>
             <span>{{ item.source?.title || 'Source missing' }}</span>
+            <span v-if="item.dashboardTarget">Target: {{ item.dashboardTarget.screen || item.dashboardTarget.group }} / {{ item.dashboardTarget.proposedDashboardField || item.dashboardTarget.field || 'dashboard evidence' }}</span>
+            <span v-if="item.dashboardAppliedAt">Applied: {{ item.dashboardAppliedAt.slice(0, 10) }}</span>
           </div>
           <small v-if="item.riskNote">Risk: {{ item.riskNote }}</small>
         </div>

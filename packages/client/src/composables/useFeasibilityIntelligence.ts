@@ -81,6 +81,43 @@ export interface ResearchReviewFinding {
   status: ResearchReviewStatus
   createdAt: string
   reviewedAt?: string
+  dashboardTarget?: ResearchReviewDashboardTarget
+  dashboardAppliedAt?: string
+}
+
+export type ResearchReviewDashboardTargetGroup =
+  | 'marketClaims'
+  | 'competitorRecords'
+  | 'rawMaterialSignals'
+  | 'supplierScorecards'
+  | 'regulatoryFindings'
+  | 'financialEvidence'
+  | 'evidenceGaps'
+  | 'suggestedTasks'
+  | 'investorMaterialCandidates'
+
+export interface ResearchReviewDashboardTarget {
+  group: ResearchReviewDashboardTargetGroup
+  screen?: string
+  field?: string
+  value?: string
+  proposedDashboardField?: string
+  companyName?: string
+  countryRegion?: string
+  productEquivalent?: string
+  activeContent?: string
+  pricingEvidence?: string
+  certifications?: string
+  distributionPresence?: string
+  marketShare?: string
+  supplier?: string
+  material?: string
+  section?: string
+  content?: string
+  sourceTier?: string
+  dataType?: string
+  sensitive?: boolean
+  runKey?: string
 }
 
 export type InvestorRiskEvidenceStatus = IntelligenceEvidenceStatus | 'Pending Review' | 'Unsupported'
@@ -462,6 +499,33 @@ function normalizeResearchJobRecord(record: ResearchJobRecord, index = 0): Resea
   }
 }
 
+function nonEmpty(value?: string | null): string {
+  return value?.trim() || ''
+}
+
+function dataRoomLabelForTarget(finding: ResearchReviewFinding): string {
+  const target = finding.dashboardTarget
+  return nonEmpty(target?.proposedDashboardField) ||
+    nonEmpty(target?.field) ||
+    nonEmpty(target?.supplier && target?.material ? `${target.supplier} / ${target.material}` : '') ||
+    finding.keyClaim
+}
+
+function dataRoomNotesForTarget(finding: ResearchReviewFinding): string {
+  const target = finding.dashboardTarget
+  return [
+    finding.summary,
+    target?.value ? `Proposed value: ${target.value}` : '',
+    target?.supplier ? `Supplier: ${target.supplier}` : '',
+    target?.material ? `Material: ${target.material}` : '',
+    target?.sourceTier ? `Source tier: ${target.sourceTier}` : '',
+    target?.dataType ? `Data type: ${target.dataType}` : '',
+    target?.sensitive ? 'Sensitivity: review-gated sensitive dashboard update' : '',
+    finding.riskNote ? `Risk note: ${finding.riskNote}` : '',
+    'Saved automatically from an approved Full Dashboard Autopilot finding. Keep the displayed evidence status and source label with this item.',
+  ].filter(Boolean).join('\n')
+}
+
 export function useFeasibilityIntelligence() {
   ensureLoaded()
 
@@ -788,12 +852,91 @@ export function useFeasibilityIntelligence() {
     return saved
   }
 
+  function applyResearchFindingDashboardTarget(id: string): boolean {
+    const current = state.value.researchFindings.find(item => item.id === id)
+    if (!current?.dashboardTarget || current.dashboardAppliedAt || current.status !== 'Approved') return false
+
+    const target = current.dashboardTarget
+    let applied = false
+
+    if (target.group === 'marketClaims') {
+      addMarketClaim({
+        label: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
+        value: nonEmpty(target.value) || current.summary,
+        evidenceStatus: current.evidenceStatus,
+        confidence: current.confidence,
+        source: current.source || null,
+        lastChecked: current.reviewedAt || nowIso(),
+      })
+      applied = true
+    } else if (target.group === 'competitorRecords') {
+      addCompetitor({
+        companyName: nonEmpty(target.companyName) || current.keyClaim.replace(/^Competitor(?: evidence| research)?:\s*/i, '') || 'Competitor to verify',
+        countryRegion: nonEmpty(target.countryRegion) || 'To Verify',
+        productEquivalent: nonEmpty(target.productEquivalent) || 'To Verify',
+        activeContent: nonEmpty(target.activeContent) || 'To Verify',
+        pricingEvidence: nonEmpty(target.pricingEvidence) || 'To Verify',
+        certifications: nonEmpty(target.certifications) || 'To Verify',
+        distributionPresence: nonEmpty(target.distributionPresence) || 'To Verify',
+        marketShare: nonEmpty(target.marketShare),
+        evidenceStatus: current.evidenceStatus,
+        source: current.source || null,
+        notes: [
+          nonEmpty(target.value) || current.summary,
+          `Approved from Research Result Review: ${current.keyClaim}`,
+          target.sourceTier ? `Source tier: ${target.sourceTier}` : '',
+          current.riskNote ? `Risk note: ${current.riskNote}` : '',
+        ].filter(Boolean).join('\n'),
+      })
+      applied = true
+    } else if (target.group === 'investorMaterialCandidates') {
+      const content = nonEmpty(target.content) || nonEmpty(target.value) || nonEmpty(current.suggestedInvestorMaterial)
+      if (content) {
+        addPresentationMaterial({
+          section: nonEmpty(target.section) || presentationSectionForEvidence(current.area, `${current.keyClaim} ${content}`),
+          content,
+          evidenceStatus: current.evidenceStatus === 'Assumption' ? 'Approved Assumption' : current.evidenceStatus,
+          source: current.source || null,
+        })
+        applied = true
+      }
+    } else if (
+      target.group === 'rawMaterialSignals' ||
+      target.group === 'supplierScorecards' ||
+      target.group === 'regulatoryFindings' ||
+      target.group === 'financialEvidence'
+    ) {
+      addDataRoomSource({
+        checklistLabel: dataRoomLabelForTarget(current),
+        area: current.area,
+        evidenceStatus: current.evidenceStatus,
+        source: current.source || null,
+        notes: dataRoomNotesForTarget(current),
+      })
+      applied = true
+    }
+
+    if (!applied) return false
+
+    const index = state.value.researchFindings.findIndex(item => item.id === id)
+    if (index !== -1) {
+      state.value.researchFindings = [
+        ...state.value.researchFindings.slice(0, index),
+        { ...state.value.researchFindings[index], dashboardAppliedAt: nowIso() },
+        ...state.value.researchFindings.slice(index + 1),
+      ]
+      persist()
+    }
+    return true
+  }
+
   function approveResearchFinding(
     id: string,
     options: {
       evidenceStatus?: IntelligenceEvidenceStatus
       updateReadiness?: boolean
       addToPresentation?: boolean
+      applyDashboardUpdate?: boolean
     } = {},
   ): ResearchReviewFinding | null {
     const index = state.value.researchFindings.findIndex(item => item.id === id)
@@ -816,6 +959,9 @@ export function useFeasibilityIntelligence() {
     ]
     if (options.updateReadiness) {
       updateEvidenceStatus(approved.area, approved.evidenceStatus, approved.source || null)
+    }
+    if (options.applyDashboardUpdate && approved.status === 'Approved') {
+      applyResearchFindingDashboardTarget(approved.id)
     }
     if (
       options.addToPresentation &&
@@ -971,6 +1117,7 @@ export function useFeasibilityIntelligence() {
     updateResearchJobSchedule,
     addResearchFinding,
     approveResearchFinding,
+    applyResearchFindingDashboardTarget,
     rejectResearchFinding,
     saveFinancialModelSnapshot,
     addDataRoomSource,
