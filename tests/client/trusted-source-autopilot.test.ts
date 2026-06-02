@@ -7,6 +7,8 @@ import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntellig
 import {
   FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+  loadFullDashboardAutopilotStatus,
+  persistFullDashboardAutopilotStatus,
   useTrustedSourceAutopilot,
 } from '@/composables/useTrustedSourceAutopilot'
 import {
@@ -30,13 +32,17 @@ import {
 import { canAccessRouteName } from '@/utils/accessControl'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 
+const createJobMock = vi.hoisted(() => vi.fn())
+const runJobMock = vi.hoisted(() => vi.fn())
+
 vi.mock('@/api/client', () => ({
   getStoredUserRole: () => 'super_admin',
 }))
 
 vi.mock('@/stores/hermes/jobs', () => ({
   useJobsStore: () => ({
-    createJob: vi.fn().mockResolvedValue({ id: 'job-1', job_id: 'job-1' }),
+    createJob: createJobMock,
+    runJob: runJobMock,
   }),
 }))
 
@@ -70,6 +76,8 @@ vi.mock('vue-router', () => ({
 describe('Trusted Source Autopilot', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    createJobMock.mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
+    runJobMock.mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
     window.localStorage.clear()
     window.localStorage.setItem('hermes.frontendAccessRole', 'owner')
     useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
@@ -423,7 +431,87 @@ describe('Trusted Source Autopilot', () => {
     expect(readCronRun).toHaveBeenCalledWith('job-full-dashboard', '2026-06-02T07-00-00.md')
     expect(result.runImported).toBe(true)
     expect(result.autoFilledCount).toBe(1)
+    expect(result.runKey).toBe('job-full-dashboard/2026-06-02T07-00-00.md')
     expect(useFeasibilityIntelligence().state.value.competitors[0].companyName).toBe('BASF')
+  })
+
+  it('does not import the same scheduled Hermes output twice', async () => {
+    vi.mocked(listCronRuns).mockResolvedValue([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-02T07-00-00.md',
+      runTime: '2026-06-02 07:00:00',
+      size: 1024,
+      hasOutput: true,
+    }])
+    vi.mocked(readCronRun).mockResolvedValue({
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-02T07-00-00.md',
+      runTime: '2026-06-02 07:00:00',
+      content: JSON.stringify({
+        dashboard_updates: {
+          marketClaims: [{
+            field: 'Target Countries / Provinces',
+            value: 'Guangdong textile cluster',
+            sourceTitle: 'China National Bureau of Statistics',
+            sourceUrl: 'https://www.stats.gov.cn/',
+            evidenceStatus: 'Official Data',
+            confidence: 'high',
+            dataType: 'company_data',
+          }],
+        },
+      }),
+    })
+
+    const autopilot = useTrustedSourceAutopilot()
+    const first = await autopilot.importLatestFullDashboardRunOutput('job-full-dashboard')
+    const second = await autopilot.importLatestFullDashboardRunOutput('job-full-dashboard')
+
+    expect(first.runImported).toBe(true)
+    expect(second.runImported).toBe(false)
+    expect(second.message).toContain('already imported')
+    expect(readCronRun).toHaveBeenCalledTimes(1)
+    expect(useFeasibilityIntelligence().state.value.marketClaims).toHaveLength(1)
+  })
+
+  it('imports enabled full-dashboard output in the background and updates autopilot status', async () => {
+    persistFullDashboardAutopilotStatus({
+      enabled: true,
+      scheduledJobId: 'job-full-dashboard',
+      lastStatus: 'Scheduled',
+    })
+    vi.mocked(listCronRuns).mockResolvedValue([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-02T19-00-00.md',
+      runTime: '2026-06-02 19:00:00',
+      size: 512,
+      hasOutput: true,
+    }])
+    vi.mocked(readCronRun).mockResolvedValue({
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-02T19-00-00.md',
+      runTime: '2026-06-02 19:00:00',
+      content: JSON.stringify({
+        dashboard_updates: {
+          marketClaims: [{
+            field: 'Target Countries / Provinces',
+            value: 'Jiangsu textile cluster source-backed',
+            sourceTitle: 'Jiangsu official source',
+            sourceUrl: 'https://www.jiangsu.gov.cn/',
+            evidenceStatus: 'Official Data',
+            confidence: 'high',
+            dataType: 'company_data',
+          }],
+        },
+      }),
+    })
+
+    const result = await useTrustedSourceAutopilot().importEnabledFullDashboardRunOutput()
+    const status = loadFullDashboardAutopilotStatus()
+
+    expect(result?.runImported).toBe(true)
+    expect(status.lastStatus).toContain('Auto-filled: 1')
+    expect(status.lastStatus).toContain('Needs review: 0')
+    expect(useFeasibilityIntelligence().state.value.marketClaims[0].label).toBe('Target Countries / Provinces')
   })
 
   it('runs full dashboard data engine snapshots across the dashboard and queues review', async () => {
@@ -620,5 +708,25 @@ describe('Trusted Source Autopilot', () => {
 
     expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
     expect(wrapper.text()).toContain('Needs Review')
+  })
+
+  it('enables the full dashboard autopilot schedule and starts the first Hermes run immediately', async () => {
+    vi.mocked(listCronRuns).mockResolvedValue([])
+    const wrapper = mount(TrustedSourcesView)
+
+    await wrapper.findAll('button').find(button => button.text().includes('Enable Full Autopilot'))!.trigger('click')
+    await vi.dynamicImportSettled()
+
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      deliver: 'local',
+    }))
+    expect(runJobMock).toHaveBeenCalledWith('job-1')
+    expect(loadFullDashboardAutopilotStatus()).toMatchObject({
+      enabled: true,
+      scheduledJobId: 'job-1',
+    })
+    expect(loadFullDashboardAutopilotStatus().lastStatus).toContain('first Hermes research run started')
   })
 })

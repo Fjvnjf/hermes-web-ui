@@ -7,18 +7,11 @@ import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntellig
 import {
   FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+  loadFullDashboardAutopilotStatus,
+  persistFullDashboardAutopilotStatus,
   useTrustedSourceAutopilot,
 } from '@/composables/useTrustedSourceAutopilot'
 import type { TrustedSourceDataType, TrustedSourceTier } from '@/utils/trustedSources'
-
-const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
-
-interface FullAutopilotStatus {
-  enabled: boolean
-  scheduledJobId: string
-  lastRun: string
-  lastStatus: string
-}
 
 const message = useMessage()
 const autopilot = useTrustedSourceAutopilot()
@@ -26,7 +19,7 @@ const jobsStore = useJobsStore()
 const intelligence = useFeasibilityIntelligence()
 const fullAutopilotSaving = ref(false)
 const importingLatestOutput = ref(false)
-const fullAutopilotStatus = ref(loadFullAutopilotStatus())
+const fullAutopilotStatus = ref(loadFullDashboardAutopilotStatus())
 
 const form = ref({
   name: '',
@@ -78,25 +71,8 @@ const needsReviewCount = computed(() => autopilot.needsReviewSnapshots.value.len
 const fullAutopilotSnapshotCount = computed(() => autopilot.state.value.snapshots.length)
 const fullAutopilotReviewCount = computed(() => autopilot.needsReviewSnapshots.value.length)
 
-function loadFullAutopilotStatus(): FullAutopilotStatus {
-  if (typeof window === 'undefined') {
-    return { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
-  }
-  try {
-    const raw = window.localStorage.getItem(FULL_AUTOPILOT_STATUS_KEY)
-    return raw
-      ? { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet', ...JSON.parse(raw) }
-      : { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
-  } catch {
-    return { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
-  }
-}
-
-function persistFullAutopilotStatus(patch: Partial<FullAutopilotStatus>) {
-  fullAutopilotStatus.value = { ...fullAutopilotStatus.value, ...patch }
-  if (typeof window !== 'undefined') {
-    window.localStorage.setItem(FULL_AUTOPILOT_STATUS_KEY, JSON.stringify(fullAutopilotStatus.value))
-  }
+function updateFullAutopilotStatus(patch: Partial<typeof fullAutopilotStatus.value>) {
+  fullAutopilotStatus.value = persistFullDashboardAutopilotStatus(patch)
 }
 
 function sourceGroupLabel(key: string | number): string {
@@ -148,17 +124,30 @@ async function enableFullDashboardAutopilot() {
       context: 'Chemicon China Feasibility',
       status: 'Scheduled Hermes Job',
     })
-    persistFullAutopilotStatus({
+    updateFullAutopilotStatus({
       enabled: true,
       scheduledJobId,
       lastRun: new Date().toISOString(),
-      lastStatus: 'Scheduled Hermes job active; online research output will be review-ready and source-labeled.',
+      lastStatus: 'Scheduled Hermes job active; starting the first trusted-source run now.',
     })
+    try {
+      await jobsStore.runJob(scheduledJobId)
+      updateFullAutopilotStatus({
+        lastRun: new Date().toISOString(),
+        lastStatus: 'Full dashboard autopilot scheduled and first Hermes research run started. Output will import automatically when available.',
+      })
+      void importLatestDashboardResearchOutput(false)
+    } catch (runErr) {
+      const runDetail = runErr instanceof Error ? runErr.message : 'Unknown run error'
+      updateFullAutopilotStatus({
+        lastStatus: `Full dashboard autopilot scheduled. Immediate run could not start yet: ${runDetail}`,
+      })
+    }
     message.success('Full dashboard autopilot enabled')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
     await autopilot.runFullDashboardDataEngine()
-    persistFullAutopilotStatus({
+    updateFullAutopilotStatus({
       enabled: false,
       lastRun: new Date().toISOString(),
       lastStatus: `Scheduling failed; local source snapshot created instead. ${detail}`,
@@ -173,7 +162,7 @@ async function runFullDashboardSnapshotNow() {
   fullAutopilotSaving.value = true
   try {
     const result = await autopilot.runFullDashboardDataEngine(fullAutopilotStatus.value.scheduledJobId || undefined)
-    persistFullAutopilotStatus({
+    updateFullAutopilotStatus({
       lastRun: new Date().toISOString(),
       lastStatus: `${result.message}. Review items: ${result.reviewItemCount}.`,
     })
@@ -191,10 +180,12 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
   importingLatestOutput.value = true
   try {
     const result = await autopilot.importLatestFullDashboardRunOutput(fullAutopilotStatus.value.scheduledJobId)
-    persistFullAutopilotStatus({
-      lastRun: result.runImported ? new Date().toISOString() : fullAutopilotStatus.value.lastRun,
-      lastStatus: `${result.message}. Auto-filled: ${result.autoFilledCount}. Needs review: ${result.reviewItemCount}.`,
-    })
+    if (result.runImported || showMessages) {
+      updateFullAutopilotStatus({
+        lastRun: result.runImported ? new Date().toISOString() : fullAutopilotStatus.value.lastRun,
+        lastStatus: `${result.message}. Auto-filled: ${result.autoFilledCount}. Needs review: ${result.reviewItemCount}.`,
+      })
+    }
     if (!showMessages) return
     if (result.runImported) {
       message.success('Latest Hermes research output imported into the source-gated dashboard pipeline')
@@ -203,7 +194,7 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
     }
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown import error'
-    persistFullAutopilotStatus({
+    updateFullAutopilotStatus({
       lastStatus: `Could not import latest Hermes research output: ${detail}`,
     })
     if (showMessages) message.error(`Could not import latest Hermes research output: ${detail}`)

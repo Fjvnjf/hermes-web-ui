@@ -37,6 +37,7 @@ import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/invest
 interface TrustedSourceAutopilotState {
   sources: TrustedSourceRecord[]
   snapshots: TrustedSourceSnapshot[]
+  importedRunKeys: string[]
 }
 
 export interface ApplyTrustedSourceClaimInput {
@@ -70,11 +71,20 @@ export interface DashboardResearchImportResult {
   reviewItemCount: number
   snapshotCount: number
   runImported: boolean
+  runKey?: string
   message: string
   errors: string[]
 }
 
+export interface FullDashboardAutopilotStatus {
+  enabled: boolean
+  scheduledJobId: string
+  lastRun: string
+  lastStatus: string
+}
+
 const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
+export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor']
@@ -93,6 +103,7 @@ const DASHBOARD_RESEARCH_GROUPS: DashboardResearchUpdateGroup[] = [
 const state = ref<TrustedSourceAutopilotState>({
   sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })),
   snapshots: [],
+  importedRunKeys: [],
 })
 let loaded = false
 let idSequence = 0
@@ -108,7 +119,7 @@ function idFrom(prefix: string, label: string): string {
 
 function mergeState(raw: Partial<TrustedSourceAutopilotState> | null): TrustedSourceAutopilotState {
   const defaults = DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source }))
-  if (!raw || typeof raw !== 'object') return { sources: defaults, snapshots: [] }
+  if (!raw || typeof raw !== 'object') return { sources: defaults, snapshots: [], importedRunKeys: [] }
   const savedSources = Array.isArray(raw.sources) ? raw.sources : []
   const sourceMap = new Map(defaults.map(source => [source.source_id, source]))
   for (const source of savedSources) {
@@ -119,16 +130,19 @@ function mergeState(raw: Partial<TrustedSourceAutopilotState> | null): TrustedSo
   return {
     sources: Array.from(sourceMap.values()),
     snapshots: Array.isArray(raw.snapshots) ? raw.snapshots.slice(0, 50) : [],
+    importedRunKeys: Array.isArray(raw.importedRunKeys)
+      ? raw.importedRunKeys.filter(key => typeof key === 'string').slice(0, 100)
+      : [],
   }
 }
 
 function loadState(): TrustedSourceAutopilotState {
-  if (typeof window === 'undefined') return { sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })), snapshots: [] }
+  if (typeof window === 'undefined') return { sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })), snapshots: [], importedRunKeys: [] }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     return mergeState(raw ? JSON.parse(raw) : null)
   } catch {
-    return { sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })), snapshots: [] }
+    return { sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })), snapshots: [], importedRunKeys: [] }
   }
 }
 
@@ -141,6 +155,28 @@ function ensureLoaded() {
   if (loaded) return
   state.value = loadState()
   loaded = true
+}
+
+export function loadFullDashboardAutopilotStatus(): FullDashboardAutopilotStatus {
+  if (typeof window === 'undefined') {
+    return { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
+  }
+  try {
+    const raw = window.localStorage.getItem(FULL_AUTOPILOT_STATUS_KEY)
+    return raw
+      ? { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet', ...JSON.parse(raw) }
+      : { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
+  } catch {
+    return { enabled: false, scheduledJobId: '', lastRun: '', lastStatus: 'Not enabled yet' }
+  }
+}
+
+export function persistFullDashboardAutopilotStatus(patch: Partial<FullDashboardAutopilotStatus>): FullDashboardAutopilotStatus {
+  const next = { ...loadFullDashboardAutopilotStatus(), ...patch }
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(FULL_AUTOPILOT_STATUS_KEY, JSON.stringify(next))
+  }
+  return next
 }
 
 function sourceReferenceDomain(source: SourceReference): string {
@@ -1142,6 +1178,7 @@ function importDashboardResearchOutput(content: string, jobId?: string): Dashboa
       reviewItemCount: 0,
       snapshotCount: 0,
       runImported: false,
+      runKey: undefined,
       message: 'No dashboard_updates JSON block found in Hermes research output',
       errors: ['Missing dashboard_updates JSON block'],
     }
@@ -1219,12 +1256,14 @@ function importDashboardResearchOutput(content: string, jobId?: string): Dashboa
     reviewItemCount,
     snapshotCount: snapshots.length,
     runImported: true,
+    runKey: undefined,
     message: `Imported ${parsedItemCount} dashboard update item${parsedItemCount === 1 ? '' : 's'} from Hermes research output`,
     errors,
   }
 }
 
 async function importLatestFullDashboardRunOutput(jobId?: string): Promise<DashboardResearchImportResult> {
+  ensureLoaded()
   if (!jobId) {
     return {
       parsedItemCount: 0,
@@ -1232,6 +1271,7 @@ async function importLatestFullDashboardRunOutput(jobId?: string): Promise<Dashb
       reviewItemCount: 0,
       snapshotCount: 0,
       runImported: false,
+      runKey: undefined,
       message: 'No scheduled Hermes job id is available yet',
       errors: ['Missing scheduled job id'],
     }
@@ -1248,13 +1288,67 @@ async function importLatestFullDashboardRunOutput(jobId?: string): Promise<Dashb
       reviewItemCount: 0,
       snapshotCount: 0,
       runImported: false,
+      runKey: undefined,
       message: `No readable Hermes research output found yet. ${detail}`,
       errors: [detail],
     }
   }
 
+  const runKey = `${latest.jobId}/${latest.fileName}`
+  if (state.value.importedRunKeys.includes(runKey)) {
+    return {
+      parsedItemCount: 0,
+      autoFilledCount: 0,
+      reviewItemCount: 0,
+      snapshotCount: 0,
+      runImported: false,
+      runKey,
+      message: 'Latest Hermes research output was already imported',
+      errors: [],
+    }
+  }
+
   const detail = await readCronRun(latest.jobId, latest.fileName)
-  return importDashboardResearchOutput(detail.content, jobId)
+  const result = importDashboardResearchOutput(detail.content, jobId)
+  if (result.runImported) {
+    state.value.importedRunKeys = [runKey, ...state.value.importedRunKeys.filter(key => key !== runKey)].slice(0, 100)
+    persist()
+  }
+  return { ...result, runKey }
+}
+
+async function importEnabledFullDashboardRunOutput(): Promise<DashboardResearchImportResult | null> {
+  const status = loadFullDashboardAutopilotStatus()
+  if (!status.enabled || !status.scheduledJobId) return null
+
+  try {
+    const result = await importLatestFullDashboardRunOutput(status.scheduledJobId)
+    if (result.runImported) {
+      persistFullDashboardAutopilotStatus({
+        lastRun: new Date().toISOString(),
+        lastStatus: `${result.message}. Auto-filled: ${result.autoFilledCount}. Needs review: ${result.reviewItemCount}.`,
+      })
+    } else if (result.errors.length > 0 && !result.message.includes('already imported')) {
+      persistFullDashboardAutopilotStatus({
+        lastStatus: `Waiting for trusted-source research output: ${result.message}`,
+      })
+    }
+    return result
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown import error'
+    persistFullDashboardAutopilotStatus({
+      lastStatus: `Automatic trusted-source import failed: ${detail}`,
+    })
+    return {
+      parsedItemCount: 0,
+      autoFilledCount: 0,
+      reviewItemCount: 0,
+      snapshotCount: 0,
+      runImported: false,
+      message: `Automatic trusted-source import failed: ${detail}`,
+      errors: [detail],
+    }
+  }
 }
 
 function screenLabel(screen: AutopilotScreen): string {
@@ -1268,6 +1362,7 @@ function resetTrustedSourceAutopilotForTests() {
   state.value = {
     sources: DEFAULT_TRUSTED_SOURCES.map(source => ({ ...source })),
     snapshots: [],
+    importedRunKeys: [],
   }
   loaded = true
   persist()
@@ -1306,6 +1401,7 @@ export function useTrustedSourceAutopilot() {
     applyTrustedSourceClaim,
     createRefreshSnapshot,
     importDashboardResearchOutput,
+    importEnabledFullDashboardRunOutput,
     importLatestFullDashboardRunOutput,
     runTrustedSourceDataEngine,
     resetTrustedSourceAutopilotForTests,

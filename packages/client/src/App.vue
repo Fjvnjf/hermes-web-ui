@@ -16,12 +16,14 @@ import { clearApiKey, clearStoredUserProfileContext, getApiKey, getBaseUrlValue,
 import CommandLogin from '@/components/auth/CommandLogin.vue'
 import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedExecutiveIntelligenceBoard.vue'
+import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 
 const { isDark, isComic } = useTheme()
 const { t } = useI18n()
 const appStore = useAppStore()
 const router = useRouter()
 const { openSessionSearch } = useSessionSearch()
+const trustedSourceAutopilot = useTrustedSourceAutopilot()
 const ready = ref(false)
 const authReady = ref(false)
 const authChecking = ref(true)
@@ -43,6 +45,8 @@ function canShowRoute(name: string) {
 
 const canUseSearch = computed(() => canShowRoute('hermes.history'))
 const canUseExecutiveIntel = computed(() => canShowRoute('hermes.investorReadiness'))
+let fullDashboardAutopilotTimer: number | null = null
+let fullDashboardAutopilotImporting = false
 
 // Close mobile sidebar on route change
 watch(() => router.currentRoute.value.path, () => {
@@ -62,17 +66,21 @@ onMounted(() => {
 
 onUnmounted(() => {
   appStore.stopHealthPolling()
+  stopFullDashboardAutopilotRuntime()
   window.removeEventListener('hermes-auth-notice', handleAuthNotice)
   window.removeEventListener('storage', handleStorage)
 })
 
 watch(authReady, (value, previous) => {
   if (value && !previous && canAccessRouteName('hermes.models', getFrontendAccessRole())) appStore.loadModels()
+  if (value) startFullDashboardAutopilotRuntime()
+  else stopFullDashboardAutopilotRuntime()
 })
 
 async function initializeCommandCenter() {
   await refreshAuthState({ validate: true })
   appStore.startHealthPolling()
+  if (authReady.value) startFullDashboardAutopilotRuntime()
 }
 
 async function refreshAuthState(options: { validate?: boolean } = {}): Promise<boolean> {
@@ -141,6 +149,8 @@ function handleAuthNotice(event: Event) {
 function handleStorage(event: StorageEvent) {
   if (event.key === 'hermes_api_key') {
     void refreshAuthState({ validate: true })
+  } else if (event.key === 'hermes.fullDashboardAutopilot.status.v1') {
+    if (authReady.value) startFullDashboardAutopilotRuntime()
   }
 }
 
@@ -158,6 +168,42 @@ async function refreshCommandCenter() {
     appStore.checkConnection(),
     canAccessRouteName('hermes.models', getFrontendAccessRole()) ? appStore.reloadModels() : Promise.resolve(),
   ])
+  await importFullDashboardAutopilotOutputInBackground()
+}
+
+function canRunFullDashboardAutopilotRuntime(): boolean {
+  return authReady.value && canAccessRouteName('hermes.trustedSources', getFrontendAccessRole())
+}
+
+function startFullDashboardAutopilotRuntime() {
+  if (!canRunFullDashboardAutopilotRuntime()) {
+    stopFullDashboardAutopilotRuntime()
+    return
+  }
+  if (fullDashboardAutopilotTimer != null) return
+  void importFullDashboardAutopilotOutputInBackground()
+  fullDashboardAutopilotTimer = window.setInterval(() => {
+    void importFullDashboardAutopilotOutputInBackground()
+  }, 10 * 60 * 1000)
+}
+
+function stopFullDashboardAutopilotRuntime() {
+  if (fullDashboardAutopilotTimer == null) return
+  window.clearInterval(fullDashboardAutopilotTimer)
+  fullDashboardAutopilotTimer = null
+}
+
+async function importFullDashboardAutopilotOutputInBackground() {
+  if (!canRunFullDashboardAutopilotRuntime() || fullDashboardAutopilotImporting) return
+
+  fullDashboardAutopilotImporting = true
+  try {
+    await trustedSourceAutopilot.importEnabledFullDashboardRunOutput()
+  } catch (err) {
+    console.warn('[trusted-source-autopilot] background import failed', err)
+  } finally {
+    fullDashboardAutopilotImporting = false
+  }
 }
 
 useKeyboard()
