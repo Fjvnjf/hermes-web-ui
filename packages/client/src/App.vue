@@ -16,6 +16,7 @@ import { clearApiKey, clearStoredUserProfileContext, getApiKey, getBaseUrlValue,
 import CommandLogin from '@/components/auth/CommandLogin.vue'
 import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
 import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedExecutiveIntelligenceBoard.vue'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 
 const { isDark, isComic } = useTheme()
@@ -23,6 +24,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const router = useRouter()
 const { openSessionSearch } = useSessionSearch()
+const feasibilityIntelligence = useFeasibilityIntelligence()
 const trustedSourceAutopilot = useTrustedSourceAutopilot()
 const ready = ref(false)
 const authReady = ref(false)
@@ -199,8 +201,10 @@ async function bootstrapFullDashboardAutopilotRuntime() {
 
   fullDashboardAutopilotBootstrapping = true
   try {
+    await feasibilityIntelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: true })
     await trustedSourceAutopilot.ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
     await importFullDashboardAutopilotOutputInBackground()
+    await feasibilityIntelligence.persistFeasibilityIntelligenceToServer()
   } catch (err) {
     console.warn('[trusted-source-autopilot] automatic schedule bootstrap failed', err)
   } finally {

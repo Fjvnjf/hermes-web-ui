@@ -141,6 +141,7 @@ export function permissionForRequest(ctx: Pick<Context, 'path' | 'method'>): Per
   if (path.startsWith('/api/hermes/access-denied')) return 'view:account'
   if (path.startsWith('/api/hermes/investor/portal')) return 'view:investor-approved'
   if (path.startsWith('/api/hermes/backup')) return 'export:backup'
+  if (path.startsWith('/api/hermes/intelligence-state')) return 'view:product-development'
   if (path.startsWith('/api/hermes/memory')) return writing ? 'write:memory' : 'view:memory'
   if (path.startsWith('/api/hermes/usage')) return 'view:logs'
   if (path.startsWith('/api/hermes/sessions') ||
@@ -270,7 +271,7 @@ export async function requireRequestPermission(ctx: Context, next: Next): Promis
     return
   }
 
-  const sensitive = ['view:terminal', 'view:settings', 'view:models', 'view:logs', 'download:files', 'view:memory', 'write:memory', 'view:investor-approved', 'export:backup']
+  const sensitive = ['view:terminal', 'view:settings', 'view:models', 'view:logs', 'download:files', 'view:memory', 'write:memory', 'view:investor-approved', 'export:backup', 'view:product-development']
   if (sensitive.includes(permission)) {
     auditAccessEvent({
       ctx,

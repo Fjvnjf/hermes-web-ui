@@ -37,6 +37,8 @@ const runJobMock = vi.hoisted(() => vi.fn())
 const listJobsMock = vi.hoisted(() => vi.fn())
 const fetchAvailableModelsMock = vi.hoisted(() => vi.fn())
 const updateDefaultModelMock = vi.hoisted(() => vi.fn())
+const fetchDashboardIntelligenceStateMock = vi.hoisted(() => vi.fn())
+const saveDashboardIntelligenceStateMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/client', () => ({
   getStoredUserRole: () => 'super_admin',
@@ -51,6 +53,11 @@ vi.mock('@/api/hermes/jobs', () => ({
 vi.mock('@/api/hermes/system', () => ({
   fetchAvailableModels: fetchAvailableModelsMock,
   updateDefaultModel: updateDefaultModelMock,
+}))
+
+vi.mock('@/api/hermes/intelligence-state', () => ({
+  fetchDashboardIntelligenceState: fetchDashboardIntelligenceStateMock,
+  saveDashboardIntelligenceState: saveDashboardIntelligenceStateMock,
 }))
 
 vi.mock('@/stores/hermes/jobs', () => ({
@@ -106,6 +113,17 @@ describe('Trusted Source Autopilot', () => {
     listJobsMock.mockResolvedValue([])
     createJobMock.mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
     runJobMock.mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
+    fetchDashboardIntelligenceStateMock.mockResolvedValue({
+      ok: true,
+      profile: 'default',
+      savedAt: null,
+      state: null,
+    })
+    saveDashboardIntelligenceStateMock.mockResolvedValue({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-02T00:00:00.000Z',
+    })
     window.localStorage.clear()
     window.localStorage.setItem('hermes.frontendAccessRole', 'owner')
     useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
@@ -544,6 +562,63 @@ describe('Trusted Source Autopilot', () => {
     expect(status.lastStatus).toContain('Auto-filled: 1')
     expect(status.lastStatus).toContain('Needs review: 0')
     expect(useFeasibilityIntelligence().state.value.marketClaims[0].label).toBe('Target Countries / Provinces')
+  })
+
+  it('hydrates dashboard intelligence from the owner-only server state before local rendering', async () => {
+    fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-02T07:00:00.000Z',
+      state: {
+        marketClaims: [{
+          id: 'market-server-1',
+          label: 'Country-wise consumption growth - China',
+          value: 'Official trade proxy / To Verify',
+          evidenceStatus: 'Trade Proxy',
+          confidence: 'medium',
+          source: {
+            title: 'UN Comtrade',
+            url: 'https://comtradeplus.un.org',
+            date: '2026-06-02',
+          },
+          lastChecked: '2026-06-02',
+        }],
+      },
+    })
+
+    const intelligence = useFeasibilityIntelligence()
+    await intelligence.hydrateFeasibilityIntelligenceFromServer()
+
+    expect(fetchDashboardIntelligenceStateMock).toHaveBeenCalledOnce()
+    expect(intelligence.state.value.marketClaims[0].label).toBe('Country-wise consumption growth - China')
+    expect(intelligence.serverSyncStatus.value.hydrated).toBe(true)
+    expect(window.localStorage.getItem('hermes.feasibilityIntelligence.v1')).toContain('Country-wise consumption growth - China')
+  })
+
+  it('persists auto-filled dashboard intelligence to the server once sync is enabled', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+    saveDashboardIntelligenceStateMock.mockClear()
+
+    intelligence.addMarketClaim({
+      label: 'Target province source-backed',
+      value: 'Guangdong textile cluster',
+      evidenceStatus: 'Official Data',
+      confidence: 'high',
+      source: {
+        title: 'Guangdong official source',
+        url: 'https://www.gd.gov.cn/',
+        date: '2026-06-02',
+      },
+    })
+    await intelligence.persistFeasibilityIntelligenceToServer()
+
+    expect(saveDashboardIntelligenceStateMock).toHaveBeenCalledWith(expect.objectContaining({
+      marketClaims: expect.arrayContaining([
+        expect.objectContaining({ label: 'Target province source-backed' }),
+      ]),
+    }))
+    expect(intelligence.serverSyncStatus.value.lastSavedAt).toBe('2026-06-02T00:00:00.000Z')
   })
 
   it('auto-bootstraps the full dashboard autopilot schedule without a manual click', async () => {

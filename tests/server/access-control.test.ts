@@ -31,6 +31,7 @@ describe('RBAC request permission gate', () => {
     expect(permissionForRequest(ctx('/api/hermes/kanban', 'super_admin', 'POST'))).toBe('create:task')
     expect(permissionForRequest(ctx('/api/hermes/config', 'super_admin'))).toBe('view:settings')
     expect(permissionForRequest(ctx('/api/hermes/backup/export', 'super_admin'))).toBe('export:backup')
+    expect(permissionForRequest(ctx('/api/hermes/intelligence-state', 'super_admin'))).toBe('view:product-development')
     expect(permissionForRequest(ctx('/v1/chat/completions', 'super_admin'))).toBe('use:proxy')
   })
 
@@ -51,6 +52,7 @@ describe('RBAC request permission gate', () => {
       '/api/hermes/available-models',
       '/api/hermes/logs',
       '/api/hermes/backup/export',
+      '/api/hermes/intelligence-state',
       '/v1/chat/completions',
     ]
 
@@ -69,7 +71,7 @@ describe('RBAC request permission gate', () => {
   })
 
   it('allows employees through scoped business APIs while blocking memory, investor, proxy, and system APIs', async () => {
-    for (const path of ['/api/hermes/memory', '/api/hermes/investor/portal', '/api/hermes/logs', '/api/hermes/config', '/api/hermes/available-models', '/api/hermes/backup/export', '/v1/chat/completions']) {
+    for (const path of ['/api/hermes/memory', '/api/hermes/investor/portal', '/api/hermes/logs', '/api/hermes/config', '/api/hermes/available-models', '/api/hermes/backup/export', '/api/hermes/intelligence-state', '/v1/chat/completions']) {
       const request = ctx(path, 'employee')
       const next = vi.fn(async () => {})
       await requireRequestPermission(request, next)
@@ -95,6 +97,21 @@ describe('RBAC request permission gate', () => {
     }
 
     const owner = ctx('/api/hermes/backup/export', 'super_admin')
+    const next = vi.fn(async () => {})
+    await requireRequestPermission(owner, next)
+    expect(next).toHaveBeenCalledOnce()
+  })
+
+  it('keeps dashboard intelligence persistence owner-only because it can contain sensitive business facts', async () => {
+    for (const role of ['employee', 'investor_viewer', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'developer_admin']) {
+      const request = ctx('/api/hermes/intelligence-state', role)
+      const next = vi.fn(async () => {})
+      await requireRequestPermission(request, next)
+      expect(request.status).toBe(403)
+      expect(next).not.toHaveBeenCalled()
+    }
+
+    const owner = ctx('/api/hermes/intelligence-state', 'super_admin')
     const next = vi.fn(async () => {})
     await requireRequestPermission(owner, next)
     expect(next).toHaveBeenCalledOnce()

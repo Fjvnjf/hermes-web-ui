@@ -35,6 +35,7 @@ import { groupChatRoutes, setGroupChatServer } from './hermes/group-chat'
 import { performanceMonitorRoutes } from './hermes/performance-monitor'
 import { investorRoutes } from './hermes/investor'
 import { backupRoutes } from './hermes/backup'
+import { intelligenceStateRoutes } from './hermes/intelligence-state'
 
 /**
  * Register all routes on the Koa app.
@@ -80,6 +81,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(performanceMonitorRoutes.routes())  // Must be before proxy
   app.use(investorRoutes.routes())             // Approved investor-only endpoint
   app.use(backupRoutes.routes())               // Owner-only backup/export endpoint
+  app.use(intelligenceStateRoutes.routes())     // Owner-only dashboard intelligence persistence
   app.use(proxyRoutes.routes())
 
   // Proxy catch-all middleware (must be last)

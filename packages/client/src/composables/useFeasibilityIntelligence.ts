@@ -1,5 +1,9 @@
 import { computed, ref } from 'vue'
 import {
+  fetchDashboardIntelligenceState,
+  saveDashboardIntelligenceState,
+} from '@/api/hermes/intelligence-state'
+import {
   calculateInvestorReadinessScore,
   isPresentationMaterialAllowed,
   normalizedMarketClaimStatus,
@@ -210,8 +214,19 @@ function emptyState(): FeasibilityIntelligenceState {
 }
 
 const state = ref<FeasibilityIntelligenceState>(emptyState())
+const serverSyncStatus = ref({
+  enabled: false,
+  hydrated: false,
+  saving: false,
+  lastLoadedAt: '',
+  lastSavedAt: '',
+  error: '',
+})
 let loaded = false
 let idSequence = 0
+let serverSyncEnabled = false
+let serverHydratePromise: Promise<FeasibilityIntelligenceState> | null = null
+let serverPersistTimer: number | null = null
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -264,12 +279,111 @@ function loadState(): FeasibilityIntelligenceState {
 function persist() {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+  scheduleServerPersist()
 }
 
 function ensureLoaded() {
   if (loaded) return
   state.value = loadState()
   loaded = true
+}
+
+function persistLocalOnly() {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+}
+
+function scheduleServerPersist() {
+  if (!serverSyncEnabled || typeof window === 'undefined') return
+  if (serverPersistTimer) window.clearTimeout(serverPersistTimer)
+  serverPersistTimer = window.setTimeout(() => {
+    serverPersistTimer = null
+    void persistFeasibilityIntelligenceToServer()
+  }, 800)
+}
+
+async function persistFeasibilityIntelligenceToServer(): Promise<boolean> {
+  if (!serverSyncEnabled) return false
+  serverSyncStatus.value = {
+    ...serverSyncStatus.value,
+    enabled: true,
+    saving: true,
+    error: '',
+  }
+  try {
+    const result = await saveDashboardIntelligenceState(state.value)
+    serverSyncStatus.value = {
+      ...serverSyncStatus.value,
+      enabled: true,
+      saving: false,
+      lastSavedAt: result.savedAt || nowIso(),
+      error: '',
+    }
+    return true
+  } catch (err) {
+    serverSyncStatus.value = {
+      ...serverSyncStatus.value,
+      enabled: true,
+      saving: false,
+      error: err instanceof Error ? err.message : 'Dashboard intelligence server sync failed',
+    }
+    return false
+  }
+}
+
+async function hydrateFeasibilityIntelligenceFromServer(options: { seedServerIfEmpty?: boolean } = {}): Promise<FeasibilityIntelligenceState> {
+  ensureLoaded()
+  serverSyncEnabled = true
+  serverSyncStatus.value = {
+    ...serverSyncStatus.value,
+    enabled: true,
+    error: '',
+  }
+
+  if (serverHydratePromise) return serverHydratePromise
+
+  serverHydratePromise = (async () => {
+    try {
+      const result = await fetchDashboardIntelligenceState()
+      if (result.state) {
+        state.value = mergeState(result.state as Partial<FeasibilityIntelligenceState>)
+        loaded = true
+        persistLocalOnly()
+        serverSyncStatus.value = {
+          ...serverSyncStatus.value,
+          enabled: true,
+          hydrated: true,
+          lastLoadedAt: result.savedAt || nowIso(),
+          error: '',
+        }
+        return state.value
+      }
+
+      serverSyncStatus.value = {
+        ...serverSyncStatus.value,
+        enabled: true,
+        hydrated: true,
+        lastLoadedAt: nowIso(),
+        error: '',
+      }
+      if (options.seedServerIfEmpty !== false) {
+        await persistFeasibilityIntelligenceToServer()
+      }
+      return state.value
+    } catch (err) {
+      serverSyncStatus.value = {
+        ...serverSyncStatus.value,
+        enabled: true,
+        hydrated: false,
+        error: err instanceof Error ? err.message : 'Dashboard intelligence server hydrate failed',
+      }
+      return state.value
+    } finally {
+      serverHydratePromise = null
+    }
+  })()
+
+  return serverHydratePromise
 }
 
 function idFrom(prefix: string, label: string): string {
@@ -810,6 +924,20 @@ export function useFeasibilityIntelligence() {
   }
 
   function resetFeasibilityIntelligenceForTests() {
+    if (serverPersistTimer && typeof window !== 'undefined') {
+      window.clearTimeout(serverPersistTimer)
+      serverPersistTimer = null
+    }
+    serverSyncEnabled = false
+    serverHydratePromise = null
+    serverSyncStatus.value = {
+      enabled: false,
+      hydrated: false,
+      saving: false,
+      lastLoadedAt: '',
+      lastSavedAt: '',
+      error: '',
+    }
     state.value = emptyState()
     loaded = true
     persist()
@@ -825,6 +953,9 @@ export function useFeasibilityIntelligence() {
     latestFinancialModel,
     verifiedDataRoomSourceCount,
     riskRegisterItems,
+    serverSyncStatus,
+    hydrateFeasibilityIntelligenceFromServer,
+    persistFeasibilityIntelligenceToServer,
     updateEvidenceStatus,
     addMarketClaim,
     updateMarketClaim,
