@@ -6,6 +6,7 @@ import { promisify } from 'util'
 import { getHermesBin } from '../../services/hermes/hermes-path'
 import { getActiveProfileName, getProfileDir } from '../../services/hermes/hermes-profile'
 import { isEmployeeLikeRole, redactRestrictedObjectForRole, roleCanAccessText } from '../../services/hermes/sensitivity'
+import { ingestFullDashboardAutopilotOutputs } from '../../services/hermes/dashboard-autopilot-ingest'
 
 const execFileAsync = promisify(execFile)
 const TIMEOUT_MS = 60_000
@@ -343,6 +344,11 @@ export async function run(ctx: Context) {
 
   try {
     await runHermesCron(profile, ['cron', 'run', ctx.params.id])
+    try {
+      await ingestFullDashboardAutopilotOutputs(profile, { jobId: ctx.params.id, maxFilesPerJob: 5 })
+    } catch (err) {
+      console.warn('[dashboard-autopilot] import after manual job run failed:', err instanceof Error ? err.message : err)
+    }
     const job = findJob(profile, ctx.params.id)
     ctx.body = { job: job ? sanitizeJob(ctx, job) : job }
   } catch (error: any) {

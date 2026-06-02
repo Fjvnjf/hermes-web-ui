@@ -21,6 +21,7 @@ import { ChatRunSocket } from './services/hermes/run-chat'
 import { startAgentBridgeManager } from './services/hermes/agent-bridge'
 import { HermesSkillInjector } from './services/hermes/skill-injector'
 import { ensureProfileGatewaysRunning } from './services/hermes/gateway-autostart'
+import { startDashboardAutopilotIngestor } from './services/hermes/dashboard-autopilot-ingest'
 import { logger } from './services/logger'
 import { requireUserJwt, resolveUserProfile } from './middleware/user-auth'
 
@@ -208,6 +209,7 @@ export async function bootstrap() {
 
   bindShutdown(servers, groupChatServer, chatRunServer, agentBridgeManager)
   startVersionCheck()
+  startDashboardAutopilotIngestor()
 }
 
 bootstrap().catch((error) => {

@@ -1,0 +1,220 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import {
+  dashboardSourceTierRank,
+  extractDashboardResearchUpdates,
+  ingestFullDashboardAutopilotOutputs,
+} from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
+import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
+
+function writeFullDashboardJob(home: string, jobId = 'job-full-dashboard') {
+  const cronDir = join(home, 'cron')
+  mkdirSync(cronDir, { recursive: true })
+  writeFileSync(join(cronDir, 'jobs.json'), JSON.stringify({
+    jobs: [{
+      id: jobId,
+      job_id: jobId,
+      name: 'Full Dashboard Trusted Source Autopilot',
+      prompt: 'Research online trusted sources and return dashboard_updates for the full dashboard.',
+      schedule_display: '0 8,20 * * *',
+    }],
+  }, null, 2))
+}
+
+function writeRunOutput(home: string, jobId: string, fileName: string, payload: unknown) {
+  const outputDir = join(home, 'cron', 'output', jobId)
+  mkdirSync(outputDir, { recursive: true })
+  writeFileSync(join(outputDir, fileName), [
+    '# Full Dashboard Trusted Source Autopilot',
+    '',
+    '```json',
+    JSON.stringify(payload, null, 2),
+    '```',
+    '',
+  ].join('\n'))
+}
+
+describe('dashboard autopilot output ingestion', () => {
+  const originalHermesHome = process.env.HERMES_HOME
+  let hermesHome = ''
+
+  beforeEach(() => {
+    hermesHome = mkdtempSync(join(tmpdir(), 'hermes-dashboard-autopilot-'))
+    process.env.HERMES_HOME = hermesHome
+  })
+
+  afterEach(() => {
+    if (originalHermesHome === undefined) delete process.env.HERMES_HOME
+    else process.env.HERMES_HOME = originalHermesHome
+    rmSync(hermesHome, { recursive: true, force: true })
+  })
+
+  it('ranks official sources ahead of weak public listings', () => {
+    expect(dashboardSourceTierRank('tier1-official')).toBeLessThan(dashboardSourceTierRank('tier5-public-listing'))
+    expect(dashboardSourceTierRank('tier2-company-official')).toBeLessThan(dashboardSourceTierRank('candidate-source'))
+  })
+
+  it('extracts dashboard_updates JSON from markdown output', () => {
+    const payload = extractDashboardResearchUpdates([
+      'Hermes result',
+      '```dashboard_updates',
+      JSON.stringify({
+        dashboard_updates: {
+          marketClaims: [{ label: 'Official policy source', value: 'Published' }],
+        },
+      }),
+      '```',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({ label: 'Official policy source', value: 'Published' }),
+    ])
+  })
+
+  it('auto-fills only low-risk official facts and stages critical findings for review', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-00-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [
+          {
+            field: 'Official textile sector reference',
+            label: 'Official textile sector reference',
+            value: 'China textile sector policy page identified',
+            sourceTitle: 'Ministry textile policy page',
+            sourceUrl: 'https://example.gov.cn/textile-policy',
+            sourceTier: 'Tier 1 - Official / regulator / trade source',
+            confidence: 'high',
+            evidenceStatus: 'Official Data',
+            dataType: 'company_data',
+          },
+          {
+            field: 'Market Size / Scope',
+            label: 'China market size',
+            value: '$3.2B',
+            sourceTitle: 'Weak marketplace summary',
+            sourceUrl: 'https://example-marketplace.test/listing',
+            sourceTier: 'Tier 5 - Public listing / weak reference',
+            confidence: 'medium',
+            evidenceStatus: 'Market Reference',
+            dataType: 'market_size',
+          },
+        ],
+        financialEvidence: [
+          {
+            field: 'Project IRR',
+            value: '60%',
+            sourceTitle: 'Unsourced screenshot template',
+            sourceTier: 'candidate-source',
+            confidence: 'low',
+            evidenceStatus: 'Derived from Assumptions',
+            dataType: 'financial_data',
+          },
+        ],
+        supplierScorecards: [
+          {
+            field: 'Supplier scorecard - Wilmar',
+            supplier: 'Wilmar',
+            material: 'Stearic Acid TP',
+            value: '$1,180/t',
+            sourceTitle: 'Supplier quote needed',
+            sourceTier: 'Tier 3 - Uploaded supplier evidence',
+            confidence: 'medium',
+            evidenceStatus: 'To Verify',
+            dataType: 'supplier_quote',
+            reviewRequired: true,
+          },
+        ],
+        competitorRecords: [
+          {
+            companyName: 'Transfar',
+            countryRegion: 'China',
+            productEquivalent: 'Cationic softener',
+            marketShare: '12%',
+            sourceTitle: 'Public competitor note',
+            sourceUrl: 'https://example.com/transfar',
+            sourceTier: 'Tier 5 - Public listing / weak reference',
+            confidence: 'medium',
+            evidenceStatus: 'Market Reference',
+            dataType: 'competitor_data',
+          },
+        ],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+
+    expect(result).toMatchObject({
+      jobsChecked: 1,
+      importedRuns: 1,
+      autoFilledCount: 1,
+      stagedReviewCount: 4,
+    })
+
+    const envelope = await readDashboardIntelligenceState('default')
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({
+        label: 'Official textile sector reference',
+        value: 'China textile sector policy page identified',
+        evidenceStatus: 'Official Data',
+        source: expect.objectContaining({
+          title: 'Ministry textile policy page',
+          url: 'https://example.gov.cn/textile-policy',
+        }),
+      }),
+    ])
+    expect(envelope?.state.financialModels).toEqual([])
+    expect(envelope?.state.competitors).toEqual([])
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('China market size'),
+        status: 'Pending Review',
+      }),
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Project IRR'),
+        status: 'Pending Review',
+      }),
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Supplier scorecard - Wilmar'),
+        status: 'Pending Review',
+      }),
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Transfar'),
+        status: 'Pending Review',
+      }),
+    ]))
+
+    const rawState = readFileSync(join(hermesHome, 'dashboard-intelligence', 'state.json'), 'utf-8')
+    expect(rawState).not.toContain('"financialModels":[{"scenarioName"')
+    expect(rawState).not.toContain('"marketShare":"12%"')
+  })
+
+  it('deduplicates imported run files with an import registry', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T09-00-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          label: 'Official low-risk company fact',
+          value: 'Official catalog page found',
+          sourceTitle: 'Official company catalog',
+          sourceUrl: 'https://example.com/catalog',
+          sourceTier: 'Tier 2 - Official company / product source',
+          confidence: 'high',
+          evidenceStatus: 'Source-backed',
+          dataType: 'company_data',
+        }],
+      },
+    })
+
+    const first = await ingestFullDashboardAutopilotOutputs('default')
+    const second = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(first.importedRuns).toBe(1)
+    expect(second.importedRuns).toBe(0)
+    expect(envelope?.state.marketClaims).toHaveLength(1)
+    const registry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'imported-runs.json'), 'utf-8')
+    expect(registry).toContain('job-full-dashboard/2026-06-02T09-00-00.000000+00-00.md')
+  })
+})
