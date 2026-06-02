@@ -34,13 +34,29 @@ import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 
 const createJobMock = vi.hoisted(() => vi.fn())
 const runJobMock = vi.hoisted(() => vi.fn())
+const listJobsMock = vi.hoisted(() => vi.fn())
+const fetchAvailableModelsMock = vi.hoisted(() => vi.fn())
+const updateDefaultModelMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/client', () => ({
   getStoredUserRole: () => 'super_admin',
 }))
 
+vi.mock('@/api/hermes/jobs', () => ({
+  listJobs: listJobsMock,
+  createJob: createJobMock,
+  runJob: runJobMock,
+}))
+
+vi.mock('@/api/hermes/system', () => ({
+  fetchAvailableModels: fetchAvailableModelsMock,
+  updateDefaultModel: updateDefaultModelMock,
+}))
+
 vi.mock('@/stores/hermes/jobs', () => ({
   useJobsStore: () => ({
+    jobs: [],
+    fetchJobs: vi.fn(),
     createJob: createJobMock,
     runJob: runJobMock,
   }),
@@ -76,6 +92,18 @@ vi.mock('vue-router', () => ({
 describe('Trusted Source Autopilot', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fetchAvailableModelsMock.mockResolvedValue({
+      default: 'gpt-5.5',
+      default_provider: 'codex',
+      groups: [{ provider: 'codex', label: 'Codex', base_url: '', models: ['gpt-5.5'], api_key: '' }],
+      allProviders: [{ provider: 'codex', label: 'Codex', base_url: '', models: ['gpt-5.5'], api_key: '' }],
+      profiles: [],
+      model_aliases: {},
+      custom_models: {},
+      model_visibility: {},
+    })
+    updateDefaultModelMock.mockResolvedValue(undefined)
+    listJobsMock.mockResolvedValue([])
     createJobMock.mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
     runJobMock.mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
     window.localStorage.clear()
@@ -311,6 +339,10 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('PubChem')
     expect(prompt).toContain('Wilmar')
     expect(prompt).toContain('WACKER')
+    expect(prompt).toContain('Do the online research yourself')
+    expect(prompt).toContain('Do not ask the user to manually search')
+    expect(prompt).toContain('Country-wise consumption growth')
+    expect(prompt).toContain('Put the appendix in one fenced ```json block')
     expect(prompt).toContain('Do not invent market size')
     expect(prompt).toContain('competitor market share as To Verify')
   })
@@ -512,6 +544,102 @@ describe('Trusted Source Autopilot', () => {
     expect(status.lastStatus).toContain('Auto-filled: 1')
     expect(status.lastStatus).toContain('Needs review: 0')
     expect(useFeasibilityIntelligence().state.value.marketClaims[0].label).toBe('Target Countries / Provinces')
+  })
+
+  it('auto-bootstraps the full dashboard autopilot schedule without a manual click', async () => {
+    const result = await useTrustedSourceAutopilot().ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+
+    expect(updateDefaultModelMock).not.toHaveBeenCalled()
+    expect(listJobsMock).toHaveBeenCalled()
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      deliver: 'local',
+    }))
+    expect(runJobMock).toHaveBeenCalledWith('job-1')
+    expect(result).toMatchObject({
+      scheduledJobId: 'job-1',
+      created: true,
+      firstRunStarted: true,
+    })
+    expect(loadFullDashboardAutopilotStatus()).toMatchObject({
+      enabled: true,
+      scheduledJobId: 'job-1',
+    })
+    expect(useFeasibilityIntelligence().state.value.researchJobs[0].title).toBe(FULL_DASHBOARD_AUTOPILOT_JOB_NAME)
+  })
+
+  it('sets a default Hermes model before running autopilot when profile config is empty', async () => {
+    fetchAvailableModelsMock.mockResolvedValue({
+      default: '',
+      default_provider: '',
+      groups: [{ provider: 'codex', label: 'Codex', base_url: '', models: ['gpt-5.5'], api_key: '' }],
+      allProviders: [],
+      profiles: [],
+      model_aliases: {},
+      custom_models: {},
+      model_visibility: {},
+    })
+
+    const result = await useTrustedSourceAutopilot().ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+
+    expect(updateDefaultModelMock).toHaveBeenCalledWith({ default: 'gpt-5.5', provider: 'codex' })
+    expect(runJobMock).toHaveBeenCalledWith('job-1')
+    expect(result.defaultModelConfigured).toBe(true)
+    expect(loadFullDashboardAutopilotStatus().lastStatus).toContain('first Hermes trusted-source research run has started')
+  })
+
+  it('retries an existing autopilot job after fixing a missing default model error', async () => {
+    fetchAvailableModelsMock.mockResolvedValue({
+      default: '',
+      default_provider: '',
+      groups: [{ provider: 'codex', label: 'Codex', base_url: '', models: ['gpt-5.5'], api_key: '' }],
+      allProviders: [],
+      profiles: [],
+      model_aliases: {},
+      custom_models: {},
+      model_visibility: {},
+    })
+    persistFullDashboardAutopilotStatus({
+      enabled: true,
+      scheduledJobId: 'job-existing',
+      lastRun: '2026-06-02T07:00:00.000Z',
+      lastStatus: 'Previous run failed',
+    })
+    listJobsMock.mockResolvedValue([{
+      id: 'job-existing',
+      job_id: 'job-existing',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: useTrustedSourceAutopilot().fullDashboardAutopilotPrompt(),
+      last_error: "RuntimeError: Codex Responses request 'model' must be a non-empty string.",
+    }])
+
+    const result = await useTrustedSourceAutopilot().ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+
+    expect(createJobMock).not.toHaveBeenCalled()
+    expect(updateDefaultModelMock).toHaveBeenCalledWith({ default: 'gpt-5.5', provider: 'codex' })
+    expect(runJobMock).toHaveBeenCalledWith('job-existing')
+    expect(result.firstRunStarted).toBe(true)
+  })
+
+  it('reuses an existing full dashboard autopilot job instead of creating duplicates', async () => {
+    listJobsMock.mockResolvedValue([{
+      id: 'job-existing',
+      job_id: 'job-existing',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: useTrustedSourceAutopilot().fullDashboardAutopilotPrompt(),
+    }])
+
+    const result = await useTrustedSourceAutopilot().ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+    const second = await useTrustedSourceAutopilot().ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+
+    expect(createJobMock).not.toHaveBeenCalled()
+    expect(runJobMock).toHaveBeenCalledTimes(1)
+    expect(result.created).toBe(false)
+    expect(result.firstRunStarted).toBe(true)
+    expect(second.firstRunStarted).toBe(false)
+    expect(loadFullDashboardAutopilotStatus().scheduledJobId).toBe('job-existing')
+    expect(useFeasibilityIntelligence().state.value.researchJobs.filter(job => job.title === FULL_DASHBOARD_AUTOPILOT_JOB_NAME)).toHaveLength(1)
   })
 
   it('runs full dashboard data engine snapshots across the dashboard and queues review', async () => {
@@ -727,6 +855,6 @@ describe('Trusted Source Autopilot', () => {
       enabled: true,
       scheduledJobId: 'job-1',
     })
-    expect(loadFullDashboardAutopilotStatus().lastStatus).toContain('first Hermes research run started')
+    expect(loadFullDashboardAutopilotStatus().lastStatus).toContain('first Hermes trusted-source research run has started')
   })
 })

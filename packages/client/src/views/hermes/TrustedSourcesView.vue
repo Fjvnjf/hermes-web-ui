@@ -2,11 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NSelect, NSwitch, useMessage } from 'naive-ui'
-import { useJobsStore } from '@/stores/hermes/jobs'
-import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import {
-  FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
-  FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   loadFullDashboardAutopilotStatus,
   persistFullDashboardAutopilotStatus,
   useTrustedSourceAutopilot,
@@ -15,8 +11,6 @@ import type { TrustedSourceDataType, TrustedSourceTier } from '@/utils/trustedSo
 
 const message = useMessage()
 const autopilot = useTrustedSourceAutopilot()
-const jobsStore = useJobsStore()
-const intelligence = useFeasibilityIntelligence()
 const fullAutopilotSaving = ref(false)
 const importingLatestOutput = ref(false)
 const fullAutopilotStatus = ref(loadFullDashboardAutopilotStatus())
@@ -103,47 +97,11 @@ function addSource() {
 async function enableFullDashboardAutopilot() {
   fullAutopilotSaving.value = true
   try {
-    const job = await jobsStore.createJob({
-      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
-      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
-      prompt: autopilot.fullDashboardAutopilotPrompt(),
-      deliver: 'local',
-    })
-    const scheduledJobId = job.job_id || job.id
-    await autopilot.runFullDashboardDataEngine(scheduledJobId)
-    intelligence.addResearchJob({
-      title: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
-      question: 'Automatically research trusted online sources and existing evidence to refresh the whole dashboard.',
-      scope: 'Executive Overview, Market Intelligence, Competitor Intelligence, Investment Analysis, Raw Material Sourcing, Supplier Scorecards, Export Markets, Regulatory, Investor Readiness, and Presentation Builder inputs.',
-      expectedOutput: 'Source-backed dashboard update candidates, evidence gaps, suggested tasks, and review-ready investor material candidates.',
-      sourceRequirements: 'Every value needs source title plus URL/date and evidence status. Missing, conflicting, sensitive, or weak-source claims remain To Verify or go to Research Result Review.',
-      priority: 'high',
-      schedulePreference: 'Custom',
-      scheduledJobId,
-      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
-      context: 'Chemicon China Feasibility',
-      status: 'Scheduled Hermes Job',
-    })
-    updateFullAutopilotStatus({
-      enabled: true,
-      scheduledJobId,
-      lastRun: new Date().toISOString(),
-      lastStatus: 'Scheduled Hermes job active; starting the first trusted-source run now.',
-    })
-    try {
-      await jobsStore.runJob(scheduledJobId)
-      updateFullAutopilotStatus({
-        lastRun: new Date().toISOString(),
-        lastStatus: 'Full dashboard autopilot scheduled and first Hermes research run started. Output will import automatically when available.',
-      })
-      void importLatestDashboardResearchOutput(false)
-    } catch (runErr) {
-      const runDetail = runErr instanceof Error ? runErr.message : 'Unknown run error'
-      updateFullAutopilotStatus({
-        lastStatus: `Full dashboard autopilot scheduled. Immediate run could not start yet: ${runDetail}`,
-      })
-    }
-    message.success('Full dashboard autopilot enabled')
+    const result = await autopilot.ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+    await autopilot.runFullDashboardDataEngine(result.scheduledJobId)
+    fullAutopilotStatus.value = loadFullDashboardAutopilotStatus()
+    void importLatestDashboardResearchOutput(false)
+    message.success(result.firstRunStarted ? 'Full dashboard autopilot enabled and first run started' : 'Full dashboard autopilot enabled')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
     await autopilot.runFullDashboardDataEngine()

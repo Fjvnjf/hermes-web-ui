@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue'
 import { type EvidenceArea, useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
+import { createJob, listJobs, runJob, type Job } from '@/api/hermes/jobs'
+import { fetchAvailableModels, updateDefaultModel } from '@/api/hermes/system'
 import {
   SCREEN_FIELD_MAPPINGS,
   createMissingFieldClaim,
@@ -81,6 +83,14 @@ export interface FullDashboardAutopilotStatus {
   scheduledJobId: string
   lastRun: string
   lastStatus: string
+}
+
+export interface FullDashboardAutopilotBootstrapResult {
+  scheduledJobId: string
+  created: boolean
+  firstRunStarted: boolean
+  defaultModelConfigured: boolean
+  message: string
 }
 
 const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
@@ -599,6 +609,8 @@ function fullDashboardAutopilotPrompt(): string {
     'Full Dashboard Trusted Source Autopilot',
     '',
     'Mission: research and refresh the Hermes feasibility intelligence dashboard automatically using trusted online sources and existing Hermes workspace evidence.',
+    'Do the online research yourself using available web/search/source tools. Do not ask the user to manually search, copy, or paste source data.',
+    'If external browsing/search is unavailable in the runtime, state that limitation clearly and return evidence gaps/tasks instead of fabricating data.',
     '',
     'Dashboard areas to cover:',
     mappedFields,
@@ -628,6 +640,14 @@ function fullDashboardAutopilotPrompt(): string {
     '- Mark competitor market share as To Verify unless the source explicitly supports it.',
     '- Separate Verified, Official Data, Source-backed, Market Reference, Supplier Evidence, Reference Only, Assumption, Derived from Assumptions, and To Verify.',
     '',
+    'Machine-readable dashboard_updates schema:',
+    '- Put the appendix in one fenced ```json block. The top-level object must be: { "dashboard_updates": { ... } }.',
+    '- Each item should include fieldKey when known, field/title/label, value, sourceTitle, sourceUrl or sourceDate, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, riskReason, dataType, and sensitive when applicable.',
+    '- Use these arrays only: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
+    '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep the value To Verify when the source is only a proxy.',
+    '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '',
     'Safety rules:',
     '- Do not invent market size, growth rate, consumption, pricing, supplier score, market share, IRR, NPV, payback, formula, CAS list, or regulatory status.',
     '- Do not treat paid reports, public listings, or unsourced web snippets as verified facts.',
@@ -638,6 +658,55 @@ function fullDashboardAutopilotPrompt(): string {
     'Preferred machine-readable appendix:',
     'Return a JSON block named dashboard_updates with arrays: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
   ].join('\n')
+}
+
+function fullDashboardJobId(job: Job): string {
+  return job.job_id || job.id
+}
+
+function isFullDashboardAutopilotJob(job: Job): boolean {
+  return job.name === FULL_DASHBOARD_AUTOPILOT_JOB_NAME ||
+    (job.prompt || '').includes('Full Dashboard Trusted Source Autopilot')
+}
+
+function recordFullDashboardResearchJob(jobId: string) {
+  const intelligence = useFeasibilityIntelligence()
+  const alreadyRecorded = intelligence.state.value.researchJobs.some(job =>
+    job.scheduledJobId === jobId || job.title === FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+  )
+  if (alreadyRecorded) return
+
+  intelligence.addResearchJob({
+    title: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+    question: 'Automatically research trusted online sources and existing evidence to refresh the whole dashboard.',
+    scope: 'Executive Overview, Market Intelligence, Competitor Intelligence, Investment Analysis, Raw Material Sourcing, Supplier Scorecards, Export Markets, Regulatory, Investor Readiness, and Presentation Builder inputs.',
+    expectedOutput: 'Source-backed dashboard update candidates, evidence gaps, suggested tasks, and review-ready investor material candidates.',
+    sourceRequirements: 'Every value needs source title plus URL/date and evidence status. Missing, conflicting, sensitive, or weak-source claims remain To Verify or go to Research Result Review.',
+    priority: 'high',
+    schedulePreference: 'Custom',
+    scheduledJobId: jobId,
+    schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    context: 'Chemicon China Feasibility',
+    status: 'Scheduled Hermes Job',
+  })
+}
+
+async function ensureDefaultModelForAutopilot(): Promise<{ configured: boolean; model: string; provider: string }> {
+  const models = await fetchAvailableModels()
+  if (models.default?.trim()) {
+    return { configured: false, model: models.default.trim(), provider: models.default_provider || '' }
+  }
+
+  const fallbackGroup = (models.groups || []).find(group => group.models.length > 0) ||
+    (models.allProviders || []).find(group => group.models.length > 0)
+  const model = fallbackGroup?.models[0] || ''
+  const provider = fallbackGroup?.provider || ''
+  if (!model) {
+    throw new Error('No available Hermes model is configured for Full Dashboard Autopilot')
+  }
+
+  await updateDefaultModel({ default: model, provider })
+  return { configured: true, model, provider }
 }
 
 function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): TrustedSourceRefreshResult {
@@ -1351,6 +1420,74 @@ async function importEnabledFullDashboardRunOutput(): Promise<DashboardResearchI
   }
 }
 
+async function ensureFullDashboardAutopilotScheduled(options: { startFirstRun?: boolean } = {}): Promise<FullDashboardAutopilotBootstrapResult> {
+  const defaultModel = await ensureDefaultModelForAutopilot()
+  const status = loadFullDashboardAutopilotStatus()
+  const jobs = await listJobs()
+  const existing = jobs.find(isFullDashboardAutopilotJob)
+  let scheduledJobId = existing ? fullDashboardJobId(existing) : status.scheduledJobId
+  let created = false
+  let firstRunStarted = false
+  const previousModelError = Boolean(
+    existing &&
+    String(existing.last_error || '').toLowerCase().includes('model') &&
+    String(existing.last_error || '').toLowerCase().includes('non-empty'),
+  )
+
+  if (!existing || !scheduledJobId) {
+    const job = await createJob({
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      prompt: fullDashboardAutopilotPrompt(),
+      deliver: 'local',
+    })
+    scheduledJobId = fullDashboardJobId(job)
+    created = true
+  }
+
+  if (!scheduledJobId) {
+    throw new Error('Hermes did not return a scheduled Full Dashboard Autopilot job id')
+  }
+
+  recordFullDashboardResearchJob(scheduledJobId)
+  persistFullDashboardAutopilotStatus({
+    enabled: true,
+    scheduledJobId,
+    lastRun: status.lastRun,
+    lastStatus: created
+      ? `${defaultModel.configured ? `Default Hermes model set to ${defaultModel.model}. ` : ''}Full dashboard autopilot schedule created automatically; starting the first trusted-source run.`
+      : `${defaultModel.configured ? `Default Hermes model set to ${defaultModel.model}. ` : ''}Full dashboard autopilot schedule confirmed automatically.`,
+  })
+
+  if (options.startFirstRun && (created || !status.enabled || !status.lastRun || (defaultModel.configured && previousModelError))) {
+    try {
+      await runJob(scheduledJobId)
+      firstRunStarted = true
+      persistFullDashboardAutopilotStatus({
+        lastRun: new Date().toISOString(),
+        lastStatus: 'Full dashboard autopilot is enabled and the first Hermes trusted-source research run has started. Output will import automatically when available.',
+      })
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Unknown run error'
+      persistFullDashboardAutopilotStatus({
+        lastStatus: `Full dashboard autopilot is scheduled. Immediate trusted-source run could not start yet: ${detail}`,
+      })
+    }
+  }
+
+  return {
+    scheduledJobId,
+    created,
+    firstRunStarted,
+    defaultModelConfigured: defaultModel.configured,
+    message: firstRunStarted
+      ? 'Full dashboard autopilot scheduled and first run started'
+      : created
+        ? 'Full dashboard autopilot scheduled automatically'
+        : 'Full dashboard autopilot schedule already exists',
+  }
+}
+
 function screenLabel(screen: AutopilotScreen): string {
   if (screen === 'executive') return 'Executive Overview'
   if (screen === 'market') return 'Market Intelligence'
@@ -1400,6 +1537,7 @@ export function useTrustedSourceAutopilot() {
     updateSource,
     applyTrustedSourceClaim,
     createRefreshSnapshot,
+    ensureFullDashboardAutopilotScheduled,
     importDashboardResearchOutput,
     importEnabledFullDashboardRunOutput,
     importLatestFullDashboardRunOutput,

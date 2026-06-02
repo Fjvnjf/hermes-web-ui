@@ -47,6 +47,7 @@ const canUseSearch = computed(() => canShowRoute('hermes.history'))
 const canUseExecutiveIntel = computed(() => canShowRoute('hermes.investorReadiness'))
 let fullDashboardAutopilotTimer: number | null = null
 let fullDashboardAutopilotImporting = false
+let fullDashboardAutopilotBootstrapping = false
 
 // Close mobile sidebar on route change
 watch(() => router.currentRoute.value.path, () => {
@@ -168,7 +169,7 @@ async function refreshCommandCenter() {
     appStore.checkConnection(),
     canAccessRouteName('hermes.models', getFrontendAccessRole()) ? appStore.reloadModels() : Promise.resolve(),
   ])
-  await importFullDashboardAutopilotOutputInBackground()
+  await bootstrapFullDashboardAutopilotRuntime()
 }
 
 function canRunFullDashboardAutopilotRuntime(): boolean {
@@ -181,9 +182,9 @@ function startFullDashboardAutopilotRuntime() {
     return
   }
   if (fullDashboardAutopilotTimer != null) return
-  void importFullDashboardAutopilotOutputInBackground()
+  void bootstrapFullDashboardAutopilotRuntime()
   fullDashboardAutopilotTimer = window.setInterval(() => {
-    void importFullDashboardAutopilotOutputInBackground()
+    void bootstrapFullDashboardAutopilotRuntime()
   }, 10 * 60 * 1000)
 }
 
@@ -191,6 +192,20 @@ function stopFullDashboardAutopilotRuntime() {
   if (fullDashboardAutopilotTimer == null) return
   window.clearInterval(fullDashboardAutopilotTimer)
   fullDashboardAutopilotTimer = null
+}
+
+async function bootstrapFullDashboardAutopilotRuntime() {
+  if (!canRunFullDashboardAutopilotRuntime() || fullDashboardAutopilotBootstrapping) return
+
+  fullDashboardAutopilotBootstrapping = true
+  try {
+    await trustedSourceAutopilot.ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
+    await importFullDashboardAutopilotOutputInBackground()
+  } catch (err) {
+    console.warn('[trusted-source-autopilot] automatic schedule bootstrap failed', err)
+  } finally {
+    fullDashboardAutopilotBootstrapping = false
+  }
 }
 
 async function importFullDashboardAutopilotOutputInBackground() {
