@@ -88,6 +88,43 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('extracts the real output JSON when the saved cron prompt contains a fenced-json instruction', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Cron Job: Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Prompt',
+      'Put the appendix in one fenced ```json block.',
+      'The top-level object must be: { "dashboard_updates": { ... } }.',
+      '',
+      '## Result',
+      '```mermaid',
+      'flowchart LR',
+      '  A --> B',
+      '```',
+      '',
+      '```json',
+      JSON.stringify({
+        dashboard_updates: {
+          marketClaims: [{
+            label: 'Official trade source',
+            value: 'Source found',
+            sourceTitle: 'Official source',
+            sourceUrl: 'https://example.gov/trade',
+            sourceTier: 'Tier 1 - Official / regulator / trade source',
+            confidence: 'High',
+            evidenceStatus: 'Official Data',
+            dataType: 'company_data',
+          }],
+        },
+      }, null, 2),
+      '```',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({ label: 'Official trade source', value: 'Source found' }),
+    ])
+  })
+
   it('auto-fills only low-risk official facts and stages critical findings for review', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-00-00.000000+00-00.md', {
@@ -231,6 +268,25 @@ describe('dashboard autopilot output ingestion', () => {
     expect(envelope?.state.marketClaims).toHaveLength(1)
     const registry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'imported-runs.json'), 'utf-8')
     expect(registry).toContain('job-full-dashboard/2026-06-02T09-00-00.000000+00-00.md')
+  })
+
+  it('does not mark skipped non-parseable outputs as imported', async () => {
+    writeFullDashboardJob(hermesHome)
+    const outputDir = join(hermesHome, 'cron', 'output', 'job-full-dashboard')
+    mkdirSync(outputDir, { recursive: true })
+    writeFileSync(join(outputDir, '2026-06-02T10-00-00.000000+00-00.md'), [
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      'The model did not return structured dashboard updates yet.',
+    ].join('\n'))
+
+    const first = await ingestFullDashboardAutopilotOutputs('default')
+    const second = await ingestFullDashboardAutopilotOutputs('default')
+    const registry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'imported-runs.json'), 'utf-8')
+
+    expect(first).toMatchObject({ skippedRuns: 1, importedRuns: 0 })
+    expect(second).toMatchObject({ skippedRuns: 1, importedRuns: 0 })
+    expect(registry).not.toContain('job-full-dashboard/2026-06-02T10-00-00.000000+00-00.md')
   })
 
   it('creates the twice-daily full dashboard schedule when no job exists', async () => {

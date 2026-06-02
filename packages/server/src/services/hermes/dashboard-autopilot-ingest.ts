@@ -585,15 +585,17 @@ export function extractDashboardResearchUpdates(content: string): DashboardResea
   if (directPayload) return directPayload
 
   const fencedBlocks = [...trimmed.matchAll(/```(?:json|dashboard_updates)?\s*([\s\S]*?)```/gi)]
-  for (const block of fencedBlocks) {
-    const parsed = tryParseJsonObject(block[1].trim())
+  for (const block of fencedBlocks.reverse()) {
+    const candidate = block[1].trim()
+    if (!candidate.startsWith('{') && !candidate.startsWith('[')) continue
+    const parsed = tryParseJsonObject(candidate)
     const payload = parsed ? normalizeDashboardPayload(parsed) : null
     if (payload) return payload
   }
 
-  const marker = trimmed.search(/["']?dashboard_updates["']?\s*[:=]/i)
-  if (marker !== -1) {
-    const json = extractBalancedObjectAfter(trimmed, marker)
+  const markers = [...trimmed.matchAll(/["']?dashboard_updates["']?\s*[:=]/gi)]
+  for (const marker of markers.reverse()) {
+    const json = extractBalancedObjectAfter(trimmed, marker.index || 0)
     const parsed = json ? tryParseJsonObject(json) : null
     const payload = parsed ? normalizeDashboardPayload(parsed) : null
     if (payload) return payload
@@ -944,11 +946,11 @@ export async function ingestFullDashboardAutopilotOutputs(
       try {
         const content = await readFile(output.path, 'utf-8')
         const payload = extractDashboardResearchUpdates(content)
-        importedRunKeys.add(runKey)
         if (!payload) {
           result.skippedRuns += 1
           continue
         }
+        importedRunKeys.add(runKey)
         const applied = applyDashboardUpdates(state, payload, runKey, new Date(output.mtimeMs || Date.now()).toISOString())
         result.autoFilledCount += applied.autoFilledCount
         result.stagedReviewCount += applied.stagedReviewCount
