@@ -213,6 +213,7 @@ export interface FullDashboardAutopilotScheduleResult {
   profile: string
   jobId: string | null
   created: boolean
+  recordedResearchJob: boolean
   firstRunStarted: boolean
   firstRunError: string
 }
@@ -337,6 +338,59 @@ function findCreatedJob(beforeJobs: CronJobRecord[], afterJobs: CronJobRecord[])
     null
 }
 
+async function recordFullDashboardAutopilotResearchJob(profile: string, jobId: string): Promise<boolean> {
+  if (!jobId) return false
+  const envelope = await readDashboardIntelligenceState(profile)
+  const state = normalizeState(envelope?.state)
+  const existingIndex = state.researchJobs.findIndex(job =>
+    firstString(job.scheduledJobId) === jobId ||
+    firstString(job.title) === FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+  )
+  const now = new Date().toISOString()
+  const record = {
+    id: existingIndex >= 0
+      ? firstString(state.researchJobs[existingIndex].id) || stableId('research', FULL_DASHBOARD_AUTOPILOT_JOB_NAME, jobId)
+      : stableId('research', FULL_DASHBOARD_AUTOPILOT_JOB_NAME, jobId),
+    title: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+    question: 'Automatically research trusted online sources and existing Hermes evidence to refresh the full feasibility dashboard.',
+    scope: 'Executive Overview, Market Intelligence, Competitor Intelligence, Investment Analysis, Raw Material Sourcing, Supplier Scorecards, Export Market Opportunity, Regulatory, Investor Readiness, and Presentation Builder.',
+    expectedOutput: 'Source-backed dashboard update candidates, evidence gaps, suggested tasks, and review-ready investor material candidates.',
+    sourceRequirements: 'Official-first trusted sources with source title plus URL/date, confidence, evidence status, and review gating for critical claims.',
+    priority: 'high',
+    schedulePreference: 'Custom',
+    scheduledJobId: jobId,
+    schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    context: 'Chemicon China Feasibility',
+    status: 'Scheduled Hermes Job',
+    createdAt: existingIndex >= 0 ? firstString(state.researchJobs[existingIndex].createdAt) || now : now,
+  }
+
+  if (existingIndex >= 0) {
+    const current = state.researchJobs[existingIndex]
+    const changed = firstString(current.scheduledJobId) !== jobId ||
+      firstString(current.schedule) !== FULL_DASHBOARD_AUTOPILOT_SCHEDULE ||
+      firstString(current.status) !== 'Scheduled Hermes Job'
+    state.researchJobs = [
+      ...state.researchJobs.slice(0, existingIndex),
+      { ...current, ...record },
+      ...state.researchJobs.slice(existingIndex + 1),
+    ]
+    if (!changed) return false
+  } else {
+    state.researchJobs = [record, ...state.researchJobs]
+  }
+
+  await writeDashboardIntelligenceState({
+    profile,
+    state,
+    savedBy: {
+      username: 'Full Dashboard Autopilot',
+      role: 'system',
+    },
+  })
+  return true
+}
+
 async function runHermesCron(profile: string, args: string[], timeoutMs: number): Promise<void> {
   const profileDir = getProfileDir(profile || 'default')
   try {
@@ -363,10 +417,12 @@ export async function ensureFullDashboardAutopilotScheduled(
   const existing = beforeJobs.find(isFullDashboardAutopilotJobRecord)
   const existingJobId = existing ? getJobId(existing) : ''
   if (existingJobId) {
+    const recordedResearchJob = await recordFullDashboardAutopilotResearchJob(profile, existingJobId)
     return {
       profile,
       jobId: existingJobId,
       created: false,
+      recordedResearchJob,
       firstRunStarted: false,
       firstRunError: '',
     }
@@ -385,6 +441,7 @@ export async function ensureFullDashboardAutopilotScheduled(
 
   const createdJob = findCreatedJob(beforeJobs, await readCronJobs(profile))
   const jobId = createdJob ? getJobId(createdJob) : ''
+  const recordedResearchJob = jobId ? await recordFullDashboardAutopilotResearchJob(profile, jobId) : false
   let firstRunStarted = false
   let firstRunError = ''
 
@@ -403,6 +460,7 @@ export async function ensureFullDashboardAutopilotScheduled(
     profile,
     jobId: jobId || null,
     created: true,
+    recordedResearchJob,
     firstRunStarted,
     firstRunError,
   }

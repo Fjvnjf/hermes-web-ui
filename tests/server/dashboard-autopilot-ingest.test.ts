@@ -246,8 +246,18 @@ describe('dashboard autopilot output ingestion', () => {
     expect(result).toMatchObject({
       jobId: 'created-full-dashboard',
       created: true,
+      recordedResearchJob: true,
       firstRunStarted: false,
     })
+    const envelope = await readDashboardIntelligenceState('default')
+    expect(envelope?.state.researchJobs).toEqual([
+      expect.objectContaining({
+        title: 'Full Dashboard Trusted Source Autopilot',
+        scheduledJobId: 'created-full-dashboard',
+        schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+        status: 'Scheduled Hermes Job',
+      }),
+    ])
     const createArgs = execFileMock.mock.calls[0][1] as string[]
     expect(createArgs.slice(0, 7)).toEqual([
       'cron',
@@ -282,9 +292,19 @@ describe('dashboard autopilot output ingestion', () => {
     expect(result).toMatchObject({
       jobId: 'existing-full-dashboard',
       created: false,
+      recordedResearchJob: true,
       firstRunStarted: false,
     })
     expect(execFileMock).not.toHaveBeenCalled()
+    const envelope = await readDashboardIntelligenceState('default')
+    expect(envelope?.state.researchJobs).toEqual([
+      expect.objectContaining({
+        title: 'Full Dashboard Trusted Source Autopilot',
+        scheduledJobId: 'existing-full-dashboard',
+        schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+        status: 'Scheduled Hermes Job',
+      }),
+    ])
   })
 
   it('can start the first created run and import its review-gated output', async () => {
@@ -326,6 +346,7 @@ describe('dashboard autopilot output ingestion', () => {
     expect(result).toMatchObject({
       jobId: 'created-full-dashboard',
       created: true,
+      recordedResearchJob: true,
       firstRunStarted: true,
       firstRunError: '',
     })
