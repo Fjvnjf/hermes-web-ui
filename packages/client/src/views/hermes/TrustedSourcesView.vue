@@ -286,6 +286,7 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
 }
 
 onMounted(() => {
+  void refreshServerAutopilotStatus()
   void intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false }).then(() => {
     void refreshServerAutopilotStatus()
   })

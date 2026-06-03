@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
@@ -739,6 +739,58 @@ describe('Trusted Source Autopilot', () => {
     expect(status.message).toContain('imported outputs are reflected')
   })
 
+  it('refreshes server autopilot health without waiting for durable intelligence hydration', async () => {
+    listJobsMock.mockResolvedValueOnce([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValueOnce([])
+    fetchDashboardAutopilotImportStatusMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 0,
+        importedRunCount: 0,
+        pendingOutputCount: 0,
+        latestOutputRunKey: '',
+        latestOutputFile: '',
+        latestOutputAt: '',
+        latestOutputImported: false,
+        latestOutputParseStatus: 'none',
+        latestOutputCandidateCount: 0,
+        latestOutputParseError: '',
+        latestImportedRunKey: '',
+        registryUpdatedAt: '',
+        latestDueSlotAt: '',
+        latestDueSlotSatisfied: false,
+        latestDueSlotAttemptedAt: '',
+        latestDueSlotRunError: '',
+      },
+    })
+    fetchDashboardIntelligenceStateMock.mockReturnValueOnce(new Promise(() => {}))
+
+    const wrapper = mount(TrustedSourcesView)
+    await flushPromises()
+
+    expect(fetchDashboardAutopilotImportStatusMock).toHaveBeenCalled()
+    expect(fetchDashboardIntelligenceStateMock).toHaveBeenCalled()
+    const text = wrapper.text()
+    expect(text).toContain('Server job status')
+    expect(text).toContain('Hermes research job is connected')
+    expect(text).toContain('Full Dashboard Autopilot is scheduled. Waiting for the first readable research output.')
+  })
+
   it('hydrates dashboard intelligence from the owner-only server state before local rendering', async () => {
     fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
       ok: true,
@@ -1297,7 +1349,7 @@ describe('Trusted Source Autopilot', () => {
   })
 
   it('renders live server job status for the full dashboard autopilot', async () => {
-    listJobsMock.mockResolvedValueOnce([{
+    listJobsMock.mockResolvedValue([{
       id: 'job-full-dashboard',
       job_id: 'job-full-dashboard',
       name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
@@ -1311,7 +1363,7 @@ describe('Trusted Source Autopilot', () => {
       last_status: 'completed',
       last_error: null,
     }])
-    vi.mocked(listCronRuns).mockResolvedValueOnce([{
+    vi.mocked(listCronRuns).mockResolvedValue([{
       jobId: 'job-full-dashboard',
       fileName: '2026-06-03T07-00-00.md',
       runTime: '2026-06-03T07:00:00.000Z',
