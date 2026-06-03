@@ -369,6 +369,51 @@ const automaticResearchFlow = computed(() => {
   ]
 })
 
+const automaticFillDestinations = computed(() => [
+  {
+    icon: '🌍',
+    title: 'Market Intelligence',
+    fill: 'Country growth, demand signals, market-source records',
+    gate: 'Market size, growth-rate claims, pricing, and unsupported values stay To Verify',
+    to: { name: 'hermes.marketIntelligence' },
+  },
+  {
+    icon: '🏭',
+    title: 'Competitors',
+    fill: 'Company profiles, product equivalents, strengths, source links',
+    gate: 'Market share and price claims wait for verified source evidence',
+    to: { name: 'hermes.competitorIntelligence' },
+  },
+  {
+    icon: '⚗️',
+    title: 'Supplier Scorecards',
+    fill: 'Supplier candidates, raw material signals, quote evidence status',
+    gate: 'Supplier prices, landed cost, and secret cost sheets remain restricted',
+    to: { name: 'hermes.rawMaterialSourcing' },
+  },
+  {
+    icon: '💎',
+    title: 'Investment Analysis',
+    fill: 'Financial evidence candidates and assumption-source links',
+    gate: 'IRR, NPV, payback, and investor returns remain Derived from Assumptions until approved',
+    to: { name: 'hermes.investmentAnalysis' },
+  },
+  {
+    icon: '📋',
+    title: 'Regulatory',
+    fill: 'CAS, SDS, DMS, permit, and compliance research candidates',
+    gate: 'Regulatory status is not Verified without official or reviewed evidence',
+    to: { name: 'hermes.regulatoryIntelligence' },
+  },
+  {
+    icon: '🧾',
+    title: 'Investor Outputs',
+    fill: 'Approved facts, risk notes, data-room evidence, presentation candidates',
+    gate: 'Investor material is never silently approved by autopilot',
+    to: { name: 'hermes.investorReadiness' },
+  },
+].filter(destination => canUseRouteTarget(destination.to)))
+
 function formatAutopilotTimestamp(value: string): string {
   if (!value) return 'not available'
   const date = new Date(value)
@@ -861,6 +906,25 @@ onMounted(() => {
               </span>
               <span class="flow-state">{{ step.state }}</span>
             </article>
+          </div>
+          <div class="automatic-fill-map" aria-label="Where automatic research fills the dashboard">
+            <div class="fill-map-header">
+              <span aria-hidden="true">🗺️</span>
+              <div>
+                <strong>Where Hermes fills the dashboard</strong>
+                <small>Open any area below. Safe source-backed records can appear automatically; risky claims stay review-gated.</small>
+              </div>
+            </div>
+            <div class="fill-map-grid">
+              <RouterLink v-for="destination in automaticFillDestinations" :key="destination.title" :to="destination.to">
+                <span class="fill-map-icon" aria-hidden="true">{{ destination.icon }}</span>
+                <span class="fill-map-copy">
+                  <strong>{{ destination.title }}</strong>
+                  <small><b>Fills:</b> {{ destination.fill }}</small>
+                  <small><b>Gate:</b> {{ destination.gate }}</small>
+                </span>
+              </RouterLink>
+            </div>
           </div>
         </div>
         <div class="automatic-research-metrics">
@@ -1657,6 +1721,101 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
+.automatic-fill-map {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.055);
+}
+
+.fill-map-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+
+  > span {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.09);
+    font-size: 16px;
+  }
+
+  div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 13px;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.4;
+  }
+}
+
+.fill-map-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  a {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.22);
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.14);
+    text-decoration: none;
+  }
+}
+
+.fill-map-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-info-rgb), 0.08);
+  font-size: 15px;
+}
+
+.fill-map-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  b {
+    color: $accent-info;
+  }
+}
+
 .automatic-research-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2417,6 +2576,10 @@ onMounted(() => {
       grid-column: 2;
       justify-self: start;
     }
+  }
+
+  .fill-map-grid {
+    grid-template-columns: 1fr;
   }
 
   .automatic-research-metrics {
