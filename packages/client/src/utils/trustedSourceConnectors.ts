@@ -246,6 +246,7 @@ function normalizeClaim(input: Partial<NormalizedTrustedSourceClaim>, source: Tr
 
 export function createConnectorForSource(source: TrustedSourceRecord): TrustedSourceConnector {
   if (source.source_id === 'world-bank-indicators-api') return worldBankApiConnector(source)
+  if (source.source_id === 'world-bank-documents-api') return worldBankDocumentsApiConnector(source)
   if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return unComtradeApiConnector(source)
   if (source.source_id === 'pubchem') return pubChemApiConnector(source)
   if (source.source_id === 'oecd-data-api') return apiReadyConnector(source, 'OECD connector is API-ready; dataset selection must be reviewed before dashboard values are trusted.')
@@ -564,6 +565,150 @@ function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConne
       source_date: period,
       notes: `UN Comtrade public preview API aggregate import signal for HS ${cmdCode}. This is an official trade proxy, not product-specific consumption, market size, competitor share, or verified demand. Review HS fit, reporter coverage, and source context before dashboard/investor use.`,
       evidence_status: 'Trade Proxy',
+      confidence: 'high',
+      review_required: true,
+    }]
+  }
+  return connector
+}
+
+function cleanText(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
+}
+
+function nestedText(value: unknown, key: string): string {
+  if (!value || typeof value !== 'object') return ''
+  if (key in value) return cleanText((value as Record<string, unknown>)[key])
+  for (const item of Object.values(value as Record<string, unknown>)) {
+    const text = nestedText(item, key)
+    if (text) return text
+  }
+  return ''
+}
+
+function worldBankDocumentsQueryForRequest(request: TrustedSourceConnectorRequest): string {
+  const text = `${request.screen} ${request.field} ${request.query || ''}`.toLowerCase()
+  if (/export|country|consumption|import/.test(text)) {
+    return 'textile manufacturing exports China Bangladesh Vietnam India Indonesia Pakistan Turkiye'
+  }
+  if (/market|segmentation|growth|scope|province/.test(text)) {
+    return 'China textile apparel manufacturing market industry report'
+  }
+  if (/regulatory|chemical|dms|sds|cas/.test(text)) {
+    return 'China chemical manufacturing regulation environment safety'
+  }
+  return 'China textile manufacturing market industry report'
+}
+
+function worldBankDocuments(raw: unknown): Array<{
+  id?: string
+  title: string
+  url?: string
+  date?: string
+  type?: string
+  country?: string
+  abstract?: string
+}> {
+  if (!raw || typeof raw !== 'object') return []
+  if (Array.isArray(raw)) {
+    return raw
+      .map((doc) => {
+        if (!doc || typeof doc !== 'object') return null
+        const record = doc as Record<string, unknown>
+        const title = cleanText(record.title)
+        if (!title) return null
+        return {
+          id: cleanText(record.id),
+          title,
+          url: cleanText(record.url),
+          date: cleanText(record.date),
+          type: cleanText(record.type),
+          country: cleanText(record.country),
+          abstract: cleanText(record.abstract),
+        }
+      })
+      .filter((doc): doc is NonNullable<typeof doc> => !!doc)
+  }
+  if (Array.isArray((raw as { documents?: unknown }).documents)) {
+    return worldBankDocuments((raw as { documents: unknown[] }).documents)
+  }
+  const docs = (raw as { documents?: Record<string, unknown> }).documents
+  if (!docs || typeof docs !== 'object') return []
+
+  return Object.values(docs)
+    .filter(doc => doc && typeof doc === 'object' && 'id' in doc)
+    .map((doc) => {
+      const record = doc as Record<string, unknown>
+      const title = cleanText(record.display_title) || nestedText(record.docna, 'docna') || nestedText(record.repnme, 'repnme') || `World Bank document ${cleanText(record.id)}`
+      return {
+        id: cleanText(record.id),
+        title,
+        url: cleanText(record.url_friendly_title) || cleanText(record.url) || cleanText(record.pdfurl),
+        date: cleanText(record.docdt || record.last_modified_date).slice(0, 10),
+        type: cleanText(record.docty || record.majdocty),
+        country: cleanText(record.count),
+        abstract: nestedText(record.abstracts, 'cdata!') || cleanText(record.abstracts),
+      }
+    })
+    .filter(doc => doc.title)
+}
+
+function worldBankDocumentsApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
+  const connector = baseConnector(source)
+  connector.fetch = async (request) => {
+    const fetchImpl = request.fetchImpl || fetch
+    const query = worldBankDocumentsQueryForRequest(request)
+    const params = new URLSearchParams({
+      format: 'json',
+      qterm: query,
+      rows: '5',
+    })
+    const endpoint = `https://search.worldbank.org/api/v2/wds?${params.toString()}`
+    const response = await fetchImpl(endpoint)
+    if (!response.ok) throw new Error(`World Bank Documents API returned ${response.status}`)
+    const raw = await response.json()
+    return {
+      query,
+      endpoint,
+      documents: worldBankDocuments(raw),
+    }
+  }
+  connector.parse = async (raw, request) => {
+    const endpoint = raw && typeof raw === 'object' && 'endpoint' in raw
+      ? String((raw as { endpoint?: string }).endpoint || source.url)
+      : source.url
+    const query = raw && typeof raw === 'object' && 'query' in raw
+      ? String((raw as { query?: string }).query || worldBankDocumentsQueryForRequest(request))
+      : worldBankDocumentsQueryForRequest(request)
+    const documents = worldBankDocuments(raw).slice(0, 3)
+
+    if (!documents.length) {
+      return [{
+        field: request.field,
+        value: `World Bank Documents API reachable for "${query}" / To Verify`,
+        source_url: endpoint,
+        source_date: nowIso(request).slice(0, 10),
+        notes: 'No usable public document metadata was extracted. Keep this field staged and let Hermes create a deeper research job.',
+        evidence_status: 'To Verify',
+        confidence: 'medium',
+        review_required: true,
+      }]
+    }
+
+    return [{
+      field: request.field,
+      value: documents
+        .map(doc => `${doc.title}${doc.date ? ` (${doc.date})` : ''}${doc.country ? ` - ${doc.country}` : ''}`)
+        .join('; '),
+      unit: 'official document candidates',
+      source_url: documents[0].url || endpoint,
+      source_date: documents
+        .map(doc => doc.date || '')
+        .filter(Boolean)
+        .sort()
+        .at(-1) || nowIso(request).slice(0, 10),
+      notes: `World Bank Documents API public metadata for query "${query}". These are official document candidates, not market size, not CAGR, not competitor share, not demand, not supplier price, not regulatory approval, and not investment proof. Review document scope and extract source-backed facts before dashboard or investor use.`,
+      evidence_status: 'Official Data',
       confidence: 'high',
       review_required: true,
     }]

@@ -99,9 +99,103 @@ vi.mock('vue-router', () => ({
   },
 }))
 
+async function waitForExpectation(assertion: () => void, attempts = 60) {
+  let lastError: unknown
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      assertion()
+      return
+    } catch (err) {
+      lastError = err
+      await flushPromises()
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+  }
+  throw lastError
+}
+
+function stubTrustedSourceFetch() {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.includes('comtradeapi.un.org')) {
+      return {
+        ok: true,
+        json: async () => ({
+          data: [{
+            reporterCode: 156,
+            reporterDesc: 'China',
+            period: '2024',
+            partnerCode: 0,
+            partner2Code: 0,
+            customsCode: 'C00',
+            motCode: 0,
+            cmdCode: '380991',
+            primaryValue: 236608417,
+            netWgt: 65408986.289,
+            isAggregate: true,
+          }],
+        }),
+      } as Response
+    }
+    if (url.includes('search.worldbank.org/api/v2/wds')) {
+      return {
+        ok: true,
+        json: async () => ({
+          documents: {
+            D123: {
+              id: '123',
+              display_title: 'China textile manufacturing market document',
+              url: 'http://documents.worldbank.org/curated/en/example/china-textile-market',
+              docdt: '2024-03-01T00:00:00Z',
+              docty: 'Report',
+              count: 'China',
+            },
+          },
+        }),
+      } as Response
+    }
+    if (url.includes('api.worldbank.org')) {
+      return {
+        ok: true,
+        json: async () => [null, [
+          { countryiso3code: 'CHN', country: { id: 'CHN', value: 'China' }, date: '2024', value: 5.12 },
+          { countryiso3code: 'BGD', country: { id: 'BGD', value: 'Bangladesh' }, date: '2024', value: 3.45 },
+        ]],
+      } as Response
+    }
+    if (url.includes('/property/')) {
+      return {
+        ok: true,
+        json: async () => ({
+          PropertyTable: {
+            Properties: [{
+              CID: 6497,
+              MolecularFormula: 'C2H6O4S',
+              MolecularWeight: '126.13',
+              IUPACName: 'dimethyl sulfate',
+              CanonicalSMILES: 'COS(=O)(=O)OC',
+            }],
+          },
+        }),
+      } as Response
+    }
+    if (url.includes('/synonyms/')) {
+      return {
+        ok: true,
+        json: async () => ({
+          InformationList: {
+            Information: [{ Synonym: ['DIMETHYL SULFATE', '77-78-1'] }],
+          },
+        }),
+      } as Response
+    }
+    return { ok: true, json: async () => ({}) } as Response
+  }) as typeof fetch)
+}
+
 describe('Trusted Source Autopilot', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
     fetchAvailableModelsMock.mockResolvedValue({
       default: 'gpt-5.5',
       default_provider: 'codex',
@@ -317,6 +411,58 @@ describe('Trusted Source Autopilot', () => {
     expect(claims[0].notes).toContain('not SDS/TDS evidence')
     expect(claims[0].notes).toContain('not China regulatory approval')
     expect(claims[0].notes).toContain('not product formulation verification')
+  })
+
+  it('fetches World Bank official document candidates without treating them as market proof', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-documents-api')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        documents: {
+          D32067178: {
+            id: '32067178',
+            display_title: 'China - China HCFC Phase-Out Project',
+            url: 'http://documents.worldbank.org/curated/en/example/china-hcfc-phase-out-project',
+            docdt: '2020-05-26T00:00:00Z',
+            docty: 'Implementation Completion Report Review',
+            count: 'China',
+            abstracts: {
+              'cdata!': 'Includes manufacturing, raw material, production level, and consumption sector references.',
+            },
+          },
+          D123: {
+            id: '123',
+            docna: { 0: { docna: 'China textile industry competitiveness note' } },
+            url_friendly_title: 'http://documents.worldbank.org/curated/en/example/china-textile-industry',
+            last_modified_date: '2024-03-01T00:00:00Z',
+            docty: 'Report',
+            count: 'China',
+          },
+        },
+      }),
+    } as Response)
+
+    const { claims } = await runConnector({
+      screen: 'market',
+      field: 'Market Segmentation',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('search.worldbank.org/api/v2/wds'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('qterm=China+textile+apparel+manufacturing+market+industry+report'))
+    expect(claims[0].value).toContain('China - China HCFC Phase-Out Project (2020-05-26) - China')
+    expect(claims[0].value).toContain('China textile industry competitiveness note (2024-03-01) - China')
+    expect(claims[0].source_url).toBe('http://documents.worldbank.org/curated/en/example/china-hcfc-phase-out-project')
+    expect(claims[0].evidence_status).toBe('Official Data')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].notes).toContain('official document candidates')
+    expect(claims[0].notes).toContain('not market size')
+    expect(claims[0].notes).toContain('not supplier price')
+    expect(claims[0].notes).toContain('Review document scope')
+    expect(claims[0].value).not.toContain('$3.2B')
   })
 
   it('fetches and normalizes a World Bank API claim when fetch is available', async () => {
@@ -1411,18 +1557,21 @@ describe('Trusted Source Autopilot', () => {
   })
 
   it('creates a real data-engine snapshot from the Run Source Check Now control', async () => {
+    stubTrustedSourceFetch()
     const autopilot = useTrustedSourceAutopilot()
     const wrapper = mount(TrustedSourceAutopilotPanel, {
       props: { screen: 'market', title: 'Market Auto Source Status' },
     })
 
     await wrapper.findAll('button').find(button => button.text().includes('Run Source Check Now'))!.trigger('click')
-    await vi.dynamicImportSettled()
 
-    expect(autopilot.lastSnapshotForScreen('market')?.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
+    await waitForExpectation(() => {
+      expect(autopilot.lastSnapshotForScreen('market')?.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
+    })
   })
 
   it('renders full dashboard autopilot controls in Trusted Sources and runs snapshots', async () => {
+    stubTrustedSourceFetch()
     const autopilot = useTrustedSourceAutopilot()
     const wrapper = mount(TrustedSourcesView)
 
@@ -1452,9 +1601,10 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('07:00 / 19:00')
 
     await wrapper.findAll('button').find(button => button.text().includes('Create Source Snapshot'))!.trigger('click')
-    await vi.dynamicImportSettled()
 
-    expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
+    await waitForExpectation(() => {
+      expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
+    })
     expect(wrapper.text()).toContain('Needs Review')
   })
 
