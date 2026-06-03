@@ -6,6 +6,7 @@ import InvestmentAnalysisView from '@/views/hermes/InvestmentAnalysisView.vue'
 import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
 import RawMaterialSourcingView from '@/views/hermes/RawMaterialSourcingView.vue'
+import ExportMarketOpportunityView from '@/views/hermes/ExportMarketOpportunityView.vue'
 import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName } from '@/utils/accessControl'
@@ -399,6 +400,34 @@ describe('screenshot-matched executive business tabs', () => {
     expect(findings.some(item => item.keyClaim.includes('Market intelligence'))).toBe(true)
     expect(findings.some(item => item.keyClaim.includes('Investment analysis'))).toBe(true)
     expect(findings.every(item => item.status === 'Pending Review' || item.status === 'To Verify')).toBe(true)
+  })
+
+  it('auto-fills Export Market Opportunity from trusted-source country market claims as trade proxies', () => {
+    useFeasibilityIntelligence().addMarketClaim({
+      label: 'Country-wise consumption growth - China',
+      value: '2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg; YoY value change +21.23% vs 2023',
+      source: {
+        title: 'WITS / World Bank Comtrade - China imports of HS 380991',
+        url: 'https://wits.worldbank.org/trade/comtrade/en/country/CHN/year/2024/tradeflow/Imports/partner/ALL/product/380991',
+      },
+      confidence: 'medium',
+      evidenceStatus: 'To Verify',
+      lastChecked: '2026-06-03',
+    })
+
+    const wrapper = mount(ExportMarketOpportunityView)
+    const text = wrapper.text()
+
+    expect(text).toContain('Export market opportunity')
+    expect(text).toContain('Hermes Autopilot has filled 1 country-wise trade-proxy records')
+    expect(text).toContain('China')
+    expect(text).toContain('Textile auxiliary / softener trade proxy')
+    expect(text).toContain('HS 380991 trade proxy / To Verify')
+    expect(text).toContain('2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg')
+    expect(text).toContain('+21.23%')
+    expect(text).toContain('WITS / World Bank Comtrade - China imports of HS 380991')
+    expect(text).toContain('Trade proxy')
+    expect(text).toContain('not proven actual consumption')
   })
 
   it('keeps employee and investor route access conservative', () => {

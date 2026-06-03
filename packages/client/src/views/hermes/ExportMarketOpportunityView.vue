@@ -77,12 +77,70 @@ function persist() {
   window.localStorage.setItem(EXPORT_MARKET_STORAGE_KEY, JSON.stringify(records.value))
 }
 
-const sourceBackedCount = computed(() => records.value.filter(item => item.evidenceStatus === 'Source-backed' || item.evidenceStatus === 'Verified').length)
-const toVerifyCount = computed(() => records.value.filter(item => item.evidenceStatus === 'To Verify' || item.evidenceStatus === 'Reference Only').length)
-const tradeProxyCount = computed(() => records.value.filter(item => !item.hsCode.trim() || item.dataMethod.toLowerCase().includes('proxy')).length)
+function countryFromClaimLabel(label: string): string {
+  const parts = label.split(/\s+-\s+/)
+  return parts.length > 1 ? parts.slice(1).join(' - ').trim() : label.replace(/country-wise|consumption|growth|export|opportunity|market/gi, '').trim()
+}
+
+function hsCodeFromClaim(label: string, value: string, sourceUrl?: string): string {
+  const text = `${label} ${value} ${sourceUrl || ''}`
+  return text.match(/(?:hs\s*|product\/)(\d{6})/i)?.[1] || ''
+}
+
+function growthFromClaim(value: string): string {
+  return value.match(/(?:yoy|growth|change)[^+\-\d]*([+\-]?\d+(?:\.\d+)?%)/i)?.[1] || 'Trade Proxy / To Verify'
+}
+
+const autopilotRecords = computed<ExportMarketRecord[]>(() =>
+  intelligence.state.value.marketClaims
+    .filter(claim => {
+      const label = claim.label.toLowerCase()
+      return label.includes('country-wise') ||
+        label.includes('consumption growth') ||
+        label.includes('export opportunity') ||
+        label.includes('import proxy') ||
+        label.includes('trade proxy')
+    })
+    .map((claim, index) => {
+      const value = claim.value || 'To Verify'
+      const source = claim.source?.title || 'Source review needed'
+      const hsCode = hsCodeFromClaim(claim.label, value, claim.source?.url)
+      return {
+        id: `autopilot-${claim.id || index}`,
+        country: countryFromClaimLabel(claim.label) || 'Country To Verify',
+        productScope: 'Textile auxiliary / softener trade proxy',
+        hsCode,
+        rankingType: 'autopilot trusted-source country signal',
+        dataMethod: hsCode ? `HS ${hsCode} trade proxy / To Verify` : 'Trade proxy / To Verify',
+        valueVolume: value,
+        growth: growthFromClaim(value),
+        source,
+        sourceDate: claim.lastChecked || claim.source?.date || nowIsoDate(),
+        confidence: claim.confidence || 'medium',
+        evidenceStatus: claim.evidenceStatus === 'Verified' || claim.evidenceStatus === 'Investor Approved'
+          ? 'Trade Proxy'
+          : claim.evidenceStatus,
+        opportunityScore: 'To Verify',
+        notes: 'Auto-filled by Full Dashboard Autopilot from sourced market intelligence. This is a trade proxy, not proven actual consumption.',
+        lastChecked: claim.lastChecked || nowIsoDate(),
+      }
+    }),
+)
+
+const displayRecords = computed(() => {
+  const used = new Set(autopilotRecords.value.map(record => record.country.toLowerCase()))
+  return [
+    ...autopilotRecords.value,
+    ...records.value.filter(record => !used.has(record.country.toLowerCase())),
+  ]
+})
+
+const sourceBackedCount = computed(() => displayRecords.value.filter(item => item.evidenceStatus === 'Source-backed' || item.evidenceStatus === 'Verified' || item.evidenceStatus === 'Official Data').length)
+const toVerifyCount = computed(() => displayRecords.value.filter(item => item.evidenceStatus === 'To Verify' || item.evidenceStatus === 'Reference Only' || item.evidenceStatus === 'Trade Proxy').length)
+const tradeProxyCount = computed(() => displayRecords.value.filter(item => !item.hsCode.trim() || item.dataMethod.toLowerCase().includes('proxy')).length)
 
 const summaryCards = computed(() => [
-  { label: 'Country records', value: records.value.length, note: 'User/source-entered only' },
+  { label: 'Country records', value: displayRecords.value.length, note: autopilotRecords.value.length ? `${autopilotRecords.value.length} auto-filled by Hermes` : 'User/source-entered only' },
   { label: 'Source-backed', value: sourceBackedCount.value, note: 'Source/date required' },
   { label: 'Trade proxy', value: tradeProxyCount.value, note: 'Not actual consumption' },
   { label: 'To Verify', value: toVerifyCount.value, note: 'Incomplete evidence' },
@@ -315,10 +373,14 @@ function addToInvestorReview(record: ExportMarketRecord) {
     <section class="records-panel">
       <header>
         <h3>Country records</h3>
-        <p v-if="!records.length">No country rankings yet. Add source-backed records or create a research task.</p>
+        <p v-if="autopilotRecords.length" class="autopilot-note">
+          Hermes Autopilot has filled {{ autopilotRecords.length }} country-wise trade-proxy records from sourced market claims.
+          They remain To Verify / Trade Proxy until HS-code methodology and product-specific demand are reviewed.
+        </p>
+        <p v-if="!displayRecords.length">No country rankings yet. Add source-backed records or create a research task.</p>
       </header>
 
-      <article v-for="record in records" :key="record.id" class="country-card">
+      <article v-for="record in displayRecords" :key="record.id" class="country-card">
         <div>
           <p class="eyebrow">{{ record.productScope }}</p>
           <h3>{{ record.country }}</h3>
@@ -423,6 +485,15 @@ select {
   display: grid;
   gap: 14px;
   margin-top: 12px;
+}
+
+.autopilot-note {
+  margin: 10px 0 0;
+  border: 1px solid rgba(56, 213, 255, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(56, 213, 255, 0.06);
+  color: #c8d4e3;
 }
 
 dl {
