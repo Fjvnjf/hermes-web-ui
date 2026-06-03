@@ -117,7 +117,9 @@ export interface FullDashboardServerStatus {
   latestOutputAt: string
   latestOutputFile: string
   importedRunCount: number
+  skippedRunCount: number
   latestOutputImported: boolean
+  latestOutputSkipped: boolean
   latestOutputParseStatus: 'none' | 'imported' | 'ready' | 'unparseable' | 'unreadable'
   latestOutputCandidateCount: number
   latestOutputParseError: string
@@ -1708,7 +1710,9 @@ function emptyFullDashboardServerStatus(message = 'Full dashboard autopilot sche
     latestOutputAt: '',
     latestOutputFile: '',
     importedRunCount: state.value.importedRunKeys.length,
+    skippedRunCount: 0,
     latestOutputImported: false,
+    latestOutputSkipped: false,
     latestOutputParseStatus: 'none',
     latestOutputCandidateCount: 0,
     latestOutputParseError: '',
@@ -1740,6 +1744,7 @@ function fullDashboardStatusMessage(status: FullDashboardServerStatus): string {
   if (status.lastError) return `Full Dashboard Autopilot is scheduled but the last run reported an error: ${status.lastError}`
   if (status.latestDueSlotRunError) return `The server attempted the latest due autopilot slot, but Hermes reported: ${status.latestDueSlotRunError}`
   if (status.latestOutputParseStatus === 'unreadable') return `The latest Hermes output exists but could not be read: ${status.latestOutputParseError || 'unknown read error'}`
+  if (status.latestOutputSkipped) return 'The latest Hermes output was checked and skipped because it did not contain source-backed dashboard update data. The next run will try again automatically.'
   if (status.latestOutputParseStatus === 'unparseable') return 'The latest Hermes output exists, but it did not contain source-backed JSON, Markdown tables, or delimited findings that the dashboard can safely import.'
   if (status.latestOutputParseStatus === 'ready') return `The latest Hermes output has ${status.latestOutputCandidateCount} source-backed candidate item${status.latestOutputCandidateCount === 1 ? '' : 's'} ready for the source-gated importer.`
   if (status.latestDueSlotAt && !status.latestDueSlotSatisfied && status.latestDueSlotAttemptedAt) return 'The server has kicked the latest due autopilot slot and is waiting for a readable Hermes output artifact.'
@@ -1789,9 +1794,11 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
       latestOutputAt: serverImport?.latestOutputAt || latest?.runTime || '',
       latestOutputFile: serverImport?.latestOutputFile || latest?.fileName || '',
       importedRunCount: serverImport?.importedRunCount ?? state.value.importedRunKeys.length,
+      skippedRunCount: serverImport?.skippedRunCount ?? 0,
       latestOutputImported: latestRunKey
         ? Boolean(serverImport?.latestOutputImported ?? state.value.importedRunKeys.includes(latestRunKey))
         : false,
+      latestOutputSkipped: Boolean(serverImport?.latestOutputSkipped),
       latestOutputParseStatus: serverImport?.latestOutputParseStatus || 'none',
       latestOutputCandidateCount: serverImport?.latestOutputCandidateCount || 0,
       latestOutputParseError: serverImport?.latestOutputParseError || '',

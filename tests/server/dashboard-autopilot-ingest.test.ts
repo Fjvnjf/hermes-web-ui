@@ -576,7 +576,7 @@ describe('dashboard autopilot output ingestion', () => {
     expect(registry).toContain('job-full-dashboard/2026-06-02T09-00-00.000000+00-00.md')
   })
 
-  it('does not mark skipped non-parseable outputs as imported', async () => {
+  it('tracks skipped non-parseable outputs without marking them imported or reprocessing them', async () => {
     writeFullDashboardJob(hermesHome)
     const outputDir = join(hermesHome, 'cron', 'output', 'job-full-dashboard')
     mkdirSync(outputDir, { recursive: true })
@@ -591,8 +591,19 @@ describe('dashboard autopilot output ingestion', () => {
     const registry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'imported-runs.json'), 'utf-8')
 
     expect(first).toMatchObject({ skippedRuns: 1, importedRuns: 0 })
-    expect(second).toMatchObject({ skippedRuns: 1, importedRuns: 0 })
-    expect(registry).not.toContain('job-full-dashboard/2026-06-02T10-00-00.000000+00-00.md')
+    expect(second).toMatchObject({ skippedRuns: 0, importedRuns: 0 })
+    const parsedRegistry = JSON.parse(registry)
+    expect(parsedRegistry.importedRunKeys).not.toContain('job-full-dashboard/2026-06-02T10-00-00.000000+00-00.md')
+    expect(parsedRegistry.skippedRunKeys).toContain('job-full-dashboard/2026-06-02T10-00-00.000000+00-00.md')
+
+    const status = await readFullDashboardAutopilotImportStatus('default')
+    expect(status).toMatchObject({
+      importedRunCount: 0,
+      skippedRunCount: 1,
+      pendingOutputCount: 0,
+      latestOutputSkipped: true,
+      latestOutputParseStatus: 'unparseable',
+    })
   })
 
   it('reports whether the latest output is ready to import or unparseable without exposing content', async () => {
@@ -603,6 +614,8 @@ describe('dashboard autopilot output ingestion', () => {
 
     const unparseable = await readFullDashboardAutopilotImportStatus('default')
     expect(unparseable).toMatchObject({
+      skippedRunCount: 0,
+      latestOutputSkipped: false,
       latestOutputParseStatus: 'unparseable',
       latestOutputCandidateCount: 0,
       latestOutputParseError: '',

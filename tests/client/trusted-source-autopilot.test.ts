@@ -739,6 +739,61 @@ describe('Trusted Source Autopilot', () => {
     expect(status.message).toContain('imported outputs are reflected')
   })
 
+  it('surfaces skipped autopilot outputs from the server import registry', async () => {
+    listJobsMock.mockResolvedValueOnce([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValueOnce([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-03T07-00-00.md',
+      runTime: '2026-06-03T07:00:00.000Z',
+      size: 2048,
+      hasOutput: true,
+    }])
+    fetchDashboardAutopilotImportStatusMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 1,
+        importedRunCount: 0,
+        skippedRunCount: 1,
+        pendingOutputCount: 0,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        latestOutputFile: '2026-06-03T07-00-00.md',
+        latestOutputAt: '2026-06-03T07:05:00.000Z',
+        latestOutputImported: false,
+        latestOutputSkipped: true,
+        latestOutputParseStatus: 'unparseable',
+        latestOutputCandidateCount: 0,
+        latestOutputParseError: '',
+        latestImportedRunKey: '',
+        registryUpdatedAt: '2026-06-03T07:06:00.000Z',
+        latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+        latestDueSlotSatisfied: true,
+        latestDueSlotAttemptedAt: '2026-06-03T07:01:00.000Z',
+        latestDueSlotRunError: '',
+      },
+    })
+
+    const status = await useTrustedSourceAutopilot().refreshFullDashboardServerStatus()
+
+    expect(status.skippedRunCount).toBe(1)
+    expect(status.latestOutputSkipped).toBe(true)
+    expect(status.message).toContain('checked and skipped')
+  })
+
   it('refreshes server autopilot health without waiting for durable intelligence hydration', async () => {
     listJobsMock.mockResolvedValueOnce([{
       id: 'job-full-dashboard',

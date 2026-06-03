@@ -13,11 +13,13 @@ export interface DashboardAutopilotImportStatus {
   jobCount: number
   outputCount: number
   importedRunCount: number
+  skippedRunCount?: number
   pendingOutputCount: number
   latestOutputRunKey: string
   latestOutputFile: string
   latestOutputAt: string
   latestOutputImported: boolean
+  latestOutputSkipped?: boolean
   latestOutputParseStatus: 'none' | 'imported' | 'ready' | 'unparseable' | 'unreadable'
   latestOutputCandidateCount: number
   latestOutputParseError: string

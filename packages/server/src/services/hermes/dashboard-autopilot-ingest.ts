@@ -188,6 +188,7 @@ interface DashboardIntelligenceState {
 interface ImportRegistry {
   version: 1
   importedRunKeys: string[]
+  skippedRunKeys: string[]
   updatedAt: string
 }
 
@@ -254,11 +255,13 @@ export interface DashboardAutopilotImportStatus {
   jobCount: number
   outputCount: number
   importedRunCount: number
+  skippedRunCount: number
   pendingOutputCount: number
   latestOutputRunKey: string
   latestOutputFile: string
   latestOutputAt: string
   latestOutputImported: boolean
+  latestOutputSkipped: boolean
   latestOutputParseStatus: 'none' | 'imported' | 'ready' | 'unparseable' | 'unreadable'
   latestOutputCandidateCount: number
   latestOutputParseError: string
@@ -566,13 +569,16 @@ async function readImportRegistry(profile: string): Promise<ImportRegistry> {
       return {
         version: 1,
         importedRunKeys: parsed.importedRunKeys.map(stringValue).filter(Boolean),
+        skippedRunKeys: Array.isArray(parsed.skippedRunKeys)
+          ? parsed.skippedRunKeys.map(stringValue).filter(Boolean)
+          : [],
         updatedAt: stringValue(parsed.updatedAt) || new Date().toISOString(),
       }
     }
   } catch (err: any) {
     if (err?.code !== 'ENOENT') logger.warn(err, '[dashboard-autopilot] failed to read import registry')
   }
-  return { version: 1, importedRunKeys: [], updatedAt: '' }
+  return { version: 1, importedRunKeys: [], skippedRunKeys: [], updatedAt: '' }
 }
 
 async function writeImportRegistry(profile: string, registry: ImportRegistry): Promise<void> {
@@ -580,6 +586,7 @@ async function writeImportRegistry(profile: string, registry: ImportRegistry): P
   const next: ImportRegistry = {
     version: 1,
     importedRunKeys: registry.importedRunKeys.slice(-MAX_IMPORTED_RUN_KEYS),
+    skippedRunKeys: registry.skippedRunKeys.slice(-MAX_IMPORTED_RUN_KEYS),
     updatedAt: new Date().toISOString(),
   }
   await mkdir(dirname(filePath), { recursive: true })
@@ -1504,6 +1511,7 @@ export async function ingestFullDashboardAutopilotOutputs(
 
   const registry = await readImportRegistry(profile)
   const importedRunKeys = new Set(registry.importedRunKeys)
+  const skippedRunKeys = new Set(registry.skippedRunKeys)
   const envelope = await readDashboardIntelligenceState(profile)
   const state = normalizeState(envelope?.state)
 
@@ -1513,16 +1521,18 @@ export async function ingestFullDashboardAutopilotOutputs(
     const outputs = await listOutputFiles(profile, jobId, maxFilesPerJob)
     for (const output of outputs) {
       const runKey = `${output.jobId}/${output.fileName}`
-      if (importedRunKeys.has(runKey)) continue
+      if (importedRunKeys.has(runKey) || skippedRunKeys.has(runKey)) continue
       result.filesChecked += 1
       try {
         const content = await readFile(output.path, 'utf-8')
         const payload = extractDashboardResearchUpdates(content)
         if (!payload) {
+          skippedRunKeys.add(runKey)
           result.skippedRuns += 1
           continue
         }
         importedRunKeys.add(runKey)
+        skippedRunKeys.delete(runKey)
         const applied = applyDashboardUpdates(state, payload, runKey, new Date(output.mtimeMs || Date.now()).toISOString())
         result.autoFilledCount += applied.autoFilledCount
         result.stagedReviewCount += applied.stagedReviewCount
@@ -1547,6 +1557,7 @@ export async function ingestFullDashboardAutopilotOutputs(
   await writeImportRegistry(profile, {
     version: 1,
     importedRunKeys: [...importedRunKeys],
+    skippedRunKeys: [...skippedRunKeys],
     updatedAt: new Date().toISOString(),
   })
 
@@ -1559,6 +1570,7 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
   const registry = await readImportRegistry(profile)
   const dueRegistry = await readDueRunRegistry(profile)
   const importedRunKeys = new Set(registry.importedRunKeys)
+  const skippedRunKeys = new Set(registry.skippedRunKeys)
   const outputFiles: OutputFile[] = []
 
   for (const job of jobs) {
@@ -1571,11 +1583,14 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
   const latestOutput = outputFiles[0] || null
   const latestOutputRunKey = latestOutput ? `${latestOutput.jobId}/${latestOutput.fileName}` : ''
   const latestOutputImported = latestOutputRunKey ? importedRunKeys.has(latestOutputRunKey) : false
+  const latestOutputSkipped = latestOutputRunKey ? skippedRunKeys.has(latestOutputRunKey) : false
   let latestOutputParseStatus: DashboardAutopilotImportStatus['latestOutputParseStatus'] = latestOutput ? 'unparseable' : 'none'
   let latestOutputCandidateCount = 0
   let latestOutputParseError = ''
   if (latestOutputImported) {
     latestOutputParseStatus = 'imported'
+  } else if (latestOutputSkipped) {
+    latestOutputParseStatus = 'unparseable'
   } else if (latestOutput) {
     try {
       const latestContent = await readFile(latestOutput.path, 'utf-8')
@@ -1586,7 +1601,10 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
       latestOutputParseError = err instanceof Error ? err.message : 'Could not read latest output'
     }
   }
-  const pendingOutputCount = outputFiles.filter(output => !importedRunKeys.has(`${output.jobId}/${output.fileName}`)).length
+  const pendingOutputCount = outputFiles.filter(output => {
+    const runKey = `${output.jobId}/${output.fileName}`
+    return !importedRunKeys.has(runKey) && !skippedRunKeys.has(runKey)
+  }).length
   const primaryJobId = jobs[0] ? getJobId(jobs[0]) : ''
   const dueSlot = primaryJobId ? latestReadyFullDashboardSlot(new Date(), DUE_RUN_GRACE_MS) : null
   const dueSlotAt = dueSlot ? dueSlot.toISOString() : ''
@@ -1601,11 +1619,13 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
     jobCount: jobs.length,
     outputCount: outputFiles.length,
     importedRunCount: registry.importedRunKeys.length,
+    skippedRunCount: registry.skippedRunKeys.length,
     pendingOutputCount,
     latestOutputRunKey,
     latestOutputFile: latestOutput?.fileName || '',
     latestOutputAt: latestOutput ? new Date(latestOutput.mtimeMs || Date.now()).toISOString() : '',
     latestOutputImported,
+    latestOutputSkipped,
     latestOutputParseStatus,
     latestOutputCandidateCount,
     latestOutputParseError,

@@ -417,8 +417,16 @@ onMounted(() => {
             <strong>{{ serverAutopilotStatus?.importedRunCount ?? 0 }}</strong>
           </article>
           <article>
+            <span>Skipped outputs</span>
+            <strong>{{ serverAutopilotStatus?.skippedRunCount ?? 0 }}</strong>
+          </article>
+          <article>
             <span>Latest imported</span>
             <strong>{{ serverAutopilotStatus?.latestOutputImported ? 'Yes' : 'No / pending' }}</strong>
+          </article>
+          <article>
+            <span>Latest skipped</span>
+            <strong>{{ serverAutopilotStatus?.latestOutputSkipped ? 'Yes' : 'No' }}</strong>
           </article>
           <article>
             <span>Parse status</span>
