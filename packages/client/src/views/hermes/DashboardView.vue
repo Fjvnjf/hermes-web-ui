@@ -236,7 +236,7 @@ const automaticResearchState = computed(() => {
       label: 'Auto-starting',
       title: 'Hermes is setting up automatic research',
       body: 'Owner sessions automatically check and create the twice-daily trusted-source research job. No manual searching is needed.',
-      action: 'Open Trusted Sources only if this remains unscheduled, then use Repair / Run Now.',
+      action: 'No manual searching needed. Hermes will keep trying to connect the source job; use Autopilot Status only for troubleshooting.',
     }
   }
   if (status.latestDueSlotRunError || ['unparseable', 'unreadable'].includes(status.latestOutputParseStatus)) {
@@ -254,7 +254,7 @@ const automaticResearchState = computed(() => {
       label: `${reviewCount} to review`,
       title: 'Hermes found source-backed items for review',
       body: 'Safe fields can hydrate automatically. Critical market, supplier, finance, regulatory, and investor claims wait for owner approval.',
-      action: 'Open Research Result Review and approve only the evidence-backed items you trust.',
+      action: 'No manual searching needed. Review what Hermes staged and approve only the evidence-backed items you trust.',
     }
   }
   if (status.importedRunCount > 0 || status.latestOutputImported) {
@@ -263,7 +263,7 @@ const automaticResearchState = computed(() => {
       label: 'Running',
       title: 'Automatic dashboard filling is active',
       body: 'Hermes is importing trusted-source records into the dashboard while keeping risky claims review-gated.',
-      action: 'Use the dashboard normally. Missing coverage follow-ups run from the autopilot pipeline.',
+      action: 'Use the dashboard normally. Hermes keeps researching missing coverage and you only approve staged claims.',
     }
   }
   return {
@@ -271,7 +271,7 @@ const automaticResearchState = computed(() => {
     label: 'Waiting',
     title: 'Automatic research is scheduled',
     body: 'The Hermes research job exists. The dashboard is waiting for the first readable trusted-source output.',
-    action: 'You can wait for the twice-daily schedule or run a source snapshot from Trusted Sources.',
+    action: 'No manual copy-paste needed. Hermes will import readable source-backed output when the scheduled run finishes.',
   }
 })
 const automaticResearchCards = computed(() => [
@@ -839,9 +839,9 @@ onMounted(() => {
           <p>{{ automaticResearchState.body }}</p>
           <strong>{{ automaticResearchState.action }}</strong>
           <div class="automatic-research-actions">
-            <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
+            <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Autopilot Status</RouterLink>
             <RouterLink v-if="canUseResearchReview" class="brief-primary-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
-            <RouterLink v-if="canUseRouteName('hermes.jobs')" class="brief-primary-link" :to="{ name: 'hermes.jobs' }">Jobs</RouterLink>
+            <RouterLink v-if="canUseRouteName('hermes.jobs')" class="brief-primary-link" :to="{ name: 'hermes.jobs' }">Research Job Log</RouterLink>
           </div>
           <div class="autopilot-promise-strip" aria-label="What Hermes does automatically">
             <article v-for="card in automaticResearchPromiseCards" :key="card.title">
@@ -881,7 +881,7 @@ onMounted(() => {
                 Hermes uses this map to keep researching the dashboard automatically. Missing values stay Missing or To Verify until source-backed evidence is imported.
               </p>
             </div>
-            <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Open Coverage Map</RouterLink>
+            <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Coverage Status</RouterLink>
           </div>
           <div v-if="topMissingDashboardCoverageRows.length" class="coverage-focus-grid">
             <article v-for="row in topMissingDashboardCoverageRows" :key="row.area" :class="row.status">
