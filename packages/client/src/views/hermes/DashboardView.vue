@@ -888,44 +888,60 @@ onMounted(() => {
             <RouterLink v-if="canUseResearchReview" class="brief-primary-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
             <RouterLink v-if="canUseRouteName('hermes.jobs')" class="brief-primary-link" :to="{ name: 'hermes.jobs' }">Research Job Log</RouterLink>
           </div>
-          <div class="autopilot-promise-strip" aria-label="What Hermes does automatically">
-            <article v-for="card in automaticResearchPromiseCards" :key="card.title">
-              <span aria-hidden="true">{{ card.icon }}</span>
+          <div class="autopilot-simple-strip" aria-label="Automatic filling summary">
+            <span aria-hidden="true">🌐</span>
+            <strong>No manual web searching</strong>
+            <small>Hermes researches, fills safe records, and sends risky claims to review.</small>
+          </div>
+          <details class="home-autopilot-details">
+            <summary>
+              <span aria-hidden="true">🧭</span>
               <div>
-                <strong>{{ card.title }}</strong>
-                <small>{{ card.detail }}</small>
+                <strong>How automatic filling works</strong>
+                <small>Source rules, flow, and the dashboard areas Hermes can fill.</small>
               </div>
-            </article>
-          </div>
-          <div class="automatic-research-flow" aria-label="Automatic research flow">
-            <article v-for="step in automaticResearchFlow" :key="step.title" :class="step.state">
-              <span class="flow-icon" aria-hidden="true">{{ step.icon }}</span>
-              <span class="flow-copy">
-                <strong>{{ step.title }}</strong>
-                <small>{{ step.detail }}</small>
-              </span>
-              <span class="flow-state">{{ step.state }}</span>
-            </article>
-          </div>
-          <div class="automatic-fill-map" aria-label="Where automatic research fills the dashboard">
-            <div class="fill-map-header">
-              <span aria-hidden="true">🗺️</span>
-              <div>
-                <strong>Where Hermes fills the dashboard</strong>
-                <small>Open any area below. Safe source-backed records can appear automatically; risky claims stay review-gated.</small>
+            </summary>
+            <div class="home-autopilot-details-body">
+              <div class="autopilot-promise-strip" aria-label="What Hermes does automatically">
+                <article v-for="card in automaticResearchPromiseCards" :key="card.title">
+                  <span aria-hidden="true">{{ card.icon }}</span>
+                  <div>
+                    <strong>{{ card.title }}</strong>
+                    <small>{{ card.detail }}</small>
+                  </div>
+                </article>
+              </div>
+              <div class="automatic-research-flow" aria-label="Automatic research flow">
+                <article v-for="step in automaticResearchFlow" :key="step.title" :class="step.state">
+                  <span class="flow-icon" aria-hidden="true">{{ step.icon }}</span>
+                  <span class="flow-copy">
+                    <strong>{{ step.title }}</strong>
+                    <small>{{ step.detail }}</small>
+                  </span>
+                  <span class="flow-state">{{ step.state }}</span>
+                </article>
+              </div>
+              <div class="automatic-fill-map" aria-label="Where automatic research fills the dashboard">
+                <div class="fill-map-header">
+                  <span aria-hidden="true">🗺️</span>
+                  <div>
+                    <strong>Where Hermes fills the dashboard</strong>
+                    <small>Open any area below. Safe source-backed records can appear automatically; risky claims stay review-gated.</small>
+                  </div>
+                </div>
+                <div class="fill-map-grid">
+                  <RouterLink v-for="destination in automaticFillDestinations" :key="destination.title" :to="destination.to">
+                    <span class="fill-map-icon" aria-hidden="true">{{ destination.icon }}</span>
+                    <span class="fill-map-copy">
+                      <strong>{{ destination.title }}</strong>
+                      <small><b>Fills:</b> {{ destination.fill }}</small>
+                      <small><b>Gate:</b> {{ destination.gate }}</small>
+                    </span>
+                  </RouterLink>
+                </div>
               </div>
             </div>
-            <div class="fill-map-grid">
-              <RouterLink v-for="destination in automaticFillDestinations" :key="destination.title" :to="destination.to">
-                <span class="fill-map-icon" aria-hidden="true">{{ destination.icon }}</span>
-                <span class="fill-map-copy">
-                  <strong>{{ destination.title }}</strong>
-                  <small><b>Fills:</b> {{ destination.fill }}</small>
-                  <small><b>Gate:</b> {{ destination.gate }}</small>
-                </span>
-              </RouterLink>
-            </div>
-          </div>
+          </details>
         </div>
         <div class="automatic-research-metrics">
           <article v-for="card in automaticResearchCards" :key="card.label">
@@ -1593,6 +1609,82 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.autopilot-simple-strip,
+.home-autopilot-details > summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.07);
+
+  > span {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.24);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    font-size: 16px;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.35;
+  }
+}
+
+.autopilot-simple-strip {
+  grid-template-columns: auto minmax(150px, 0.35fr) minmax(0, 1fr);
+}
+
+.home-autopilot-details {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+
+  > summary {
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '+';
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+      border-radius: 999px;
+      color: $accent-info;
+      font-weight: 900;
+    }
+  }
+
+  &[open] > summary::after {
+    content: '-';
+  }
+}
+
+.home-autopilot-details-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
 }
 
 .autopilot-promise-strip {
@@ -2563,6 +2655,18 @@ onMounted(() => {
   .automatic-research-title {
     display: grid;
     justify-items: start;
+  }
+
+  .autopilot-simple-strip {
+    grid-template-columns: auto minmax(0, 1fr);
+
+    small {
+      grid-column: 2;
+    }
+  }
+
+  .home-autopilot-details > summary {
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .autopilot-promise-strip {
