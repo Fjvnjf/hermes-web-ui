@@ -50,6 +50,30 @@ const durableStatusText = computed(() => {
   }
   return 'Waiting for the first trusted-source import for this screen.'
 })
+const simpleAutopilotCards = computed(() => [
+  {
+    icon: '🌐',
+    label: 'Auto research',
+    value: sourceStatusLabel.value,
+    note: activeSources.value.length
+      ? `${activeSources.value.length} trusted sources ready`
+      : 'waiting for source setup',
+  },
+  {
+    icon: '📥',
+    label: 'Safe records',
+    value: String(durableRecordTotal.value),
+    note: durableRecordTotal.value
+      ? 'visible on this screen'
+      : 'filled after source import',
+  },
+  {
+    icon: '🧾',
+    label: 'Review gate',
+    value: String(pendingReviewFindings.value.length || needsReviewCount.value),
+    note: 'risky claims wait here',
+  },
+])
 
 type DurableMetricTone = 'active' | 'review' | 'empty'
 
@@ -194,9 +218,8 @@ async function syncNow() {
         <p class="eyebrow">Trusted Source Autopilot</p>
         <h3>{{ title || 'Auto Source Status' }}</h3>
         <p>
-          Trusted sources can update fields automatically with source, date, confidence, and evidence labels.
-          Critical claims such as market size, growth, share, supplier price, IRR, NPV, and regulatory status
-          are auto-staged for review unless the official-first policy says they are safe to fill.
+          Hermes researches this screen automatically from trusted sources, fills safe source-backed fields,
+          and stages risky business claims for review. No manual web searching is needed.
         </p>
       </div>
       <div class="autopilot-status">
@@ -206,42 +229,65 @@ async function syncNow() {
       </div>
     </div>
 
-    <div class="research-permission-card">
-      <strong>Research permission active</strong>
-      <span>Hermes may use trusted public, company, regulatory, and uploaded evidence sources for this screen.</span>
-      <ul>
-        <li>Important values need source title, URL/date, confidence, and evidence status.</li>
-        <li>Unknown, conflicting, weak-source, sensitive, or investor-impacting data goes to review instead of becoming fact.</li>
-        <li>Outputs should use source matrices, tables, charts, and evidence-gap checklists when useful.</li>
-      </ul>
+    <div class="simple-autopilot-grid" aria-label="Simple trusted source status">
+      <article v-for="card in simpleAutopilotCards" :key="card.label">
+        <span aria-hidden="true">{{ card.icon }}</span>
+        <div>
+          <small>{{ card.label }}</small>
+          <strong>{{ card.value }}</strong>
+          <em>{{ card.note }}</em>
+        </div>
+      </article>
     </div>
 
-    <div class="autopilot-metrics">
-      <button type="button" @click="openDrawer()">
-        <span>Last successful refresh</span>
-        <strong>{{ formatDateTime(lastSuccessfulRefresh) }}</strong>
-      </button>
-      <button type="button" @click="openDrawer()">
-        <span>Next refresh</span>
-        <strong>{{ formatDateTime(nextRefresh) }}</strong>
-      </button>
-      <button type="button" @click="openDrawer()">
-        <span>Needs review</span>
-        <strong>{{ needsReviewCount }}</strong>
-      </button>
-      <button type="button" @click="openDrawer()">
-        <span>Last failed refresh</span>
-        <strong>{{ lastFailedRefresh || 'None' }}</strong>
-      </button>
-    </div>
+    <details class="autopilot-disclosure research-permission-card">
+      <summary>
+        <strong>Evidence rules</strong>
+        <span>How Hermes decides what can fill automatically</span>
+      </summary>
+      <div class="disclosure-body">
+        <span>Hermes may use trusted public, company, regulatory, and uploaded evidence sources for this screen.</span>
+        <ul>
+          <li>Important values need source title, URL/date, confidence, and evidence status.</li>
+          <li>Unknown, conflicting, weak-source, sensitive, or investor-impacting data goes to review instead of becoming fact.</li>
+          <li>Outputs should use source matrices, tables, charts, and evidence-gap checklists when useful.</li>
+        </ul>
+      </div>
+    </details>
 
-    <div class="autopilot-actions">
-      <NButton size="small" type="primary" :loading="saving" @click="syncNow">Sync Now</NButton>
-      <NButton size="small" secondary @click="openDrawer()">View Sources</NButton>
-      <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">View Review Queue</RouterLink>
-      <NButton size="small" secondary :loading="saving" @click="createResearchJob">Create Research Job</NButton>
-      <RouterLink class="autopilot-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
-    </div>
+    <details class="autopilot-disclosure manual-controls">
+      <summary>
+        <strong>Manual controls</strong>
+        <span>Optional refresh, sources, jobs, and diagnostics</span>
+      </summary>
+      <div class="disclosure-body">
+        <div class="autopilot-metrics">
+          <button type="button" @click="openDrawer()">
+            <span>Last successful refresh</span>
+            <strong>{{ formatDateTime(lastSuccessfulRefresh) }}</strong>
+          </button>
+          <button type="button" @click="openDrawer()">
+            <span>Next refresh</span>
+            <strong>{{ formatDateTime(nextRefresh) }}</strong>
+          </button>
+          <button type="button" @click="openDrawer()">
+            <span>Needs review</span>
+            <strong>{{ needsReviewCount }}</strong>
+          </button>
+          <button type="button" @click="openDrawer()">
+            <span>Last failed refresh</span>
+            <strong>{{ lastFailedRefresh || 'None' }}</strong>
+          </button>
+        </div>
+        <div class="autopilot-actions">
+          <NButton size="small" type="primary" :loading="saving" @click="syncNow">Sync Now</NButton>
+          <NButton size="small" secondary @click="openDrawer()">View Sources</NButton>
+          <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">View Review Queue</RouterLink>
+          <NButton size="small" secondary :loading="saving" @click="createResearchJob">Create Research Job</NButton>
+          <RouterLink class="autopilot-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
+        </div>
+      </div>
+    </details>
 
     <div class="durable-intelligence-status" aria-label="Imported dashboard records">
       <div class="durable-status-copy">
@@ -387,13 +433,101 @@ async function syncNow() {
   }
 }
 
-.research-permission-card {
+.simple-autopilot-grid {
   display: grid;
-  gap: 7px;
-  padding: 11px 12px;
-  border: 1px solid rgba(var(--accent-info-rgb), 0.26);
-  border-radius: 7px;
-  background: rgba(var(--accent-info-rgb), 0.055);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+    border-radius: 8px;
+    background: rgba(var(--accent-info-rgb), 0.055);
+  }
+
+  span {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.28);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    font-size: 16px;
+  }
+
+  div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    overflow-wrap: anywhere;
+    color: $accent-primary;
+    font-size: 17px;
+    line-height: 1.1;
+  }
+
+  em {
+    color: $text-secondary;
+    font-size: 11px;
+    font-style: normal;
+    line-height: 1.35;
+  }
+}
+
+.autopilot-disclosure {
+  display: grid;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  background: rgba(var(--bg-secondary-rgb), 0.42);
+
+  &[open] {
+    padding-bottom: 10px;
+  }
+
+  summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-height: 40px;
+    padding: 10px 12px;
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '+';
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+      border-radius: 999px;
+      color: $accent-info;
+      font-weight: 900;
+    }
+  }
+
+  &[open] summary::after {
+    content: '-';
+  }
 
   strong {
     color: $accent-info;
@@ -402,11 +536,16 @@ async function syncNow() {
     text-transform: uppercase;
   }
 
+  summary span,
   span,
   li {
     color: $text-secondary;
     font-size: 12px;
     line-height: 1.45;
+  }
+
+  summary span {
+    text-align: left;
   }
 
   ul {
@@ -415,6 +554,22 @@ async function syncNow() {
     margin: 0;
     padding-left: 18px;
   }
+}
+
+.research-permission-card {
+  border-color: rgba(var(--accent-info-rgb), 0.24);
+  background: rgba(var(--accent-info-rgb), 0.045);
+}
+
+.manual-controls {
+  border-color: rgba(var(--accent-primary-rgb), 0.22);
+  background: rgba(var(--accent-primary-rgb), 0.035);
+}
+
+.disclosure-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px;
 }
 
 .autopilot-metrics,
@@ -616,9 +771,22 @@ async function syncNow() {
 @media (max-width: 720px) {
   .autopilot-header,
   .autopilot-metrics,
+  .simple-autopilot-grid,
   .claim-strip,
   .durable-intelligence-status {
     grid-template-columns: 1fr;
+  }
+
+  .autopilot-disclosure summary {
+    grid-template-columns: 1fr;
+
+    span {
+      text-align: left;
+    }
+
+    &::after {
+      justify-self: start;
+    }
   }
 
   .trusted-autopilot {

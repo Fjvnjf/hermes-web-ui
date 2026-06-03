@@ -1335,6 +1335,12 @@ describe('Trusted Source Autopilot', () => {
     })
     const text = wrapper.text()
 
+    expect(text).toContain('No manual web searching is needed')
+    expect(text).toContain('Auto research')
+    expect(text).toContain('Safe records')
+    expect(text).toContain('Review gate')
+    expect(text).toContain('Evidence rules')
+    expect(text).toContain('Manual controls')
     expect(text).toContain('Imported dashboard records')
     expect(text).toContain('3 imported dashboard records visible on this screen.')
     expect(text).toContain('Market claims')
