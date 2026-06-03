@@ -8,7 +8,7 @@ export const VISUAL_RESEARCH_PRESETS = [
   {
     icon: '🧭',
     label: 'Fill dashboard',
-    prompt: 'Research trusted sources and return dashboard-fill candidates grouped by Executive Overview, Market Intelligence, Competitors, Raw Materials, Investment Analysis, Regulatory, Investor Readiness, and Reports. For every field include value, source title, URL/domain, date, confidence, evidence status, reviewRequired, and why it can or cannot auto-fill.',
+    prompt: 'Research trusted sources and return dashboard-fill candidates grouped by Executive Overview, Market Intelligence, Competitors, Raw Materials, Supplier Scorecards, Export Markets, Regulatory, Investment Analysis, Investor Readiness, and Reports. For every field include fieldKey, value, source title, source URL/domain, source tier, date, confidence, evidence status, reviewRequired, riskReason, and why it can or cannot auto-fill. End with a compact dashboard_updates JSON block that can be staged in Research Result Review; do not approve investor material automatically.',
   },
   {
     icon: '🌍',
@@ -50,6 +50,8 @@ When the request needs facts, market data, competitors, finance, product/regulat
 - For substantive answers, include good graphical content: Markdown tables, source/evidence matrices, KPI blocks, evidence-gap checklists, and Mermaid diagrams/charts when useful.
 - For business/research answers, include at least one useful visual structure (table, matrix, checklist, diagram, or chart-ready summary) unless the user explicitly asks for plain text.
 - For market, competitor, raw-material, supplier, finance, or dashboard-filling requests, prefer dense business visuals: country-by-country tables, competitor landscapes, competitor matrices, supplier scorecards, assumption/source matrices, sensitivity grids, and clearly labeled chart-ready summaries.
+- For dashboard-filling requests, include fieldKey, value, source title, source URL/domain, source tier, last checked date, confidence, evidence status, reviewRequired, and riskReason for every candidate so the dashboard can stage or auto-fill it safely.
+- Do not treat report snippets, investor slides, market size, growth, competitor share, supplier price, regulatory status, IRR, NPV, payback, or formula-related material as approved dashboard truth just because the answer found a source.
 - Keep graphical output readable in Markdown: use concise column names, split very wide analysis into multiple tables, and put source/confidence/status columns near the right edge.
 - For business work, finish with concrete next actions that can become tasks, documents, memory, or report snippets.
 ${VISUAL_RESEARCH_SUFFIX}
