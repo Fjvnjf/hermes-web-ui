@@ -419,6 +419,18 @@ onMounted(() => {
             <strong>{{ serverAutopilotStatus?.latestOutputImported ? 'Yes' : 'No / pending' }}</strong>
           </article>
           <article>
+            <span>Due slot</span>
+            <strong>{{ serverAutopilotStatus?.latestDueSlotAt ? formatTimestamp(serverAutopilotStatus.latestDueSlotAt) : 'Waiting' }}</strong>
+          </article>
+          <article>
+            <span>Due satisfied</span>
+            <strong>{{ serverAutopilotStatus?.latestDueSlotSatisfied ? 'Yes' : 'Auto-kick pending' }}</strong>
+          </article>
+          <article>
+            <span>Last server kick</span>
+            <strong>{{ serverAutopilotStatus?.latestDueSlotAttemptedAt ? formatTimestamp(serverAutopilotStatus.latestDueSlotAttemptedAt) : 'Not needed yet' }}</strong>
+          </article>
+          <article>
             <span>Dashboard records</span>
             <strong>{{ serverAutopilotStatus?.dashboardRecordCount ?? importedIntelligenceTotal }}</strong>
           </article>

@@ -102,6 +102,10 @@ describe('screenshot-matched executive business tabs', () => {
             latestOutputImported: false,
             latestImportedRunKey: '',
             registryUpdatedAt: '',
+            latestDueSlotAt: '',
+            latestDueSlotSatisfied: false,
+            latestDueSlotAttemptedAt: '',
+            latestDueSlotRunError: '',
           },
         }
       }

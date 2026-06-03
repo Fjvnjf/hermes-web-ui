@@ -20,6 +20,10 @@ export interface DashboardAutopilotImportStatus {
   latestOutputImported: boolean
   latestImportedRunKey: string
   registryUpdatedAt: string
+  latestDueSlotAt: string
+  latestDueSlotSatisfied: boolean
+  latestDueSlotAttemptedAt: string
+  latestDueSlotRunError: string
 }
 
 export interface DashboardIntelligenceStateSaveResponse {

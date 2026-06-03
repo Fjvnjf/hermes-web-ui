@@ -186,6 +186,18 @@ interface ImportRegistry {
   updatedAt: string
 }
 
+interface DueRunRegistry {
+  version: 1
+  slots: Record<string, {
+    jobId: string
+    dueSlotAt: string
+    attemptedAt: string
+    outputSeen: boolean
+    error: string
+  }>
+  updatedAt: string
+}
+
 interface OutputFile {
   jobId: string
   fileName: string
@@ -218,6 +230,20 @@ export interface FullDashboardAutopilotScheduleResult {
   firstRunError: string
 }
 
+export interface FullDashboardAutopilotDueRunResult {
+  profile: string
+  jobId: string | null
+  dueSlotAt: string
+  dueSlotKey: string
+  outputAlreadyPresent: boolean
+  skippedRecentAttempt: boolean
+  runStarted: boolean
+  runError: string
+  importedRuns: number
+  autoFilledCount: number
+  stagedReviewCount: number
+}
+
 export interface DashboardAutopilotImportStatus {
   profile: string
   jobCount: number
@@ -230,15 +256,29 @@ export interface DashboardAutopilotImportStatus {
   latestOutputImported: boolean
   latestImportedRunKey: string
   registryUpdatedAt: string
+  latestDueSlotAt: string
+  latestDueSlotSatisfied: boolean
+  latestDueSlotAttemptedAt: string
+  latestDueSlotRunError: string
 }
 
 interface ScheduleOptions {
   startFirstRun?: boolean
 }
 
+interface DueRunOptions {
+  now?: Date
+  graceMs?: number
+  retryAfterMs?: number
+  maxFilesPerJob?: number
+}
+
 let intervalTimer: ReturnType<typeof setInterval> | null = null
 let initialTimer: ReturnType<typeof setTimeout> | null = null
 let ingestRunning = false
+
+const DUE_RUN_GRACE_MS = 15 * 60_000
+const DUE_RUN_RETRY_AFTER_MS = 60 * 60_000
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -535,6 +575,63 @@ async function writeImportRegistry(profile: string, registry: ImportRegistry): P
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
   await writeFile(tempPath, JSON.stringify(next, null, 2), 'utf-8')
   await rename(tempPath, filePath)
+}
+
+function dueRunRegistryPath(profile: string): string {
+  return join(getProfileDir(profile), 'dashboard-intelligence', 'autopilot-due-runs.json')
+}
+
+async function readDueRunRegistry(profile: string): Promise<DueRunRegistry> {
+  try {
+    const raw = await readFile(dueRunRegistryPath(profile), 'utf-8')
+    const parsed = JSON.parse(raw)
+    if (isPlainRecord(parsed) && isPlainRecord(parsed.slots)) {
+      return {
+        version: 1,
+        slots: Object.fromEntries(Object.entries(parsed.slots).filter(([, value]) => isPlainRecord(value))) as DueRunRegistry['slots'],
+        updatedAt: stringValue(parsed.updatedAt) || new Date().toISOString(),
+      }
+    }
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT') logger.warn(err, '[dashboard-autopilot] failed to read due-run registry')
+  }
+  return { version: 1, slots: {}, updatedAt: '' }
+}
+
+async function writeDueRunRegistry(profile: string, registry: DueRunRegistry): Promise<void> {
+  const filePath = dueRunRegistryPath(profile)
+  const entries = Object.entries(registry.slots)
+    .sort(([, a], [, b]) => stringValue(b.attemptedAt).localeCompare(stringValue(a.attemptedAt)))
+    .slice(0, MAX_IMPORTED_RUN_KEYS)
+  const next: DueRunRegistry = {
+    version: 1,
+    slots: Object.fromEntries(entries),
+    updatedAt: new Date().toISOString(),
+  }
+  await mkdir(dirname(filePath), { recursive: true })
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  await writeFile(tempPath, JSON.stringify(next, null, 2), 'utf-8')
+  await rename(tempPath, filePath)
+}
+
+function latestReadyFullDashboardSlot(now: Date, graceMs: number): Date {
+  const threshold = new Date(now.getTime() - graceMs)
+  const seven = new Date(threshold)
+  seven.setHours(7, 0, 0, 0)
+  const nineteen = new Date(threshold)
+  nineteen.setHours(19, 0, 0, 0)
+
+  if (threshold.getTime() >= nineteen.getTime()) return nineteen
+  if (threshold.getTime() >= seven.getTime()) return seven
+
+  const previous = new Date(threshold)
+  previous.setDate(previous.getDate() - 1)
+  previous.setHours(19, 0, 0, 0)
+  return previous
+}
+
+function outputSatisfiesDueSlot(output: OutputFile, dueSlotAt: Date): boolean {
+  return output.mtimeMs >= dueSlotAt.getTime()
 }
 
 function tryParseJsonObject(text: string): Record<string, unknown> | null {
@@ -1245,6 +1342,7 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
   const profile = profileInput || getActiveProfileName() || 'default'
   const jobs = (await readCronJobs(profile)).filter(isFullDashboardAutopilotJobRecord)
   const registry = await readImportRegistry(profile)
+  const dueRegistry = await readDueRunRegistry(profile)
   const importedRunKeys = new Set(registry.importedRunKeys)
   const outputFiles: OutputFile[] = []
 
@@ -1258,6 +1356,14 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
   const latestOutput = outputFiles[0] || null
   const latestOutputRunKey = latestOutput ? `${latestOutput.jobId}/${latestOutput.fileName}` : ''
   const pendingOutputCount = outputFiles.filter(output => !importedRunKeys.has(`${output.jobId}/${output.fileName}`)).length
+  const primaryJobId = jobs[0] ? getJobId(jobs[0]) : ''
+  const dueSlot = primaryJobId ? latestReadyFullDashboardSlot(new Date(), DUE_RUN_GRACE_MS) : null
+  const dueSlotAt = dueSlot ? dueSlot.toISOString() : ''
+  const dueSlotKey = primaryJobId && dueSlotAt ? `${primaryJobId}/${dueSlotAt}` : ''
+  const dueAttempt = dueSlotKey ? dueRegistry.slots[dueSlotKey] : null
+  const latestDueSlotSatisfied = Boolean(dueSlot && primaryJobId && outputFiles.some(output =>
+    output.jobId === primaryJobId && outputSatisfiesDueSlot(output, dueSlot),
+  ))
 
   return {
     profile,
@@ -1271,7 +1377,84 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
     latestOutputImported: latestOutputRunKey ? importedRunKeys.has(latestOutputRunKey) : false,
     latestImportedRunKey: registry.importedRunKeys[registry.importedRunKeys.length - 1] || '',
     registryUpdatedAt: registry.updatedAt || '',
+    latestDueSlotAt: dueSlotAt,
+    latestDueSlotSatisfied,
+    latestDueSlotAttemptedAt: stringValue(dueAttempt?.attemptedAt),
+    latestDueSlotRunError: stringValue(dueAttempt?.error),
   }
+}
+
+export async function runDueFullDashboardAutopilot(
+  profileInput?: string,
+  options: DueRunOptions = {},
+): Promise<FullDashboardAutopilotDueRunResult> {
+  const profile = profileInput || getActiveProfileName() || 'default'
+  const now = options.now || new Date()
+  const graceMs = options.graceMs ?? DUE_RUN_GRACE_MS
+  const retryAfterMs = options.retryAfterMs ?? DUE_RUN_RETRY_AFTER_MS
+  const dueSlot = latestReadyFullDashboardSlot(now, graceMs)
+  const dueSlotAt = dueSlot.toISOString()
+  const jobs = (await readCronJobs(profile)).filter(isFullDashboardAutopilotJobRecord)
+  const job = jobs[0] || null
+  const jobId = job ? getJobId(job) : ''
+  const dueSlotKey = jobId ? `${jobId}/${dueSlotAt}` : ''
+
+  const result: FullDashboardAutopilotDueRunResult = {
+    profile,
+    jobId: jobId || null,
+    dueSlotAt,
+    dueSlotKey,
+    outputAlreadyPresent: false,
+    skippedRecentAttempt: false,
+    runStarted: false,
+    runError: '',
+    importedRuns: 0,
+    autoFilledCount: 0,
+    stagedReviewCount: 0,
+  }
+  if (!jobId) return result
+
+  const outputs = await listOutputFiles(profile, jobId, 50)
+  if (outputs.some(output => outputSatisfiesDueSlot(output, dueSlot))) {
+    result.outputAlreadyPresent = true
+    return result
+  }
+
+  const registry = await readDueRunRegistry(profile)
+  const previousAttempt = registry.slots[dueSlotKey]
+  const previousAttemptAt = previousAttempt ? Date.parse(stringValue(previousAttempt.attemptedAt)) : 0
+  if (previousAttemptAt && Number.isFinite(previousAttemptAt) && now.getTime() - previousAttemptAt < retryAfterMs) {
+    result.skippedRecentAttempt = true
+    result.runError = stringValue(previousAttempt.error)
+    return result
+  }
+
+  try {
+    await runHermesCron(profile, ['cron', 'run', jobId], RUN_TIMEOUT_MS)
+    result.runStarted = true
+    const ingest = await ingestFullDashboardAutopilotOutputs(profile, {
+      jobId,
+      maxFilesPerJob: options.maxFilesPerJob ?? 5,
+    })
+    result.importedRuns = ingest.importedRuns
+    result.autoFilledCount = ingest.autoFilledCount
+    result.stagedReviewCount = ingest.stagedReviewCount
+    if (ingest.errors.length > 0) result.runError = ingest.errors.join('; ')
+  } catch (err) {
+    result.runError = err instanceof Error ? err.message : 'Hermes cron run failed'
+  }
+
+  const refreshedOutputs = await listOutputFiles(profile, jobId, 50)
+  registry.slots[dueSlotKey] = {
+    jobId,
+    dueSlotAt,
+    attemptedAt: now.toISOString(),
+    outputSeen: refreshedOutputs.some(output => outputSatisfiesDueSlot(output, dueSlot)),
+    error: result.runError,
+  }
+  await writeDueRunRegistry(profile, registry)
+
+  return result
 }
 
 async function safeIngestActiveProfile(): Promise<void> {
@@ -1287,6 +1470,21 @@ async function safeIngestActiveProfile(): Promise<void> {
         firstRunStarted: schedule.firstRunStarted,
         firstRunError: schedule.firstRunError || undefined,
       }, '[dashboard-autopilot] ensured trusted-source schedule')
+    }
+    const dueRun = await runDueFullDashboardAutopilot(profile)
+    if (dueRun.runStarted || dueRun.outputAlreadyPresent || dueRun.skippedRecentAttempt || dueRun.runError) {
+      logger.info({
+        profile: dueRun.profile,
+        jobId: dueRun.jobId,
+        dueSlotAt: dueRun.dueSlotAt,
+        outputAlreadyPresent: dueRun.outputAlreadyPresent,
+        skippedRecentAttempt: dueRun.skippedRecentAttempt,
+        runStarted: dueRun.runStarted,
+        runError: dueRun.runError || undefined,
+        importedRuns: dueRun.importedRuns,
+        autoFilledCount: dueRun.autoFilledCount,
+        stagedReviewCount: dueRun.stagedReviewCount,
+      }, '[dashboard-autopilot] due trusted-source run checked')
     }
     const result = await ingestFullDashboardAutopilotOutputs(profile, { maxFilesPerJob: 10 })
     if (result.importedRuns > 0 || result.autoFilledCount > 0 || result.stagedReviewCount > 0) {

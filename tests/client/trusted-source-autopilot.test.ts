@@ -660,6 +660,10 @@ describe('Trusted Source Autopilot', () => {
         latestOutputImported: true,
         latestImportedRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
         registryUpdatedAt: '2026-06-03T07:06:00.000Z',
+        latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+        latestDueSlotSatisfied: true,
+        latestDueSlotAttemptedAt: '2026-06-03T07:01:00.000Z',
+        latestDueSlotRunError: '',
       },
     })
 
@@ -669,6 +673,8 @@ describe('Trusted Source Autopilot', () => {
     expect(status.importedRunCount).toBe(6)
     expect(status.latestOutputImported).toBe(true)
     expect(status.latestOutputFile).toBe('2026-06-03T07-00-00.md')
+    expect(status.latestDueSlotSatisfied).toBe(true)
+    expect(status.latestDueSlotAttemptedAt).toBe('2026-06-03T07:01:00.000Z')
     expect(status.message).toContain('imported outputs are reflected')
   })
 
@@ -1251,6 +1257,29 @@ describe('Trusted Source Autopilot', () => {
       size: 2048,
       hasOutput: true,
     }])
+    fetchDashboardIntelligenceStateMock.mockResolvedValue({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-03T07:08:00.000Z',
+      state: null,
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 1,
+        importedRunCount: 0,
+        pendingOutputCount: 1,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        latestOutputFile: '2026-06-03T07-00-00.md',
+        latestOutputAt: '2026-06-03T07:05:00.000Z',
+        latestOutputImported: false,
+        latestImportedRunKey: '',
+        registryUpdatedAt: '',
+        latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+        latestDueSlotSatisfied: true,
+        latestDueSlotAttemptedAt: '2026-06-03T07:01:00.000Z',
+        latestDueSlotRunError: '',
+      },
+    })
 
     const wrapper = mount(TrustedSourcesView)
     await vi.dynamicImportSettled()
@@ -1262,7 +1291,11 @@ describe('Trusted Source Autopilot', () => {
     expect(text).toContain('job-full-dashboard')
     expect(text).toContain('Readable outputs')
     expect(text).toContain('Latest imported')
+    expect(text).toContain('Due slot')
+    expect(text).toContain('Due satisfied')
+    expect(text).toContain('Last server kick')
     expect(text).toContain('No / pending')
+    expect(text).toContain('Yes')
     expect(text).toContain('Latest file: 2026-06-03T07-00-00.md')
   })
 

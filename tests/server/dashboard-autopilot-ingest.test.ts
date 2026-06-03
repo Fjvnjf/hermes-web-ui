@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -20,6 +20,7 @@ import {
   ensureFullDashboardAutopilotScheduled,
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
+  runDueFullDashboardAutopilot,
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
 
@@ -37,10 +38,11 @@ function writeFullDashboardJob(home: string, jobId = 'job-full-dashboard') {
   }, null, 2))
 }
 
-function writeRunOutput(home: string, jobId: string, fileName: string, payload: unknown) {
+function writeRunOutput(home: string, jobId: string, fileName: string, payload: unknown, mtime?: Date) {
   const outputDir = join(home, 'cron', 'output', jobId)
   mkdirSync(outputDir, { recursive: true })
-  writeFileSync(join(outputDir, fileName), [
+  const filePath = join(outputDir, fileName)
+  writeFileSync(filePath, [
     '# Full Dashboard Trusted Source Autopilot',
     '',
     '```json',
@@ -48,6 +50,7 @@ function writeRunOutput(home: string, jobId: string, fileName: string, payload: 
     '```',
     '',
   ].join('\n'))
+  if (mtime) utimesSync(filePath, mtime, mtime)
 }
 
 describe('dashboard autopilot output ingestion', () => {
@@ -544,6 +547,100 @@ describe('dashboard autopilot output ingestion', () => {
         status: 'Scheduled Hermes Job',
       }),
     ])
+  })
+
+  it('runs the due twice-daily full dashboard job when the latest slot has no output', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    const now = new Date()
+    now.setHours(20, 20, 0, 0)
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'run') {
+        writeRunOutput(hermesHome, 'job-full-dashboard', 'due-run-output.md', {
+          dashboard_updates: {
+            marketClaims: [{
+              label: 'Official due-run market source',
+              value: 'Official source located',
+              sourceTitle: 'Official due-run source',
+              sourceUrl: 'https://example.gov/due-run',
+              sourceTier: 'Tier 1 - Official / regulator / trade source',
+              confidence: 'high',
+              evidenceStatus: 'Official Data',
+              dataType: 'company_data',
+            }],
+          },
+        }, now)
+      }
+      cb(null, '', '')
+    })
+
+    const result = await runDueFullDashboardAutopilot('default', { now, graceMs: 0 })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      jobId: 'job-full-dashboard',
+      outputAlreadyPresent: false,
+      skippedRecentAttempt: false,
+      runStarted: true,
+      runError: '',
+      importedRuns: 1,
+      autoFilledCount: 1,
+    })
+    expect(execFileMock.mock.calls[0][1]).toEqual(['cron', 'run', 'job-full-dashboard'])
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({ label: 'Official due-run market source' }),
+    ])
+    const dueRegistry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'autopilot-due-runs.json'), 'utf-8')
+    expect(dueRegistry).toContain('job-full-dashboard')
+    expect(dueRegistry).toContain('"outputSeen": true')
+  })
+
+  it('does not run the due full dashboard job when a readable output already satisfies the slot', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    const now = new Date()
+    now.setHours(20, 20, 0, 0)
+    const outputTime = new Date(now)
+    outputTime.setHours(19, 5, 0, 0)
+    writeRunOutput(hermesHome, 'job-full-dashboard', 'already-ran.md', {
+      dashboard_updates: {
+        marketClaims: [{ label: 'Already present', value: 'Already present' }],
+      },
+    }, outputTime)
+
+    const result = await runDueFullDashboardAutopilot('default', { now, graceMs: 0 })
+
+    expect(result).toMatchObject({
+      jobId: 'job-full-dashboard',
+      outputAlreadyPresent: true,
+      skippedRecentAttempt: false,
+      runStarted: false,
+    })
+    expect(execFileMock).not.toHaveBeenCalled()
+  })
+
+  it('does not hammer Hermes when a due full dashboard run recently produced no output', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    const now = new Date()
+    now.setHours(20, 20, 0, 0)
+    execFileMock.mockImplementation((_bin, _args: string[], _opts, cb) => cb(null, '', ''))
+
+    const first = await runDueFullDashboardAutopilot('default', { now, graceMs: 0, retryAfterMs: 60 * 60_000 })
+    const second = await runDueFullDashboardAutopilot('default', {
+      now: new Date(now.getTime() + 10 * 60_000),
+      graceMs: 0,
+      retryAfterMs: 60 * 60_000,
+    })
+
+    expect(first).toMatchObject({
+      runStarted: true,
+      outputAlreadyPresent: false,
+      importedRuns: 0,
+    })
+    expect(second).toMatchObject({
+      runStarted: false,
+      skippedRecentAttempt: true,
+      importedRuns: 0,
+    })
+    expect(execFileMock).toHaveBeenCalledTimes(1)
   })
 
   it('can start the first created run and import its review-gated output', async () => {

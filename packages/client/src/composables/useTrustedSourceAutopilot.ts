@@ -116,6 +116,10 @@ export interface FullDashboardServerStatus {
   latestOutputFile: string
   importedRunCount: number
   latestOutputImported: boolean
+  latestDueSlotAt: string
+  latestDueSlotSatisfied: boolean
+  latestDueSlotAttemptedAt: string
+  latestDueSlotRunError: string
   dashboardRecordCount: number
   pendingReviewCount: number
   message: string
@@ -1697,6 +1701,10 @@ function emptyFullDashboardServerStatus(message = 'Full dashboard autopilot sche
     latestOutputFile: '',
     importedRunCount: state.value.importedRunKeys.length,
     latestOutputImported: false,
+    latestDueSlotAt: '',
+    latestDueSlotSatisfied: false,
+    latestDueSlotAttemptedAt: '',
+    latestDueSlotRunError: '',
     dashboardRecordCount: 0,
     pendingReviewCount: 0,
     message,
@@ -1719,6 +1727,9 @@ function fullDashboardStatusMessage(status: FullDashboardServerStatus): string {
   if (!status.scheduled) return 'Hermes has not found the twice-daily Full Dashboard Autopilot job yet.'
   if (!status.enabled) return 'Full Dashboard Autopilot exists but is disabled. Enable or resume it before relying on automatic updates.'
   if (status.lastError) return `Full Dashboard Autopilot is scheduled but the last run reported an error: ${status.lastError}`
+  if (status.latestDueSlotRunError) return `The server attempted the latest due autopilot slot, but Hermes reported: ${status.latestDueSlotRunError}`
+  if (status.latestDueSlotAt && !status.latestDueSlotSatisfied && status.latestDueSlotAttemptedAt) return 'The server has kicked the latest due autopilot slot and is waiting for a readable Hermes output artifact.'
+  if (status.latestDueSlotAt && !status.latestDueSlotSatisfied) return 'A twice-daily autopilot slot is due; the server will kick the Hermes research job automatically after the safety grace period.'
   if (!status.outputCount) return 'Full Dashboard Autopilot is scheduled. Waiting for the first readable research output.'
   if (!status.latestOutputImported) return 'A readable Hermes research output exists and is ready to import into the source-gated dashboard pipeline.'
   if (status.pendingReviewCount > 0) return 'Full Dashboard Autopilot is filling the dashboard and has review-gated findings waiting for approval.'
@@ -1767,6 +1778,10 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
       latestOutputImported: latestRunKey
         ? Boolean(serverImport?.latestOutputImported ?? state.value.importedRunKeys.includes(latestRunKey))
         : false,
+      latestDueSlotAt: serverImport?.latestDueSlotAt || '',
+      latestDueSlotSatisfied: Boolean(serverImport?.latestDueSlotSatisfied),
+      latestDueSlotAttemptedAt: serverImport?.latestDueSlotAttemptedAt || '',
+      latestDueSlotRunError: serverImport?.latestDueSlotRunError || '',
       ...counts,
       message: '',
       errors: [],
