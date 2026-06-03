@@ -951,13 +951,14 @@ function parseCitationReferences(content: string): Map<string, { title: string, 
     const urlMatch = body.match(/(?:https?|file):\/\/[^\s)\]]+/i)
     const url = markdownLink?.url || urlMatch?.[0]?.trim() || ''
     if (!url) continue
+    const dateMatch = body.match(/\b(20\d{2}(?:-\d{2})?(?:-\d{2})?|accessed\s+[^|,;]+)/i)
     const withoutUrl = body
       .replace(/\[([^\]]+)\]\(((?:https?|file):\/\/[^)\s]+)\)/i, '$1')
       .replace(url, '')
+      .replace(dateMatch?.[1] || '', '')
       .replace(/\s*[—–-]\s*$/, '')
       .trim()
     const title = markdownLink?.title || withoutUrl || `Source ${key}`
-    const dateMatch = body.match(/\b(20\d{2}(?:-\d{2})?(?:-\d{2})?|accessed\s+[^|,;]+)/i)
     references.set(key, { title, url, ...(dateMatch ? { date: dateMatch[1].trim() } : {}) })
   }
   return references
@@ -987,9 +988,43 @@ function markdownSourceFields(
   row: Record<string, string>,
   references: Map<string, { title: string, url: string, date?: string }> = new Map(),
 ): Pick<DashboardResearchUpdateItem, 'sourceTitle' | 'sourceUrl' | 'sourceDate'> {
-  const explicitTitle = getCell(row, 'source title', 'source name', 'source')
-  const explicitUrl = getCell(row, 'source url', 'url', 'link')
-  const sourceDate = getCell(row, 'source date', 'date', 'last checked', 'checked')
+  const explicitTitle = getCell(
+    row,
+    'source title',
+    'source name',
+    'source',
+    'sources',
+    'reference',
+    'references',
+    'citation',
+    'citations',
+    'evidence source',
+    'verified source',
+  )
+  const explicitUrl = getCell(
+    row,
+    'source url',
+    'source link',
+    'url',
+    'link',
+    'reference url',
+    'reference link',
+    'citation url',
+    'citation link',
+    'evidence url',
+    'evidence link',
+  )
+  const sourceDate = getCell(
+    row,
+    'source date',
+    'date',
+    'last checked',
+    'checked',
+    'publication date',
+    'access date',
+    'accessed',
+    'retrieved',
+  )
   const markdownLink = parseMarkdownLink(explicitTitle)
   const reference = citationKeysFromValue(`${explicitTitle} ${explicitUrl}`)
     .map(key => references.get(key))
@@ -1043,13 +1078,13 @@ function markdownRowToDashboardItem(
     sourceTitle: source.sourceTitle,
     sourceUrl: source.sourceUrl,
     sourceDate: source.sourceDate,
-    sourceTier: getCell(row, 'source tier', 'tier'),
-    lastChecked: getCell(row, 'last checked', 'checked'),
-    confidence: getCell(row, 'confidence'),
-    evidenceStatus: getCell(row, 'evidence status', 'status'),
-    reviewRequired: /^(yes|true|required|review)$/i.test(getCell(row, 'review required', 'review')),
-    riskReason: getCell(row, 'risk reason', 'risk'),
-    dataType: getCell(row, 'data type', 'datatype'),
+    sourceTier: getCell(row, 'source tier', 'tier', 'source type', 'source class', 'tier label'),
+    lastChecked: getCell(row, 'last checked', 'checked', 'access date', 'accessed', 'retrieved'),
+    confidence: getCell(row, 'confidence', 'confidence level', 'source confidence'),
+    evidenceStatus: getCell(row, 'evidence status', 'status', 'evidence', 'verification status', 'claim status'),
+    reviewRequired: /^(yes|true|required|review|needed)$/i.test(getCell(row, 'review required', 'review', 'needs review', 'review needed')),
+    riskReason: getCell(row, 'risk reason', 'risk', 'risk note', 'why review', 'review reason'),
+    dataType: getCell(row, 'data type', 'datatype', 'claim type', 'data category'),
     sensitive: /^(yes|true|sensitive)$/i.test(getCell(row, 'sensitive')),
     notes,
     recommendedAction: getCell(row, 'recommended action', 'next action', 'action'),
@@ -1077,7 +1112,36 @@ function extractMarkdownDashboardTables(content: string): DashboardResearchUpdat
       ['value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'marketshare', 'share', 'pricingevidence', 'price', 'cost', 'notes', 'summary'].includes(header),
     )
     const hasSourceColumn = normalizedHeaders.some(header =>
-      ['sourcetitle', 'sourcename', 'source', 'sourceurl', 'url', 'link', 'sourcedate', 'date', 'lastchecked', 'checked'].includes(header),
+      [
+        'sourcetitle',
+        'sourcename',
+        'source',
+        'sources',
+        'reference',
+        'references',
+        'citation',
+        'citations',
+        'evidencesource',
+        'verifiedsource',
+        'sourceurl',
+        'sourcelink',
+        'url',
+        'link',
+        'referenceurl',
+        'referencelink',
+        'citationurl',
+        'citationlink',
+        'evidenceurl',
+        'evidencelink',
+        'sourcedate',
+        'date',
+        'lastchecked',
+        'checked',
+        'publicationdate',
+        'accessdate',
+        'accessed',
+        'retrieved',
+      ].includes(header),
     )
     if (!hasFieldishColumn || !hasValueishColumn || !hasSourceColumn) continue
 
@@ -1112,7 +1176,7 @@ function parseDelimitedBulletRow(
     .trim()
     .replace(/^[-*]\s+/, '')
     .replace(/^\d+[.)]\s+/, '')
-  if (!cleaned.includes('|') || !/source/i.test(cleaned)) return null
+  if (!cleaned.includes('|') || !/(source|reference|citation|evidence)/i.test(cleaned)) return null
 
   const row: Record<string, string> = {}
   for (const segment of cleaned.split('|')) {

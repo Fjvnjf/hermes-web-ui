@@ -211,6 +211,62 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('accepts reference-labeled markdown table sources from real research output', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '| Claim | Value | References | Source Type | Verification Status | Confidence Level | Needs Review |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      '| Market Size / Scope | To Verify | [1] | Tier 1 - Official / regulator / trade source | Official Data | high | yes |',
+      '',
+      '## Sources',
+      '1. Official customs statistics — https://example.gov/customs accessed 2026-06-03',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({
+        field: 'Market Size / Scope',
+        value: 'To Verify',
+        sourceTitle: 'Official customs statistics',
+        sourceUrl: 'https://example.gov/customs',
+        sourceDate: 'accessed 2026-06-03',
+        sourceTier: 'Tier 1 - Official / regulator / trade source',
+        evidenceStatus: 'Official Data',
+        confidence: 'high',
+        reviewRequired: true,
+      }),
+    ])
+  })
+
+  it('accepts evidence-link supplier tables with source class and claim status labels', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Supplier Scorecards',
+      '| Supplier | Material | Price | Evidence Link | Source Class | Claim Status | Source Confidence | Review Reason |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Wilmar | Stearic Acid TP | To Verify | [1] | Tier 3 - Uploaded supplier evidence | To Verify | medium | Awaiting uploaded quote approval |',
+      '',
+      '## Sources',
+      '- [1] Uploaded supplier quote index - file://supplier-quotes/wilmar-stearic-acid.md',
+    ].join('\n'))
+
+    expect(payload?.supplierScorecards).toEqual([
+      expect.objectContaining({
+        supplier: 'Wilmar',
+        material: 'Stearic Acid TP',
+        value: 'To Verify',
+        sourceTitle: 'Uploaded supplier quote index',
+        sourceUrl: 'file://supplier-quotes/wilmar-stearic-acid.md',
+        sourceTier: 'Tier 3 - Uploaded supplier evidence',
+        evidenceStatus: 'To Verify',
+        confidence: 'medium',
+        riskReason: 'Awaiting uploaded quote approval',
+      }),
+    ])
+  })
+
   it('ignores decorative markdown tables that lack source metadata', () => {
     const payload = extractDashboardResearchUpdates([
       '| KPI | Value |',
@@ -248,6 +304,32 @@ describe('dashboard autopilot output ingestion', () => {
         value: 'Trade proxy signal found',
         sourceTitle: 'WITS / World Bank Comtrade',
         sourceUrl: 'https://wits.worldbank.org/',
+      }),
+    ])
+  })
+
+  it('accepts delimited bullets that use reference labels instead of source labels', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '- Field: Country-wise consumption growth - India | Value: Trade proxy signal found | Reference: [1] | Source Type: Tier 1 - Official / regulator / trade source | Claim Status: Official Data | Confidence Level: high | Needs Review: yes',
+      '',
+      '## Sources',
+      '[1] WITS / World Bank Comtrade - https://wits.worldbank.org/ accessed 2026-06-03',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({
+        field: 'Country-wise consumption growth - India',
+        value: 'Trade proxy signal found',
+        sourceTitle: 'WITS / World Bank Comtrade',
+        sourceUrl: 'https://wits.worldbank.org/',
+        sourceDate: 'accessed 2026-06-03',
+        sourceTier: 'Tier 1 - Official / regulator / trade source',
+        evidenceStatus: 'Official Data',
+        confidence: 'high',
+        reviewRequired: true,
       }),
     ])
   })
