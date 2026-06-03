@@ -7,10 +7,12 @@ import {
   persistFullDashboardAutopilotStatus,
   useTrustedSourceAutopilot,
 } from '@/composables/useTrustedSourceAutopilot'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import type { TrustedSourceDataType, TrustedSourceTier } from '@/utils/trustedSources'
 
 const message = useMessage()
 const autopilot = useTrustedSourceAutopilot()
+const intelligence = useFeasibilityIntelligence()
 const fullAutopilotSaving = ref(false)
 const importingLatestOutput = ref(false)
 const fullAutopilotStatus = ref(loadFullDashboardAutopilotStatus())
@@ -108,6 +110,62 @@ const coverageRows = [
     review: 'Investor-approved material remains approval-gated and excludes unsupported claims',
   },
 ]
+const importedIntelligenceRows = computed(() => [
+  {
+    label: 'Market and country signals',
+    count: intelligence.state.value.marketClaims.length,
+    route: { name: 'hermes.marketIntelligence' },
+    note: 'Source-backed market claims, trade proxies, country signals, and segmentation evidence.',
+  },
+  {
+    label: 'Competitor records',
+    count: intelligence.state.value.competitors.length,
+    route: { name: 'hermes.competitorIntelligence' },
+    note: 'Company/product records; pricing and market-share claims stay review-gated.',
+  },
+  {
+    label: 'Supplier and data-room sources',
+    count: intelligence.state.value.dataRoomSources.length,
+    route: { name: 'hermes.rawMaterialSourcing' },
+    note: 'Supplier, regulatory, financial, and document evidence candidates with source labels.',
+  },
+  {
+    label: 'Research review findings',
+    count: intelligence.pendingResearchFindings.value.length,
+    route: { name: 'hermes.researchResultReview' },
+    note: 'Weak, sensitive, conflicting, or investor-impact findings waiting for approval.',
+  },
+  {
+    label: 'Scheduled research jobs',
+    count: intelligence.state.value.researchJobs.length,
+    route: { name: 'hermes.jobs' },
+    note: 'Hermes Jobs that keep the dashboard research pipeline running automatically.',
+  },
+])
+const importedIntelligenceTotal = computed(() =>
+  importedIntelligenceRows.value.reduce((sum, row) => sum + row.count, 0),
+)
+const durableStateTimestamp = computed(() =>
+  intelligence.serverSyncStatus.value.lastLoadedAt ||
+  intelligence.serverSyncStatus.value.lastSavedAt ||
+  '',
+)
+const importedIntelligenceStatus = computed(() => {
+  if (intelligence.serverSyncStatus.value.error) {
+    return `Server sync warning: ${intelligence.serverSyncStatus.value.error}`
+  }
+  if (importedIntelligenceTotal.value > 0) {
+    return `Durable intelligence is active. ${importedIntelligenceTotal.value} imported records are available to dashboard pages.`
+  }
+  return 'Waiting for the first structured Hermes research output to import.'
+})
+
+function formatTimestamp(value: string): string {
+  if (!value) return 'Not loaded yet'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
 
 function updateFullAutopilotStatus(patch: Partial<typeof fullAutopilotStatus.value>) {
   fullAutopilotStatus.value = persistFullDashboardAutopilotStatus(patch)
@@ -297,6 +355,34 @@ onMounted(() => {
         <small>
           Durable server intelligence hydrates the source panels after every successful import, so refreshed data survives browser reloads and public tunnel changes.
         </small>
+      </div>
+      <div class="imported-intelligence-panel" aria-label="Live imported dashboard intelligence">
+        <div class="imported-intelligence-header">
+          <div>
+            <p class="eyebrow">Live imported intelligence</p>
+            <h4>Automatic dashboard filling status</h4>
+          </div>
+          <div class="imported-total">
+            <strong>{{ importedIntelligenceTotal }}</strong>
+            <span>records</span>
+          </div>
+        </div>
+        <p class="imported-intelligence-note">
+          {{ importedIntelligenceStatus }}
+          <span>Last durable load/save: {{ formatTimestamp(durableStateTimestamp) }}</span>
+        </p>
+        <div class="imported-intelligence-grid">
+          <RouterLink
+            v-for="row in importedIntelligenceRows"
+            :key="row.label"
+            class="imported-intelligence-row"
+            :to="row.route"
+          >
+            <span>{{ row.label }}</span>
+            <strong>{{ row.count }}</strong>
+            <small>{{ row.note }}</small>
+          </RouterLink>
+        </div>
       </div>
       <ul class="autopilot-rule-list">
         <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
@@ -609,6 +695,109 @@ onMounted(() => {
   }
 }
 
+.imported-intelligence-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), transparent 55%),
+    rgba(0, 0, 0, 0.08);
+}
+
+.imported-intelligence-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+
+  h4 {
+    margin: 2px 0 0;
+    color: $accent-info;
+    font-size: 15px;
+  }
+}
+
+.imported-total {
+  display: grid;
+  min-width: 86px;
+  padding: 8px 10px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+  border-radius: 7px;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  text-align: right;
+
+  strong {
+    color: $accent-primary;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.imported-intelligence-note {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: $text-secondary;
+  line-height: 1.45;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 850;
+  }
+}
+
+.imported-intelligence-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.imported-intelligence-row {
+  display: grid;
+  gap: 6px;
+  min-height: 112px;
+  padding: 10px;
+  border: 1px solid $border-color;
+  border-radius: 7px;
+  background: $bg-secondary;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+
+  &:hover {
+    border-color: rgba(var(--accent-info-rgb), 0.5);
+    transform: translateY(-1px);
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $warning;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.35;
+  }
+}
+
 .autopilot-rule-list {
   display: grid;
   gap: 8px;
@@ -848,6 +1037,24 @@ onMounted(() => {
   .coverage-row {
     grid-template-columns: 1fr;
     min-width: 0;
+  }
+
+  .imported-intelligence-header {
+    display: grid;
+    justify-items: start;
+  }
+
+  .imported-total {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .imported-intelligence-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .imported-intelligence-row {
+    min-height: 0;
   }
 }
 </style>

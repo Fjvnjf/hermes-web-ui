@@ -989,6 +989,87 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('Needs Review')
   })
 
+  it('shows live imported intelligence counts from durable dashboard state', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Country-wise consumption growth - China',
+      value: 'Trade proxy / To Verify',
+      evidenceStatus: 'Trade Proxy',
+      confidence: 'medium',
+      source: { title: 'UN Comtrade', url: 'https://comtradeplus.un.org' },
+    })
+    intelligence.addCompetitor({
+      companyName: 'Evonik Industries',
+      countryRegion: 'Germany',
+      productEquivalent: 'Esterquat / textile softener portfolio',
+      activeContent: 'To Verify',
+      pricingEvidence: 'To Verify',
+      certifications: 'Official company source needed',
+      distributionPresence: 'Global',
+      marketShare: '',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Evonik official website', url: 'https://www.evonik.com/' },
+      notes: 'Imported by Full Dashboard Autopilot.',
+    })
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Stearic acid supplier scorecard',
+      area: 'factory',
+      dashboardGroup: 'supplierScorecards',
+      supplier: 'Supplier Candidate',
+      material: 'Stearic Acid TP',
+      proposedValue: 'Quote evidence candidate',
+      sourceTier: 'tier3-supplier-evidence',
+      dataType: 'supplier_quote',
+      confidence: 'medium',
+      evidenceStatus: 'To Verify',
+      source: { title: 'Supplier quote upload', date: '2026-06-02' },
+      notes: 'Supplier score and price are review-gated.',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Competitor market share claim needs owner review.',
+      keyClaim: 'Competitor market share: To Verify',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: { title: 'Weak public listing', url: 'https://example.com/listing' },
+      riskNote: 'Market share is not source-backed enough.',
+      dashboardTarget: {
+        group: 'competitorRecords',
+        screen: 'competitor',
+        field: 'Market share',
+        value: 'To Verify',
+      },
+    })
+    intelligence.addResearchJob({
+      title: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      question: 'Automatically research trusted online sources for dashboard updates.',
+      context: 'Chemicon China Feasibility',
+      status: 'Scheduled Hermes Job',
+      scheduledJobId: 'job-full-dashboard',
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    })
+
+    const wrapper = mount(TrustedSourcesView)
+    const text = wrapper.text()
+
+    expect(text).toContain('Live imported intelligence')
+    expect(text).toContain('Automatic dashboard filling status')
+    expect(text).toContain('Durable intelligence is active. 5 imported records are available to dashboard pages.')
+    expect(text).toContain('Market and country signals')
+    expect(text).toContain('Competitor records')
+    expect(text).toContain('Supplier and data-room sources')
+    expect(text).toContain('Research review findings')
+    expect(text).toContain('Scheduled research jobs')
+    expect(wrapper.findAll('.imported-intelligence-row')).toHaveLength(5)
+    expect(wrapper.findAll('.imported-intelligence-row').map(row => row.text())).toEqual([
+      expect.stringContaining('Market and country signals'),
+      expect.stringContaining('Competitor records'),
+      expect.stringContaining('Supplier and data-room sources'),
+      expect.stringContaining('Research review findings'),
+      expect.stringContaining('Scheduled research jobs'),
+    ])
+  })
+
   it('enables the full dashboard autopilot schedule and starts the first Hermes run immediately', async () => {
     vi.mocked(listCronRuns).mockResolvedValue([])
     const wrapper = mount(TrustedSourcesView)
