@@ -3,12 +3,14 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NSelect, NSwitch, useMessage } from 'naive-ui'
 import {
+  FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   type FullDashboardServerStatus,
   loadFullDashboardAutopilotStatus,
   persistFullDashboardAutopilotStatus,
   useTrustedSourceAutopilot,
 } from '@/composables/useTrustedSourceAutopilot'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { createJob, runJob } from '@/api/hermes/jobs'
 import type { TrustedSourceDataType, TrustedSourceTier } from '@/utils/trustedSources'
 
 const message = useMessage()
@@ -17,6 +19,7 @@ const intelligence = useFeasibilityIntelligence()
 const fullAutopilotSaving = ref(false)
 const importingLatestOutput = ref(false)
 const refreshingServerStatus = ref(false)
+const runningMissingCoverageResearch = ref(false)
 const fullAutopilotStatus = ref(loadFullDashboardAutopilotStatus())
 const serverAutopilotStatus = ref<FullDashboardServerStatus | null>(null)
 
@@ -213,6 +216,10 @@ const coverageRows = computed(() =>
     }
   }),
 )
+const missingCoverageRows = computed(() => coverageRows.value.filter(row => row.missingTargets.length > 0))
+const missingCoverageTargetCount = computed(() =>
+  missingCoverageRows.value.reduce((sum, row) => sum + row.missingTargets.length, 0),
+)
 const importedIntelligenceRows = computed(() => [
   {
     label: 'Market and country signals',
@@ -357,6 +364,57 @@ function coverageTextForScope(scope: CoverageRequirement['textScope']): string {
   return normalizeCoverageAlias(byScope[scope].join(' '))
 }
 
+function missingCoveragePrompt(): string {
+  const missingTargets = missingCoverageRows.value
+    .map(row => `- ${row.area}: ${row.missingTargets.map(item => item.label).join(', ')}`)
+    .join('\n')
+
+  return [
+    'You are Hermes Full Dashboard Missing Coverage Research.',
+    'Do the online research yourself using trusted and verified sources. Do not ask the user to manually search or paste data.',
+    '',
+    'Objective:',
+    'Fill the missing dashboard coverage targets below with source-backed evidence candidates for the Hermes dashboard.',
+    '',
+    'Missing targets:',
+    missingTargets || '- None',
+    '',
+    'Dashboard areas to update when evidence exists:',
+    '- Executive Overview',
+    '- Market Intelligence',
+    '- Competitor Intelligence',
+    '- Investment Analysis / IRR',
+    '- Raw Material Sourcing / Supplier Scorecards',
+    '- Export Market Opportunity',
+    '- Regulatory / Data Room',
+    '- Investor Readiness',
+    '- Presentation Builder',
+    '',
+    'Source priority:',
+    '1. Government, regulator, customs, statistical, trade, and official standards sources.',
+    '2. Official company, product, catalog, SDS, TDS, annual report, or investor-relations sources.',
+    '3. Uploaded supplier evidence such as quote, SDS, TDS, COA, invoice, or internal file reference.',
+    '4. Paid or reputable market references, labeled as market reference and usually review-gated.',
+    '5. Public listings or marketplaces only as weak references, never as verified facts.',
+    '',
+    'Safety rules:',
+    '- No fake values and no unsupported claims.',
+    '- Missing values stay Missing or To Verify.',
+    '- Market size, CAGR, consumption growth, competitor share, supplier prices, financial outputs, regulatory status, and investor claims must be staged for owner review unless evidence is strong and official.',
+    '- Formula, cost-sensitive, product-development, supplier-price, and investor-sensitive details must remain protected.',
+    '- Financial outputs remain Derived from Assumptions unless tied to approved inputs.',
+    '',
+    'Return only structured dashboard_updates JSON compatible with the Full Dashboard Autopilot importer.',
+    'Each candidate must include fieldKey, value, sourceTitle, sourceUrl, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, and riskReason.',
+  ].join('\n')
+}
+
+function missingCoverageScope(): string {
+  return missingCoverageRows.value
+    .map(row => `${row.area}: ${row.missingTargets.map(item => item.label).join(', ')}`)
+    .join('\n')
+}
+
 async function refreshServerAutopilotStatus() {
   refreshingServerStatus.value = true
   try {
@@ -462,6 +520,61 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
     if (showMessages) message.error(`Could not import latest Hermes research output: ${detail}`)
   } finally {
     importingLatestOutput.value = false
+  }
+}
+
+async function runMissingCoverageResearch() {
+  if (!missingCoverageTargetCount.value) {
+    message.info('No missing dashboard coverage targets are visible right now')
+    return
+  }
+
+  runningMissingCoverageResearch.value = true
+  const createdAt = new Date().toISOString()
+  const title = 'Full Dashboard Missing Coverage Follow-up'
+  const prompt = missingCoveragePrompt()
+  try {
+    const job = await createJob({
+      name: title,
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      prompt,
+      deliver: 'local',
+      repeat: 1,
+    })
+    const jobId = job.job_id || job.id
+    if (!jobId) throw new Error('Hermes did not return a job id')
+
+    await runJob(jobId)
+    intelligence.addResearchJob({
+      title,
+      question: 'Automatically research the missing trusted-source dashboard coverage targets.',
+      scope: missingCoverageScope(),
+      expectedOutput: 'dashboard_updates JSON with source metadata for the Full Dashboard Autopilot importer.',
+      sourceRequirements: 'Official-first trusted sources; weak, sensitive, conflicting, financial, market-share, supplier-price, regulatory, and investor-impact findings stay review-gated.',
+      priority: 'high',
+      scheduledJobId: jobId,
+      schedule: 'Immediate one-time follow-up from Trusted Sources coverage audit',
+      context: 'Full Dashboard Trusted Source Autopilot',
+      status: 'Scheduled Hermes Job',
+    })
+    void refreshServerAutopilotStatus()
+    message.success('Hermes missing-coverage research job started')
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Unknown job error'
+    intelligence.addResearchJob({
+      title,
+      question: 'Automatically research the missing trusted-source dashboard coverage targets.',
+      scope: missingCoverageScope(),
+      expectedOutput: 'dashboard_updates JSON with source metadata for the Full Dashboard Autopilot importer.',
+      sourceRequirements: 'Official-first trusted sources; weak, sensitive, conflicting, financial, market-share, supplier-price, regulatory, and investor-impact findings stay review-gated.',
+      priority: 'high',
+      schedule: `Job API fallback recorded at ${createdAt}`,
+      context: 'Full Dashboard Trusted Source Autopilot',
+      status: 'Manual Research Job',
+    })
+    message.warning(`Could not start the Hermes job yet; saved a research follow-up fallback. ${detail}`)
+  } finally {
+    runningMissingCoverageResearch.value = false
   }
 }
 
@@ -679,12 +792,21 @@ onMounted(() => {
         <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
         <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
         <NButton tertiary :loading="importingLatestOutput" @click="importLatestDashboardResearchOutput(true)">Import Latest Output</NButton>
+        <NButton
+          secondary
+          :loading="runningMissingCoverageResearch"
+          :disabled="missingCoverageTargetCount === 0"
+          @click="runMissingCoverageResearch"
+        >
+          Research Missing Coverage
+        </NButton>
         <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Open Review Queue</RouterLink>
         <RouterLink class="autopilot-link" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw Material Scorecards</RouterLink>
       </div>
       <p class="autopilot-status-note">
         {{ fullAutopilotStatus.lastStatus }}
         <span v-if="fullAutopilotStatus.scheduledJobId"> Job: {{ fullAutopilotStatus.scheduledJobId }}</span>
+        <span v-if="missingCoverageTargetCount"> Missing coverage targets: {{ missingCoverageTargetCount }}</span>
       </p>
       <div class="coverage-map" aria-label="Full dashboard autopilot coverage map">
         <div class="coverage-map-header">

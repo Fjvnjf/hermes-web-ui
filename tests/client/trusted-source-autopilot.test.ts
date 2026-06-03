@@ -1411,12 +1411,86 @@ describe('Trusted Source Autopilot', () => {
       expect.stringContaining('Scheduled research jobs'),
     ])
     expect(text).toContain('Coverage audit')
+    expect(text).toContain('Research Missing Coverage')
+    expect(text).toContain('Missing coverage targets:')
     expect(text).toContain('1/10 targets covered')
     expect(text).toContain('Missing targets: Bangladesh, India, Vietnam')
     expect(text).toContain('1/11 targets covered')
     expect(text).toContain('Missing targets: Stepan Company, Kao Corporation')
     expect(text).toContain('1/12 targets covered')
     expect(text).toContain('Missing targets: Triethanolamine / TEA, Dimethyl sulfate / DMS')
+  })
+
+  it('starts a focused Hermes job for missing trusted-source coverage targets', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Country-wise consumption growth - China',
+      value: 'Trade proxy / To Verify',
+      evidenceStatus: 'Trade Proxy',
+      confidence: 'medium',
+      source: { title: 'UN Comtrade', url: 'https://comtradeplus.un.org' },
+    })
+    intelligence.addCompetitor({
+      companyName: 'Evonik Industries',
+      countryRegion: 'Germany',
+      productEquivalent: 'Esterquat / textile softener portfolio',
+      activeContent: 'To Verify',
+      pricingEvidence: 'To Verify',
+      certifications: 'Official company source needed',
+      distributionPresence: 'Global',
+      marketShare: '',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Evonik official website', url: 'https://www.evonik.com/' },
+      notes: 'Imported by Full Dashboard Autopilot.',
+    })
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Stearic acid supplier scorecard',
+      area: 'factory',
+      dashboardGroup: 'supplierScorecards',
+      supplier: 'Supplier Candidate',
+      material: 'Stearic Acid TP',
+      proposedValue: 'Quote evidence candidate',
+      sourceTier: 'tier3-supplier-evidence',
+      dataType: 'supplier_quote',
+      confidence: 'medium',
+      evidenceStatus: 'To Verify',
+      source: { title: 'Supplier quote upload', date: '2026-06-02' },
+      notes: 'Supplier score and price are review-gated.',
+    })
+
+    const wrapper = mount(TrustedSourcesView)
+
+    await wrapper.findAll('button').find(button => button.text().includes('Research Missing Coverage'))!.trigger('click')
+    await flushPromises()
+    await vi.dynamicImportSettled()
+
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Full Dashboard Missing Coverage Follow-up',
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      deliver: 'local',
+      repeat: 1,
+    }))
+    const prompt = createJobMock.mock.calls[0][0].prompt as string
+    expect(prompt).toContain('Do the online research yourself')
+    expect(prompt).toContain('Bangladesh')
+    expect(prompt).toContain('Stepan Company')
+    expect(prompt).toContain('Triethanolamine / TEA')
+    expect(prompt).toContain('Dimethyl sulfate / DMS')
+    expect(prompt).toContain('dashboard_updates JSON')
+    expect(prompt).toContain('review')
+    expect(runJobMock).toHaveBeenCalledWith('job-1')
+
+    const savedJob = intelligence.state.value.researchJobs[0]
+    expect(savedJob).toMatchObject({
+      title: 'Full Dashboard Missing Coverage Follow-up',
+      status: 'Scheduled Hermes Job',
+      scheduledJobId: 'job-1',
+      context: 'Full Dashboard Trusted Source Autopilot',
+      priority: 'high',
+    })
+    expect(savedJob.scope).toContain('Market Intelligence')
+    expect(savedJob.scope).toContain('Bangladesh')
+    expect(savedJob.sourceRequirements).toContain('Official-first trusted sources')
   })
 
   it('renders live server job status for the full dashboard autopilot', async () => {
