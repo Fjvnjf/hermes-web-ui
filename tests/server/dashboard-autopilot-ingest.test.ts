@@ -626,6 +626,59 @@ describe('dashboard autopilot output ingestion', () => {
     expect(execFileMock).not.toHaveBeenCalled()
   })
 
+  it('imports source-backed outputs from missing coverage follow-up jobs', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    writeMissingCoverageJob(hermesHome, 'job-missing-coverage-1', [
+      'Full Dashboard Missing Coverage Follow-up',
+      'Missing coverage signature: missing-coverage-stepan',
+      'Return dashboard_updates JSON.',
+    ].join('\n'))
+    writeRunOutput(hermesHome, 'job-missing-coverage-1', '2026-06-03T08-00-00.md', {
+      dashboard_updates: {
+        competitorRecords: [{
+          companyName: 'Stepan Company',
+          countryRegion: 'United States',
+          value: 'Official product portfolio source identified',
+          productEquivalent: 'Official esterquat / fabric softener product reference',
+          activeContent: 'Official source identified',
+          pricingEvidence: '',
+          certifications: 'Official company source identified',
+          distributionPresence: 'Global / To Verify',
+          marketShare: '',
+          sourceTitle: 'Stepan official product reference',
+          sourceUrl: 'https://www.stepan.com/',
+          sourceTier: 'Tier 2 - Official company / product source',
+          confidence: 'high',
+          evidenceStatus: 'Source-backed',
+          dataType: 'competitor_data',
+          reviewRequired: false,
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      jobsChecked: 2,
+      importedRuns: 1,
+      autoFilledCount: 1,
+    })
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        countryRegion: 'United States',
+        productEquivalent: 'Official esterquat / fabric softener product reference',
+        marketShare: '',
+        source: expect.objectContaining({
+          title: 'Stepan official product reference',
+          url: 'https://www.stepan.com/',
+        }),
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual([])
+  })
+
   it('infers trusted official source tier from allowlisted domains without manual tier labels', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T09-00-00.000000+00-00.md', {

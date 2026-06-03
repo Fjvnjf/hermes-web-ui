@@ -722,6 +722,10 @@ export function isFullDashboardAutopilotJobRecord(job: CronJobRecord | null | un
     (text.includes('dashboard_updates') && text.includes('trusted-source') && text.includes('full dashboard'))
 }
 
+function isDashboardAutopilotOutputJobRecord(job: CronJobRecord | null | undefined): boolean {
+  return isFullDashboardAutopilotJobRecord(job) || isMissingCoverageFollowUpJobRecord(job)
+}
+
 function autopilotScheduleText(job: CronJobRecord): string {
   const schedule = isPlainRecord((job as any).schedule) ? (job as any).schedule : null
   return [
@@ -2338,7 +2342,7 @@ export async function ingestFullDashboardAutopilotOutputs(
   const jobs = (await readCronJobs(profile)).filter(job => {
     const id = getJobId(job)
     if (options.jobId && id !== options.jobId) return false
-    return isFullDashboardAutopilotJobRecord(job)
+    return isDashboardAutopilotOutputJobRecord(job)
   })
   result.jobsChecked = jobs.length
   if (jobs.length === 0) return result
@@ -2411,7 +2415,7 @@ export async function ingestFullDashboardAutopilotOutputs(
 
 export async function readFullDashboardAutopilotImportStatus(profileInput?: string): Promise<DashboardAutopilotImportStatus> {
   const profile = profileInput || getActiveProfileName() || 'default'
-  const jobs = (await readCronJobs(profile)).filter(isFullDashboardAutopilotJobRecord)
+  const jobs = (await readCronJobs(profile)).filter(isDashboardAutopilotOutputJobRecord)
   const registry = await readImportRegistry(profile)
   const dueRegistry = await readDueRunRegistry(profile)
   const importedRunKeys = new Set(registry.importedRunKeys)
