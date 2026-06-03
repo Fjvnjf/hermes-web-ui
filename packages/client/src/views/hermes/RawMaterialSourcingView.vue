@@ -49,7 +49,7 @@ const intelligence = useFeasibilityIntelligence()
 const materials = ref<RawMaterialRecord[]>(loadMaterials())
 const selectedMaterialId = ref(materials.value[0]?.id || '')
 const savingKey = ref('')
-const supplierAutopilotStatus = ref('Checking supplier scorecard schedule automatically')
+const supplierAutopilotStatus = ref('Hermes is checking the supplier scorecard schedule automatically')
 const supplierAutopilotJobId = ref('')
 const employeeRedaction = computed(() => shouldRedactForEmployee())
 
@@ -280,6 +280,27 @@ const summaryCards = computed(() => {
   ]
 })
 
+const supplierAutopilotCards = computed(() => [
+  {
+    icon: '🔎',
+    label: 'Search',
+    value: supplierAutopilotJobId.value ? 'Scheduled' : 'Auto-checking',
+    note: 'Hermes researches supplier candidates and source gaps automatically.',
+  },
+  {
+    icon: '📥',
+    label: 'Stage',
+    value: `${autopilotSupplierScorecardRows.value.length} candidates`,
+    note: 'Imported supplier/source records appear here as To Verify candidates.',
+  },
+  {
+    icon: '✅',
+    label: 'Verify',
+    value: 'Owner approval',
+    note: 'Prices, scores, payment terms, and DMS details need evidence before use.',
+  },
+])
+
 function priceDisplay(value: number | null | undefined, currency: string): string {
   if (employeeRedaction.value) return 'Restricted in Employee View'
   if (!value) return 'Missing / To Verify'
@@ -497,7 +518,7 @@ function recordSupplierAutopilotResearchJob(jobId: string, schedule: string) {
 
 async function ensureSupplierScorecardAutopilot(options: { silent?: boolean } = {}) {
   if (!options.silent) savingKey.value = 'supplier-scorecard-autopilot'
-  supplierAutopilotStatus.value = 'Checking supplier scorecard schedule automatically'
+  supplierAutopilotStatus.value = 'Hermes is checking the supplier scorecard schedule automatically'
   try {
     await jobsStore.fetchJobs()
     const existingJob = jobsStore.jobs.find(job => job.name === SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME)
@@ -505,9 +526,9 @@ async function ensureSupplierScorecardAutopilot(options: { silent?: boolean } = 
 
     if (existingJobId) {
       supplierAutopilotJobId.value = existingJobId
-      supplierAutopilotStatus.value = 'Supplier scorecard autopilot is scheduled'
+      supplierAutopilotStatus.value = 'Supplier scorecard research is scheduled automatically'
       recordSupplierAutopilotResearchJob(existingJobId, EXECUTIVE_REFRESH_SCHEDULE)
-      if (!options.silent) message.success('Supplier scorecard autopilot is already scheduled')
+      if (!options.silent) message.success('Supplier scorecard research is already scheduled')
       return
     }
 
@@ -519,12 +540,12 @@ async function ensureSupplierScorecardAutopilot(options: { silent?: boolean } = 
     })
     const jobId = job.job_id || job.id || ''
     supplierAutopilotJobId.value = jobId
-    supplierAutopilotStatus.value = 'Supplier scorecard autopilot scheduled automatically'
+    supplierAutopilotStatus.value = 'Supplier scorecard research scheduled automatically'
     recordSupplierAutopilotResearchJob(jobId, EXECUTIVE_REFRESH_SCHEDULE)
-    if (!options.silent) message.success('Supplier scorecard autopilot scheduled')
+    if (!options.silent) message.success('Supplier scorecard research scheduled')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
-    supplierAutopilotStatus.value = `Supplier scorecard autopilot needs attention: ${detail}`
+    supplierAutopilotStatus.value = `Supplier scorecard research needs attention: ${detail}`
     if (!options.silent) message.error(`Could not schedule supplier autopilot: ${detail}`)
   } finally {
     if (!options.silent) savingKey.value = ''
@@ -627,6 +648,16 @@ onMounted(() => {
           <p class="autopilot-note">
             {{ supplierAutopilotStatus }}<span v-if="supplierAutopilotJobId"> · Job {{ supplierAutopilotJobId }}</span>
           </p>
+          <div class="supplier-autopilot-strip" aria-label="Automatic supplier research workflow">
+            <article v-for="card in supplierAutopilotCards" :key="card.label">
+              <span aria-hidden="true">{{ card.icon }}</span>
+              <div>
+                <small>{{ card.label }}</small>
+                <strong>{{ card.value }}</strong>
+                <em>{{ card.note }}</em>
+              </div>
+            </article>
+          </div>
         </div>
         <div class="scorecard-actions">
           <NButton
@@ -635,7 +666,7 @@ onMounted(() => {
             :loading="savingKey === 'supplier-scorecard-autopilot'"
             @click="ensureSupplierScorecardAutopilot({ silent: false })"
           >
-            Repair Supplier Autopilot
+            Check Supplier Autopilot
           </NButton>
           <RouterLink class="shell-link" :to="{ name: 'hermes.files' }">Upload supplier evidence</RouterLink>
           <RouterLink class="shell-link" :to="{ name: 'hermes.kanban' }">Open supplier tasks</RouterLink>
@@ -941,6 +972,60 @@ label,
   color: #c8d4e3;
 }
 
+.supplier-autopilot-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.supplier-autopilot-strip article {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: 104px;
+  border: 1px solid rgba(56, 213, 255, 0.2);
+  border-radius: 8px;
+  padding: 11px;
+  background:
+    linear-gradient(135deg, rgba(56, 213, 255, 0.08), transparent 70%),
+    rgba(0, 0, 0, 0.14);
+}
+
+.supplier-autopilot-strip article > span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(242, 200, 107, 0.34);
+  border-radius: 999px;
+  background: rgba(242, 200, 107, 0.08);
+}
+
+.supplier-autopilot-strip small {
+  color: #7f91ad;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.supplier-autopilot-strip strong {
+  display: block;
+  margin-top: 3px;
+  color: #38d5ff;
+  font-size: 15px;
+}
+
+.supplier-autopilot-strip em {
+  display: block;
+  margin-top: 5px;
+  color: #a8b6c7;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
 .supplier-scorecard-table-wrap {
   margin-top: 16px;
   overflow-x: auto;
@@ -1110,6 +1195,10 @@ select {
   .action-panel {
     grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .supplier-autopilot-strip {
+    grid-template-columns: 1fr;
   }
 
   .history-row {
