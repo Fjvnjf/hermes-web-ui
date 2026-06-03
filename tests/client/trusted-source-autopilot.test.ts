@@ -1433,6 +1433,7 @@ describe('Trusted Source Autopilot', () => {
     expect(text).toContain('Live imported intelligence')
     expect(text).toContain('Automatic dashboard filling status')
     expect(text).toContain('Durable intelligence is active. 5 imported records are available to dashboard pages.')
+    expect(text).toContain('🔁 4. Fill gaps')
     expect(text).toContain('Market and country signals')
     expect(text).toContain('Competitor records')
     expect(text).toContain('Supplier and data-room sources')
@@ -1527,6 +1528,67 @@ describe('Trusted Source Autopilot', () => {
     expect(savedJob.scope).toContain('Market Intelligence')
     expect(savedJob.scope).toContain('Bangladesh')
     expect(savedJob.sourceRequirements).toContain('Official-first trusted sources')
+  })
+
+  it('automatically starts a missing-coverage follow-up after dashboard autopilot imports durable records', async () => {
+    persistFullDashboardAutopilotStatus({
+      enabled: true,
+      scheduledJobId: 'job-full-dashboard',
+      lastStatus: 'Scheduled',
+    })
+    listJobsMock.mockResolvedValue([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValue([])
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Country-wise consumption growth - China',
+      value: 'Trade proxy / To Verify',
+      evidenceStatus: 'Trade Proxy',
+      confidence: 'medium',
+      source: { title: 'UN Comtrade', url: 'https://comtradeplus.un.org' },
+    })
+
+    const wrapper = mount(TrustedSourcesView)
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Full Dashboard Missing Coverage Follow-up',
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      deliver: 'local',
+      repeat: 1,
+    }))
+    expect(runJobMock).toHaveBeenCalledWith('job-1')
+    expect(wrapper.text()).toContain('Fill gaps')
+    expect(wrapper.text()).toContain('Results will still go through review')
+    expect(window.localStorage.getItem('hermes.trustedSources.autoMissingCoverage.v1')).toContain('scheduled')
+
+    const savedJob = intelligence.state.value.researchJobs.find(job => job.title === 'Full Dashboard Missing Coverage Follow-up')
+    expect(savedJob).toMatchObject({
+      status: 'Scheduled Hermes Job',
+      scheduledJobId: 'job-1',
+      context: 'Full Dashboard Trusted Source Autopilot',
+    })
+
+    const callCount = createJobMock.mock.calls.length
+    mount(TrustedSourcesView)
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+    expect(createJobMock).toHaveBeenCalledTimes(callCount)
   })
 
   it('renders live server job status for the full dashboard autopilot', async () => {

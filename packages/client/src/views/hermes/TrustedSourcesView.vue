@@ -20,10 +20,12 @@ import {
 const message = useMessage()
 const autopilot = useTrustedSourceAutopilot()
 const intelligence = useFeasibilityIntelligence()
+const AUTO_MISSING_COVERAGE_KEY = 'hermes.trustedSources.autoMissingCoverage.v1'
 const fullAutopilotSaving = ref(false)
 const importingLatestOutput = ref(false)
 const refreshingServerStatus = ref(false)
 const runningMissingCoverageResearch = ref(false)
+const automaticMissingCoverageStatus = ref('Hermes watches missing dashboard coverage after imported source-backed records arrive.')
 const fullAutopilotStatus = ref(loadFullDashboardAutopilotStatus())
 const serverAutopilotStatus = ref<FullDashboardServerStatus | null>(null)
 
@@ -154,10 +156,21 @@ const easyWorkflowCards = computed(() => [
     value: `${serverAutopilotStatus.value?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length} items waiting`,
     detail: 'Sensitive, weak, conflicting, or investor-impact claims wait for owner approval.',
   },
+  {
+    label: '🔁 4. Fill gaps',
+    value: automaticMissingCoverageSummary.value,
+    detail: automaticMissingCoverageStatus.value,
+  },
 ])
 const coverageRows = computed(() => buildDashboardCoverageRows(intelligence.state.value))
 const missingCoverageRows = computed(() => coverageRows.value.filter(row => row.missingTargets.length > 0))
 const missingCoverageTargetCount = computed(() => missingDashboardCoverageTargetCount(missingCoverageRows.value))
+const missingCoverageFingerprint = computed(() =>
+  missingCoverageRows.value
+    .map(row => `${row.area}:${row.missingTargets.map(item => item.label).sort().join('|')}`)
+    .sort()
+    .join('||'),
+)
 const importedIntelligenceRows = computed(() => [
   {
     label: 'Market and country signals',
@@ -193,6 +206,12 @@ const importedIntelligenceRows = computed(() => [
 const importedIntelligenceTotal = computed(() =>
   importedIntelligenceRows.value.reduce((sum, row) => sum + row.count, 0),
 )
+const automaticMissingCoverageSummary = computed(() => {
+  if (!missingCoverageTargetCount.value) return 'All required targets are covered'
+  if (runningMissingCoverageResearch.value) return 'Starting follow-up research'
+  if (canAutoRunMissingCoverageResearch()) return 'Auto follow-up ready'
+  return `${missingCoverageTargetCount.value} missing targets watched`
+})
 const durableStateTimestamp = computed(() =>
   intelligence.serverSyncStatus.value.lastLoadedAt ||
   intelligence.serverSyncStatus.value.lastSavedAt ||
@@ -271,6 +290,82 @@ function missingCoverageScope(): string {
   return missingCoverageRows.value
     .map(row => `${row.area}: ${row.missingTargets.map(item => item.label).join(', ')}`)
     .join('\n')
+}
+
+function todayKey(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function loadAutomaticMissingCoverageRecord(): { fingerprint?: string; date?: string; status?: string } {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = window.localStorage.getItem(AUTO_MISSING_COVERAGE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveAutomaticMissingCoverageRecord(status: string) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(AUTO_MISSING_COVERAGE_KEY, JSON.stringify({
+    fingerprint: missingCoverageFingerprint.value,
+    date: todayKey(),
+    status,
+    targetCount: missingCoverageTargetCount.value,
+    savedAt: new Date().toISOString(),
+  }))
+}
+
+function hasRecentAutomaticMissingCoverageRun(): boolean {
+  const record = loadAutomaticMissingCoverageRecord()
+  return Boolean(
+    record.fingerprint &&
+    record.fingerprint === missingCoverageFingerprint.value &&
+    record.date === todayKey(),
+  )
+}
+
+function hasExistingMissingCoverageFollowUp(): boolean {
+  const scope = missingCoverageScope()
+  return intelligence.state.value.researchJobs.some(job =>
+    job.title === 'Full Dashboard Missing Coverage Follow-up' &&
+    job.context === 'Full Dashboard Trusted Source Autopilot' &&
+    job.scope === scope &&
+    ['Scheduled Hermes Job', 'Manual Research Job', 'Task Created'].includes(job.status),
+  )
+}
+
+function canAutoRunMissingCoverageResearch(): boolean {
+  const serverStatus = serverAutopilotStatus.value
+  const scheduled = fullAutopilotStatus.value.enabled || Boolean(serverStatus?.scheduled)
+  const hasImportedOrDurableData = importedIntelligenceTotal.value > 0 ||
+    Boolean(serverStatus?.latestOutputImported) ||
+    (serverStatus?.dashboardRecordCount ?? 0) > 0
+
+  return scheduled &&
+    hasImportedOrDurableData &&
+    missingCoverageTargetCount.value > 0 &&
+    !runningMissingCoverageResearch.value
+}
+
+async function maybeRunAutomaticMissingCoverageResearch() {
+  if (!canAutoRunMissingCoverageResearch()) {
+    if (!missingCoverageTargetCount.value) {
+      automaticMissingCoverageStatus.value = 'All required dashboard targets currently have imported evidence or review items.'
+    }
+    return
+  }
+  if (hasExistingMissingCoverageFollowUp()) {
+    automaticMissingCoverageStatus.value = 'A source-backed follow-up job already exists for the current missing coverage map.'
+    return
+  }
+  if (hasRecentAutomaticMissingCoverageRun()) {
+    automaticMissingCoverageStatus.value = 'Hermes already started a missing-coverage follow-up for these targets today.'
+    return
+  }
+  automaticMissingCoverageStatus.value = 'Hermes is starting a missing-coverage research follow-up automatically.'
+  await runMissingCoverageResearch({ automatic: true })
 }
 
 async function refreshServerAutopilotStatus() {
@@ -381,9 +476,14 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
   }
 }
 
-async function runMissingCoverageResearch() {
+async function runMissingCoverageResearch(options: { automatic?: boolean } = {}) {
+  const automatic = Boolean(options.automatic)
   if (!missingCoverageTargetCount.value) {
-    message.info('No missing dashboard coverage targets are visible right now')
+    if (automatic) {
+      automaticMissingCoverageStatus.value = 'No missing dashboard coverage targets are visible right now.'
+    } else {
+      message.info('No missing dashboard coverage targets are visible right now')
+    }
     return
   }
 
@@ -415,8 +515,10 @@ async function runMissingCoverageResearch() {
       context: 'Full Dashboard Trusted Source Autopilot',
       status: 'Scheduled Hermes Job',
     })
+    saveAutomaticMissingCoverageRecord('scheduled')
+    automaticMissingCoverageStatus.value = 'Hermes started a source-backed missing-coverage research job. Results will still go through review.'
     void refreshServerAutopilotStatus()
-    message.success('Hermes missing-coverage research job started')
+    if (!automatic) message.success('Hermes missing-coverage research job started')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown job error'
     intelligence.addResearchJob({
@@ -430,21 +532,27 @@ async function runMissingCoverageResearch() {
       context: 'Full Dashboard Trusted Source Autopilot',
       status: 'Manual Research Job',
     })
-    message.warning(`Could not start the Hermes job yet; saved a research follow-up fallback. ${detail}`)
+    saveAutomaticMissingCoverageRecord('fallback')
+    automaticMissingCoverageStatus.value = `Hermes saved a missing-coverage research fallback because scheduling was unavailable: ${detail}`
+    if (!automatic) message.warning(`Could not start the Hermes job yet; saved a research follow-up fallback. ${detail}`)
   } finally {
     runningMissingCoverageResearch.value = false
   }
 }
 
 onMounted(() => {
-  void refreshServerAutopilotStatus()
-  void intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false }).then(() => {
-    void refreshServerAutopilotStatus()
-  })
-  if (fullAutopilotStatus.value.enabled && fullAutopilotStatus.value.scheduledJobId) {
-    void importLatestDashboardResearchOutput(false)
-  }
+  void bootstrapTrustedSourcesView()
 })
+
+async function bootstrapTrustedSourcesView() {
+  await refreshServerAutopilotStatus()
+  await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+  if (fullAutopilotStatus.value.enabled && fullAutopilotStatus.value.scheduledJobId) {
+    await importLatestDashboardResearchOutput(false)
+  }
+  await refreshServerAutopilotStatus()
+  await maybeRunAutomaticMissingCoverageResearch()
+}
 </script>
 
 <template>
@@ -735,7 +843,7 @@ onMounted(() => {
             secondary
             :loading="runningMissingCoverageResearch"
             :disabled="missingCoverageTargetCount === 0"
-            @click="runMissingCoverageResearch"
+            @click="() => runMissingCoverageResearch()"
           >
             Research Missing Coverage
           </NButton>
@@ -949,7 +1057,7 @@ onMounted(() => {
 
 .easy-workflow-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 
   article {
