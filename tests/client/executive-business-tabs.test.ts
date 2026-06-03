@@ -578,7 +578,7 @@ describe('screenshot-matched executive business tabs', () => {
 
       expect(text).toContain(title)
       expect(text).toContain('Trusted Source Autopilot')
-      expect(text).toContain('Request Refresh Check')
+      expect(text).toContain('Run Source Check Now')
       expect(text).toContain('View Review Queue')
 
       wrapper.unmount()

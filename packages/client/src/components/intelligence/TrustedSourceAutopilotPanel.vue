@@ -308,7 +308,7 @@ async function syncNow() {
           </button>
         </div>
         <div class="autopilot-actions">
-          <NButton size="small" type="primary" :loading="saving" @click="syncNow">Request Refresh Check</NButton>
+          <NButton size="small" type="primary" :loading="saving" @click="syncNow">Run Source Check Now</NButton>
           <NButton size="small" secondary @click="openDrawer()">View Sources</NButton>
           <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">View Review Queue</RouterLink>
           <NButton size="small" secondary :loading="saving" @click="createResearchJob">Create Research Job</NButton>
@@ -373,7 +373,7 @@ async function syncNow() {
         </div>
         <div v-else class="source-detail">
           <h4>No source-backed field selected yet</h4>
-          <p>Hermes refreshes this screen automatically. Use Request Refresh Check only when troubleshooting a stale source run.</p>
+          <p>Hermes refreshes this screen automatically. Use Run Source Check Now only when troubleshooting a stale source run.</p>
         </div>
         <div class="source-list">
           <h4>Active sources for this screen</h4>
