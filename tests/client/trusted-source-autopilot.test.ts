@@ -1275,8 +1275,11 @@ describe('Trusted Source Autopilot', () => {
 
     expect(wrapper.text()).toContain('Full dashboard autopilot')
     expect(wrapper.text()).toContain('Easy autopilot')
+    expect(wrapper.text()).toContain('Automatic Research Status')
     expect(wrapper.text()).toContain('Hermes is checking automatic research')
     expect(wrapper.text()).toContain('No manual searching is needed')
+    expect(wrapper.text()).toContain('Check Autopilot Health')
+    expect(wrapper.text()).toContain('Open Filled Market Data')
     expect(wrapper.text()).toContain('Automatic mode')
     expect(wrapper.text()).toContain('No manual web searching')
     expect(wrapper.text()).toContain('Your review gate')
@@ -1286,16 +1289,16 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('3. Review')
     expect(wrapper.text()).toContain('Advanced source registry')
     expect(wrapper.text()).toContain('Automatic Source Research For The Whole Dashboard')
-    expect(wrapper.text()).toContain('Manual repair/import controls stay here for troubleshooting only.')
-    expect(wrapper.text()).toContain('Repair / Run Now')
-    expect(wrapper.text()).toContain('Run Source Snapshot Now')
+    expect(wrapper.text()).toContain('Health repair, one-off snapshots, and import controls stay here for troubleshooting only.')
+    expect(wrapper.text()).toContain('Repair Autopilot Schedule')
+    expect(wrapper.text()).toContain('Create Source Snapshot')
     expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
     expect(wrapper.text()).toContain('Tier 1: official / regulator / trade')
     expect(wrapper.text()).toContain('Tier 2: official company / product')
     expect(wrapper.text()).toContain('Tier 5: public listing / weak reference')
     expect(wrapper.text()).toContain('07:00 / 19:00')
 
-    await wrapper.findAll('button').find(button => button.text().includes('Run Source Snapshot Now'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('Create Source Snapshot'))!.trigger('click')
     await vi.dynamicImportSettled()
 
     expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
@@ -1595,7 +1598,7 @@ describe('Trusted Source Autopilot', () => {
     vi.mocked(listCronRuns).mockResolvedValue([])
     const wrapper = mount(TrustedSourcesView)
 
-    await wrapper.findAll('button').find(button => button.text().includes('Repair / Run Now'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('Check Autopilot Health'))!.trigger('click')
     await vi.dynamicImportSettled()
 
     expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({

@@ -100,7 +100,7 @@ const easyAutopilotState = computed(() => {
       label: 'Auto-starting',
       title: 'Hermes is checking automatic research',
       body: 'Owner sessions automatically create or repair the twice-daily trusted-source research job. No manual searching is needed.',
-      action: 'Use Repair / Run Now only if the scheduled job still does not appear.',
+      action: 'No action needed. Use Check Autopilot Health only if the schedule still does not appear.',
     }
   }
   if (hasServerWarning) {
@@ -127,7 +127,7 @@ const easyAutopilotState = computed(() => {
       label: 'Running',
       title: 'Dashboard filling is active',
       body: 'Hermes is importing safe source-backed records into the dashboard and keeping risky claims review-gated.',
-      action: 'Use the dashboard normally. Missing coverage research runs automatically when gaps remain.',
+      action: 'Use the dashboard normally. Your only routine action is reviewing staged findings before they become business truth.',
     }
   }
   return {
@@ -135,22 +135,22 @@ const easyAutopilotState = computed(() => {
     label: 'Waiting for output',
     title: 'Autopilot is scheduled',
     body: 'The twice-daily research job is connected. The first readable Hermes output has not been imported yet.',
-    action: 'You can wait for the schedule or run a source snapshot now.',
+    action: 'No manual searching needed. Hermes will import readable source-backed output when the scheduled run finishes.',
   }
 })
 const easyWorkflowCards = computed(() => [
   {
-    label: '1. Research',
+    label: '🔎 1. Research',
     value: 'Hermes searches trusted sources',
     detail: 'Official, company, supplier, regulatory, trade, and uploaded evidence sources are prioritized.',
   },
   {
-    label: '2. Fill',
+    label: '📊 2. Fill',
     value: `${importedIntelligenceTotal.value} records available`,
     detail: 'Safe source-backed records hydrate dashboard pages without manual copy-paste.',
   },
   {
-    label: '3. Review',
+    label: '✅ 3. Review',
     value: `${serverAutopilotStatus.value?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length} items waiting`,
     detail: 'Sensitive, weak, conflicting, or investor-impact claims wait for owner approval.',
   },
@@ -351,7 +351,7 @@ async function runFullDashboardSnapshotNow() {
 
 async function importLatestDashboardResearchOutput(showMessages = true) {
   if (!fullAutopilotStatus.value.scheduledJobId) {
-    if (showMessages) message.warning('Hermes is still checking the scheduled job id. Use Repair / Run Now only if the schedule remains unavailable.')
+    if (showMessages) message.warning('Hermes is still checking the scheduled job id. Use Check Autopilot Health only if the schedule remains unavailable.')
     return
   }
   importingLatestOutput.value = true
@@ -452,16 +452,16 @@ onMounted(() => {
     <header class="sources-header">
       <div>
         <p class="eyebrow">Trusted Sources</p>
-        <h2>Autopilot Control Center</h2>
+        <h2>Automatic Research Status</h2>
         <p>
           Hermes researches trusted online sources automatically, fills safe source-backed dashboard fields, and
-          sends risky or investor-impacting claims to review before they become truth.
+          sends risky or investor-impacting claims to review before they become truth. No manual web searching is needed.
         </p>
       </div>
       <div class="summary-card">
         <strong>{{ activeSourceCount }}</strong>
         <span>active sources</span>
-        <small>{{ needsReviewCount }} snapshots need review</small>
+        <small>{{ needsReviewCount }} snapshots need review / review only what Hermes stages</small>
       </div>
     </header>
 
@@ -475,9 +475,9 @@ onMounted(() => {
         <p>{{ easyAutopilotState.body }}</p>
         <strong>{{ easyAutopilotState.action }}</strong>
         <div class="easy-autopilot-actions">
-          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair / Run Now</NButton>
+          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Check Autopilot Health</NButton>
           <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Review Findings</RouterLink>
-          <RouterLink class="autopilot-link" :to="{ name: 'hermes.jobs' }">View Jobs</RouterLink>
+          <RouterLink class="autopilot-link" :to="{ name: 'hermes.marketIntelligence' }">Open Filled Market Data</RouterLink>
         </div>
       </div>
       <div class="easy-workflow-grid">
@@ -587,8 +587,8 @@ onMounted(() => {
       </div>
       <details class="advanced-disclosure autopilot-details">
         <summary>
-          <span>Live job diagnostics, imported records, and coverage audit</span>
-          <small>Manual repair/import controls stay here for troubleshooting only.</small>
+          <span>Diagnostics, imported records, and coverage audit</span>
+          <small>Health repair, one-off snapshots, and import controls stay here for troubleshooting only.</small>
         </summary>
         <div class="server-autopilot-status" :class="serverAutopilotTone" aria-label="Server autopilot job status">
           <div class="server-autopilot-header">
@@ -728,8 +728,8 @@ onMounted(() => {
           </div>
         </div>
         <div class="full-autopilot-actions">
-          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair / Run Full Autopilot</NButton>
-          <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
+          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair Autopilot Schedule</NButton>
+          <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Create Source Snapshot</NButton>
           <NButton tertiary :loading="importingLatestOutput" @click="importLatestDashboardResearchOutput(true)">Import Latest Output</NButton>
           <NButton
             secondary
