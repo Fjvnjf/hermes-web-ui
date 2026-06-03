@@ -410,6 +410,36 @@ describe('Trusted Source Autopilot', () => {
     ])
   })
 
+  it('extracts source-backed delimited bullets from Hermes output when JSON and tables are missing', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '- Field: Country-wise consumption growth - China | Value: Official trade proxy located | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes',
+      '',
+      '## Supplier Scorecards',
+      '* Supplier: KLK Oleo | Material: Stearic Acid TP | Price: To Verify | Source Title: Uploaded supplier quote index | Source Date: 2026-06-03 | Evidence Status: To Verify | Confidence: medium | Review Required: yes',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({
+        field: 'Country-wise consumption growth - China',
+        value: 'Official trade proxy located',
+        sourceTitle: 'WITS / World Bank Comtrade',
+        sourceUrl: 'https://wits.worldbank.org/',
+        reviewRequired: true,
+      }),
+    ])
+    expect(payload?.supplierScorecards).toEqual([
+      expect.objectContaining({
+        supplier: 'KLK Oleo',
+        material: 'Stearic Acid TP',
+        value: 'To Verify',
+        sourceTitle: 'Uploaded supplier quote index',
+      }),
+    ])
+  })
+
   it('imports Hermes research output, auto-fills safe official data, and stages critical claims for review', () => {
     const autopilot = useTrustedSourceAutopilot()
     const intelligence = useFeasibilityIntelligence()

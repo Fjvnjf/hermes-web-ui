@@ -712,6 +712,15 @@ function getCell(row: Record<string, string>, ...headers: string[]): string {
   return ''
 }
 
+function parseMarkdownLink(value: string): { title: string, url: string } | null {
+  const match = value.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/i)
+  if (!match) return null
+  return {
+    title: match[1].trim(),
+    url: match[2].trim(),
+  }
+}
+
 function inferGroupFromMarkdownTable(headers: string[], context: string): DashboardResearchUpdateGroup {
   const text = `${headers.join(' ')} ${context}`.toLowerCase()
   if (/supplier|scorecard|raw material|material|quote|payment|quality|reliability/.test(text)) return 'supplierScorecards'
@@ -724,12 +733,21 @@ function inferGroupFromMarkdownTable(headers: string[], context: string): Dashbo
   return 'marketClaims'
 }
 
+function sectionContextForLine(lines: string[], index: number): string {
+  for (let i = index - 1; i >= Math.max(0, index - 12); i -= 1) {
+    const line = lines[i]
+    if (/^\s{0,3}#{1,6}\s+/.test(line)) return line
+  }
+  return lines.slice(Math.max(0, index - 4), index).join('\n')
+}
+
 function markdownSourceFields(row: Record<string, string>): Pick<DashboardResearchUpdateItem, 'sourceTitle' | 'sourceUrl' | 'sourceDate'> {
   const explicitTitle = getCell(row, 'source title', 'source name', 'source')
   const explicitUrl = getCell(row, 'source url', 'url', 'link')
   const sourceDate = getCell(row, 'source date', 'date', 'last checked', 'checked')
-  const sourceTitle = explicitTitle && /^https?:\/\//i.test(explicitTitle) ? 'Source link' : explicitTitle
-  const sourceUrl = explicitUrl || (/^https?:\/\//i.test(explicitTitle) ? explicitTitle : '')
+  const markdownLink = parseMarkdownLink(explicitTitle)
+  const sourceTitle = markdownLink?.title || (explicitTitle && /^https?:\/\//i.test(explicitTitle) ? 'Source link' : explicitTitle)
+  const sourceUrl = explicitUrl || markdownLink?.url || (/^https?:\/\//i.test(explicitTitle) ? explicitTitle : '')
   return { sourceTitle, sourceUrl, sourceDate }
 }
 
@@ -808,7 +826,7 @@ function extractMarkdownDashboardTables(content: string): DashboardResearchUpdat
     )
     if (!hasFieldishColumn || !hasValueishColumn || !hasSourceColumn) continue
 
-    const context = lines.slice(Math.max(0, i - 4), i).join('\n')
+    const context = sectionContextForLine(lines, i)
     const group = inferGroupFromMarkdownTable(headers, context)
     const items: DashboardResearchUpdateItem[] = []
     let rowIndex = i + 2
@@ -827,6 +845,48 @@ function extractMarkdownDashboardTables(content: string): DashboardResearchUpdat
     if (items.length) payload[group] = [...(payload[group] || []), ...items]
     i = Math.max(i, rowIndex - 1)
   }
+
+  return DASHBOARD_UPDATE_GROUPS.some(group => (payload[group]?.length || 0) > 0) ? payload : null
+}
+
+function parseDelimitedBulletRow(line: string): Record<string, string> | null {
+  const cleaned = line
+    .trim()
+    .replace(/^[-*]\s+/, '')
+    .replace(/^\d+[.)]\s+/, '')
+  if (!cleaned.includes('|') || !/source/i.test(cleaned)) return null
+
+  const row: Record<string, string> = {}
+  for (const segment of cleaned.split('|')) {
+    const match = segment.match(/^\s*([^:=]+?)\s*[:=]\s*(.*?)\s*$/)
+    if (!match) continue
+    const key = normalizeHeader(match[1])
+    const value = match[2].trim()
+    if (key && value) row[key] = value
+  }
+
+  const hasFieldish = Boolean(getCell(row, 'field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item', 'company', 'competitor', 'manufacturer', 'supplier', 'material'))
+  const hasValueish = Boolean(getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'market share', 'share', 'pricing evidence', 'price', 'cost', 'notes', 'summary'))
+  const sourceFields = markdownSourceFields(row)
+  const hasSource = Boolean(sourceFields.sourceTitle || sourceFields.sourceUrl || sourceFields.sourceDate)
+
+  return hasFieldish && hasValueish && hasSource ? row : null
+}
+
+function extractDelimitedDashboardBullets(content: string): DashboardResearchUpdatesPayload | null {
+  const lines = content.split(/\r?\n/)
+  const payload: DashboardResearchUpdatesPayload = {}
+
+  lines.forEach((line, index) => {
+    if (!/^\s*(?:[-*]|\d+[.)])\s+/.test(line)) return
+    const row = parseDelimitedBulletRow(line)
+    if (!row) return
+    const context = sectionContextForLine(lines, index)
+    const group = inferGroupFromMarkdownTable(Object.keys(row), context)
+    const item = markdownRowToDashboardItem(row, group)
+    if (!item) return
+    payload[group] = [...(payload[group] || []), item]
+  })
 
   return DASHBOARD_UPDATE_GROUPS.some(group => (payload[group]?.length || 0) > 0) ? payload : null
 }
@@ -856,7 +916,7 @@ export function extractDashboardResearchUpdates(content: string): DashboardResea
     if (payload) return payload
   }
 
-  return extractMarkdownDashboardTables(trimmed)
+  return extractMarkdownDashboardTables(trimmed) || extractDelimitedDashboardBullets(trimmed)
 }
 
 function normalizeSourceTier(value: unknown): SourceTier {

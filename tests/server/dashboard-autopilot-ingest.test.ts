@@ -172,6 +172,46 @@ describe('dashboard autopilot output ingestion', () => {
     expect(payload).toBeNull()
   })
 
+  it('extracts source-backed delimited bullets when Hermes omits JSON and tables', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Competitor Intelligence',
+      '- Company: Evonik Industries | Product Equivalent: VARISOFT official esterquat product family | Market Share: To Verify | Source: [Evonik official product page](https://www.evonik.com/) | Source Tier: Tier 2 - Official company / product source | Evidence Status: To Verify | Confidence: medium | Review Required: yes',
+      '',
+      '## Market Intelligence',
+      '1. Field: Country-wise consumption growth - Bangladesh | Value: Trade proxy signal found | Source Title: WITS / World Bank Comtrade | Source URL: https://wits.worldbank.org/ | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Data Type: trade_data | Review Required: yes',
+    ].join('\n'))
+
+    expect(payload?.competitorRecords).toEqual([
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        productEquivalent: 'VARISOFT official esterquat product family',
+        marketShare: 'To Verify',
+        sourceTitle: 'Evonik official product page',
+        sourceUrl: 'https://www.evonik.com/',
+        reviewRequired: true,
+      }),
+    ])
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({
+        field: 'Country-wise consumption growth - Bangladesh',
+        value: 'Trade proxy signal found',
+        sourceTitle: 'WITS / World Bank Comtrade',
+        sourceUrl: 'https://wits.worldbank.org/',
+      }),
+    ])
+  })
+
+  it('ignores delimited bullets that do not include explicit source metadata', () => {
+    const payload = extractDashboardResearchUpdates([
+      '- Field: Market Size / Scope | Value: $3.2B',
+      '- Company: Example Competitor | Market Share: 12%',
+    ].join('\n'))
+
+    expect(payload).toBeNull()
+  })
+
   it('auto-fills only low-risk official facts and stages critical findings for review', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-00-00.000000+00-00.md', {
