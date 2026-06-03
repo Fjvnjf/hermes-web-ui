@@ -15,7 +15,7 @@ import {
 
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
-export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v2'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -545,6 +545,16 @@ function fullDashboardAutopilotPrompt(): string {
     '- Regulatory: SDS/TDS/CAS, DMS safety/regulatory status, China import/storage/use requirements, factory chemical approvals.',
     '- Investor Readiness and Presentation Builder: evidence gaps, risk register, data-room checklist, presentation-ready material only when source-backed or user approved.',
     '',
+    'Required coverage checklist:',
+    '- Every twice-daily run must attempt every dashboard area and every JSON array group. Do not omit a group silently.',
+    '- If a source-backed value cannot be found for a required target, return an evidenceGaps item and a suggestedTasks item for that target with proposedDashboardField, Missing / To Verify status, and the best trusted source to check next.',
+    '- Country-wise market/consumption targets: China, Bangladesh, India, Vietnam, Pakistan, Turkey, Indonesia, EU / Germany, United States, GCC / Middle East.',
+    '- Competitor targets: Evonik Industries, Stepan Company, Kao Corporation, WACKER, Rudolf Group, CHT Group, Archroma, Transfar, Zschimmer & Schwarz, Pulcra Chemicals, Syensqo / Solvay, and any source-backed China/Bangladesh/Vietnam local competitors.',
+    '- Supplier/raw-material targets: stearic acid, triethanolamine / TEA, dimethyl sulfate / DMS, PDMS silicone oil, acetic acid, ethoxylates, packaging, Wilmar, KLK OLEO, BASF, Dow, WACKER, DMS candidate suppliers, and local Bangladesh suppliers.',
+    '- Regulatory targets: DMS safety/regulatory status, SDS/TDS/CAS evidence, China chemical import/storage/transport/use requirements, factory chemical approvals, and IECSC/China chemical inventory references when relevant.',
+    '- Financial/investment targets: Lean/Base/Conservative/Aggressive scenarios, total investment, IRR, NPV, payback, ROI, working capital, capex breakdown, and sensitivity gaps. External web sources cannot verify IRR/NPV; use only approved internal scenarios or mark Derived from Assumptions / To Verify.',
+    '- Investor material targets: approved facts, approved assumptions, missing proof, risk register items, data-room gaps, and presentation snippets. Never mark investor material approved without review.',
+    '',
     'Trusted source priority:',
     '1. Tier 1: official government/regulator/statistical/trade sources such as UN Comtrade, ITC, World Bank, WTO, OECD, China Customs/NBS/MOFCOM/MEE/MEM/MIIT, ECHA, PubChem, EPA CompTox, NITE.',
     '2. Tier 2: official company/product pages and catalogs such as BASF, Dow, WACKER, Wilmar, KLK OLEO, Evonik, Stepan, Kao, CHT, Archroma, Transfar, Zschimmer & Schwarz, Pulcra.',
@@ -567,6 +577,7 @@ function fullDashboardAutopilotPrompt(): string {
     '- The top-level object must be: { "dashboard_updates": { ... } }.',
     '- Use these arrays only: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
     '- Each item should include fieldKey when known, field/title/label, value, sourceTitle, sourceUrl or sourceDate, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, riskReason, dataType, and sensitive when applicable.',
+    '- For missing checklist targets, include proposedDashboardField and recommendedAction so Research Result Review and Kanban can show exactly what still needs evidence.',
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep proxy values To Verify.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
     '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',

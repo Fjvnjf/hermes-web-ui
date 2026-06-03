@@ -6,6 +6,7 @@ import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import {
   FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+  FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION,
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   loadFullDashboardAutopilotStatus,
   persistFullDashboardAutopilotStatus,
@@ -353,6 +354,7 @@ describe('Trusted Source Autopilot', () => {
     const prompt = useTrustedSourceAutopilot().fullDashboardAutopilotPrompt()
 
     expect(prompt).toContain(FULL_DASHBOARD_AUTOPILOT_JOB_NAME)
+    expect(prompt).toContain(FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION)
     expect(FULL_DASHBOARD_AUTOPILOT_SCHEDULE).toBe('0 7,19 * * *')
     expect(prompt).toContain('Raw Material Sourcing')
     expect(prompt).toContain('Supplier Scorecards')
@@ -363,6 +365,13 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Do the online research yourself')
     expect(prompt).toContain('Do not ask the user to manually search')
     expect(prompt).toContain('Country-wise consumption growth')
+    expect(prompt).toContain('Required coverage checklist')
+    expect(prompt).toContain('Do not omit a group silently')
+    expect(prompt).toContain('China, Bangladesh, India, Vietnam, Pakistan, Turkey, Indonesia')
+    expect(prompt).toContain('Evonik Industries, Stepan Company, Kao Corporation, WACKER')
+    expect(prompt).toContain('triethanolamine / TEA, dimethyl sulfate / DMS')
+    expect(prompt).toContain('Lean/Base/Conservative/Aggressive scenarios')
+    expect(prompt).toContain('proposedDashboardField')
     expect(prompt).toContain('Put the appendix in one fenced ```json block')
     expect(prompt).toContain('source-backed Markdown tables')
     expect(prompt).toContain('source-backed delimited bullets')
