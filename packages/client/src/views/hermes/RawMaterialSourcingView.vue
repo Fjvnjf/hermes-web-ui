@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
@@ -38,6 +38,8 @@ interface SupplierScorecardRow {
   highRisk?: boolean
 }
 
+const SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME = 'Supplier Scorecard Autopilot - Key Raw Materials'
+
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const jobsStore = useJobsStore()
@@ -46,6 +48,8 @@ const intelligence = useFeasibilityIntelligence()
 const materials = ref<RawMaterialRecord[]>(loadMaterials())
 const selectedMaterialId = ref(materials.value[0]?.id || '')
 const savingKey = ref('')
+const supplierAutopilotStatus = ref('Checking supplier scorecard schedule automatically')
+const supplierAutopilotJobId = ref('')
 const employeeRedaction = computed(() => shouldRedactForEmployee())
 
 const sourceTypes: RawMaterialSourceType[] = [
@@ -464,34 +468,65 @@ async function createSupplierScorecardTask(row: SupplierScorecardRow) {
   }
 }
 
-async function enableSupplierScorecardAutopilot() {
-  savingKey.value = 'supplier-scorecard-autopilot'
+function recordSupplierAutopilotResearchJob(jobId: string, schedule: string) {
+  const existing = intelligence.state.value.researchJobs.find(job => job.title === SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME)
+  if (existing) {
+    intelligence.updateResearchJobSchedule(existing.id, {
+      scheduledJobId: jobId,
+      schedule,
+      status: 'Scheduled Hermes Job',
+    })
+    return
+  }
+
+  intelligence.addResearchJob({
+    title: SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME,
+    question: 'Automatically research source-backed supplier scorecards for Chemicon key raw materials.',
+    scope: 'Stearic acid, TEA, PDMS silicone oil, DMS, acetic acid, supplier price/quality/reliability/payment evidence, source gaps, and regulatory risk.',
+    expectedOutput: 'Supplier scorecard table with source title, URL/date, confidence, evidence status, and tasks for missing supplier evidence.',
+    sourceRequirements: 'Quote/TDS/SDS/COA/distributor evidence required for supplier score, price, payment, quality, and reliability. Public listings are Reference Only.',
+    priority: 'high',
+    schedulePreference: 'Custom',
+    scheduledJobId: jobId,
+    schedule,
+    context: 'Chemicon China Feasibility',
+    status: 'Scheduled Hermes Job',
+  })
+}
+
+async function ensureSupplierScorecardAutopilot(options: { silent?: boolean } = {}) {
+  if (!options.silent) savingKey.value = 'supplier-scorecard-autopilot'
+  supplierAutopilotStatus.value = 'Checking supplier scorecard schedule automatically'
   try {
+    await jobsStore.fetchJobs()
+    const existingJob = jobsStore.jobs.find(job => job.name === SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME)
+    const existingJobId = existingJob?.job_id || existingJob?.id || ''
+
+    if (existingJobId) {
+      supplierAutopilotJobId.value = existingJobId
+      supplierAutopilotStatus.value = 'Supplier scorecard autopilot is scheduled'
+      recordSupplierAutopilotResearchJob(existingJobId, EXECUTIVE_REFRESH_SCHEDULE)
+      if (!options.silent) message.success('Supplier scorecard autopilot is already scheduled')
+      return
+    }
+
     const job = await jobsStore.createJob({
-      name: 'Supplier Scorecard Autopilot - Key Raw Materials',
+      name: SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME,
       schedule: EXECUTIVE_REFRESH_SCHEDULE,
       prompt: supplierScorecardAutopilotPrompt(),
       deliver: 'local',
     })
-    intelligence.addResearchJob({
-      title: 'Supplier Scorecard Autopilot - Key Raw Materials',
-      question: 'Automatically research source-backed supplier scorecards for Chemicon key raw materials.',
-      scope: 'Stearic acid, TEA, PDMS silicone oil, DMS, acetic acid, supplier price/quality/reliability/payment evidence, source gaps, and regulatory risk.',
-      expectedOutput: 'Supplier scorecard table with source title, URL/date, confidence, evidence status, and tasks for missing supplier evidence.',
-      sourceRequirements: 'Quote/TDS/SDS/COA/distributor evidence required for supplier score, price, payment, quality, and reliability. Public listings are Reference Only.',
-      priority: 'high',
-      schedulePreference: 'Custom',
-      scheduledJobId: job.job_id || job.id,
-      schedule: EXECUTIVE_REFRESH_SCHEDULE,
-      context: 'Chemicon China Feasibility',
-      status: 'Scheduled Hermes Job',
-    })
-    message.success('Supplier scorecard autopilot scheduled')
+    const jobId = job.job_id || job.id || ''
+    supplierAutopilotJobId.value = jobId
+    supplierAutopilotStatus.value = 'Supplier scorecard autopilot scheduled automatically'
+    recordSupplierAutopilotResearchJob(jobId, EXECUTIVE_REFRESH_SCHEDULE)
+    if (!options.silent) message.success('Supplier scorecard autopilot scheduled')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
-    message.error(`Could not schedule supplier autopilot: ${detail}`)
+    supplierAutopilotStatus.value = `Supplier scorecard autopilot needs attention: ${detail}`
+    if (!options.silent) message.error(`Could not schedule supplier autopilot: ${detail}`)
   } finally {
-    savingKey.value = ''
+    if (!options.silent) savingKey.value = ''
   }
 }
 
@@ -538,6 +573,10 @@ async function scheduleResearch(material: RawMaterialRecord) {
     savingKey.value = ''
   }
 }
+
+onMounted(() => {
+  void ensureSupplierScorecardAutopilot({ silent: true })
+})
 </script>
 
 <template>
@@ -582,15 +621,18 @@ async function scheduleResearch(material: RawMaterialRecord) {
             Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier/raw-material candidates from trusted-source research.
             They are visible here as To Verify candidates and still require source review before costing or investor use.
           </p>
+          <p class="autopilot-note">
+            {{ supplierAutopilotStatus }}<span v-if="supplierAutopilotJobId"> · Job {{ supplierAutopilotJobId }}</span>
+          </p>
         </div>
         <div class="scorecard-actions">
           <NButton
             size="small"
             type="primary"
             :loading="savingKey === 'supplier-scorecard-autopilot'"
-            @click="enableSupplierScorecardAutopilot"
+            @click="ensureSupplierScorecardAutopilot({ silent: false })"
           >
-            Enable Supplier Autopilot
+            Repair Supplier Autopilot
           </NButton>
           <RouterLink class="shell-link" :to="{ name: 'hermes.files' }">Upload supplier evidence</RouterLink>
           <RouterLink class="shell-link" :to="{ name: 'hermes.kanban' }">Open supplier tasks</RouterLink>

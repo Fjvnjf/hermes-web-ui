@@ -20,6 +20,7 @@ import {
 
 const createTaskMock = vi.hoisted(() => vi.fn())
 const createJobMock = vi.hoisted(() => vi.fn())
+const fetchJobsMock = vi.hoisted(() => vi.fn())
 const fetchBoardsMock = vi.hoisted(() => vi.fn())
 const setSelectedBoardMock = vi.hoisted(() => vi.fn())
 const apiRequestMock = vi.hoisted(() => vi.fn())
@@ -37,6 +38,8 @@ vi.mock('@/stores/hermes/kanban', () => ({
 
 vi.mock('@/stores/hermes/jobs', () => ({
   useJobsStore: () => ({
+    jobs: [],
+    fetchJobs: fetchJobsMock,
     createJob: createJobMock,
   }),
 }))
@@ -80,6 +83,7 @@ describe('screenshot-matched executive business tabs', () => {
     useFeasibilityIntelligence().resetFeasibilityIntelligenceForTests()
     createTaskMock.mockReset().mockResolvedValue({ id: 'task-1' })
     createJobMock.mockReset().mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
+    fetchJobsMock.mockReset().mockResolvedValue(undefined)
     fetchBoardsMock.mockReset().mockResolvedValue(undefined)
     setSelectedBoardMock.mockReset()
     apiRequestMock.mockReset().mockImplementation(async (url: string) => {
@@ -377,7 +381,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Schedule Deeper Research')
   })
 
-  it('renders supplier scorecards as source-gated raw material verification targets', () => {
+  it('renders supplier scorecards as source-gated raw material verification targets and auto-schedules supplier research', async () => {
     useFeasibilityIntelligence().addDataRoomSource({
       checklistLabel: 'Autopilot supplier scorecard - Official Supplier',
       area: 'factory',
@@ -424,7 +428,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Pending quote')
     expect(text).toContain('Pending regulatory review')
     expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
-    expect(text).toContain('Enable Supplier Autopilot')
+    expect(text).toContain('Checking supplier scorecard schedule automatically')
+    expect(text).toContain('Repair Supplier Autopilot')
     expect(text).toContain('Full dashboard autopilot')
     expect(text).toContain('Verify Supplier')
     expect(text).toContain('To Verify')
@@ -435,6 +440,19 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).not.toContain('$3,350')
     expect(text).not.toContain('$890')
     expect(text).not.toContain('10.0')
+
+    await flushPromises()
+    expect(fetchJobsMock).toHaveBeenCalled()
+    expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Supplier Scorecard Autopilot - Key Raw Materials',
+      schedule: EXECUTIVE_REFRESH_SCHEDULE,
+      deliver: 'local',
+    }))
+    expect(useFeasibilityIntelligence().state.value.researchJobs[0]).toMatchObject({
+      title: 'Supplier Scorecard Autopilot - Key Raw Materials',
+      status: 'Scheduled Hermes Job',
+      scheduledJobId: 'job-1',
+    })
   })
 
   it('stages Sync Now as a Research Result Review item instead of silently approving market or finance facts', async () => {

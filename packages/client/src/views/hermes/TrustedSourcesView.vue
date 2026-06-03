@@ -351,7 +351,7 @@ async function runFullDashboardSnapshotNow() {
 
 async function importLatestDashboardResearchOutput(showMessages = true) {
   if (!fullAutopilotStatus.value.scheduledJobId) {
-    if (showMessages) message.warning('Enable Full Dashboard Autopilot first so Hermes has a scheduled job id')
+    if (showMessages) message.warning('Hermes is still checking the scheduled job id. Use Repair / Run Now only if the schedule remains unavailable.')
     return
   }
   importingLatestOutput.value = true
@@ -530,8 +530,8 @@ onMounted(() => {
         <p class="eyebrow">Full dashboard autopilot</p>
         <h3>Automatic Source Research For The Whole Dashboard</h3>
         <p>
-          Enable once and Hermes will research trusted online sources on schedule, create source-labeled dashboard
-          snapshots, and route weak, conflicting, sensitive, or missing values to Research Result Review. This removes
+          Hermes automatically checks and runs trusted online source research on schedule, creates source-labeled dashboard
+          snapshots, and routes weak, conflicting, sensitive, or missing values to Research Result Review. This removes
           manual copy-paste while keeping fake numbers out of Market Intelligence, Competitors, supplier scorecards,
           investment analysis, and investor material.
         </p>
