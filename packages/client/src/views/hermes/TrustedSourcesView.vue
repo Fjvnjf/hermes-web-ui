@@ -81,38 +81,138 @@ const fullAutopilotOwnerAction = computed(() => {
   if (!fullAutopilotStatus.value.lastRun) return 'Wait for the first scheduled Hermes research output or run a source snapshot now.'
   return 'Autopilot is running. Keep reviewing staged findings; safe source-backed fields will hydrate from durable server state.'
 })
-const coverageRows = [
+interface CoverageTarget {
+  label: string
+  aliases: string[]
+}
+
+interface CoverageRequirement {
+  area: string
+  fills: string
+  review: string
+  textScope: 'market' | 'competitor' | 'supplier' | 'regulatory' | 'financial' | 'investor'
+  targets: CoverageTarget[]
+}
+
+const coverageRequirements: CoverageRequirement[] = [
   {
     area: 'Market Intelligence',
     fills: 'Trade proxies, country signals, market questions, source-backed segments',
     review: 'Market size, CAGR, consumption, and target claims stay To Verify unless strong evidence exists',
+    textScope: 'market',
+    targets: [
+      target('China', 'china', 'zhejiang', 'guangdong', 'jiangsu'),
+      target('Bangladesh', 'bangladesh'),
+      target('India', 'india'),
+      target('Vietnam', 'vietnam'),
+      target('Pakistan', 'pakistan'),
+      target('Turkey', 'turkey', 'turkiye'),
+      target('Indonesia', 'indonesia'),
+      target('EU / Germany', 'eu', 'europe', 'germany'),
+      target('United States', 'united states', 'usa', 'u.s.'),
+      target('GCC / Middle East', 'gcc', 'middle east', 'saudi', 'uae'),
+    ],
   },
   {
     area: 'Competitor Intelligence',
     fills: 'Company presence, product equivalents, certifications, distribution evidence',
     review: 'Market share, pricing, strengths/weaknesses, and unsupported rankings are staged for review',
+    textScope: 'competitor',
+    targets: [
+      target('Evonik Industries', 'evonik'),
+      target('Stepan Company', 'stepan'),
+      target('Kao Corporation', 'kao'),
+      target('WACKER', 'wacker'),
+      target('Rudolf Group', 'rudolf'),
+      target('CHT Group', 'cht'),
+      target('Archroma', 'archroma'),
+      target('Transfar', 'transfar'),
+      target('Zschimmer & Schwarz', 'zschimmer', 'schwarz'),
+      target('Pulcra Chemicals', 'pulcra'),
+      target('Syensqo / Solvay', 'syensqo', 'solvay'),
+    ],
   },
   {
     area: 'Raw Materials / Supplier Scorecards',
     fills: 'Supplier evidence candidates, material signals, SDS/TDS/COA/quote references',
     review: 'Supplier prices, payment terms, quality/reliability scores, and cost data remain sensitive',
+    textScope: 'supplier',
+    targets: [
+      target('Stearic acid', 'stearic'),
+      target('Triethanolamine / TEA', 'triethanolamine', 'tea'),
+      target('Dimethyl sulfate / DMS', 'dimethyl sulfate', 'dms'),
+      target('PDMS silicone oil', 'pdms', 'silicone oil'),
+      target('Acetic acid', 'acetic acid'),
+      target('Ethoxylates', 'ethoxylate'),
+      target('Packaging', 'packaging'),
+      target('Wilmar', 'wilmar'),
+      target('KLK OLEO', 'klk'),
+      target('BASF', 'basf'),
+      target('Dow', 'dow'),
+      target('WACKER', 'wacker'),
+    ],
   },
   {
     area: 'Investment / IRR',
     fills: 'Approved internal scenario snapshots and finance evidence candidates',
     review: 'IRR, NPV, payback, ROI, capex, costing, and investor claims are never silently approved',
+    textScope: 'financial',
+    targets: [
+      target('Lean scenario', 'lean'),
+      target('Base scenario', 'base'),
+      target('Conservative scenario', 'conservative'),
+      target('Aggressive scenario', 'aggressive'),
+      target('Total investment', 'total investment'),
+      target('IRR', 'irr'),
+      target('NPV', 'npv'),
+      target('Payback', 'payback'),
+      target('ROI', 'roi'),
+      target('Working capital', 'working capital'),
+      target('Capex breakdown', 'capex', 'investment breakdown'),
+    ],
   },
   {
     area: 'Regulatory / Data Room',
     fills: 'Regulatory findings, source gaps, document evidence candidates',
     review: 'DMS, CAS, formula, permit, factory approval, and safety claims require owner review',
+    textScope: 'regulatory',
+    targets: [
+      target('DMS safety / regulatory status', 'dms', 'dimethyl sulfate'),
+      target('SDS / TDS / CAS evidence', 'sds', 'tds', 'cas'),
+      target('China import / storage / transport / use', 'china import', 'storage', 'transport', 'use requirements'),
+      target('Factory chemical approvals', 'factory approval', 'chemical approval', 'permit'),
+      target('IECSC / China inventory', 'iecsc', 'china chemical inventory'),
+    ],
   },
   {
     area: 'Reports / Presentation',
     fills: 'Investor material candidates only after evidence labels are preserved',
     review: 'Investor-approved material remains approval-gated and excludes unsupported claims',
+    textScope: 'investor',
+    targets: [
+      target('Approved facts', 'approved fact', 'source-backed'),
+      target('Approved assumptions', 'approved assumption'),
+      target('Risk register', 'risk register', 'risk'),
+      target('Data-room gaps', 'data-room', 'data room'),
+      target('Presentation snippets', 'presentation', 'slide', 'snippet'),
+    ],
   },
 ]
+
+const coverageRows = computed(() =>
+  coverageRequirements.map(row => {
+    const text = coverageTextForScope(row.textScope)
+    const missingTargets = row.targets.filter(item => !item.aliases.some(alias => coverageTextHasAlias(text, alias)))
+    const coveredCount = row.targets.length - missingTargets.length
+    return {
+      ...row,
+      coveredCount,
+      totalTargets: row.targets.length,
+      missingTargets,
+      status: missingTargets.length === 0 ? 'covered' : coveredCount > 0 ? 'partial' : 'missing',
+    }
+  }),
+)
 const importedIntelligenceRows = computed(() => [
   {
     label: 'Market and country signals',
@@ -175,6 +275,86 @@ function formatTimestamp(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+function target(label: string, ...aliases: string[]): CoverageTarget {
+  return {
+    label,
+    aliases: aliases.map(normalizeCoverageAlias),
+  }
+}
+
+function normalizeCoverageAlias(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function coverageTextHasAlias(text: string, alias: string): boolean {
+  if (!alias) return false
+  if (alias.length <= 3) {
+    return new RegExp(`(^|\\s)${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(text)
+  }
+  return text.includes(alias)
+}
+
+function coverageTextForScope(scope: CoverageRequirement['textScope']): string {
+  const state = intelligence.state.value
+  const marketParts = [
+    ...state.marketClaims.map(item => `${item.label} ${item.value} ${item.evidenceStatus} ${item.source?.title || ''}`),
+    ...state.dataRoomSources
+      .filter(item => item.area === 'market' || item.dashboardGroup === 'rawMaterialSignals')
+      .map(item => `${item.checklistLabel} ${item.proposedValue || ''} ${item.notes} ${item.source?.title || ''}`),
+    ...state.researchFindings
+      .filter(item => item.area === 'market' || item.dashboardTarget?.group === 'marketClaims')
+      .map(item => `${item.keyClaim} ${item.summary} ${item.dashboardTarget?.proposedDashboardField || ''}`),
+  ]
+  const competitorParts = [
+    ...state.competitors.map(item => `${item.companyName} ${item.countryRegion} ${item.productEquivalent} ${item.notes} ${item.source?.title || ''}`),
+    ...state.researchFindings
+      .filter(item => item.dashboardTarget?.group === 'competitorRecords')
+      .map(item => `${item.keyClaim} ${item.summary} ${item.dashboardTarget?.companyName || ''} ${item.dashboardTarget?.productEquivalent || ''}`),
+  ]
+  const supplierParts = [
+    ...state.dataRoomSources
+      .filter(item => item.area === 'factory' || item.dashboardGroup === 'supplierScorecards' || item.dashboardGroup === 'rawMaterialSignals')
+      .map(item => `${item.checklistLabel} ${item.supplier || ''} ${item.material || ''} ${item.proposedValue || ''} ${item.notes} ${item.source?.title || ''}`),
+    ...state.researchFindings
+      .filter(item => item.dashboardTarget?.group === 'supplierScorecards' || item.dashboardTarget?.group === 'rawMaterialSignals')
+      .map(item => `${item.keyClaim} ${item.summary} ${item.dashboardTarget?.supplier || ''} ${item.dashboardTarget?.material || ''}`),
+  ]
+  const regulatoryParts = [
+    ...state.dataRoomSources
+      .filter(item => item.area === 'regulatory' || item.dashboardGroup === 'regulatoryFindings')
+      .map(item => `${item.checklistLabel} ${item.proposedValue || ''} ${item.notes} ${item.source?.title || ''}`),
+    ...state.researchFindings
+      .filter(item => item.area === 'regulatory' || item.dashboardTarget?.group === 'regulatoryFindings')
+      .map(item => `${item.keyClaim} ${item.summary} ${item.dashboardTarget?.proposedDashboardField || ''}`),
+  ]
+  const financialParts = [
+    ...state.financialModels.map(item => `${item.scenarioName} ${item.projectName} IRR NPV payback ROI capex working capital ${item.warnings.join(' ')}`),
+    ...state.dataRoomSources
+      .filter(item => item.area === 'financial' || item.dashboardGroup === 'financialEvidence')
+      .map(item => `${item.checklistLabel} ${item.proposedValue || ''} ${item.notes} ${item.source?.title || ''}`),
+    ...state.researchFindings
+      .filter(item => item.area === 'financial' || item.dashboardTarget?.group === 'financialEvidence')
+      .map(item => `${item.keyClaim} ${item.summary} ${item.dashboardTarget?.proposedDashboardField || ''}`),
+  ]
+  const investorParts = [
+    ...state.presentationMaterials.map(item => `${item.section} ${item.content} ${item.evidenceStatus}`),
+    ...state.researchFindings
+      .filter(item => item.area === 'presentation' || item.dashboardTarget?.group === 'investorMaterialCandidates')
+      .map(item => `${item.keyClaim} ${item.summary} ${item.suggestedInvestorMaterial || ''}`),
+    ...state.dataRoomSources.map(item => `${item.checklistLabel} ${item.area} ${item.evidenceStatus}`),
+  ]
+
+  const byScope: Record<CoverageRequirement['textScope'], string[]> = {
+    market: marketParts,
+    competitor: competitorParts,
+    supplier: supplierParts,
+    regulatory: regulatoryParts,
+    financial: financialParts,
+    investor: investorParts,
+  }
+  return normalizeCoverageAlias(byScope[scope].join(' '))
 }
 
 async function refreshServerAutopilotStatus() {
@@ -515,11 +695,19 @@ onMounted(() => {
           <span>Dashboard area</span>
           <span>Auto-filled or hydrated when source-backed</span>
           <span>Review-gated / protected</span>
+          <span>Coverage audit</span>
         </div>
-        <div v-for="row in coverageRows" :key="row.area" class="coverage-row">
+        <div v-for="row in coverageRows" :key="row.area" class="coverage-row" :class="row.status">
           <strong>{{ row.area }}</strong>
           <span>{{ row.fills }}</span>
           <span>{{ row.review }}</span>
+          <span class="coverage-audit-cell">
+            <b>{{ row.coveredCount }}/{{ row.totalTargets }} targets covered</b>
+            <small v-if="row.missingTargets.length">
+              Missing targets: {{ row.missingTargets.map(item => item.label).join(', ') }}
+            </small>
+            <small v-else>All required targets have imported evidence or review items.</small>
+          </span>
         </div>
       </div>
     </section>
@@ -1049,13 +1237,25 @@ onMounted(() => {
 
 .coverage-row {
   display: grid;
-  grid-template-columns: minmax(160px, 0.8fr) minmax(260px, 1.1fr) minmax(280px, 1.25fr);
+  grid-template-columns: minmax(160px, 0.75fr) minmax(240px, 1fr) minmax(260px, 1.05fr) minmax(280px, 1.1fr);
   gap: 10px;
-  min-width: 820px;
+  min-width: 1100px;
   padding: 10px;
   border: 1px solid $border-color;
   border-radius: 7px;
   background: $bg-secondary;
+
+  &.covered {
+    border-color: rgba($success, 0.35);
+  }
+
+  &.partial {
+    border-color: rgba($warning, 0.35);
+  }
+
+  &.missing {
+    border-color: rgba($error, 0.34);
+  }
 
   &.head {
     border-color: rgba(var(--accent-primary-rgb), 0.34);
@@ -1072,6 +1272,21 @@ onMounted(() => {
 
   span {
     color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.coverage-audit-cell {
+  display: grid;
+  gap: 5px;
+
+  b {
+    color: $accent-info;
+    font-size: 12px;
+  }
+
+  small {
+    color: $text-muted;
     line-height: 1.45;
   }
 }

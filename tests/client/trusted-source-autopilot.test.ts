@@ -1410,6 +1410,13 @@ describe('Trusted Source Autopilot', () => {
       expect.stringContaining('Research review findings'),
       expect.stringContaining('Scheduled research jobs'),
     ])
+    expect(text).toContain('Coverage audit')
+    expect(text).toContain('1/10 targets covered')
+    expect(text).toContain('Missing targets: Bangladesh, India, Vietnam')
+    expect(text).toContain('1/11 targets covered')
+    expect(text).toContain('Missing targets: Stepan Company, Kao Corporation')
+    expect(text).toContain('1/12 targets covered')
+    expect(text).toContain('Missing targets: Triethanolamine / TEA, Dimethyl sulfate / DMS')
   })
 
   it('renders live server job status for the full dashboard autopilot', async () => {
