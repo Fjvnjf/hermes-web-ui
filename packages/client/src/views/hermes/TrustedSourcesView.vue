@@ -563,10 +563,32 @@ onMounted(() => {
           Durable server intelligence hydrates the source panels after every successful import, so refreshed data survives browser reloads and public tunnel changes.
         </small>
       </div>
+      <div class="autopilot-daily-strip" aria-label="Automatic research daily workflow">
+        <article>
+          <span>🛰️ Automatic mode</span>
+          <strong>No manual web searching</strong>
+          <small>Hermes runs trusted-source research twice daily and imports readable source-backed output.</small>
+        </article>
+        <article>
+          <span>🧾 Your review gate</span>
+          <strong>{{ serverAutopilotStatus?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length }} items waiting</strong>
+          <small>Risky, weak, sensitive, financial, supplier-price, regulatory, and investor claims wait for approval.</small>
+        </article>
+        <article>
+          <span>📊 Dashboard filling</span>
+          <strong>{{ importedIntelligenceTotal }} records ready</strong>
+          <small>Safe records hydrate Market, Competitors, Raw Materials, Finance, Reports, and Investor pages.</small>
+        </article>
+      </div>
+      <div class="autopilot-primary-links">
+        <RouterLink class="autopilot-link primary" :to="{ name: 'hermes.researchResultReview' }">Open Review Queue</RouterLink>
+        <RouterLink class="autopilot-link" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw Material Scorecards</RouterLink>
+        <RouterLink class="autopilot-link" :to="{ name: 'hermes.marketIntelligence' }">Market Dashboard</RouterLink>
+      </div>
       <details class="advanced-disclosure autopilot-details">
         <summary>
           <span>Live job diagnostics, imported records, and coverage audit</span>
-          <small>Advanced details remain available without crowding the daily workflow.</small>
+          <small>Manual repair/import controls stay here for troubleshooting only.</small>
         </summary>
         <div class="server-autopilot-status" :class="serverAutopilotTone" aria-label="Server autopilot job status">
           <div class="server-autopilot-header">
@@ -705,22 +727,20 @@ onMounted(() => {
             </span>
           </div>
         </div>
+        <div class="full-autopilot-actions">
+          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair / Run Full Autopilot</NButton>
+          <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
+          <NButton tertiary :loading="importingLatestOutput" @click="importLatestDashboardResearchOutput(true)">Import Latest Output</NButton>
+          <NButton
+            secondary
+            :loading="runningMissingCoverageResearch"
+            :disabled="missingCoverageTargetCount === 0"
+            @click="runMissingCoverageResearch"
+          >
+            Research Missing Coverage
+          </NButton>
+        </div>
       </details>
-      <div class="full-autopilot-actions">
-        <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair / Run Full Autopilot</NButton>
-        <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
-        <NButton tertiary :loading="importingLatestOutput" @click="importLatestDashboardResearchOutput(true)">Import Latest Output</NButton>
-        <NButton
-          secondary
-          :loading="runningMissingCoverageResearch"
-          :disabled="missingCoverageTargetCount === 0"
-          @click="runMissingCoverageResearch"
-        >
-          Research Missing Coverage
-        </NButton>
-        <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Open Review Queue</RouterLink>
-        <RouterLink class="autopilot-link" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw Material Scorecards</RouterLink>
-      </div>
       <p class="autopilot-status-note">
         {{ fullAutopilotStatus.lastStatus }}
         <span v-if="fullAutopilotStatus.scheduledJobId"> Job: {{ fullAutopilotStatus.scheduledJobId }}</span>
@@ -1203,6 +1223,50 @@ onMounted(() => {
   }
 }
 
+.autopilot-daily-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    gap: 7px;
+    min-height: 118px;
+    padding: 12px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+    border-radius: 8px;
+    background:
+      linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), transparent 65%),
+      $bg-secondary;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 17px;
+    line-height: 1.2;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.4;
+  }
+}
+
+.autopilot-primary-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .server-autopilot-status {
   display: grid;
   gap: 10px;
@@ -1410,9 +1474,22 @@ onMounted(() => {
 }
 
 .autopilot-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.3);
+  border-radius: 7px;
+  background: rgba(var(--accent-info-rgb), 0.06);
   color: $accent-info;
   font-weight: 800;
   text-decoration: none;
+
+  &.primary {
+    border-color: rgba(var(--accent-primary-rgb), 0.45);
+    background: rgba(var(--accent-primary-rgb), 0.1);
+    color: $warning;
+  }
 }
 
 .autopilot-status-note {
@@ -1648,6 +1725,14 @@ onMounted(() => {
   }
 
   .easy-workflow-grid {
+    grid-template-columns: 1fr;
+
+    article {
+      min-height: 0;
+    }
+  }
+
+  .autopilot-daily-strip {
     grid-template-columns: 1fr;
 
     article {
