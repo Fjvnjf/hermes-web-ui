@@ -198,9 +198,17 @@ const canUseResearchReview = computed(() => canUseRouteName('hermes.researchResu
 const canUseInvestorPresentation = computed(() => canUseRouteName('hermes.investorPresentation'))
 const canUseInvestmentCalculator = computed(() => canUseRouteName('hermes.investmentCalculator'))
 const showFinancialDeckPanel = computed(() => canUseInvestorPresentation.value || canUseInvestmentCalculator.value)
+const importedDashboardRecordCount = computed(() =>
+  intelligence.state.value.marketClaims.length +
+  intelligence.state.value.competitors.length +
+  intelligence.state.value.dataRoomSources.length
+)
+const autopilotReviewQueueCount = computed(() =>
+  autopilotImportStatus.value?.pendingOutputCount || intelligence.pendingResearchFindings.value.length
+)
 const automaticResearchState = computed(() => {
   const status = autopilotImportStatus.value
-  const reviewCount = status?.pendingOutputCount || intelligence.pendingResearchFindings.value.length
+  const reviewCount = autopilotReviewQueueCount.value
   if (!status) {
     return {
       tone: 'info',
@@ -264,12 +272,12 @@ const automaticResearchCards = computed(() => [
   },
   {
     label: 'Dashboard records',
-    value: String(intelligence.state.value.marketClaims.length + intelligence.state.value.competitors.length + intelligence.state.value.dataRoomSources.length),
+    value: String(importedDashboardRecordCount.value),
     note: 'Imported from durable trusted-source intelligence state',
   },
   {
     label: 'Review queue',
-    value: String(autopilotImportStatus.value?.pendingOutputCount || intelligence.pendingResearchFindings.value.length),
+    value: String(autopilotReviewQueueCount.value),
     note: 'Risky or weak claims wait here instead of becoming facts',
   },
   {
@@ -280,6 +288,56 @@ const automaticResearchCards = computed(() => [
       : 'No readable output imported yet',
   },
 ])
+
+type AutopilotFlowState = 'done' | 'active' | 'waiting'
+
+const automaticResearchFlow = computed(() => {
+  const status = autopilotImportStatus.value
+  const hasJob = !!status?.jobCount
+  const hasImportedOutput = !!status?.importedRunCount || !!status?.latestOutputImported
+  const hasDashboardRecords = importedDashboardRecordCount.value > 0
+  const hasReviewItems = autopilotReviewQueueCount.value > 0
+  const hasError = !!status?.latestDueSlotRunError || ['unparseable', 'unreadable'].includes(status?.latestOutputParseStatus || '')
+
+  const state = (done: boolean, active: boolean): AutopilotFlowState => {
+    if (done) return 'done'
+    if (active) return 'active'
+    return 'waiting'
+  }
+
+  return [
+    {
+      icon: '🔎',
+      title: 'Research online',
+      detail: hasJob
+        ? 'Hermes is scheduled to search official, company, trade, and uploaded evidence sources twice daily.'
+        : 'Enable Full Autopilot once so Hermes can start the twice-daily source search.',
+      state: state(hasJob && !hasError, !hasJob || hasError),
+    },
+    {
+      icon: '🛡️',
+      title: 'Review risky claims',
+      detail: hasReviewItems
+        ? `${autopilotReviewQueueCount.value} item${autopilotReviewQueueCount.value === 1 ? '' : 's'} need approval before they become business truth.`
+        : 'Critical market, supplier, finance, regulatory, and investor claims stay review-gated.',
+      state: state(hasImportedOutput && !hasReviewItems, hasReviewItems),
+    },
+    {
+      icon: '✅',
+      title: 'Fill safe fields',
+      detail: hasDashboardRecords
+        ? `${importedDashboardRecordCount.value} source-backed dashboard record${importedDashboardRecordCount.value === 1 ? '' : 's'} are available now.`
+        : 'Low-risk official facts can auto-fill; unknowns remain Missing or To Verify.',
+      state: state(hasDashboardRecords, hasImportedOutput && !hasDashboardRecords),
+    },
+    {
+      icon: '📊',
+      title: 'Use the dashboard',
+      detail: 'Market, competitor, investment, sourcing, and review screens show source labels, confidence, and evidence status.',
+      state: state(hasDashboardRecords || hasReviewItems, hasJob && !hasDashboardRecords && !hasReviewItems),
+    },
+  ]
+})
 
 function formatAutopilotTimestamp(value: string): string {
   if (!value) return 'not available'
@@ -754,6 +812,16 @@ onMounted(() => {
             <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
             <RouterLink v-if="canUseResearchReview" class="brief-primary-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
             <RouterLink v-if="canUseRouteName('hermes.jobs')" class="brief-primary-link" :to="{ name: 'hermes.jobs' }">Jobs</RouterLink>
+          </div>
+          <div class="automatic-research-flow" aria-label="Automatic research flow">
+            <article v-for="step in automaticResearchFlow" :key="step.title" :class="step.state">
+              <span class="flow-icon" aria-hidden="true">{{ step.icon }}</span>
+              <span class="flow-copy">
+                <strong>{{ step.title }}</strong>
+                <small>{{ step.detail }}</small>
+              </span>
+              <span class="flow-state">{{ step.state }}</span>
+            </article>
           </div>
         </div>
         <div class="automatic-research-metrics">
@@ -1395,6 +1463,86 @@ onMounted(() => {
   align-items: center;
 }
 
+.automatic-research-flow {
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 9px;
+    align-items: center;
+    min-width: 0;
+    padding: 9px 10px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.12);
+
+    &.done {
+      border-color: rgba(var(--success-rgb), 0.34);
+      background: rgba(var(--success-rgb), 0.08);
+
+      .flow-state {
+        color: $success;
+      }
+    }
+
+    &.active {
+      border-color: rgba(var(--warning-rgb), 0.38);
+      background: rgba(var(--warning-rgb), 0.08);
+
+      .flow-state {
+        color: $warning;
+      }
+    }
+
+    &.waiting {
+      .flow-state {
+        color: $text-muted;
+      }
+    }
+  }
+}
+
+.flow-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.26);
+  border-radius: 999px;
+  background: rgba(var(--accent-info-rgb), 0.08);
+  font-size: 16px;
+}
+
+.flow-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.flow-state {
+  align-self: start;
+  color: $text-muted;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .automatic-research-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2020,6 +2168,15 @@ onMounted(() => {
   .automatic-research-title {
     display: grid;
     justify-items: start;
+  }
+
+  .automatic-research-flow article {
+    grid-template-columns: auto minmax(0, 1fr);
+
+    .flow-state {
+      grid-column: 2;
+      justify-self: start;
+    }
   }
 
   .automatic-research-metrics {
