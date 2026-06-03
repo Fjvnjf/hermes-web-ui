@@ -6,6 +6,8 @@ import { promisify } from 'util'
 import { logger } from '../logger'
 import { getHermesBin } from './hermes-path'
 import { getActiveProfileName, getProfileDir } from './hermes-profile'
+import { PROVIDER_ENV_MAP, readConfigYamlForProfile, updateConfigYamlForProfile } from '../config-helpers'
+import { PROVIDER_PRESETS } from '../../shared/providers'
 import {
   readDashboardIntelligenceState,
   writeDashboardIntelligenceState,
@@ -279,6 +281,12 @@ interface ScheduleOptions {
   startFirstRun?: boolean
 }
 
+interface AutopilotDefaultModelResult {
+  configured: boolean
+  model: string
+  provider: string
+}
+
 interface DueRunOptions {
   now?: Date
   graceMs?: number
@@ -295,6 +303,110 @@ const DUE_RUN_RETRY_AFTER_MS = 60 * 60_000
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function providerKeyForCustom(name: string): string {
+  return `custom:${name.trim().toLowerCase().replace(/ /g, '-')}`
+}
+
+function envValue(envContent: string, key: string): string {
+  if (!key) return ''
+  const match = envContent.match(new RegExp(`^${key}\\s*=\\s*(.+)`, 'm'))
+  const value = match?.[1]?.trim() || ''
+  return value && !value.startsWith('#') ? value : ''
+}
+
+async function readProfileText(profile: string, relativePath: string): Promise<string> {
+  try {
+    return await readFile(join(getProfileDir(profile), relativePath), 'utf-8')
+  } catch {
+    return ''
+  }
+}
+
+function authHasProviderToken(authContent: string, providerKey: string): boolean {
+  if (!authContent.trim()) return false
+  try {
+    const auth = JSON.parse(authContent)
+    const provider = auth?.providers?.[providerKey]
+    const pool = auth?.credential_pool?.[providerKey]
+    return Boolean(
+      provider?.tokens?.access_token ||
+      provider?.access_token ||
+      (Array.isArray(pool) && pool.some((entry: any) => entry?.access_token)),
+    )
+  } catch {
+    return false
+  }
+}
+
+function configuredDefaultModel(config: Record<string, any>): AutopilotDefaultModelResult | null {
+  const modelSection = config.model
+  if (typeof modelSection === 'object' && modelSection !== null) {
+    const model = firstString(modelSection.default)
+    if (model) return { configured: false, model, provider: firstString(modelSection.provider) }
+  }
+  if (typeof modelSection === 'string') {
+    const model = modelSection.trim()
+    if (model) return { configured: false, model, provider: '' }
+  }
+  return null
+}
+
+async function firstAutopilotModelCandidate(
+  profile: string,
+  config: Record<string, any>,
+): Promise<Omit<AutopilotDefaultModelResult, 'configured'> | null> {
+  const customProviders = Array.isArray(config.custom_providers)
+    ? config.custom_providers as Array<{ name?: unknown; model?: unknown }>
+    : []
+  for (const provider of customProviders) {
+    const name = firstString(provider.name)
+    const model = firstString(provider.model)
+    if (name && model) return { model, provider: providerKeyForCustom(name) }
+  }
+
+  const [envContent, authContent] = await Promise.all([
+    readProfileText(profile, '.env'),
+    readProfileText(profile, 'auth.json'),
+  ])
+  for (const preset of PROVIDER_PRESETS) {
+    const envMapping = PROVIDER_ENV_MAP[preset.value]
+    if (!envMapping || !preset.models.length) continue
+    const hasCredentials = envMapping.api_key_env
+      ? Boolean(envValue(envContent, envMapping.api_key_env))
+      : authHasProviderToken(authContent, preset.value)
+    if (hasCredentials) return { model: preset.models[0], provider: preset.value }
+  }
+
+  return null
+}
+
+async function ensureDefaultModelForAutopilot(profile: string): Promise<AutopilotDefaultModelResult> {
+  const config = await readConfigYamlForProfile(profile)
+  const existing = configuredDefaultModel(config)
+  if (existing) return existing
+
+  const candidate = await firstAutopilotModelCandidate(profile, config)
+  if (!candidate) {
+    return { configured: false, model: '', provider: '' }
+  }
+
+  const result = await updateConfigYamlForProfile<AutopilotDefaultModelResult>(profile, (latestConfig) => {
+    const latestExisting = configuredDefaultModel(latestConfig)
+    if (latestExisting) return { data: latestConfig, result: latestExisting, write: false }
+    latestConfig.model = {
+      ...(isPlainRecord(latestConfig.model) ? latestConfig.model : {}),
+      default: candidate.model,
+      provider: candidate.provider,
+    }
+    return {
+      data: latestConfig,
+      result: { configured: true, model: candidate.model, provider: candidate.provider },
+    }
+  })
+
+  return result || { configured: true, model: candidate.model, provider: candidate.provider }
 }
 
 function stringValue(value: unknown): string {
@@ -530,6 +642,14 @@ export async function ensureFullDashboardAutopilotScheduled(
     }
     if (options.startFirstRun && repaired && !firstRunError) {
       try {
+        const defaultModel = await ensureDefaultModelForAutopilot(profile)
+        if (defaultModel.configured) {
+          logger.info({
+            profile,
+            model: defaultModel.model,
+            provider: defaultModel.provider || undefined,
+          }, '[dashboard-autopilot] configured default model before repaired trusted-source run')
+        }
         await runHermesCron(profile, ['cron', 'run', existingJobId], RUN_TIMEOUT_MS)
         firstRunStarted = true
         await ingestFullDashboardAutopilotOutputs(profile, { jobId: existingJobId, maxFilesPerJob: 5 })
@@ -569,6 +689,14 @@ export async function ensureFullDashboardAutopilotScheduled(
 
   if (options.startFirstRun && jobId) {
     try {
+      const defaultModel = await ensureDefaultModelForAutopilot(profile)
+      if (defaultModel.configured) {
+        logger.info({
+          profile,
+          model: defaultModel.model,
+          provider: defaultModel.provider || undefined,
+        }, '[dashboard-autopilot] configured default model before first trusted-source run')
+      }
       await runHermesCron(profile, ['cron', 'run', jobId], RUN_TIMEOUT_MS)
       firstRunStarted = true
       await ingestFullDashboardAutopilotOutputs(profile, { jobId, maxFilesPerJob: 5 })
@@ -1744,6 +1872,14 @@ export async function runDueFullDashboardAutopilot(
   }
 
   try {
+    const defaultModel = await ensureDefaultModelForAutopilot(profile)
+    if (defaultModel.configured) {
+      logger.info({
+        profile,
+        model: defaultModel.model,
+        provider: defaultModel.provider || undefined,
+      }, '[dashboard-autopilot] configured default model before due trusted-source run')
+    }
     await runHermesCron(profile, ['cron', 'run', jobId], RUN_TIMEOUT_MS)
     result.runStarted = true
     const ingest = await ingestFullDashboardAutopilotOutputs(profile, {

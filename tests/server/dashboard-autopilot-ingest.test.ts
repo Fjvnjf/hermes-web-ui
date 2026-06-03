@@ -700,6 +700,39 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('Do not invent market size')
   })
 
+  it('sets a configured profile model before starting a newly created full dashboard run', async () => {
+    writeFileSync(join(hermesHome, 'config.yaml'), [
+      'terminal:',
+      '  backend: local',
+      'custom_providers:',
+      '  - name: Corp Proxy',
+      '    base_url: https://proxy.example.com/v1',
+      '    model: research-model',
+      '',
+    ].join('\n'))
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'create') writeFullDashboardJob(hermesHome, 'created-full-dashboard')
+      if (args[1] === 'run') {
+        const config = readFileSync(join(hermesHome, 'config.yaml'), 'utf-8')
+        expect(config).toContain('default: research-model')
+        expect(config).toContain('provider: custom:corp-proxy')
+        expect(config).toContain('backend: local')
+      }
+      cb(null, '', '')
+    })
+
+    const result = await ensureFullDashboardAutopilotScheduled('default', { startFirstRun: true })
+
+    expect(result).toMatchObject({
+      jobId: 'created-full-dashboard',
+      created: true,
+      recordedResearchJob: true,
+      firstRunStarted: true,
+      firstRunError: '',
+    })
+    expect(execFileMock.mock.calls.map(call => call[1][1])).toEqual(['create', 'run'])
+  })
+
   it('reuses an existing full dashboard schedule without creating a duplicate', async () => {
     writeFullDashboardJob(hermesHome, 'existing-full-dashboard')
 
@@ -757,6 +790,31 @@ describe('dashboard autopilot output ingestion', () => {
       firstRunStarted: true,
     })
     expect(execFileMock.mock.calls.map(call => call[1][1])).toEqual(['edit', 'run'])
+  })
+
+  it('sets an env-backed provider default before an unattended due full dashboard run', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    writeFileSync(join(hermesHome, 'config.yaml'), 'terminal:\n  backend: local\n')
+    writeFileSync(join(hermesHome, '.env'), 'DEEPSEEK_API_KEY=test-key\n')
+    const now = new Date()
+    now.setHours(20, 20, 0, 0)
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      expect(args[1]).toBe('run')
+      const config = readFileSync(join(hermesHome, 'config.yaml'), 'utf-8')
+      expect(config).toContain('default: deepseek-v4-pro')
+      expect(config).toContain('provider: deepseek')
+      expect(config).toContain('backend: local')
+      cb(null, '', '')
+    })
+
+    const result = await runDueFullDashboardAutopilot('default', { now })
+
+    expect(result).toMatchObject({
+      jobId: 'job-full-dashboard',
+      runStarted: true,
+      runError: '',
+    })
+    expect(execFileMock).toHaveBeenCalledTimes(1)
   })
 
   it('runs the due twice-daily full dashboard job when the latest slot has no output', async () => {
