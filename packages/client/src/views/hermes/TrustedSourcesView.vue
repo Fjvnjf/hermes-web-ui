@@ -84,6 +84,73 @@ const fullAutopilotOwnerAction = computed(() => {
   if (!fullAutopilotStatus.value.lastRun) return 'Wait for the first scheduled Hermes research output or run a source snapshot now.'
   return 'Autopilot is running. Keep reviewing staged findings; safe source-backed fields will hydrate from durable server state.'
 })
+const easyAutopilotState = computed(() => {
+  const serverStatus = serverAutopilotStatus.value
+  const pendingReview = serverStatus?.pendingReviewCount ?? fullAutopilotReviewCount.value
+  const hasServerWarning = Boolean(serverStatus?.lastError || serverStatus?.errors.length)
+  const hasImportedData = importedIntelligenceTotal.value > 0 || Boolean(serverStatus?.latestOutputImported)
+
+  if (!fullAutopilotStatus.value.enabled && !serverStatus?.scheduled) {
+    return {
+      tone: 'setup',
+      label: 'Setup needed',
+      title: 'Turn on automatic research once',
+      body: 'Hermes is ready to research trusted sources twice daily, but the dashboard still needs the scheduled job enabled.',
+      action: 'Click Enable Full Autopilot.',
+    }
+  }
+  if (hasServerWarning) {
+    return {
+      tone: 'warning',
+      label: 'Needs attention',
+      title: 'Autopilot needs a quick check',
+      body: serverStatus?.message || 'Hermes reported a job or import warning. Existing dashboard data is preserved.',
+      action: 'Refresh status, then inspect Jobs or the Review Queue.',
+    }
+  }
+  if (pendingReview > 0) {
+    return {
+      tone: 'review',
+      label: `${pendingReview} to review`,
+      title: 'Hermes found items that need approval',
+      body: 'Market size, prices, competitor share, financial outputs, regulatory status, and investor claims stay staged until you approve them.',
+      action: 'Open the Review Queue and approve only source-backed items.',
+    }
+  }
+  if (hasImportedData) {
+    return {
+      tone: 'active',
+      label: 'Running',
+      title: 'Dashboard filling is active',
+      body: 'Hermes is importing safe source-backed records into the dashboard and keeping risky claims review-gated.',
+      action: 'Use the dashboard normally. Missing coverage research runs automatically when gaps remain.',
+    }
+  }
+  return {
+    tone: 'active',
+    label: 'Waiting for output',
+    title: 'Autopilot is scheduled',
+    body: 'The twice-daily research job is connected. The first readable Hermes output has not been imported yet.',
+    action: 'You can wait for the schedule or run a source snapshot now.',
+  }
+})
+const easyWorkflowCards = computed(() => [
+  {
+    label: '1. Research',
+    value: 'Hermes searches trusted sources',
+    detail: 'Official, company, supplier, regulatory, trade, and uploaded evidence sources are prioritized.',
+  },
+  {
+    label: '2. Fill',
+    value: `${importedIntelligenceTotal.value} records available`,
+    detail: 'Safe source-backed records hydrate dashboard pages without manual copy-paste.',
+  },
+  {
+    label: '3. Review',
+    value: `${serverAutopilotStatus.value?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length} items waiting`,
+    detail: 'Sensitive, weak, conflicting, or investor-impact claims wait for owner approval.',
+  },
+])
 interface CoverageTarget {
   label: string
   aliases: string[]
@@ -594,10 +661,10 @@ onMounted(() => {
     <header class="sources-header">
       <div>
         <p class="eyebrow">Trusted Sources</p>
-        <h2>Autopilot Source Registry</h2>
+        <h2>Autopilot Control Center</h2>
         <p>
-          Owner-only registry for classifying official, market-reference, supplier, public-listing, and candidate
-          sources. These rules decide what can auto-update dashboard fields and what must go to review.
+          Hermes researches trusted online sources automatically, fills safe source-backed dashboard fields, and
+          sends risky or investor-impacting claims to review before they become truth.
         </p>
       </div>
       <div class="summary-card">
@@ -607,35 +674,65 @@ onMounted(() => {
       </div>
     </header>
 
-    <section class="source-permission-panel" aria-label="Research permission and evidence rules">
-      <div>
-        <p class="eyebrow">Research permission</p>
-        <h3>Hermes can research trusted sources</h3>
-        <p>
-          Owner-approved research is active for public, company, regulatory, supplier, and uploaded evidence sources.
-          Findings can stage dashboard updates only when source evidence and review rules are preserved.
-        </p>
+    <section class="easy-autopilot-panel" :class="easyAutopilotState.tone" aria-label="Easy autopilot status">
+      <div class="easy-autopilot-main">
+        <p class="eyebrow">Easy autopilot</p>
+        <div class="easy-status-line">
+          <h3>{{ easyAutopilotState.title }}</h3>
+          <span>{{ easyAutopilotState.label }}</span>
+        </div>
+        <p>{{ easyAutopilotState.body }}</p>
+        <strong>{{ easyAutopilotState.action }}</strong>
+        <div class="easy-autopilot-actions">
+          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
+          <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Review Findings</RouterLink>
+          <RouterLink class="autopilot-link" :to="{ name: 'hermes.jobs' }">View Jobs</RouterLink>
+        </div>
       </div>
-      <div class="permission-flow" aria-label="Trusted source research flow">
-        <span>Twice-daily trusted research</span>
-        <span>Extract important data</span>
-        <span>Attach evidence label</span>
-        <span>Auto-stage critical items</span>
-        <span>Fill only safe source-backed fields</span>
-      </div>
-      <ul class="permission-rule-list">
-        <li>Important numbers require source title, URL or source date, confidence, evidence status, and review trail.</li>
-        <li>Weak, conflicting, sensitive, or candidate-source findings go to Research Result Review instead of becoming facts.</li>
-        <li>Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.</li>
-      </ul>
-      <div class="policy-tier-strip" aria-label="Official-first source ranking policy">
-        <span>Tier 1: official / regulator / trade</span>
-        <span>Tier 2: official company / product</span>
-        <span>Tier 3: uploaded supplier evidence</span>
-        <span>Tier 4: paid / reputable market reference</span>
-        <span>Tier 5: public listing / weak reference</span>
+      <div class="easy-workflow-grid">
+        <article v-for="card in easyWorkflowCards" :key="card.label">
+          <span>{{ card.label }}</span>
+          <strong>{{ card.value }}</strong>
+          <small>{{ card.detail }}</small>
+        </article>
       </div>
     </section>
+
+    <details class="advanced-disclosure">
+      <summary>
+        <span>Evidence rules and source-ranking policy</span>
+        <small>Open when you want to inspect why a value is filled, staged, or blocked.</small>
+      </summary>
+      <section class="source-permission-panel" aria-label="Research permission and evidence rules">
+        <div>
+          <p class="eyebrow">Research permission</p>
+          <h3>Hermes can research trusted sources</h3>
+          <p>
+            Owner-approved research is active for public, company, regulatory, supplier, and uploaded evidence sources.
+            Findings can stage dashboard updates only when source evidence and review rules are preserved.
+          </p>
+        </div>
+        <div class="permission-flow" aria-label="Trusted source research flow">
+          <span>Twice-daily trusted research</span>
+          <span>Extract important data</span>
+          <span>Attach evidence label</span>
+          <span>Auto-stage critical items</span>
+          <span>Fill only safe source-backed fields</span>
+        </div>
+        <ul class="permission-rule-list">
+          <li>Important numbers require source title, URL or source date, confidence, evidence status, and review trail.</li>
+          <li>Weak, conflicting, sensitive, or candidate-source findings go to Research Result Review instead of becoming facts.</li>
+          <li>Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.</li>
+        </ul>
+        <div class="policy-tier-strip" aria-label="Official-first source ranking policy">
+          <span>Tier 1: official / regulator / trade</span>
+          <span>Tier 2: official company / product</span>
+          <span>Tier 3: uploaded supplier evidence</span>
+          <span>Tier 4: paid / reputable market reference</span>
+          <span>Tier 5: public listing / weak reference</span>
+        </div>
+      </section>
+    </details>
 
     <section class="full-autopilot-panel" aria-label="Full dashboard trusted source autopilot">
       <div class="full-autopilot-copy">
@@ -675,119 +772,149 @@ onMounted(() => {
           Durable server intelligence hydrates the source panels after every successful import, so refreshed data survives browser reloads and public tunnel changes.
         </small>
       </div>
-      <div class="server-autopilot-status" :class="serverAutopilotTone" aria-label="Server autopilot job status">
-        <div class="server-autopilot-header">
-          <div>
-            <p class="eyebrow">Server job status</p>
-            <h4>{{ serverAutopilotStatus?.scheduled ? 'Hermes research job is connected' : 'Hermes research job not confirmed yet' }}</h4>
+      <details class="advanced-disclosure autopilot-details">
+        <summary>
+          <span>Live job diagnostics, imported records, and coverage audit</span>
+          <small>Advanced details remain available without crowding the daily workflow.</small>
+        </summary>
+        <div class="server-autopilot-status" :class="serverAutopilotTone" aria-label="Server autopilot job status">
+          <div class="server-autopilot-header">
+            <div>
+              <p class="eyebrow">Server job status</p>
+              <h4>{{ serverAutopilotStatus?.scheduled ? 'Hermes research job is connected' : 'Hermes research job not confirmed yet' }}</h4>
+            </div>
+            <NButton tertiary size="small" :loading="refreshingServerStatus" @click="refreshServerAutopilotStatus">
+              Refresh Status
+            </NButton>
           </div>
-          <NButton tertiary size="small" :loading="refreshingServerStatus" @click="refreshServerAutopilotStatus">
-            Refresh Status
-          </NButton>
-        </div>
-        <p class="server-autopilot-message">
-          {{ serverAutopilotStatus?.message || 'Reading the Hermes Jobs and Cron History APIs for live autopilot status.' }}
-        </p>
-        <div class="server-autopilot-grid">
-          <article>
-            <span>Job</span>
-            <strong>{{ serverAutopilotStatus?.jobId || 'Not found' }}</strong>
-          </article>
-          <article>
-            <span>State</span>
-            <strong>{{ serverAutopilotStatus?.enabled ? (serverAutopilotStatus.state || 'enabled') : 'disabled / unknown' }}</strong>
-          </article>
-          <article>
-            <span>Latest output</span>
-            <strong>{{ serverAutopilotStatus?.latestOutputAt ? formatTimestamp(serverAutopilotStatus.latestOutputAt) : 'No output yet' }}</strong>
-          </article>
-          <article>
-            <span>Readable outputs</span>
-            <strong>{{ serverAutopilotStatus?.outputCount ?? 0 }}</strong>
-          </article>
-          <article>
-            <span>Imported runs</span>
-            <strong>{{ serverAutopilotStatus?.importedRunCount ?? 0 }}</strong>
-          </article>
-          <article>
-            <span>Skipped outputs</span>
-            <strong>{{ serverAutopilotStatus?.skippedRunCount ?? 0 }}</strong>
-          </article>
-          <article>
-            <span>Latest imported</span>
-            <strong>{{ serverAutopilotStatus?.latestOutputImported ? 'Yes' : 'No / pending' }}</strong>
-          </article>
-          <article>
-            <span>Latest skipped</span>
-            <strong>{{ serverAutopilotStatus?.latestOutputSkipped ? 'Yes' : 'No' }}</strong>
-          </article>
-          <article>
-            <span>Parse status</span>
-            <strong>{{ serverAutopilotStatus?.latestOutputParseStatus || 'none' }}</strong>
-          </article>
-          <article>
-            <span>Candidate items</span>
-            <strong>{{ serverAutopilotStatus?.latestOutputCandidateCount ?? 0 }}</strong>
-          </article>
-          <article>
-            <span>Due slot</span>
-            <strong>{{ serverAutopilotStatus?.latestDueSlotAt ? formatTimestamp(serverAutopilotStatus.latestDueSlotAt) : 'Waiting' }}</strong>
-          </article>
-          <article>
-            <span>Due satisfied</span>
-            <strong>{{ serverAutopilotStatus?.latestDueSlotSatisfied ? 'Yes' : 'Auto-kick pending' }}</strong>
-          </article>
-          <article>
-            <span>Last server kick</span>
-            <strong>{{ serverAutopilotStatus?.latestDueSlotAttemptedAt ? formatTimestamp(serverAutopilotStatus.latestDueSlotAttemptedAt) : 'Not needed yet' }}</strong>
-          </article>
-          <article>
-            <span>Dashboard records</span>
-            <strong>{{ serverAutopilotStatus?.dashboardRecordCount ?? importedIntelligenceTotal }}</strong>
-          </article>
-          <article>
-            <span>Needs review</span>
-            <strong>{{ serverAutopilotStatus?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length }}</strong>
-          </article>
-        </div>
-        <small v-if="serverAutopilotStatus?.latestOutputFile">
-          Latest file: {{ serverAutopilotStatus.latestOutputFile }}
-        </small>
-      </div>
-      <div class="imported-intelligence-panel" aria-label="Live imported dashboard intelligence">
-        <div class="imported-intelligence-header">
-          <div>
-            <p class="eyebrow">Live imported intelligence</p>
-            <h4>Automatic dashboard filling status</h4>
+          <p class="server-autopilot-message">
+            {{ serverAutopilotStatus?.message || 'Reading the Hermes Jobs and Cron History APIs for live autopilot status.' }}
+          </p>
+          <div class="server-autopilot-grid">
+            <article>
+              <span>Job</span>
+              <strong>{{ serverAutopilotStatus?.jobId || 'Not found' }}</strong>
+            </article>
+            <article>
+              <span>State</span>
+              <strong>{{ serverAutopilotStatus?.enabled ? (serverAutopilotStatus.state || 'enabled') : 'disabled / unknown' }}</strong>
+            </article>
+            <article>
+              <span>Latest output</span>
+              <strong>{{ serverAutopilotStatus?.latestOutputAt ? formatTimestamp(serverAutopilotStatus.latestOutputAt) : 'No output yet' }}</strong>
+            </article>
+            <article>
+              <span>Readable outputs</span>
+              <strong>{{ serverAutopilotStatus?.outputCount ?? 0 }}</strong>
+            </article>
+            <article>
+              <span>Imported runs</span>
+              <strong>{{ serverAutopilotStatus?.importedRunCount ?? 0 }}</strong>
+            </article>
+            <article>
+              <span>Skipped outputs</span>
+              <strong>{{ serverAutopilotStatus?.skippedRunCount ?? 0 }}</strong>
+            </article>
+            <article>
+              <span>Latest imported</span>
+              <strong>{{ serverAutopilotStatus?.latestOutputImported ? 'Yes' : 'No / pending' }}</strong>
+            </article>
+            <article>
+              <span>Latest skipped</span>
+              <strong>{{ serverAutopilotStatus?.latestOutputSkipped ? 'Yes' : 'No' }}</strong>
+            </article>
+            <article>
+              <span>Parse status</span>
+              <strong>{{ serverAutopilotStatus?.latestOutputParseStatus || 'none' }}</strong>
+            </article>
+            <article>
+              <span>Candidate items</span>
+              <strong>{{ serverAutopilotStatus?.latestOutputCandidateCount ?? 0 }}</strong>
+            </article>
+            <article>
+              <span>Due slot</span>
+              <strong>{{ serverAutopilotStatus?.latestDueSlotAt ? formatTimestamp(serverAutopilotStatus.latestDueSlotAt) : 'Waiting' }}</strong>
+            </article>
+            <article>
+              <span>Due satisfied</span>
+              <strong>{{ serverAutopilotStatus?.latestDueSlotSatisfied ? 'Yes' : 'Auto-kick pending' }}</strong>
+            </article>
+            <article>
+              <span>Last server kick</span>
+              <strong>{{ serverAutopilotStatus?.latestDueSlotAttemptedAt ? formatTimestamp(serverAutopilotStatus.latestDueSlotAttemptedAt) : 'Not needed yet' }}</strong>
+            </article>
+            <article>
+              <span>Dashboard records</span>
+              <strong>{{ serverAutopilotStatus?.dashboardRecordCount ?? importedIntelligenceTotal }}</strong>
+            </article>
+            <article>
+              <span>Needs review</span>
+              <strong>{{ serverAutopilotStatus?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length }}</strong>
+            </article>
           </div>
-          <div class="imported-total">
-            <strong>{{ importedIntelligenceTotal }}</strong>
-            <span>records</span>
+          <small v-if="serverAutopilotStatus?.latestOutputFile">
+            Latest file: {{ serverAutopilotStatus.latestOutputFile }}
+          </small>
+        </div>
+        <div class="imported-intelligence-panel" aria-label="Live imported dashboard intelligence">
+          <div class="imported-intelligence-header">
+            <div>
+              <p class="eyebrow">Live imported intelligence</p>
+              <h4>Automatic dashboard filling status</h4>
+            </div>
+            <div class="imported-total">
+              <strong>{{ importedIntelligenceTotal }}</strong>
+              <span>records</span>
+            </div>
+          </div>
+          <p class="imported-intelligence-note">
+            {{ importedIntelligenceStatus }}
+            <span>Last durable load/save: {{ formatTimestamp(durableStateTimestamp) }}</span>
+          </p>
+          <div class="imported-intelligence-grid">
+            <RouterLink
+              v-for="row in importedIntelligenceRows"
+              :key="row.label"
+              class="imported-intelligence-row"
+              :to="row.route"
+            >
+              <span>{{ row.label }}</span>
+              <strong>{{ row.count }}</strong>
+              <small>{{ row.note }}</small>
+            </RouterLink>
           </div>
         </div>
-        <p class="imported-intelligence-note">
-          {{ importedIntelligenceStatus }}
-          <span>Last durable load/save: {{ formatTimestamp(durableStateTimestamp) }}</span>
-        </p>
-        <div class="imported-intelligence-grid">
-          <RouterLink
-            v-for="row in importedIntelligenceRows"
-            :key="row.label"
-            class="imported-intelligence-row"
-            :to="row.route"
-          >
-            <span>{{ row.label }}</span>
-            <strong>{{ row.count }}</strong>
-            <small>{{ row.note }}</small>
-          </RouterLink>
+        <ul class="autopilot-rule-list">
+          <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
+          <li>Runs on the existing Hermes Jobs scheduler at 07:00 and 19:00; no separate database or backend migration is required.</li>
+          <li>Fills only source-backed/API/internal-safe fields automatically; unsupported values stay Missing / To Verify.</li>
+          <li>Supplier prices, quality, reliability, payment terms, IRR, market size, growth, market share, regulatory status, and investor claims are auto-staged for review unless source policy allows safe filling.</li>
+        </ul>
+        <div class="coverage-map" aria-label="Full dashboard autopilot coverage map">
+          <div class="coverage-map-header">
+            <h4>What Hermes can fill automatically</h4>
+            <span>official-first / review critical</span>
+          </div>
+          <div class="coverage-row head">
+            <span>Dashboard area</span>
+            <span>Auto-filled or hydrated when source-backed</span>
+            <span>Review-gated / protected</span>
+            <span>Coverage audit</span>
+          </div>
+          <div v-for="row in coverageRows" :key="row.area" class="coverage-row" :class="row.status">
+            <strong>{{ row.area }}</strong>
+            <span>{{ row.fills }}</span>
+            <span>{{ row.review }}</span>
+            <span class="coverage-audit-cell">
+              <b>{{ row.coveredCount }}/{{ row.totalTargets }} targets covered</b>
+              <small v-if="row.missingTargets.length">
+                Missing targets: {{ row.missingTargets.map(item => item.label).join(', ') }}
+              </small>
+              <small v-else>All required targets have imported evidence or review items.</small>
+            </span>
+          </div>
         </div>
-      </div>
-      <ul class="autopilot-rule-list">
-        <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
-        <li>Runs on the existing Hermes Jobs scheduler at 07:00 and 19:00; no separate database or backend migration is required.</li>
-        <li>Fills only source-backed/API/internal-safe fields automatically; unsupported values stay Missing / To Verify.</li>
-        <li>Supplier prices, quality, reliability, payment terms, IRR, market size, growth, market share, regulatory status, and investor claims are auto-staged for review unless source policy allows safe filling.</li>
-      </ul>
+      </details>
       <div class="full-autopilot-actions">
         <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
         <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
@@ -808,69 +935,51 @@ onMounted(() => {
         <span v-if="fullAutopilotStatus.scheduledJobId"> Job: {{ fullAutopilotStatus.scheduledJobId }}</span>
         <span v-if="missingCoverageTargetCount"> Missing coverage targets: {{ missingCoverageTargetCount }}</span>
       </p>
-      <div class="coverage-map" aria-label="Full dashboard autopilot coverage map">
-        <div class="coverage-map-header">
-          <h4>What Hermes can fill automatically</h4>
-          <span>official-first / review critical</span>
-        </div>
-        <div class="coverage-row head">
-          <span>Dashboard area</span>
-          <span>Auto-filled or hydrated when source-backed</span>
-          <span>Review-gated / protected</span>
-          <span>Coverage audit</span>
-        </div>
-        <div v-for="row in coverageRows" :key="row.area" class="coverage-row" :class="row.status">
-          <strong>{{ row.area }}</strong>
-          <span>{{ row.fills }}</span>
-          <span>{{ row.review }}</span>
-          <span class="coverage-audit-cell">
-            <b>{{ row.coveredCount }}/{{ row.totalTargets }} targets covered</b>
-            <small v-if="row.missingTargets.length">
-              Missing targets: {{ row.missingTargets.map(item => item.label).join(', ') }}
-            </small>
-            <small v-else>All required targets have imported evidence or review items.</small>
-          </span>
-        </div>
-      </div>
     </section>
 
-    <section class="source-form">
-      <h3>Add Source</h3>
-      <label>Name<input v-model="form.name" type="text" placeholder="Official agency, company, supplier, source portal" /></label>
-      <label>Domain<input v-model="form.domain" type="text" placeholder="example.gov.cn or supplier evidence" /></label>
-      <label>Tier<NSelect v-model:value="form.tier" :options="tierOptions" /></label>
-      <label>Data type<NSelect v-model:value="form.dataType" :options="dataTypeOptions" /></label>
-      <label class="wide">Notes<textarea v-model="form.notes" rows="3" placeholder="What fields this source can update and any limitations"></textarea></label>
-      <NButton type="primary" @click="addSource">Add Source</NButton>
-    </section>
+    <details class="advanced-disclosure source-registry-disclosure">
+      <summary>
+        <span>Advanced source registry</span>
+        <small>Add, classify, or disable individual sources when the automatic policy needs tuning.</small>
+      </summary>
+      <section class="source-form">
+        <h3>Add Source</h3>
+        <label>Name<input v-model="form.name" type="text" placeholder="Official agency, company, supplier, source portal" /></label>
+        <label>Domain<input v-model="form.domain" type="text" placeholder="example.gov.cn or supplier evidence" /></label>
+        <label>Tier<NSelect v-model:value="form.tier" :options="tierOptions" /></label>
+        <label>Data type<NSelect v-model:value="form.dataType" :options="dataTypeOptions" /></label>
+        <label class="wide">Notes<textarea v-model="form.notes" rows="3" placeholder="What fields this source can update and any limitations"></textarea></label>
+        <NButton type="primary" @click="addSource">Add Source</NButton>
+      </section>
 
-    <section class="source-groups">
-      <article v-for="(sources, key) in groupedSources" :key="key" class="source-group">
-        <div class="source-group-header">
-          <h3>{{ sourceGroupLabel(key) }}</h3>
-          <span>{{ sources.length }} sources</span>
-        </div>
-        <div v-for="source in sources" :key="source.source_id" class="source-row">
-          <div>
-            <strong>{{ source.name }}</strong>
-            <span class="source-domain">{{ source.domain }}</span>
-            <div class="source-meta" aria-label="Source connector metadata">
-              <span>Connector: {{ source.connector_type }}</span>
-              <span>Frequency: {{ source.update_frequency }}</span>
-              <span>Confidence: {{ source.confidence_default }}</span>
-              <span>Auto Update: {{ source.auto_update_allowed ? 'Allowed' : 'Review only' }}</span>
-            </div>
-            <span>{{ source.data_types_supported.join(', ') }}</span>
-            <small>{{ source.notes }}</small>
-            <small>Last checked: {{ source.last_checked || 'Never' }} / Failure: {{ source.last_failure || 'None' }}</small>
+      <section class="source-groups">
+        <article v-for="(sources, key) in groupedSources" :key="key" class="source-group">
+          <div class="source-group-header">
+            <h3>{{ sourceGroupLabel(key) }}</h3>
+            <span>{{ sources.length }} sources</span>
           </div>
-          <NSwitch
-            :value="source.enabled"
-            @update:value="value => autopilot.updateSource(source.source_id, { enabled: value })"
-          />
-        </div>
-      </article>
-    </section>
+          <div v-for="source in sources" :key="source.source_id" class="source-row">
+            <div>
+              <strong>{{ source.name }}</strong>
+              <span class="source-domain">{{ source.domain }}</span>
+              <div class="source-meta" aria-label="Source connector metadata">
+                <span>Connector: {{ source.connector_type }}</span>
+                <span>Frequency: {{ source.update_frequency }}</span>
+                <span>Confidence: {{ source.confidence_default }}</span>
+                <span>Auto Update: {{ source.auto_update_allowed ? 'Allowed' : 'Review only' }}</span>
+              </div>
+              <span>{{ source.data_types_supported.join(', ') }}</span>
+              <small>{{ source.notes }}</small>
+              <small>Last checked: {{ source.last_checked || 'Never' }} / Failure: {{ source.last_failure || 'None' }}</small>
+            </div>
+            <NSwitch
+              :value="source.enabled"
+              @update:value="value => autopilot.updateSource(source.source_id, { enabled: value })"
+            />
+          </div>
+        </article>
+      </section>
+    </details>
   </div>
 </template>
 
@@ -888,7 +997,9 @@ onMounted(() => {
 .source-permission-panel,
 .full-autopilot-panel,
 .source-form,
-.source-group {
+.source-group,
+.easy-autopilot-panel,
+.advanced-disclosure {
   border: 1px solid $border-color;
   border-radius: 8px;
   background: $bg-card;
@@ -935,11 +1046,202 @@ onMounted(() => {
   }
 }
 
+.easy-autopilot-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 16px;
+  border-color: rgba(var(--accent-info-rgb), 0.34);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.12), rgba(var(--accent-primary-rgb), 0.08) 52%, transparent),
+    $bg-card;
+
+  &.active {
+    border-color: rgba(var(--success-rgb), 0.32);
+    background:
+      linear-gradient(135deg, rgba(var(--success-rgb), 0.1), rgba(var(--accent-info-rgb), 0.06) 52%, transparent),
+      $bg-card;
+  }
+
+  &.review {
+    border-color: rgba(var(--warning-rgb), 0.42);
+    background:
+      linear-gradient(135deg, rgba(var(--warning-rgb), 0.12), rgba(var(--accent-primary-rgb), 0.07) 52%, transparent),
+      $bg-card;
+  }
+
+  &.warning {
+    border-color: rgba(var(--danger-rgb), 0.38);
+    background:
+      linear-gradient(135deg, rgba(var(--danger-rgb), 0.1), rgba(var(--accent-info-rgb), 0.05) 52%, transparent),
+      $bg-card;
+  }
+}
+
+.easy-autopilot-main {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+
+  h3,
+  p,
+  strong {
+    margin: 0;
+  }
+
+  h3 {
+    color: $warning;
+    font-size: 21px;
+  }
+
+  p {
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+
+  strong {
+    color: $text-primary;
+    line-height: 1.45;
+  }
+}
+
+.easy-status-line {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 3px 9px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.35);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    color: $accent-primary;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+}
+
+.easy-autopilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.easy-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    gap: 7px;
+    min-height: 132px;
+    padding: 12px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.22);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-info;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+}
+
+.advanced-disclosure {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 0;
+
+  &[open] {
+    padding-bottom: 12px;
+  }
+
+  > summary {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 12px 14px;
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '+';
+      display: inline-grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border: 1px solid rgba(var(--accent-info-rgb), 0.34);
+      border-radius: 999px;
+      color: $accent-info;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+
+    span {
+      color: $warning;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    small {
+      color: $text-muted;
+      line-height: 1.35;
+      text-align: right;
+    }
+  }
+
+  &[open] > summary::after {
+    content: '-';
+  }
+}
+
+.autopilot-details {
+  margin: 0;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.source-registry-disclosure {
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.055), transparent 54%),
+    $bg-card;
+}
+
 .source-permission-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 0.75fr);
   gap: 16px;
-  margin-bottom: 12px;
+  margin: 0 12px;
   padding: 16px;
   border-color: rgba(var(--accent-info-rgb), 0.32);
   background:
@@ -1418,7 +1720,7 @@ onMounted(() => {
   grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 10px;
   align-items: end;
-  margin-bottom: 12px;
+  margin: 0 12px 12px;
   padding: 14px;
 
   h3 {
@@ -1456,6 +1758,7 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 12px;
+  margin: 0 12px;
 }
 
 .source-group {
@@ -1537,9 +1840,35 @@ onMounted(() => {
   }
 
   .sources-header,
+  .easy-autopilot-panel,
   .source-permission-panel,
   .source-form {
     grid-template-columns: 1fr;
+  }
+
+  .easy-status-line,
+  .advanced-disclosure > summary {
+    display: grid;
+    justify-items: start;
+  }
+
+  .advanced-disclosure > summary small {
+    text-align: left;
+  }
+
+  .easy-workflow-grid {
+    grid-template-columns: 1fr;
+
+    article {
+      min-height: 0;
+    }
+  }
+
+  .source-permission-panel,
+  .source-form,
+  .source-groups {
+    margin-right: 10px;
+    margin-left: 10px;
   }
 
   .source-form .wide {
