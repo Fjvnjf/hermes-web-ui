@@ -5,6 +5,7 @@ import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { EXECUTIVE_REFRESH_SCHEDULE } from '@/utils/executiveIntelligence'
 import {
   RAW_MATERIALS_STORAGE_KEY,
@@ -598,6 +599,8 @@ onMounted(() => {
     </header>
 
     <p class="warning">{{ accessControlWarning() }}</p>
+
+    <TrustedSourceAutopilotPanel screen="rawMaterials" title="Raw Material Auto Source Status" />
 
     <section class="summary-grid">
       <article v-for="card in summaryCards" :key="card.label" class="summary-card">

@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import {
   buildInvestorPresentationDraft,
   buildInvestorSlideOutline,
@@ -359,6 +360,8 @@ async function createMaterialEvidenceTask(material: PresentationMaterial) {
         <span>{{ readinessScore }}% readiness / {{ readySlideCount }} of {{ slideSections.length }} slides have approved material.</span>
       </div>
     </header>
+
+    <TrustedSourceAutopilotPanel screen="presentation" title="Presentation Auto Source Status" />
 
     <section class="draft-status">
       <div class="draft-status-head">

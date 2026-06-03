@@ -5,6 +5,7 @@ import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import {
   EXPORT_MARKET_STORAGE_KEY,
   createExportMarketResearchTaskBody,
@@ -302,6 +303,8 @@ function addToInvestorReview(record: ExportMarketRecord) {
         <RouterLink class="shell-link" :to="{ name: 'hermes.researchResultReview' }">Research Review</RouterLink>
       </div>
     </header>
+
+    <TrustedSourceAutopilotPanel screen="exportMarkets" title="Export Market Auto Source Status" />
 
     <section class="summary-grid">
       <article v-for="card in summaryCards" :key="card.label" class="summary-card">

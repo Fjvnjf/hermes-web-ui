@@ -8,6 +8,8 @@ import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceVie
 import RawMaterialSourcingView from '@/views/hermes/RawMaterialSourcingView.vue'
 import ExportMarketOpportunityView from '@/views/hermes/ExportMarketOpportunityView.vue'
 import RegulatoryIntelligenceView from '@/views/hermes/RegulatoryIntelligenceView.vue'
+import InvestorReadinessView from '@/views/hermes/InvestorReadinessView.vue'
+import InvestorPresentationBuilderView from '@/views/hermes/InvestorPresentationBuilderView.vue'
 import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName } from '@/utils/accessControl'
@@ -539,8 +541,37 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('factory permissions')
     expect(text).toContain('not treated as verified legal advice or investor-approved facts')
     expect(text).toContain('To Verify')
-    expect(text).not.toContain('Verified')
+    expect(text).toContain('DMS regulatory status in ChinaTo Verify')
+    expect(text).not.toContain('DMS regulatory status in ChinaVerified')
     expect(text).not.toContain('Investor Approved')
+  })
+
+  it('shows trusted-source autopilot status on every expanded intelligence workspace', () => {
+    const cases = [
+      [RawMaterialSourcingView, 'Raw Material Auto Source Status'],
+      [ExportMarketOpportunityView, 'Export Market Auto Source Status'],
+      [RegulatoryIntelligenceView, 'Regulatory Auto Source Status'],
+      [InvestorReadinessView, 'Investor Readiness Auto Source Status'],
+      [InvestorPresentationBuilderView, 'Presentation Auto Source Status'],
+    ] as const
+
+    for (const [Component, title] of cases) {
+      const wrapper = mount(Component, {
+        global: {
+          stubs: {
+            RouterLink: { props: ['to'], template: '<a class="router-link"><slot /></a>' },
+          },
+        },
+      })
+      const text = wrapper.text()
+
+      expect(text).toContain(title)
+      expect(text).toContain('Trusted Source Autopilot')
+      expect(text).toContain('Sync Now')
+      expect(text).toContain('View Review Queue')
+
+      wrapper.unmount()
+    }
   })
 
   it('keeps employee and investor route access conservative', () => {

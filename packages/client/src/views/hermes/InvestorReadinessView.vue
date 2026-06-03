@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import {
   type DataRoomSourceRecord,
   type EvidenceArea,
@@ -820,6 +821,8 @@ defineExpose({
     <section class="quick-links" aria-label="Investor readiness links">
       <RouterLink v-for="link in quickLinks" :key="link.label" :to="link.to">{{ link.label }}</RouterLink>
     </section>
+
+    <TrustedSourceAutopilotPanel screen="investorReadiness" title="Investor Readiness Auto Source Status" />
 
     <section class="readiness-stage-card executive-card" :class="readinessStage.tone" aria-label="Readiness status strip">
       <div>

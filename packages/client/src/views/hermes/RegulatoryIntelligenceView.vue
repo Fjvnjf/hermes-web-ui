@@ -7,6 +7,7 @@ import {
   type ResearchReviewFinding,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
+import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 
@@ -212,6 +213,8 @@ async function createRegulatoryTask(record?: DataRoomSourceRecord) {
         <RouterLink :to="{ name: 'hermes.chat' }">Ask Hermes</RouterLink>
       </div>
     </section>
+
+    <TrustedSourceAutopilotPanel screen="regulatory" title="Regulatory Auto Source Status" />
 
     <section class="summary-grid">
       <article v-for="card in summaryCards" :key="card.label" class="summary-card">
