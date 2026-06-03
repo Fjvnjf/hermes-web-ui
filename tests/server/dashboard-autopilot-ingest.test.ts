@@ -370,6 +370,61 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('auto-stages trusted financial evidence into data room without creating a financial model', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-45-00.000000+00-00.md', {
+      dashboard_updates: {
+        financialEvidence: [{
+          field: 'Process equipment quote benchmark',
+          value: 'Vendor quote evidence found for reactor and mixer package; amount requires owner review before model use',
+          sourceTitle: 'Uploaded vendor quote evidence',
+          sourceUrl: 'file://documents/vendor-quote-evidence.pdf',
+          sourceTier: 'Tier 3 - Uploaded supplier evidence',
+          confidence: 'medium',
+          evidenceStatus: 'To Verify',
+          dataType: 'financial_data',
+          riskReason: 'Financial model input requires owner review and must stay out of investor material until approved.',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 1,
+    })
+    expect(envelope?.state.financialModels).toEqual([])
+    expect(envelope?.state.dataRoomSources).toEqual([
+      expect.objectContaining({
+        checklistLabel: 'Process equipment quote benchmark',
+        area: 'financial',
+        dashboardGroup: 'financialEvidence',
+        proposedValue: 'Vendor quote evidence found for reactor and mixer package; amount requires owner review before model use',
+        sourceTier: 'tier3-supplier-evidence',
+        dataType: 'financial_data',
+        evidenceStatus: 'To Verify',
+        source: expect.objectContaining({
+          title: 'Uploaded vendor quote evidence',
+          url: 'file://documents/vendor-quote-evidence.pdf',
+        }),
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'financialEvidence',
+          screen: 'investment',
+          sourceTier: 'tier3-supplier-evidence',
+          dataType: 'financial_data',
+        }),
+      }),
+    ])
+  })
+
   it('deduplicates imported run files with an import registry', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T09-00-00.000000+00-00.md', {

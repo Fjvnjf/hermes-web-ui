@@ -117,10 +117,36 @@ describe('screenshot-matched executive business tabs', () => {
   })
 
   it('keeps Investment Analysis values To Verify until an IRR Calculator snapshot exists', () => {
+    useFeasibilityIntelligence().addDataRoomSource({
+      checklistLabel: 'Process equipment quote benchmark',
+      area: 'financial',
+      dashboardGroup: 'financialEvidence',
+      proposedValue: 'Vendor quote benchmark found; capex amount requires owner review',
+      sourceTier: 'tier3-supplier-evidence',
+      dataType: 'financial_data',
+      confidence: 'medium',
+      evidenceStatus: 'To Verify',
+      source: {
+        title: 'Uploaded vendor quote evidence',
+        url: 'https://example.com/vendor-quote',
+      },
+      notes: [
+        'Autopilot candidate from financialEvidence.',
+        'Proposed value: Vendor quote benchmark found; capex amount requires owner review',
+        'Source tier: tier3-supplier-evidence',
+        'This record was auto-staged to make the dashboard useful without manual copy-paste. It is not investor-approved.',
+      ].join('\n'),
+    })
+
     const wrapper = mount(InvestmentAnalysisView)
 
     expect(wrapper.text()).toContain('Investment Analysis')
     expect(wrapper.text()).toContain('Investor Economics Control Panel')
+    expect(wrapper.text()).toContain('Autopilot Financial Evidence Candidates')
+    expect(wrapper.text()).toContain('Process equipment quote benchmark')
+    expect(wrapper.text()).toContain('Vendor quote benchmark found; capex amount requires owner review')
+    expect(wrapper.text()).toContain('Uploaded vendor quote evidence')
+    expect(wrapper.text()).toContain('tier3-supplier-evidence / medium')
     expect(wrapper.text()).toContain('Process Equipment Detail')
     expect(wrapper.text()).toContain('Utilities & Buildings Detail')
     expect(wrapper.text()).toContain('Working Capital Detail')

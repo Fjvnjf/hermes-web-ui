@@ -48,6 +48,24 @@ const breakdownRows = computed(() =>
 )
 const financialWarnings = computed(() => selectedFinancialModel.value?.warnings || ['Scenario not filled yet. Open the IRR Calculator and save this scenario before using investment outputs.'])
 const evidenceStatus = computed(() => selectedFinancialModel.value ? 'Derived from Assumptions' : 'To Verify')
+const financialEvidenceCandidates = computed(() =>
+  intelligence.state.value.dataRoomSources
+    .filter(record => record.dashboardGroup === 'financialEvidence' || (record.area === 'financial' && record.notes.toLowerCase().includes('financialevidence')))
+    .slice(0, 10)
+    .map(record => ({
+      id: record.id,
+      label: record.checklistLabel || 'Financial evidence candidate',
+      value: redactsFinancials.value ? 'Restricted' : record.proposedValue || 'To Verify',
+      sourceTitle: record.source?.title || 'Source review needed',
+      sourceUrl: record.source?.url || '',
+      sourceTier: record.sourceTier || 'candidate-source',
+      evidenceStatus: (record.evidenceStatus === 'Verified' || record.evidenceStatus === 'Investor Approved'
+        ? 'To Verify'
+        : record.evidenceStatus) as IntelligenceEvidenceStatus,
+      confidence: record.confidence || 'medium',
+      notes: record.notes || 'Autopilot staged this source for review. It is not an approved investment assumption.',
+    })),
+)
 const processEquipmentRows = computed(() => [
   detailRow('Tanks / reactors / mixers', 'Capacity and metallurgy To Verify'),
   detailRow('Dosing / transfer systems', 'Quote and sizing To Verify'),
@@ -349,6 +367,41 @@ onMounted(loadRefreshState)
 
     <TrustedSourceAutopilotPanel screen="investment" title="Investment Auto Source Status" />
 
+    <section v-if="financialEvidenceCandidates.length" class="analysis-panel financial-autopilot-panel" aria-label="Autopilot financial evidence candidates">
+      <div class="panel-title">
+        <div>
+          <h3>Autopilot Financial Evidence Candidates</h3>
+          <p>
+            Hermes has staged source-backed capex, working-capital, or finance evidence for review.
+            These entries do not change IRR, NPV, payback, or investor returns until approved in the IRR Calculator or Research Result Review.
+          </p>
+        </div>
+        <RouterLink class="analysis-link" :to="{ name: 'hermes.researchResultReview' }">Review Results</RouterLink>
+      </div>
+      <div class="financial-candidate-table">
+        <div class="financial-candidate-row head">
+          <span>Field</span>
+          <span>Proposed value</span>
+          <span>Source</span>
+          <span>Tier / confidence</span>
+          <span>Status</span>
+        </div>
+        <div v-for="candidate in financialEvidenceCandidates" :key="candidate.id" class="financial-candidate-row">
+          <strong>{{ candidate.label }}</strong>
+          <span>{{ candidate.value }}</span>
+          <span>
+            <a v-if="candidate.sourceUrl" class="analysis-link inline" :href="candidate.sourceUrl" target="_blank" rel="noopener noreferrer">{{ candidate.sourceTitle }}</a>
+            <template v-else>{{ candidate.sourceTitle }}</template>
+          </span>
+          <span>{{ candidate.sourceTier }} / {{ candidate.confidence }}</span>
+          <NTag size="small" :type="statusType(candidate.evidenceStatus)">{{ candidate.evidenceStatus }}</NTag>
+        </div>
+      </div>
+      <p class="financial-candidate-note">
+        Autopilot financial evidence is useful for filling the dashboard, but it stays review-gated because financial outputs are sensitive and assumption-dependent.
+      </p>
+    </section>
+
     <section class="kpi-grid" aria-label="Investment analysis KPI cards">
       <article v-for="kpi in kpis" :key="kpi.key" class="kpi-card">
         <span>{{ kpi.label }}</span>
@@ -642,6 +695,59 @@ onMounted(loadRefreshState)
   font-size: 12px;
   font-weight: 800;
   text-decoration: none;
+
+  &.inline {
+    min-height: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow-wrap: anywhere;
+  }
+}
+
+.financial-autopilot-panel {
+  margin-bottom: 12px;
+  border-color: rgba(var(--accent-primary-rgb), 0.42);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), transparent 44%),
+    $bg-card;
+}
+
+.financial-candidate-table {
+  display: grid;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.financial-candidate-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) minmax(150px, 1.2fr) minmax(160px, 1.1fr) minmax(130px, 0.9fr) minmax(110px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 820px;
+  padding: 9px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.financial-candidate-note {
+  margin: 10px 0 0;
+  color: $warning;
+  font-size: 12px;
 }
 
 .kpi-grid {

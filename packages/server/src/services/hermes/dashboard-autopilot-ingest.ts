@@ -917,6 +917,7 @@ function shouldShowDataRoomCandidate(input: {
 }): boolean {
   if (!sourceIsUsable(input.source)) return false
   if (!input.value || PLACEHOLDER_PATTERN.test(input.value)) return false
+  if (hasKnownFakeScreenshotValue(input.value)) return false
   return input.tier === 'tier1-official' || input.tier === 'tier2-company-official' || input.tier === 'tier3-supplier-evidence'
 }
 
