@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { intelligenceStateRoutes } from '../../packages/server/src/routes/hermes/intelligence-state'
@@ -110,7 +110,60 @@ describe('dashboard intelligence state routes', () => {
           expect.objectContaining({ value: 'Trade Proxy / To Verify' }),
         ]),
       },
+      autopilotImport: expect.objectContaining({
+        profile: 'default',
+        jobCount: 0,
+        outputCount: 0,
+        importedRunCount: 0,
+      }),
     })
+  })
+
+  it('returns sanitized full-dashboard autopilot import status from the server registry', async () => {
+    const cronDir = join(hermesHome, 'cron')
+    const outputDir = join(cronDir, 'output', 'job-full-dashboard')
+    const registryDir = join(hermesHome, 'dashboard-intelligence')
+    mkdirSync(outputDir, { recursive: true })
+    mkdirSync(registryDir, { recursive: true })
+    writeFileSync(join(cronDir, 'jobs.json'), JSON.stringify({
+      jobs: [{
+        id: 'job-full-dashboard',
+        job_id: 'job-full-dashboard',
+        name: 'Full Dashboard Trusted Source Autopilot',
+        prompt: 'Return dashboard_updates for the full dashboard.',
+      }],
+    }))
+    writeFileSync(join(outputDir, '2026-06-03T07-00-00.md'), '# output')
+    writeFileSync(join(outputDir, '2026-06-03T19-00-00.md'), '# output')
+    writeFileSync(join(registryDir, 'imported-runs.json'), JSON.stringify({
+      version: 1,
+      importedRunKeys: ['job-full-dashboard/2026-06-03T19-00-00.md'],
+      updatedAt: '2026-06-03T19:02:00.000Z',
+    }))
+
+    const getLayer = intelligenceStateRoutes.stack.find((entry: any) =>
+      entry.path === '/api/hermes/intelligence-state' && entry.methods.includes('GET'),
+    )
+    const getCtx = createCtx('GET')
+
+    await runRouteLayer(getLayer, getCtx)
+
+    expect(getCtx.body).toMatchObject({
+      ok: true,
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 2,
+        importedRunCount: 1,
+        pendingOutputCount: 1,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T19-00-00.md',
+        latestOutputFile: '2026-06-03T19-00-00.md',
+        latestOutputImported: true,
+        latestImportedRunKey: 'job-full-dashboard/2026-06-03T19-00-00.md',
+        registryUpdatedAt: '2026-06-03T19:02:00.000Z',
+      },
+    })
+    expect(JSON.stringify(getCtx.body)).not.toContain('# output')
   })
 
   it('rejects non-object dashboard intelligence payloads', async () => {
@@ -125,4 +178,3 @@ describe('dashboard intelligence state routes', () => {
     expect(ctx.body).toMatchObject({ code: 'invalid_state' })
   })
 })
-

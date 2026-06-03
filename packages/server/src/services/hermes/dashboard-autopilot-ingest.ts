@@ -218,6 +218,20 @@ export interface FullDashboardAutopilotScheduleResult {
   firstRunError: string
 }
 
+export interface DashboardAutopilotImportStatus {
+  profile: string
+  jobCount: number
+  outputCount: number
+  importedRunCount: number
+  pendingOutputCount: number
+  latestOutputRunKey: string
+  latestOutputFile: string
+  latestOutputAt: string
+  latestOutputImported: boolean
+  latestImportedRunKey: string
+  registryUpdatedAt: string
+}
+
 interface ScheduleOptions {
   startFirstRun?: boolean
 }
@@ -1225,6 +1239,39 @@ export async function ingestFullDashboardAutopilotOutputs(
   })
 
   return result
+}
+
+export async function readFullDashboardAutopilotImportStatus(profileInput?: string): Promise<DashboardAutopilotImportStatus> {
+  const profile = profileInput || getActiveProfileName() || 'default'
+  const jobs = (await readCronJobs(profile)).filter(isFullDashboardAutopilotJobRecord)
+  const registry = await readImportRegistry(profile)
+  const importedRunKeys = new Set(registry.importedRunKeys)
+  const outputFiles: OutputFile[] = []
+
+  for (const job of jobs) {
+    const jobId = getJobId(job)
+    if (!jobId) continue
+    outputFiles.push(...await listOutputFiles(profile, jobId, 50))
+  }
+
+  outputFiles.sort((a, b) => b.fileName.localeCompare(a.fileName) || b.mtimeMs - a.mtimeMs)
+  const latestOutput = outputFiles[0] || null
+  const latestOutputRunKey = latestOutput ? `${latestOutput.jobId}/${latestOutput.fileName}` : ''
+  const pendingOutputCount = outputFiles.filter(output => !importedRunKeys.has(`${output.jobId}/${output.fileName}`)).length
+
+  return {
+    profile,
+    jobCount: jobs.length,
+    outputCount: outputFiles.length,
+    importedRunCount: registry.importedRunKeys.length,
+    pendingOutputCount,
+    latestOutputRunKey,
+    latestOutputFile: latestOutput?.fileName || '',
+    latestOutputAt: latestOutput ? new Date(latestOutput.mtimeMs || Date.now()).toISOString() : '',
+    latestOutputImported: latestOutputRunKey ? importedRunKeys.has(latestOutputRunKey) : false,
+    latestImportedRunKey: registry.importedRunKeys[registry.importedRunKeys.length - 1] || '',
+    registryUpdatedAt: registry.updatedAt || '',
+  }
 }
 
 async function safeIngestActiveProfile(): Promise<void> {

@@ -622,6 +622,56 @@ describe('Trusted Source Autopilot', () => {
     expect(status.message).toContain('ready to import')
   })
 
+  it('uses the server import registry for latest full-dashboard import status', async () => {
+    listJobsMock.mockResolvedValueOnce([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValueOnce([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-03T07-00-00.md',
+      runTime: '2026-06-03T07:00:00.000Z',
+      size: 2048,
+      hasOutput: true,
+    }])
+    fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-03T07:05:00.000Z',
+      state: null,
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 7,
+        importedRunCount: 6,
+        pendingOutputCount: 0,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        latestOutputFile: '2026-06-03T07-00-00.md',
+        latestOutputAt: '2026-06-03T07:05:00.000Z',
+        latestOutputImported: true,
+        latestImportedRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        registryUpdatedAt: '2026-06-03T07:06:00.000Z',
+      },
+    })
+
+    const status = await useTrustedSourceAutopilot().refreshFullDashboardServerStatus()
+
+    expect(status.outputCount).toBe(7)
+    expect(status.importedRunCount).toBe(6)
+    expect(status.latestOutputImported).toBe(true)
+    expect(status.latestOutputFile).toBe('2026-06-03T07-00-00.md')
+    expect(status.message).toContain('imported outputs are reflected')
+  })
+
   it('hydrates dashboard intelligence from the owner-only server state before local rendering', async () => {
     fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
       ok: true,

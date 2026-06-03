@@ -8,6 +8,7 @@ import {
 } from '@/composables/useFeasibilityIntelligence'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import { createJob, listJobs, runJob, scheduleToDisplayText, type Job } from '@/api/hermes/jobs'
+import { fetchDashboardIntelligenceState } from '@/api/hermes/intelligence-state'
 import { fetchAvailableModels, updateDefaultModel } from '@/api/hermes/system'
 import {
   SCREEN_FIELD_MAPPINGS,
@@ -1729,7 +1730,11 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
   const counts = dashboardRecordCounts()
 
   try {
-    const jobs = await listJobs()
+    const [jobs, intelligenceEnvelope] = await Promise.all([
+      listJobs(),
+      fetchDashboardIntelligenceState().catch(() => null),
+    ])
+    const serverImport = intelligenceEnvelope?.autopilotImport
     const job = jobs.find(isFullDashboardAutopilotJob)
     const jobId = job ? fullDashboardJobId(job) : ''
     if (!job || !jobId) {
@@ -1742,7 +1747,8 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
     const runs = await listCronRuns(jobId)
     const readableRuns = runs.filter(run => run.hasOutput !== false && !run.synthetic)
     const latest = readableRuns[0] || runs[0] || null
-    const latestRunKey = latest?.jobId && latest?.fileName ? `${latest.jobId}/${latest.fileName}` : ''
+    const latestRunKey = serverImport?.latestOutputRunKey ||
+      (latest?.jobId && latest?.fileName ? `${latest.jobId}/${latest.fileName}` : '')
     const next: FullDashboardServerStatus = {
       scheduled: true,
       jobId,
@@ -1754,11 +1760,13 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
       nextRunAt: job.next_run_at || '',
       lastStatus: job.last_status || latest?.status || '',
       lastError: job.last_error || latest?.error || '',
-      outputCount: readableRuns.length,
-      latestOutputAt: latest?.runTime || '',
-      latestOutputFile: latest?.fileName || '',
-      importedRunCount: state.value.importedRunKeys.length,
-      latestOutputImported: latestRunKey ? state.value.importedRunKeys.includes(latestRunKey) : false,
+      outputCount: serverImport?.outputCount ?? readableRuns.length,
+      latestOutputAt: serverImport?.latestOutputAt || latest?.runTime || '',
+      latestOutputFile: serverImport?.latestOutputFile || latest?.fileName || '',
+      importedRunCount: serverImport?.importedRunCount ?? state.value.importedRunKeys.length,
+      latestOutputImported: latestRunKey
+        ? Boolean(serverImport?.latestOutputImported ?? state.value.importedRunKeys.includes(latestRunKey))
+        : false,
       ...counts,
       message: '',
       errors: [],

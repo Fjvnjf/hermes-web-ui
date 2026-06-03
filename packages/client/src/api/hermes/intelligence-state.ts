@@ -5,6 +5,21 @@ export interface DashboardIntelligenceStateResponse {
   profile: string
   savedAt: string | null
   state: unknown | null
+  autopilotImport?: DashboardAutopilotImportStatus
+}
+
+export interface DashboardAutopilotImportStatus {
+  profile: string
+  jobCount: number
+  outputCount: number
+  importedRunCount: number
+  pendingOutputCount: number
+  latestOutputRunKey: string
+  latestOutputFile: string
+  latestOutputAt: string
+  latestOutputImported: boolean
+  latestImportedRunKey: string
+  registryUpdatedAt: string
 }
 
 export interface DashboardIntelligenceStateSaveResponse {
@@ -23,4 +38,3 @@ export function saveDashboardIntelligenceState(state: unknown): Promise<Dashboar
     body: JSON.stringify({ state }),
   })
 }
-

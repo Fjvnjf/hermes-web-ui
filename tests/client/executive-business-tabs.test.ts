@@ -22,6 +22,7 @@ const createTaskMock = vi.hoisted(() => vi.fn())
 const createJobMock = vi.hoisted(() => vi.fn())
 const fetchBoardsMock = vi.hoisted(() => vi.fn())
 const setSelectedBoardMock = vi.hoisted(() => vi.fn())
+const apiRequestMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/stores/hermes/kanban', () => ({
   DEFAULT_KANBAN_BOARD: 'default',
@@ -42,6 +43,7 @@ vi.mock('@/stores/hermes/jobs', () => ({
 
 vi.mock('@/api/client', () => ({
   getStoredUserRole: () => 'super_admin',
+  request: apiRequestMock,
 }))
 
 vi.mock('naive-ui', () => ({
@@ -80,6 +82,31 @@ describe('screenshot-matched executive business tabs', () => {
     createJobMock.mockReset().mockResolvedValue({ id: 'job-1', job_id: 'job-1' })
     fetchBoardsMock.mockReset().mockResolvedValue(undefined)
     setSelectedBoardMock.mockReset()
+    apiRequestMock.mockReset().mockImplementation(async (url: string) => {
+      if (url.includes('/api/hermes/jobs')) return { jobs: [] }
+      if (url.includes('/api/hermes/intelligence-state')) {
+        return {
+          ok: true,
+          profile: 'default',
+          savedAt: null,
+          state: null,
+          autopilotImport: {
+            profile: 'default',
+            jobCount: 0,
+            outputCount: 0,
+            importedRunCount: 0,
+            pendingOutputCount: 0,
+            latestOutputRunKey: '',
+            latestOutputFile: '',
+            latestOutputAt: '',
+            latestOutputImported: false,
+            latestImportedRunKey: '',
+            registryUpdatedAt: '',
+          },
+        }
+      }
+      return {}
+    })
   })
 
   it('renders Executive Overview KPI cards, daily brief, and twice-daily metadata', () => {

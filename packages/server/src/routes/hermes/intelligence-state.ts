@@ -4,6 +4,7 @@ import {
   readDashboardIntelligenceState,
   writeDashboardIntelligenceState,
 } from '../../services/hermes/intelligence-state'
+import { readFullDashboardAutopilotImportStatus } from '../../services/hermes/dashboard-autopilot-ingest'
 
 export const intelligenceStateRoutes = new Router()
 
@@ -23,7 +24,11 @@ function handleStateError(ctx: any, err: any) {
 
 intelligenceStateRoutes.get('/api/hermes/intelligence-state', requirePermission('view:product-development'), async (ctx) => {
   try {
-    const envelope = await readDashboardIntelligenceState(requestedProfile(ctx))
+    const profile = requestedProfile(ctx)
+    const [envelope, autopilotImport] = await Promise.all([
+      readDashboardIntelligenceState(profile),
+      readFullDashboardAutopilotImportStatus(profile),
+    ])
     auditAccessEvent({
       ctx,
       action: `${ctx.method} ${ctx.path}`,
@@ -33,9 +38,10 @@ intelligenceStateRoutes.get('/api/hermes/intelligence-state', requirePermission(
     })
     ctx.body = {
       ok: true,
-      profile: requestedProfile(ctx) || envelope?.profile || 'default',
+      profile: profile || envelope?.profile || 'default',
       savedAt: envelope?.savedAt || null,
       state: envelope?.state || null,
+      autopilotImport,
     }
   } catch (err) {
     handleStateError(ctx, err)
@@ -70,4 +76,3 @@ intelligenceStateRoutes.put('/api/hermes/intelligence-state', requirePermission(
     handleStateError(ctx, err)
   }
 })
-
