@@ -456,6 +456,35 @@ const marketResearchQuestions = [
     evidenceNeeded: 'Quotes, invoices, distributor screenshots, public listings, source date, and confidentiality label.',
   },
 ]
+const pdfChinaImportRows = [
+  { rank: '1', country: 'South Korea', t2022: '13,102', t2023: '13,763', t2024: '16,175', value2024: '$46.6M', usdPerKg: '$2.88' },
+  { rank: '2', country: 'India', t2022: '7,358', t2023: '10,264', t2024: '11,483', value2024: '$12.3M', usdPerKg: '$1.07' },
+  { rank: '3', country: 'Japan', t2022: '7,171', t2023: '6,800', t2024: '8,198', value2024: '$51.5M', usdPerKg: '$6.28' },
+  { rank: '4', country: 'Malaysia', t2022: '3,003', t2023: '3,199', t2024: '4,807', value2024: '$3.7M', usdPerKg: '$0.77' },
+  { rank: '5', country: 'Thailand', t2022: '941', t2023: '965', t2024: '3,985', value2024: '$9.1M', usdPerKg: '$2.29' },
+  { rank: '6', country: 'Germany', t2022: '3,312', t2023: '2,649', t2024: '3,567', value2024: '$25.8M', usdPerKg: '$7.23' },
+  { rank: '7', country: 'Taiwan', t2022: '3,860', t2023: '2,773', t2024: '3,497', value2024: '$14.2M', usdPerKg: '$4.07' },
+  { rank: '8', country: 'Vietnam', t2022: '3,805', t2023: '2,949', t2024: '2,924', value2024: '$3.5M', usdPerKg: '$1.20' },
+  { rank: '9', country: 'USA', t2022: '2,655', t2023: '2,476', t2024: '2,674', value2024: '$22.0M', usdPerKg: '$8.23' },
+  { rank: '10', country: 'Italy', t2022: '1,009', t2023: '627', t2024: '1,811', value2024: '$4.7M', usdPerKg: '$2.62' },
+  { rank: 'Total', country: 'Global total', t2022: '51,425', t2023: '51,661', t2024: '65,409', value2024: '$237M', usdPerKg: '$3.62' },
+]
+const pdfCountryConsumptionRows = [
+  { country: 'China', kt2023: '425', kt2024: '458', change: '+7.8%' },
+  { country: 'USA', kt2023: '285', kt2024: '298', change: '+4.6%' },
+  { country: 'India', kt2023: '148', kt2024: '162', change: '+9.5%' },
+  { country: 'Germany', kt2023: '88', kt2024: '92', change: '+4.5%' },
+  { country: 'Bangladesh', kt2023: '38', kt2024: '44', change: '+15.8%' },
+  { country: 'Vietnam', kt2023: '31', kt2024: '35', change: '+12.9%' },
+  { country: 'World Total', kt2023: '1,546', kt2024: '1,655', change: '+7.0%' },
+]
+const pdfMarketSegmentRows = [
+  { segment: 'Textile Softeners Total', size: '$3.2B', growth: '+7.2%' },
+  { segment: 'Cationic / Ester Quat', size: '$1.4B', growth: '+8.1%' },
+  { segment: 'Silicone Softeners', size: '$1.1B', growth: '+9.5%' },
+  { segment: 'Non-ionic', size: '$0.5B', growth: '+4.2%' },
+  { segment: 'SOM (4.8%)', size: '$120M', growth: 'To Verify' },
+]
 
 function canUseRoute(routeName: string): boolean {
   return canAccessRouteName(routeName, frontendRole.value)
@@ -951,6 +980,90 @@ onMounted(loadRefreshState)
           </article>
         </div>
       </article>
+    </section>
+
+    <section class="pdf-reference-pack" aria-label="User PDF market reference tables">
+      <div class="template-header">
+        <div>
+          <p class="eyebrow">User PDF reference</p>
+          <h3>Imported Market Tables From Your Document</h3>
+          <p>
+            These tables reproduce the information from the PDF you provided. They are useful for dashboard planning,
+            but remain User Provided / To Verify until Hermes confirms the source, HS-code scope, date, and product fit.
+          </p>
+        </div>
+        <NTag size="small" type="warning">User Provided / To Verify</NTag>
+      </div>
+
+      <article class="template-panel pdf-table-panel">
+        <div class="template-panel-title">
+          <div>
+            <h3>China Import Data - Quaternary Ammonium Textile Agents</h3>
+            <p>PDF source note: UN Comtrade / China imports of ester quats and related quaternary ammonium finishing agents, HS 3809.91.</p>
+          </div>
+          <NButton size="small" secondary @click="createResearchTask('Verify HS 3809.91 China import data for quaternary ammonium textile agents')">
+            Verify HS table
+          </NButton>
+        </div>
+        <div class="pdf-import-table">
+          <div class="pdf-import-row head">
+            <span>Rank</span><span>Country</span><span>2022 (T)</span><span>2023 (T)</span><span>2024 (T)</span><span>2024 value</span><span>$/kg</span><span>Status</span>
+          </div>
+          <div v-for="row in pdfChinaImportRows" :key="`${row.rank}-${row.country}`" class="pdf-import-row">
+            <strong>{{ row.rank }}</strong>
+            <span>{{ row.country }}</span>
+            <span>{{ row.t2022 }}</span>
+            <span>{{ row.t2023 }}</span>
+            <span>{{ row.t2024 }}</span>
+            <span>{{ row.value2024 }}</span>
+            <span>{{ row.usdPerKg }}</span>
+            <NTag size="small" type="warning">User Provided</NTag>
+          </div>
+        </div>
+        <p class="pdf-source-note">
+          PDF interpretation: imports grew from 51,425T in 2022 to 65,409T in 2024. India and Thailand are flagged as fast-growing.
+          South Korea is shown as high volume; Japan and USA show premium $/kg. Treat as trade-proxy evidence until verified.
+        </p>
+      </article>
+
+      <div class="pdf-reference-grid">
+        <article class="template-panel pdf-table-panel">
+          <div class="template-panel-title compact">
+            <h3>Country-wise Cationic Softener Consumption</h3>
+            <span>voice research / verify source</span>
+          </div>
+          <div class="pdf-small-table">
+            <div class="pdf-small-row head">
+              <span>Country</span><span>2023 (KT)</span><span>2024 (KT)</span><span>Change</span><span>Status</span>
+            </div>
+            <div v-for="row in pdfCountryConsumptionRows" :key="row.country" class="pdf-small-row">
+              <strong>{{ row.country }}</strong>
+              <span>{{ row.kt2023 }}</span>
+              <span>{{ row.kt2024 }}</span>
+              <span>{{ row.change }}</span>
+              <NTag size="small" type="error">To Verify</NTag>
+            </div>
+          </div>
+        </article>
+
+        <article class="template-panel pdf-table-panel">
+          <div class="template-panel-title compact">
+            <h3>Market Segmentation Snapshot</h3>
+            <span>PDF table / not investor-approved</span>
+          </div>
+          <div class="pdf-small-table">
+            <div class="pdf-small-row head">
+              <span>Segment</span><span>Size</span><span>Growth</span><span>Status</span>
+            </div>
+            <div v-for="row in pdfMarketSegmentRows" :key="row.segment" class="pdf-small-row four">
+              <strong>{{ row.segment }}</strong>
+              <span>{{ row.size }}</span>
+              <span>{{ row.growth }}</span>
+              <NTag size="small" type="warning">User Provided</NTag>
+            </div>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="screenshot-market-template" aria-label="Source-backed market intelligence template">
@@ -2056,10 +2169,92 @@ onMounted(loadRefreshState)
   color: $text-secondary;
 }
 
+.pdf-reference-pack {
+  display: grid;
+  gap: 12px;
+}
+
+.pdf-table-panel {
+  min-width: 0;
+}
+
+.pdf-import-table,
+.pdf-small-table {
+  display: grid;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.pdf-import-row {
+  display: grid;
+  grid-template-columns: 64px minmax(150px, 1fr) repeat(3, minmax(92px, 0.65fr)) minmax(110px, 0.7fr) minmax(80px, 0.55fr) minmax(116px, auto);
+  gap: 8px;
+  align-items: center;
+  min-width: 900px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.pdf-reference-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.pdf-small-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(92px, 0.55fr) minmax(92px, 0.55fr) minmax(92px, 0.55fr) minmax(110px, auto);
+  gap: 8px;
+  align-items: center;
+  min-width: 640px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.four {
+    grid-template-columns: minmax(190px, 1fr) minmax(110px, 0.6fr) minmax(110px, 0.6fr) minmax(120px, auto);
+  }
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.pdf-source-note {
+  margin: 10px 0 0;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 @media (max-width: 820px) {
   .page-header,
   .market-command-head,
   .template-main-grid,
+  .pdf-reference-grid,
   .claim-row,
   .segmentation-row {
     grid-template-columns: 1fr;
@@ -2094,6 +2289,13 @@ onMounted(loadRefreshState)
 
   .template-row {
     grid-template-columns: 1fr !important;
+    min-width: 0;
+  }
+
+  .pdf-import-row,
+  .pdf-small-row,
+  .pdf-small-row.four {
+    grid-template-columns: 1fr;
     min-width: 0;
   }
 }

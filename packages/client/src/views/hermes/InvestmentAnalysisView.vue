@@ -148,6 +148,52 @@ const projectAnalysisDetailCards = computed(() => [
     rows: workingCapitalRows.value,
   },
 ])
+const pdfProjectAnalysisKpis = [
+  { label: 'Total Investment', value: '$16M' },
+  { label: 'Project IRR', value: '60%' },
+  { label: 'NPV @ 12%', value: '$49.8M' },
+  { label: 'Payback Period', value: '1.7 yr' },
+  { label: 'Profitability Index', value: '4.1x' },
+  { label: '5-Year ROI', value: '5.1x' },
+]
+const pdfInvestmentBreakdownRows = [
+  {
+    category: 'Process Equipment',
+    keyItems: 'Reactors, columns, exchangers, tanks, pumps, packaging',
+    amount: '$7,850,000',
+    percent: '49.1%',
+  },
+  {
+    category: 'Utilities & Infrastructure',
+    keyItems: 'Steam, cooling, electrical, nitrogen, WWTP, fire',
+    amount: '$1,720,000',
+    percent: '10.8%',
+  },
+  {
+    category: 'Buildings & Civil',
+    keyItems: 'Production, warehouse, admin, tank farm, roads',
+    amount: '$1,810,000',
+    percent: '11.3%',
+  },
+  {
+    category: 'Engineering & Project Mgmt',
+    keyItems: 'Basic/detailed engineering, PM, EPC overhead',
+    amount: '$970,000',
+    percent: '6.0%',
+  },
+  {
+    category: 'Installation & Commissioning',
+    keyItems: 'Erection, piping, E&I, start-up, training',
+    amount: '$1,130,000',
+    percent: '7.1%',
+  },
+  {
+    category: 'Other Costs',
+    keyItems: 'Permits, raw inventory (3mo), working capital, contingency',
+    amount: '$2,520,000',
+    percent: '15.8%',
+  },
+]
 
 const scenarioCards = computed(() => [
   { name: 'Lean', status: 'To Verify', detail: 'Needs sourced capex, operating cost, volume, and selling-price assumptions.' },
@@ -483,6 +529,50 @@ onMounted(loadRefreshState)
           </div>
         </article>
       </div>
+
+      <article class="template-panel pdf-project-analysis-panel" aria-label="User PDF project analysis reference">
+        <div class="template-panel-title">
+          <div>
+            <h3>User PDF Project Analysis Reference - 60,000 MT/YR Esterquat Plant</h3>
+            <p>
+              These values are copied from your PDF screenshot so the dashboard can show the table you requested.
+              They are not treated as verified model outputs; they remain User Provided / Derived from Assumptions until source-backed quotes and approved IRR inputs exist.
+            </p>
+          </div>
+          <NTag size="small" type="warning">User Provided / To Verify</NTag>
+        </div>
+
+        <div class="pdf-kpi-grid">
+          <article v-for="kpi in pdfProjectAnalysisKpis" :key="kpi.label" class="template-kpi-card">
+            <strong>{{ redactsFinancials ? 'Restricted' : kpi.value }}</strong>
+            <span>{{ kpi.label }}</span>
+            <NTag size="small" type="warning">Derived from Assumptions</NTag>
+            <small>User PDF screenshot / source quotes needed</small>
+          </article>
+        </div>
+
+        <div class="pdf-breakdown-table">
+          <div class="pdf-breakdown-row head">
+            <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Source</span><span>Evidence Status</span>
+          </div>
+          <div v-for="row in pdfInvestmentBreakdownRows" :key="row.category" class="pdf-breakdown-row">
+            <strong>{{ row.category }}</strong>
+            <span>{{ row.keyItems }}</span>
+            <span>{{ redactsFinancials ? 'Restricted' : row.amount }}</span>
+            <span>{{ redactsFinancials ? 'Restricted' : row.percent }}</span>
+            <span>User PDF screenshot / quote evidence needed</span>
+            <NTag size="small" type="warning">User Provided</NTag>
+          </div>
+          <div class="pdf-breakdown-row total">
+            <strong>Total</strong>
+            <span>5 production lines / Guangdong, China</span>
+            <span>{{ redactsFinancials ? 'Restricted' : '$16,000,000' }}</span>
+            <span>{{ redactsFinancials ? 'Restricted' : '100%' }}</span>
+            <span>User PDF screenshot</span>
+            <NTag size="small" type="warning">To Verify</NTag>
+          </div>
+        </div>
+      </article>
     </section>
 
     <section class="analysis-grid">
@@ -1123,6 +1213,53 @@ onMounted(loadRefreshState)
   background: $bg-secondary;
 }
 
+.pdf-project-analysis-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.pdf-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.pdf-breakdown-table {
+  display: grid;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.pdf-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(340px, 1.4fr) minmax(125px, 0.7fr) minmax(80px, 0.45fr) minmax(210px, 1fr) minmax(125px, auto);
+  gap: 9px;
+  align-items: center;
+  min-width: 1060px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  &.total {
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.45);
+    color: $text-primary;
+    font-weight: 900;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
 .warning-list {
   margin: 0;
   padding-left: 18px;
@@ -1138,7 +1275,8 @@ onMounted(loadRefreshState)
     grid-template-columns: 1fr;
   }
 
-  .template-kpi-grid {
+  .template-kpi-grid,
+  .pdf-kpi-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1166,12 +1304,15 @@ onMounted(loadRefreshState)
   }
 
   .template-kpi-grid,
+  .pdf-kpi-grid,
   .template-breakdown-row,
-  .template-detail-row {
+  .template-detail-row,
+  .pdf-breakdown-row {
     grid-template-columns: 1fr;
   }
 
-  .template-breakdown-row {
+  .template-breakdown-row,
+  .pdf-breakdown-row {
     min-width: 0;
   }
 

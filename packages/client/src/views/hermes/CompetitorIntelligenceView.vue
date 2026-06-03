@@ -381,6 +381,21 @@ const competitorAnalysisCategories = [
     risk: 'Home-care esterquat data can mislead textile-softener planning if not separated from CWAS/CWMS use cases.',
   },
 ]
+const pdfChineseDistributorRows = [
+  { company: 'Transfar Group / Transfar Chemicals', hq: 'Hangzhou, Zhejiang', focus: 'Textile auxiliaries, surfactants', scale: '$5B+ revenue', relevance: 'China local textile-chemical target' },
+  { company: 'Zhejiang Longsheng', hq: 'Shaoxing, Zhejiang', focus: 'Dyes, intermediates', scale: '$3B+ revenue', relevance: 'Large textile-chemical ecosystem player' },
+  { company: 'Zhejiang Runtu', hq: 'Shangyu, Zhejiang', focus: 'Dyes, textile chemicals', scale: '$1.5B+ revenue', relevance: 'Regional textile chemical player' },
+  { company: 'Dymatic Chemicals', hq: 'Foshan, Guangdong', focus: 'Textile auxiliaries', scale: '$500M+ revenue', relevance: 'China textile auxiliary competitor/research target' },
+  { company: 'Shanghai Anoky', hq: 'Shanghai', focus: 'Dyes, specialty chemicals', scale: '$200M+ revenue', relevance: 'Specialty textile chemical reference' },
+  { company: 'HT Fine Chemicals', hq: 'Dongguan, Guangdong', focus: 'Silicone, softeners', scale: 'Mid-tier', relevance: 'Possible softener-specific competitor' },
+  { company: 'NICCA Chemical (China)', hq: 'Shanghai', focus: 'Japanese JV, surfactants', scale: '$100M+ in China', relevance: 'China surfactant/textile auxiliary reference' },
+]
+const pdfGlobalManufacturerShareRows = [
+  { rank: '1', manufacturer: 'Evonik Industries', hq: 'Germany', capacity: '310 KT/YR', share: '21.4%' },
+  { rank: '2', manufacturer: 'Stepan Company', hq: 'USA', capacity: '230 KT/YR', share: '15.9%' },
+  { rank: '3', manufacturer: 'Kao Corporation', hq: 'Japan', capacity: '185 KT/YR', share: '12.8%' },
+  { rank: '4', manufacturer: 'Solvay / Syensqo', hq: 'Belgium', capacity: '155 KT/YR', share: '10.7%' },
+]
 const marketShareChartRows = computed(() =>
   competitors.value
     .map(competitor => ({
@@ -742,6 +757,52 @@ function addCompetitor() {
           <span v-for="item in competitorResearchQueue" :key="item">{{ item }}</span>
         </div>
       </section>
+    </section>
+
+    <section class="template-panel pdf-competitor-pack" aria-label="User PDF competitor reference tables">
+      <div class="template-panel-title">
+        <div>
+          <h3>User PDF Competitor / Importer Tables</h3>
+          <p>
+            These rows reproduce the PDF you provided. Company presence is useful for research, but import volumes,
+            supplier names, price, capacity, and market-share values remain To Verify until a source title plus URL/date is attached.
+          </p>
+        </div>
+        <NButton size="small" secondary @click="createGenericCompetitorTask('PDF competitor table verification', 'Verify Chinese distributor list, global ester-quat manufacturer capacity, and market-share figures from source-backed documents')">
+          Verify PDF tables
+        </NButton>
+      </div>
+
+      <div class="pdf-competitor-table">
+        <div class="pdf-competitor-row head">
+          <span>Company</span><span>HQ</span><span>Focus</span><span>Scale</span><span>Relevance</span><span>Status</span>
+        </div>
+        <div v-for="row in pdfChineseDistributorRows" :key="row.company" class="pdf-competitor-row">
+          <strong>{{ row.company }}</strong>
+          <span>{{ row.hq }}</span>
+          <span>{{ row.focus }}</span>
+          <span>{{ row.scale }}</span>
+          <span>{{ row.relevance }}</span>
+          <span class="verify-pill">User Provided</span>
+        </div>
+      </div>
+      <p class="pdf-source-note">
+        PDF note: company-specific import data, exact volumes, supplier names, and per-shipment prices require a paid China Customs database such as Panjiva, ImportGenius, or Descartes Datamyne.
+      </p>
+
+      <div class="pdf-share-table">
+        <div class="pdf-share-row head">
+          <span>Rank</span><span>Manufacturer</span><span>HQ</span><span>Capacity</span><span>Share</span><span>Status</span>
+        </div>
+        <div v-for="row in pdfGlobalManufacturerShareRows" :key="row.manufacturer" class="pdf-share-row">
+          <strong>{{ row.rank }}</strong>
+          <span>{{ row.manufacturer }}</span>
+          <span>{{ row.hq }}</span>
+          <span>{{ row.capacity }}</span>
+          <span>{{ row.share }}</span>
+          <span class="verify-pill">To Verify</span>
+        </div>
+      </div>
     </section>
 
     <section class="global-competitor-analysis" aria-label="Global competitor analysis">
@@ -1563,6 +1624,73 @@ function addCompetitor() {
   }
 }
 
+.pdf-competitor-pack {
+  display: grid;
+  gap: 12px;
+}
+
+.pdf-competitor-table,
+.pdf-share-table {
+  display: grid;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+.pdf-competitor-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.05fr) minmax(150px, 0.85fr) minmax(190px, 1fr) minmax(130px, 0.65fr) minmax(220px, 1.15fr) minmax(120px, auto);
+  gap: 9px;
+  align-items: center;
+  min-width: 980px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.pdf-share-row {
+  display: grid;
+  grid-template-columns: 70px minmax(210px, 1fr) minmax(130px, 0.7fr) minmax(120px, 0.65fr) minmax(100px, 0.55fr) minmax(110px, auto);
+  gap: 9px;
+  align-items: center;
+  min-width: 740px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+
+  &.head {
+    color: $accent-primary;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.pdf-source-note {
+  margin: 0;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 @media (max-width: 940px) {
   .page-header,
   .template-hero,
@@ -1583,6 +1711,8 @@ function addCompetitor() {
 
   .template-product-row,
   .template-landscape-row,
+  .pdf-competitor-row,
+  .pdf-share-row,
   .share-row {
     grid-template-columns: 1fr;
     min-width: 0;
