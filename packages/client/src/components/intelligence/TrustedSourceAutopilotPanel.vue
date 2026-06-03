@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NDrawer, NDrawerContent, NTag, useMessage } from 'naive-ui'
 import { useJobsStore } from '@/stores/hermes/jobs'
+import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 import {
   EXECUTIVE_REFRESH_SCHEDULE,
@@ -20,6 +21,7 @@ const props = defineProps<{
 const message = useMessage()
 const jobsStore = useJobsStore()
 const autopilot = useTrustedSourceAutopilot()
+const intelligence = useFeasibilityIntelligence()
 const drawerOpen = ref(false)
 const saving = ref(false)
 const selectedClaim = ref<TrustedSourceSnapshotClaim | null>(null)
@@ -32,6 +34,94 @@ const lastSuccessfulRefresh = computed(() => latestSnapshot.value?.generated_at 
 const lastFailedRefresh = computed(() => activeSources.value.find(source => source.last_failure)?.last_failure || null)
 const nextRefresh = computed(() => nextTwiceDailyRefresh())
 const sourceStatusLabel = computed(() => activeSources.value.length ? 'On' : 'Off')
+const pendingReviewFindings = computed(() =>
+  intelligence.state.value.researchFindings.filter(finding =>
+    (finding.status === 'Pending Review' || finding.status === 'To Verify') && findingMatchesScreen(finding),
+  ),
+)
+const durableRecordMetrics = computed(() => metricsForScreen())
+const durableRecordTotal = computed(() => durableRecordMetrics.value.reduce((total, metric) => total + metric.count, 0))
+const durableStatusText = computed(() => {
+  if (durableRecordTotal.value > 0) {
+    return `${durableRecordTotal.value} imported dashboard record${durableRecordTotal.value === 1 ? '' : 's'} visible on this screen.`
+  }
+  if (latestSnapshot.value?.claims.length) {
+    return 'Source snapshots exist for this screen, but no durable dashboard records have been saved yet.'
+  }
+  return 'Waiting for the first trusted-source import for this screen.'
+})
+
+type DurableMetricTone = 'active' | 'review' | 'empty'
+
+interface DurableMetric {
+  label: string
+  count: number
+  note: string
+  tone: DurableMetricTone
+}
+
+function findingMatchesScreen(finding: typeof intelligence.state.value.researchFindings[number]): boolean {
+  const target = finding.dashboardTarget
+  if (target?.screen === props.screen) return true
+  const group = target?.group
+  if (props.screen === 'market') {
+    return finding.area === 'market' || group === 'marketClaims' || group === 'rawMaterialSignals'
+  }
+  if (props.screen === 'competitor') {
+    return group === 'competitorRecords' || /competitor|market share|supplier landscape/i.test(`${finding.keyClaim} ${finding.summary}`)
+  }
+  if (props.screen === 'investment') {
+    return finding.area === 'financial' || group === 'financialEvidence' || /irr|npv|investment|payback|capex|financial/i.test(`${finding.keyClaim} ${finding.summary}`)
+  }
+  return Boolean(group) ||
+    finding.area === 'presentation' ||
+    finding.area === 'companyLegal' ||
+    finding.area === 'factory' ||
+    finding.area === 'regulatory'
+}
+
+function dataRoomMatchesScreen(record: typeof intelligence.state.value.dataRoomSources[number]): boolean {
+  if (props.screen === 'investment') return record.dashboardGroup === 'financialEvidence' || record.area === 'financial'
+  if (props.screen === 'competitor') return record.dashboardGroup === 'competitorRecords'
+  if (props.screen === 'market') return record.dashboardGroup === 'rawMaterialSignals' || record.area === 'market'
+  return true
+}
+
+function metric(label: string, count: number, note: string, tone: DurableMetricTone = count ? 'active' : 'empty'): DurableMetric {
+  return { label, count, note, tone }
+}
+
+function metricsForScreen(): DurableMetric[] {
+  if (props.screen === 'market') {
+    return [
+      metric('Market claims', intelligence.state.value.marketClaims.length, 'Country, demand, growth, customer, and source-backed market signals.'),
+      metric('Trade / raw material signals', intelligence.state.value.dataRoomSources.filter(dataRoomMatchesScreen).length, 'Source records that can support market and supply context.'),
+      metric('Needs review', pendingReviewFindings.value.length, 'Weak, conflicting, critical, or sensitive market findings waiting for approval.', pendingReviewFindings.value.length ? 'review' : 'empty'),
+    ]
+  }
+
+  if (props.screen === 'competitor') {
+    return [
+      metric('Competitor records', intelligence.state.value.competitors.length, 'Company, product-equivalent, source, and To Verify market-share records.'),
+      metric('Needs review', pendingReviewFindings.value.length, 'Competitor price/share/product claims waiting for approval.', pendingReviewFindings.value.length ? 'review' : 'empty'),
+    ]
+  }
+
+  if (props.screen === 'investment') {
+    return [
+      metric('Financial models', intelligence.state.value.financialModels.length, 'Saved IRR/NPV/payback scenarios derived from assumptions.'),
+      metric('Financial evidence', intelligence.state.value.dataRoomSources.filter(dataRoomMatchesScreen).length, 'Source records that support capex, cost, or investment assumptions.'),
+      metric('Needs review', pendingReviewFindings.value.length, 'Financial claims staged before they can affect investor material.', pendingReviewFindings.value.length ? 'review' : 'empty'),
+    ]
+  }
+
+  return [
+    metric('Market records', intelligence.state.value.marketClaims.length, 'Source-backed market signals available to executive screens.'),
+    metric('Competitor records', intelligence.state.value.competitors.length, 'Competitor intelligence records available to executive screens.'),
+    metric('Evidence sources', intelligence.state.value.dataRoomSources.length, 'Data-room, raw-material, regulatory, supplier, and source records.'),
+    metric('Needs review', pendingReviewFindings.value.length, 'Review-gated findings that block investor-ready truth.', pendingReviewFindings.value.length ? 'review' : 'empty'),
+  ]
+}
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'Not scheduled'
@@ -151,6 +241,28 @@ async function syncNow() {
       <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">View Review Queue</RouterLink>
       <NButton size="small" secondary :loading="saving" @click="createResearchJob">Create Research Job</NButton>
       <RouterLink class="autopilot-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
+    </div>
+
+    <div class="durable-intelligence-status" aria-label="Imported dashboard records">
+      <div class="durable-status-copy">
+        <p class="eyebrow">Imported dashboard records</p>
+        <strong>{{ durableStatusText }}</strong>
+        <span>
+          Durable intelligence survives browser reloads. Sensitive, investor-impacting, or weak-source values stay in review until approved.
+        </span>
+      </div>
+      <div class="durable-status-grid">
+        <div
+          v-for="metric in durableRecordMetrics"
+          :key="metric.label"
+          class="durable-status-card"
+          :class="metric.tone"
+        >
+          <span>{{ metric.label }}</span>
+          <strong>{{ metric.count }}</strong>
+          <small>{{ metric.note }}</small>
+        </div>
+      </div>
     </div>
 
     <div v-if="latestSnapshot?.claims.length" class="claim-strip">
@@ -358,6 +470,78 @@ async function syncNow() {
   align-items: center;
 }
 
+.durable-intelligence-status {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: 8px;
+  background: rgba(var(--bg-secondary-rgb), 0.52);
+}
+
+.durable-status-copy {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+
+  strong {
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  span {
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.durable-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.durable-status-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  background: rgba(var(--bg-tertiary-rgb), 0.52);
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $warning;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  &.review {
+    border-color: rgba(var(--warning-rgb), 0.45);
+    background: rgba(var(--warning-rgb), 0.08);
+  }
+
+  &.empty strong {
+    color: $text-muted;
+  }
+}
+
 .autopilot-link {
   display: inline-flex;
   align-items: center;
@@ -432,7 +616,8 @@ async function syncNow() {
 @media (max-width: 720px) {
   .autopilot-header,
   .autopilot-metrics,
-  .claim-strip {
+  .claim-strip,
+  .durable-intelligence-status {
     grid-template-columns: 1fr;
   }
 

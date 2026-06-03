@@ -1047,6 +1047,57 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('Needs Review')
   })
 
+  it('shows imported durable dashboard records inside screen source panels', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Country-wise consumption growth - China',
+      value: 'Trade proxy / To Verify',
+      evidenceStatus: 'Trade Proxy',
+      confidence: 'medium',
+      source: { title: 'UN Comtrade', url: 'https://comtradeplus.un.org' },
+    })
+    intelligence.addDataRoomSource({
+      checklistLabel: 'Raw material trade proxy',
+      area: 'market',
+      dashboardGroup: 'rawMaterialSignals',
+      evidenceStatus: 'To Verify',
+      source: { title: 'China Customs source candidate', date: '2026-06-03' },
+      notes: 'Imported by Full Dashboard Autopilot.',
+    })
+    intelligence.addResearchFinding({
+      summary: 'Market growth claim requires official source review.',
+      keyClaim: 'Growth Rate: To Verify',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: { title: 'Weak market reference', url: 'https://example.com/market' },
+      riskNote: 'Growth rate is investor-impacting and must be reviewed.',
+      dashboardTarget: {
+        group: 'marketClaims',
+        screen: 'market',
+        field: 'Growth Rate',
+        value: 'To Verify',
+      },
+    })
+
+    const wrapper = mount(TrustedSourceAutopilotPanel, {
+      props: { screen: 'market', title: 'Market Auto Source Status' },
+    })
+    const text = wrapper.text()
+
+    expect(text).toContain('Imported dashboard records')
+    expect(text).toContain('3 imported dashboard records visible on this screen.')
+    expect(text).toContain('Market claims')
+    expect(text).toContain('Trade / raw material signals')
+    expect(text).toContain('Needs review')
+    expect(wrapper.findAll('.durable-status-card')).toHaveLength(3)
+    expect(wrapper.findAll('.durable-status-card').map(card => card.text())).toEqual([
+      expect.stringContaining('Market claims1'),
+      expect.stringContaining('Trade / raw material signals1'),
+      expect.stringContaining('Needs review1'),
+    ])
+  })
+
   it('shows live imported intelligence counts from durable dashboard state', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addMarketClaim({
