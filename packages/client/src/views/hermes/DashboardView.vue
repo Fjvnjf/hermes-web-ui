@@ -5,6 +5,10 @@ import { NButton, useMessage } from 'naive-ui'
 import { fetchPerformanceRuntime, type PerformanceRuntimeSnapshot } from '@/api/hermes/performance-monitor'
 import { fetchSessions, type SessionSummary } from '@/api/hermes/sessions'
 import { listJobs, type Job } from '@/api/hermes/jobs'
+import {
+  fetchDashboardAutopilotImportStatus,
+  type DashboardAutopilotImportStatus,
+} from '@/api/hermes/intelligence-state'
 import { getActiveProfileName, hasApiKey } from '@/api/client'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
@@ -32,6 +36,7 @@ const loadWarning = ref('')
 const sessions = ref<SessionSummary[]>([])
 const jobs = ref<Job[]>([])
 const runtime = ref<PerformanceRuntimeSnapshot | null>(null)
+const autopilotImportStatus = ref<DashboardAutopilotImportStatus | null>(null)
 const recentCaptureActivities = ref<SessionCaptureActivity[]>([])
 const tokenReady = ref(false)
 const activeProfileName = ref('default')
@@ -193,6 +198,95 @@ const canUseResearchReview = computed(() => canUseRouteName('hermes.researchResu
 const canUseInvestorPresentation = computed(() => canUseRouteName('hermes.investorPresentation'))
 const canUseInvestmentCalculator = computed(() => canUseRouteName('hermes.investmentCalculator'))
 const showFinancialDeckPanel = computed(() => canUseInvestorPresentation.value || canUseInvestmentCalculator.value)
+const automaticResearchState = computed(() => {
+  const status = autopilotImportStatus.value
+  const reviewCount = status?.pendingOutputCount || intelligence.pendingResearchFindings.value.length
+  if (!status) {
+    return {
+      tone: 'info',
+      label: 'Checking',
+      title: 'Automatic research status is loading',
+      body: 'Hermes is checking the trusted-source schedule and imported dashboard intelligence.',
+      action: 'Refresh Home if this remains unavailable.',
+    }
+  }
+  if (status.jobCount === 0) {
+    return {
+      tone: 'warn',
+      label: 'Setup needed',
+      title: 'Automatic research is not scheduled yet',
+      body: 'Enable Full Autopilot once so Hermes can research trusted sources twice daily without manual searching.',
+      action: 'Open Trusted Sources and enable the autopilot.',
+    }
+  }
+  if (status.latestDueSlotRunError || ['unparseable', 'unreadable'].includes(status.latestOutputParseStatus)) {
+    return {
+      tone: 'danger',
+      label: 'Needs attention',
+      title: 'Automatic research needs a quick check',
+      body: status.latestDueSlotRunError || status.latestOutputParseError || 'The latest Hermes output could not be imported safely.',
+      action: 'Open Jobs or Trusted Sources to inspect the latest run.',
+    }
+  }
+  if (reviewCount > 0) {
+    return {
+      tone: 'warn',
+      label: `${reviewCount} to review`,
+      title: 'Hermes found source-backed items for review',
+      body: 'Safe fields can hydrate automatically. Critical market, supplier, finance, regulatory, and investor claims wait for owner approval.',
+      action: 'Open Research Result Review and approve only the evidence-backed items you trust.',
+    }
+  }
+  if (status.importedRunCount > 0 || status.latestOutputImported) {
+    return {
+      tone: 'ok',
+      label: 'Running',
+      title: 'Automatic dashboard filling is active',
+      body: 'Hermes is importing trusted-source records into the dashboard while keeping risky claims review-gated.',
+      action: 'Use the dashboard normally. Missing coverage follow-ups run from the autopilot pipeline.',
+    }
+  }
+  return {
+    tone: 'info',
+    label: 'Waiting',
+    title: 'Automatic research is scheduled',
+    body: 'The Hermes research job exists. The dashboard is waiting for the first readable trusted-source output.',
+    action: 'You can wait for the twice-daily schedule or run a source snapshot from Trusted Sources.',
+  }
+})
+const automaticResearchCards = computed(() => [
+  {
+    label: 'Research job',
+    value: autopilotImportStatus.value?.jobCount ? 'Scheduled' : 'Not confirmed',
+    note: autopilotImportStatus.value?.latestDueSlotAt
+      ? `Latest due slot ${formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)}`
+      : 'Server checks every few minutes',
+  },
+  {
+    label: 'Dashboard records',
+    value: String(intelligence.state.value.marketClaims.length + intelligence.state.value.competitors.length + intelligence.state.value.dataRoomSources.length),
+    note: 'Imported from durable trusted-source intelligence state',
+  },
+  {
+    label: 'Review queue',
+    value: String(autopilotImportStatus.value?.pendingOutputCount || intelligence.pendingResearchFindings.value.length),
+    note: 'Risky or weak claims wait here instead of becoming facts',
+  },
+  {
+    label: 'Latest import',
+    value: autopilotImportStatus.value?.latestOutputImported ? 'Imported' : autopilotImportStatus.value?.latestOutputParseStatus || 'None yet',
+    note: autopilotImportStatus.value?.latestOutputAt
+      ? formatAutopilotTimestamp(autopilotImportStatus.value.latestOutputAt)
+      : 'No readable output imported yet',
+  },
+])
+
+function formatAutopilotTimestamp(value: string): string {
+  if (!value) return 'not available'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 function evidenceGapRouteName(gapId: string): string {
   if (gapId === 'market') return 'hermes.marketIntelligence'
@@ -518,16 +612,18 @@ async function loadDashboard() {
     sessions.value = []
     jobs.value = []
     runtime.value = null
+    autopilotImportStatus.value = null
     lastUpdated.value = formatUpdatedAt()
     loading.value = false
     return
   }
 
-  const [modelsResult, sessionsResult, jobsResult, runtimeResult] = await Promise.allSettled([
+  const [modelsResult, sessionsResult, jobsResult, runtimeResult, autopilotResult] = await Promise.allSettled([
     canUseRouteName('hermes.models') ? appStore.loadModels(true) : Promise.resolve(null),
     isDeveloperHome.value ? Promise.resolve([]) : fetchSessions(undefined, 6),
     listJobs(),
     canUseRouteName('hermes.performance') ? fetchPerformanceRuntime() : Promise.resolve(null),
+    isOwnerHome.value ? fetchDashboardAutopilotImportStatus() : Promise.resolve(null),
   ])
 
   if (modelsResult.status === 'rejected') partialFailure = true
@@ -537,6 +633,12 @@ async function loadDashboard() {
   else partialFailure = true
   if (runtimeResult.status === 'fulfilled') runtime.value = runtimeResult.value
   else partialFailure = true
+  if (autopilotResult.status === 'fulfilled') {
+    autopilotImportStatus.value = autopilotResult.value?.autopilotImport ?? null
+  } else if (isOwnerHome.value) {
+    autopilotImportStatus.value = null
+    partialFailure = true
+  }
 
   if (partialFailure) loadWarning.value = 'Runtime data partially unavailable'
   lastUpdated.value = formatUpdatedAt()
@@ -623,6 +725,30 @@ onMounted(() => {
           </p>
         </div>
         <RouterLink class="brief-primary-link" :to="{ name: 'hermes.feasibility' }">Open Feasibility Studio</RouterLink>
+      </section>
+
+      <section class="automatic-research-card" :class="automaticResearchState.tone" aria-label="Automatic trusted-source research status">
+        <div class="automatic-research-main">
+          <p class="executive-eyebrow">Automatic Research</p>
+          <div class="automatic-research-title">
+            <h3>{{ automaticResearchState.title }}</h3>
+            <span>{{ automaticResearchState.label }}</span>
+          </div>
+          <p>{{ automaticResearchState.body }}</p>
+          <strong>{{ automaticResearchState.action }}</strong>
+          <div class="automatic-research-actions">
+            <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
+            <RouterLink v-if="canUseResearchReview" class="brief-primary-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
+            <RouterLink v-if="canUseRouteName('hermes.jobs')" class="brief-primary-link" :to="{ name: 'hermes.jobs' }">Jobs</RouterLink>
+          </div>
+        </div>
+        <div class="automatic-research-metrics">
+          <article v-for="card in automaticResearchCards" :key="card.label">
+            <span>{{ card.label }}</span>
+            <strong>{{ card.value }}</strong>
+            <small>{{ card.note }}</small>
+          </article>
+        </div>
       </section>
 
       <section class="today-priority-strip next-action-card" aria-label="Today's priority">
@@ -1139,6 +1265,133 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
+.automatic-research-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
+  gap: 14px;
+  align-items: stretch;
+  margin-bottom: 12px;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+  border-radius: $radius-md;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.12), rgba(var(--accent-primary-rgb), 0.08) 54%, transparent),
+    $bg-card;
+
+  &.ok {
+    border-color: rgba(var(--success-rgb), 0.34);
+    background:
+      linear-gradient(135deg, rgba(var(--success-rgb), 0.1), rgba(var(--accent-info-rgb), 0.06) 54%, transparent),
+      $bg-card;
+  }
+
+  &.warn {
+    border-color: rgba(var(--warning-rgb), 0.44);
+    background:
+      linear-gradient(135deg, rgba(var(--warning-rgb), 0.11), rgba(var(--accent-primary-rgb), 0.065) 54%, transparent),
+      $bg-card;
+  }
+
+  &.danger {
+    border-color: rgba(var(--error-rgb), 0.4);
+    background:
+      linear-gradient(135deg, rgba(var(--error-rgb), 0.1), rgba(var(--accent-info-rgb), 0.05) 54%, transparent),
+      $bg-card;
+  }
+}
+
+.automatic-research-main {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+
+  h3,
+  p,
+  strong {
+    margin: 0;
+  }
+
+  h3 {
+    color: $accent-primary;
+    font-size: 18px;
+  }
+
+  p {
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+
+  strong {
+    color: $text-primary;
+    line-height: 1.45;
+  }
+}
+
+.automatic-research-title {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 25px;
+    padding: 3px 9px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.38);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.09);
+    color: $accent-primary;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+}
+
+.automatic-research-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.automatic-research-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    gap: 6px;
+    min-height: 104px;
+    padding: 11px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-info;
+    font-size: 18px;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    color: $text-secondary;
+    line-height: 1.35;
+  }
+}
+
 .brief-primary-link,
 .today-priority-strip a {
   display: inline-flex;
@@ -1637,9 +1890,23 @@ onMounted(() => {
   }
 
   .executive-brief-card,
+  .automatic-research-card,
   .today-priority-strip {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .automatic-research-title {
+    display: grid;
+    justify-items: start;
+  }
+
+  .automatic-research-metrics {
+    grid-template-columns: 1fr;
+
+    article {
+      min-height: 0;
+    }
   }
 
   .status-strip {

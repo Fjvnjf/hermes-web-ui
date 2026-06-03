@@ -61,6 +61,7 @@ const createJobMock = vi.hoisted(() => vi.fn())
 const listCronRunsMock = vi.hoisted(() => vi.fn())
 const readCronRunMock = vi.hoisted(() => vi.fn())
 const fetchPerformanceRuntimeMock = vi.hoisted(() => vi.fn())
+const fetchDashboardAutopilotImportStatusMock = vi.hoisted(() => vi.fn())
 const mkDirMock = vi.hoisted(() => vi.fn())
 const writeFileMock = vi.hoisted(() => vi.fn())
 
@@ -107,6 +108,10 @@ vi.mock('@/api/hermes/cron-history', () => ({
 
 vi.mock('@/api/hermes/performance-monitor', () => ({
   fetchPerformanceRuntime: fetchPerformanceRuntimeMock,
+}))
+
+vi.mock('@/api/hermes/intelligence-state', () => ({
+  fetchDashboardAutopilotImportStatus: fetchDashboardAutopilotImportStatusMock,
 }))
 
 vi.mock('@/api/hermes/files', () => ({
@@ -217,6 +222,32 @@ beforeEach(() => {
     fileName: '2026-05-30T22-00-00.md',
     runTime: '2026-05-30 22:00:00',
     content: 'Research output pending.',
+  })
+  fetchDashboardAutopilotImportStatusMock.mockReset().mockResolvedValue({
+    ok: true,
+    profile: 'default',
+    autopilotImport: {
+      profile: 'default',
+      jobCount: 1,
+      outputCount: 2,
+      importedRunCount: 1,
+      skippedRunCount: 0,
+      pendingOutputCount: 1,
+      latestOutputRunKey: 'job-full-dashboard:2026-06-03T07-00-00.md',
+      latestOutputFile: '2026-06-03T07-00-00.md',
+      latestOutputAt: '2026-06-03T07:00:00.000Z',
+      latestOutputImported: true,
+      latestOutputSkipped: false,
+      latestOutputParseStatus: 'imported',
+      latestOutputCandidateCount: 8,
+      latestOutputParseError: '',
+      latestImportedRunKey: 'job-full-dashboard:2026-06-03T07-00-00.md',
+      registryUpdatedAt: '2026-06-03T07:05:00.000Z',
+      latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+      latestDueSlotSatisfied: true,
+      latestDueSlotAttemptedAt: '2026-06-03T07:01:00.000Z',
+      latestDueSlotRunError: '',
+    },
   })
   fetchPerformanceRuntimeMock.mockReset().mockResolvedValue({
     sessions: { active: 0, running: 0 },
@@ -2862,6 +2893,13 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Research Review Queue')
     expect(wrapper.text()).toContain('Recent Session Captures')
     expect(wrapper.text()).toContain('Financial & Deck Status')
+    expect(wrapper.text()).toContain('Automatic Research')
+    expect(wrapper.text()).toContain('Hermes found source-backed items for review')
+    expect(wrapper.text()).toContain('Trusted Sources')
+    expect(wrapper.text()).toContain('Review Queue')
+    expect(wrapper.text()).toContain('Research job')
+    expect(wrapper.text()).toContain('Dashboard records')
+    expect(wrapper.text()).toContain('Latest import')
     expect(wrapper.text()).toContain('Factory evidence')
     expect(wrapper.text()).toContain('Regulatory evidence')
     expect(wrapper.text()).toContain('DMS regulation source review')
