@@ -687,6 +687,150 @@ function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardResea
   return DASHBOARD_UPDATE_GROUPS.some(group => (payload[group]?.length || 0) > 0) ? payload : null
 }
 
+function normalizeHeader(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+function parseMarkdownTableRow(line: string): string[] {
+  const trimmed = line.trim()
+  const withoutOuter = trimmed.startsWith('|') && trimmed.endsWith('|')
+    ? trimmed.slice(1, -1)
+    : trimmed
+  return withoutOuter.split('|').map(cell => cell.trim())
+}
+
+function isMarkdownSeparator(line: string): boolean {
+  const cells = parseMarkdownTableRow(line)
+  return cells.length > 1 && cells.every(cell => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, '')))
+}
+
+function getCell(row: Record<string, string>, ...headers: string[]): string {
+  for (const header of headers) {
+    const value = row[normalizeHeader(header)]
+    if (value) return value
+  }
+  return ''
+}
+
+function inferGroupFromMarkdownTable(headers: string[], context: string): DashboardResearchUpdateGroup {
+  const text = `${headers.join(' ')} ${context}`.toLowerCase()
+  if (/supplier|scorecard|raw material|material|quote|payment|quality|reliability/.test(text)) return 'supplierScorecards'
+  if (/competitor|manufacturer|company|market share|strength|weakness|product equivalent/.test(text)) return 'competitorRecords'
+  if (/investment|financial|irr|npv|payback|roi|capex|working capital|profitability/.test(text)) return 'financialEvidence'
+  if (/regulatory|dms|cas|permit|sds|tds|iecs|echa|pubchem/.test(text)) return 'regulatoryFindings'
+  if (/investor|presentation|slide|deck|brief/.test(text)) return 'investorMaterialCandidates'
+  if (/evidence gap|missing proof|gap/.test(text)) return 'evidenceGaps'
+  if (/task|action|next step/.test(text)) return 'suggestedTasks'
+  return 'marketClaims'
+}
+
+function markdownSourceFields(row: Record<string, string>): Pick<DashboardResearchUpdateItem, 'sourceTitle' | 'sourceUrl' | 'sourceDate'> {
+  const explicitTitle = getCell(row, 'source title', 'source name', 'source')
+  const explicitUrl = getCell(row, 'source url', 'url', 'link')
+  const sourceDate = getCell(row, 'source date', 'date', 'last checked', 'checked')
+  const sourceTitle = explicitTitle && /^https?:\/\//i.test(explicitTitle) ? 'Source link' : explicitTitle
+  const sourceUrl = explicitUrl || (/^https?:\/\//i.test(explicitTitle) ? explicitTitle : '')
+  return { sourceTitle, sourceUrl, sourceDate }
+}
+
+function markdownRowToDashboardItem(
+  row: Record<string, string>,
+  group: DashboardResearchUpdateGroup,
+): DashboardResearchUpdateItem | null {
+  const source = markdownSourceFields(row)
+  if (!source.sourceTitle && !source.sourceUrl && !source.sourceDate) return null
+
+  const field = getCell(row, 'field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item')
+  const title = getCell(row, 'title', 'question', 'finding')
+  const label = getCell(row, 'label')
+  const value = getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score')
+  const notes = getCell(row, 'notes', 'note', 'strength', 'weakness', 'summary')
+  const marketShare = getCell(row, 'market share', 'share')
+  const pricingEvidence = getCell(row, 'pricing evidence', 'price', 'price/kg', 'price/t', 'cost')
+  const fallbackValue = value || marketShare || pricingEvidence || notes
+  const rowTitle = title || label || field || getCell(row, 'company', 'competitor', 'manufacturer', 'supplier', 'material')
+  if (!rowTitle && !fallbackValue) return null
+
+  const item: DashboardResearchUpdateItem = {
+    field: field || rowTitle,
+    label: label || rowTitle,
+    title: title || rowTitle,
+    value: fallbackValue,
+    companyName: getCell(row, 'company', 'competitor', 'manufacturer'),
+    countryRegion: getCell(row, 'country', 'region', 'hq', 'country/region'),
+    productEquivalent: getCell(row, 'product equivalent', 'product', 'equivalent'),
+    activeContent: getCell(row, 'active content', 'active', 'content'),
+    pricingEvidence,
+    certifications: getCell(row, 'certifications', 'certification'),
+    distributionPresence: getCell(row, 'distribution', 'distribution presence', 'presence'),
+    marketShare,
+    supplier: getCell(row, 'supplier'),
+    material: getCell(row, 'material', 'raw material'),
+    section: getCell(row, 'section'),
+    content: getCell(row, 'content', 'snippet', 'report snippet'),
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceDate: source.sourceDate,
+    sourceTier: getCell(row, 'source tier', 'tier'),
+    lastChecked: getCell(row, 'last checked', 'checked'),
+    confidence: getCell(row, 'confidence'),
+    evidenceStatus: getCell(row, 'evidence status', 'status'),
+    reviewRequired: /^(yes|true|required|review)$/i.test(getCell(row, 'review required', 'review')),
+    riskReason: getCell(row, 'risk reason', 'risk'),
+    dataType: getCell(row, 'data type', 'datatype'),
+    sensitive: /^(yes|true|sensitive)$/i.test(getCell(row, 'sensitive')),
+    notes,
+    recommendedAction: getCell(row, 'recommended action', 'next action', 'action'),
+    proposedDashboardField: getCell(row, 'proposed dashboard field', 'dashboard field', 'target field'),
+  }
+
+  if (group === 'competitorRecords' && !item.companyName) item.companyName = rowTitle
+  if (group === 'supplierScorecards' && !item.value) item.value = pricingEvidence || notes || 'To Verify'
+  return item
+}
+
+function extractMarkdownDashboardTables(content: string): DashboardResearchUpdatesPayload | null {
+  const lines = content.split(/\r?\n/)
+  const payload: DashboardResearchUpdatesPayload = {}
+
+  for (let i = 0; i < lines.length - 1; i += 1) {
+    if (!lines[i].includes('|') || !isMarkdownSeparator(lines[i + 1])) continue
+    const headers = parseMarkdownTableRow(lines[i])
+    const normalizedHeaders = headers.map(normalizeHeader)
+    const hasFieldishColumn = normalizedHeaders.some(header =>
+      ['field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item', 'company', 'competitor', 'manufacturer', 'supplier', 'material'].includes(header),
+    )
+    const hasValueishColumn = normalizedHeaders.some(header =>
+      ['value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'marketshare', 'share', 'pricingevidence', 'price', 'cost', 'notes', 'summary'].includes(header),
+    )
+    const hasSourceColumn = normalizedHeaders.some(header =>
+      ['sourcetitle', 'sourcename', 'source', 'sourceurl', 'url', 'link', 'sourcedate', 'date', 'lastchecked', 'checked'].includes(header),
+    )
+    if (!hasFieldishColumn || !hasValueishColumn || !hasSourceColumn) continue
+
+    const context = lines.slice(Math.max(0, i - 4), i).join('\n')
+    const group = inferGroupFromMarkdownTable(headers, context)
+    const items: DashboardResearchUpdateItem[] = []
+    let rowIndex = i + 2
+    for (; rowIndex < lines.length; rowIndex += 1) {
+      const line = lines[rowIndex]
+      if (!line.includes('|') || isMarkdownSeparator(line)) break
+      const cells = parseMarkdownTableRow(line)
+      if (cells.length < 2) break
+      const row: Record<string, string> = {}
+      headers.forEach((header, index) => {
+        row[normalizeHeader(header)] = cells[index] || ''
+      })
+      const item = markdownRowToDashboardItem(row, group)
+      if (item) items.push(item)
+    }
+    if (items.length) payload[group] = [...(payload[group] || []), ...items]
+    i = Math.max(i, rowIndex - 1)
+  }
+
+  return DASHBOARD_UPDATE_GROUPS.some(group => (payload[group]?.length || 0) > 0) ? payload : null
+}
+
 export function extractDashboardResearchUpdates(content: string): DashboardResearchUpdatesPayload | null {
   const trimmed = content.trim()
   if (!trimmed) return null
@@ -712,7 +856,7 @@ export function extractDashboardResearchUpdates(content: string): DashboardResea
     if (payload) return payload
   }
 
-  return null
+  return extractMarkdownDashboardTables(trimmed)
 }
 
 function normalizeSourceTier(value: unknown): SourceTier {

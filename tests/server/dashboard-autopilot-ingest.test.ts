@@ -128,6 +128,50 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('extracts conservative dashboard updates from source-backed markdown tables when JSON is missing', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '| Metric | Value | Source Title | Source URL | Source Tier | Confidence | Evidence Status | Data Type | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Country-wise consumption growth - China | Trade proxy signal found | WITS / World Bank Comtrade | https://wits.worldbank.org/ | Tier 1 - Official / regulator / trade source | high | Official Data | trade_data | yes |',
+      '',
+      '## Supplier Scorecards',
+      '| Supplier | Material | Price | Source Title | Source Date | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Wilmar | Stearic Acid TP | To Verify | Uploaded supplier quote index | 2026-06-03 | To Verify | medium | yes |',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({
+        field: 'Country-wise consumption growth - China',
+        value: 'Trade proxy signal found',
+        sourceTitle: 'WITS / World Bank Comtrade',
+        sourceUrl: 'https://wits.worldbank.org/',
+        reviewRequired: true,
+      }),
+    ])
+    expect(payload?.supplierScorecards).toEqual([
+      expect.objectContaining({
+        supplier: 'Wilmar',
+        material: 'Stearic Acid TP',
+        value: 'To Verify',
+        sourceTitle: 'Uploaded supplier quote index',
+      }),
+    ])
+  })
+
+  it('ignores decorative markdown tables that lack source metadata', () => {
+    const payload = extractDashboardResearchUpdates([
+      '| KPI | Value |',
+      '| --- | --- |',
+      '| Market Size | $3.2B |',
+    ].join('\n'))
+
+    expect(payload).toBeNull()
+  })
+
   it('auto-fills only low-risk official facts and stages critical findings for review', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-00-00.000000+00-00.md', {
@@ -423,6 +467,41 @@ describe('dashboard autopilot output ingestion', () => {
           screen: 'investment',
           sourceTier: 'tier3-supplier-evidence',
           dataType: 'financial_data',
+        }),
+      }),
+    ])
+  })
+
+  it('imports markdown-only trusted-source tables and keeps critical values review-gated', async () => {
+    writeFullDashboardJob(hermesHome)
+    const outputDir = join(hermesHome, 'cron', 'output', 'job-full-dashboard')
+    mkdirSync(outputDir, { recursive: true })
+    writeFileSync(join(outputDir, '2026-06-03T08-00-00.000000+00-00.md'), [
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '| Metric | Value | Source Title | Source URL | Source Tier | Confidence | Evidence Status | Data Type |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Country-wise consumption growth - China | Official trade proxy located | WITS / World Bank Comtrade | https://wits.worldbank.org/ | Tier 1 - Official / regulator / trade source | high | Official Data | trade_data |',
+    ].join('\n'))
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 1,
+    })
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Country-wise consumption growth - China'),
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          screen: 'market',
+          sourceTier: 'tier1-official',
+          value: 'Official trade proxy located',
         }),
       }),
     ])

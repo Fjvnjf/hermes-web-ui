@@ -388,6 +388,28 @@ describe('Trusted Source Autopilot', () => {
     expect(payload?.marketClaims?.[0].field).toBe('Target Countries / Provinces')
   })
 
+  it('extracts source-backed markdown tables from Hermes output when the JSON appendix is missing', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Competitor Intelligence',
+      '| Company | Product Equivalent | Market Share | Source Title | Source URL | Source Tier | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Stepan | STEPANTEX SP-90 official product page | To Verify | Stepan official product page | https://www.stepan.com/ | Tier 2 - Official company / product source | To Verify | medium | yes |',
+    ].join('\n'))
+
+    expect(payload?.competitorRecords).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan',
+        productEquivalent: 'STEPANTEX SP-90 official product page',
+        marketShare: 'To Verify',
+        sourceTitle: 'Stepan official product page',
+        sourceUrl: 'https://www.stepan.com/',
+        reviewRequired: true,
+      }),
+    ])
+  })
+
   it('imports Hermes research output, auto-fills safe official data, and stages critical claims for review', () => {
     const autopilot = useTrustedSourceAutopilot()
     const intelligence = useFeasibilityIntelligence()
