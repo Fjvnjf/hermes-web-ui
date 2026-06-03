@@ -458,6 +458,20 @@ const workspaceActions = [
 ]
 
 const visibleWorkspaceActions = computed(() => workspaceActions.filter(action => canUseRouteTarget(action.to)))
+const primaryWorkspaceRouteNames = new Set([
+  'hermes.chat',
+  'hermes.feasibility',
+  'hermes.researchResultReview',
+  'hermes.marketIntelligence',
+  'hermes.rawMaterialSourcing',
+  'hermes.investmentAnalysis',
+])
+const primaryWorkspaceActions = computed(() =>
+  visibleWorkspaceActions.value.filter(action => primaryWorkspaceRouteNames.has(action.to.name))
+)
+const secondaryWorkspaceActions = computed(() =>
+  visibleWorkspaceActions.value.filter(action => !primaryWorkspaceRouteNames.has(action.to.name))
+)
 
 const workstreams = [
   {
@@ -766,20 +780,21 @@ onMounted(() => {
 
       <PinnedExecutiveIntelligenceBoard />
 
-      <section class="workspace-action-grid" aria-label="Research workspace shortcuts">
-        <RouterLink v-for="action in visibleWorkspaceActions" :key="action.label" class="workspace-action" :to="action.to">
-          <span class="action-icon">{{ action.icon }}</span>
-          <span class="action-label">{{ action.label }}</span>
-          <small>{{ action.detail }}</small>
-        </RouterLink>
-      </section>
-
-      <section class="investor-snapshot-grid" aria-label="Investor readiness snapshot">
-        <RouterLink v-for="item in investorSnapshot" :key="item.label" class="kpi-card investor" :class="item.tone" :to="item.to">
-          <div class="kpi-value">{{ item.value }}</div>
-          <div class="kpi-label">{{ item.label }}</div>
-          <div class="kpi-note">{{ item.note }}</div>
-        </RouterLink>
+      <section class="home-focus-panel" aria-label="Start here shortcuts">
+        <div class="panel-title">
+          <div>
+            <h3>Start Here</h3>
+            <p>Daily owner actions only. The full workspace list and system details are folded below.</p>
+          </div>
+          <RouterLink v-if="canUseRouteName('hermes.trustedSources')" :to="{ name: 'hermes.trustedSources' }">Autopilot</RouterLink>
+        </div>
+        <div class="workspace-action-grid focused">
+          <RouterLink v-for="action in primaryWorkspaceActions" :key="action.label" class="workspace-action" :to="action.to">
+            <span class="action-icon">{{ action.icon }}</span>
+            <span class="action-label">{{ action.label }}</span>
+            <small>{{ action.detail }}</small>
+          </RouterLink>
+        </div>
       </section>
 
       <section class="next-actions-panel" aria-label="Next best actions">
@@ -948,76 +963,99 @@ onMounted(() => {
         </article>
       </section>
 
-      <section class="kpi-grid" aria-label="Runtime metrics">
-        <div v-for="kpi in kpis" :key="kpi.label" class="kpi-card" :class="kpi.tone">
-          <div class="kpi-value">{{ kpi.value }}</div>
-          <div class="kpi-label">{{ kpi.label }}</div>
-          <div class="kpi-note">{{ kpi.note }}</div>
-        </div>
-      </section>
+      <details class="home-advanced-section">
+        <summary>
+          <span>All workspaces, readiness snapshot, and system details</span>
+          <small>Open this when you need secondary dashboards, runtime metrics, sessions, jobs, or system links.</small>
+        </summary>
 
-      <section class="workstream-grid" aria-label="Hermes workstreams">
-        <article v-for="stream in visibleWorkstreams" :key="stream.group" class="workstream-card">
-          <div class="workstream-head">
-            <span>{{ stream.group }}</span>
-            <RouterLink v-if="canUseRouteTarget(stream.to)" :to="stream.to">Open</RouterLink>
-          </div>
-          <h3>{{ stream.title }}</h3>
-          <p>{{ stream.detail }}</p>
-          <div class="workstream-links">
-            <RouterLink v-for="link in stream.links" :key="link.label" :to="link.to">
-              {{ link.label }}
-            </RouterLink>
-          </div>
-        </article>
-      </section>
+        <section v-if="secondaryWorkspaceActions.length" class="workspace-action-grid secondary" aria-label="Secondary research workspace shortcuts">
+          <RouterLink v-for="action in secondaryWorkspaceActions" :key="action.label" class="workspace-action" :to="action.to">
+            <span class="action-icon">{{ action.icon }}</span>
+            <span class="action-label">{{ action.label }}</span>
+            <small>{{ action.detail }}</small>
+          </RouterLink>
+        </section>
 
-      <section class="ops-grid" aria-label="Operational lists">
-        <article class="ops-panel">
-          <div class="panel-title">
-            <h3>Recent Sessions</h3>
-            <RouterLink :to="{ name: 'hermes.history' }">History</RouterLink>
-          </div>
-          <div v-if="sessions.length" class="ops-list">
-            <RouterLink
-              v-for="session in sessions"
-              :key="session.id"
-              class="ops-row"
-              :to="{ name: 'hermes.session', params: { sessionId: session.id } }"
-            >
-              <span>{{ formatSessionTitle(session) }}</span>
-              <small>{{ formatSessionMeta(session) }}</small>
-            </RouterLink>
-          </div>
-          <div v-else class="ops-empty">No recent sessions</div>
-        </article>
+        <section class="investor-snapshot-grid" aria-label="Investor readiness snapshot">
+          <RouterLink v-for="item in investorSnapshot" :key="item.label" class="kpi-card investor" :class="item.tone" :to="item.to">
+            <div class="kpi-value">{{ item.value }}</div>
+            <div class="kpi-label">{{ item.label }}</div>
+            <div class="kpi-note">{{ item.note }}</div>
+          </RouterLink>
+        </section>
 
-        <article class="ops-panel">
-          <div class="panel-title">
-            <h3>Automation Queue</h3>
-            <RouterLink :to="{ name: 'hermes.jobs' }">Jobs</RouterLink>
+        <section class="kpi-grid" aria-label="Runtime metrics">
+          <div v-for="kpi in kpis" :key="kpi.label" class="kpi-card" :class="kpi.tone">
+            <div class="kpi-value">{{ kpi.value }}</div>
+            <div class="kpi-label">{{ kpi.label }}</div>
+            <div class="kpi-note">{{ kpi.note }}</div>
           </div>
-          <div v-if="jobs.length" class="ops-list">
-            <RouterLink v-for="job in jobs.slice(0, 6)" :key="job.id" class="ops-row" :to="{ name: 'hermes.jobs' }">
-              <span>{{ job.name }}</span>
-              <small>{{ formatJobState(job) }} / {{ job.schedule_display || 'Manual' }}</small>
-            </RouterLink>
-          </div>
-          <div v-else class="ops-empty">No scheduled jobs</div>
-        </article>
+        </section>
 
-        <article v-if="visibleCommandLinks.length" class="ops-panel">
-          <div class="panel-title">
-            <h3>Hermes System</h3>
-            <RouterLink v-if="canUseRouteName('hermes.settings')" :to="{ name: 'hermes.settings' }">Settings</RouterLink>
-          </div>
-          <div class="command-link-grid">
-            <RouterLink v-for="link in visibleCommandLinks" :key="link.label" :to="link.to">
-              {{ link.label }}
-            </RouterLink>
-          </div>
-        </article>
-      </section>
+        <section class="workstream-grid" aria-label="Hermes workstreams">
+          <article v-for="stream in visibleWorkstreams" :key="stream.group" class="workstream-card">
+            <div class="workstream-head">
+              <span>{{ stream.group }}</span>
+              <RouterLink v-if="canUseRouteTarget(stream.to)" :to="stream.to">Open</RouterLink>
+            </div>
+            <h3>{{ stream.title }}</h3>
+            <p>{{ stream.detail }}</p>
+            <div class="workstream-links">
+              <RouterLink v-for="link in stream.links" :key="link.label" :to="link.to">
+                {{ link.label }}
+              </RouterLink>
+            </div>
+          </article>
+        </section>
+
+        <section class="ops-grid" aria-label="Operational lists">
+          <article class="ops-panel">
+            <div class="panel-title">
+              <h3>Recent Sessions</h3>
+              <RouterLink :to="{ name: 'hermes.history' }">History</RouterLink>
+            </div>
+            <div v-if="sessions.length" class="ops-list">
+              <RouterLink
+                v-for="session in sessions"
+                :key="session.id"
+                class="ops-row"
+                :to="{ name: 'hermes.session', params: { sessionId: session.id } }"
+              >
+                <span>{{ formatSessionTitle(session) }}</span>
+                <small>{{ formatSessionMeta(session) }}</small>
+              </RouterLink>
+            </div>
+            <div v-else class="ops-empty">No recent sessions</div>
+          </article>
+
+          <article class="ops-panel">
+            <div class="panel-title">
+              <h3>Automation Queue</h3>
+              <RouterLink :to="{ name: 'hermes.jobs' }">Jobs</RouterLink>
+            </div>
+            <div v-if="jobs.length" class="ops-list">
+              <RouterLink v-for="job in jobs.slice(0, 6)" :key="job.id" class="ops-row" :to="{ name: 'hermes.jobs' }">
+                <span>{{ job.name }}</span>
+                <small>{{ formatJobState(job) }} / {{ job.schedule_display || 'Manual' }}</small>
+              </RouterLink>
+            </div>
+            <div v-else class="ops-empty">No scheduled jobs</div>
+          </article>
+
+          <article v-if="visibleCommandLinks.length" class="ops-panel">
+            <div class="panel-title">
+              <h3>Hermes System</h3>
+              <RouterLink v-if="canUseRouteName('hermes.settings')" :to="{ name: 'hermes.settings' }">Settings</RouterLink>
+            </div>
+            <div class="command-link-grid">
+              <RouterLink v-for="link in visibleCommandLinks" :key="link.label" :to="link.to">
+                {{ link.label }}
+              </RouterLink>
+            </div>
+          </article>
+        </section>
+      </details>
       </template>
     </main>
   </div>
@@ -1447,6 +1485,89 @@ onMounted(() => {
 .workspace-action-grid {
   grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
   margin-bottom: 12px;
+
+  &.focused {
+    margin-bottom: 0;
+  }
+
+  &.secondary {
+    margin-bottom: 14px;
+  }
+}
+
+.home-focus-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.07), transparent 48%),
+    $bg-card;
+}
+
+.home-advanced-section {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: $radius-md;
+  background: $bg-card;
+
+  &[open] {
+    padding: 0 14px 14px;
+  }
+
+  > summary {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 52px;
+    padding: 13px 14px;
+    cursor: pointer;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    &::after {
+      content: '+';
+      display: inline-grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border: 1px solid rgba(var(--accent-info-rgb), 0.38);
+      border-radius: 999px;
+      color: $accent-info;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+
+    span {
+      color: $accent-primary;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    small {
+      max-width: 520px;
+      color: $text-muted;
+      line-height: 1.35;
+      text-align: right;
+    }
+  }
+
+  &[open] > summary {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  &[open] > summary::after {
+    content: '-';
+  }
 }
 
 .workspace-action {
@@ -1906,6 +2027,21 @@ onMounted(() => {
 
     article {
       min-height: 0;
+    }
+  }
+
+  .home-advanced-section {
+    &[open] {
+      padding: 0 10px 10px;
+    }
+
+    > summary {
+      display: grid;
+      justify-items: start;
+
+      small {
+        text-align: left;
+      }
     }
   }
 
