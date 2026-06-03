@@ -15,6 +15,7 @@ vi.mock('../../packages/server/src/services/hermes/hermes-path', () => ({
 }))
 
 import {
+  FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION,
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   dashboardSourceTierRank,
   ensureFullDashboardAutopilotScheduled,
@@ -25,7 +26,11 @@ import {
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
 
-function writeFullDashboardJob(home: string, jobId = 'job-full-dashboard') {
+function writeFullDashboardJob(
+  home: string,
+  jobId = 'job-full-dashboard',
+  options: { prompt?: string; scheduleDisplay?: string } = {},
+) {
   const cronDir = join(home, 'cron')
   mkdirSync(cronDir, { recursive: true })
   writeFileSync(join(cronDir, 'jobs.json'), JSON.stringify({
@@ -33,8 +38,12 @@ function writeFullDashboardJob(home: string, jobId = 'job-full-dashboard') {
       id: jobId,
       job_id: jobId,
       name: 'Full Dashboard Trusted Source Autopilot',
-      prompt: 'Research online trusted sources and return dashboard_updates for the full dashboard.',
-      schedule_display: '0 8,20 * * *',
+      prompt: options.prompt || [
+        'Full Dashboard Trusted Source Autopilot',
+        `Prompt version: ${FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION}`,
+        'Research online trusted sources and return dashboard_updates for the full dashboard.',
+      ].join('\n'),
+      schedule_display: options.scheduleDisplay || FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
     }],
   }, null, 2))
 }
@@ -672,6 +681,7 @@ describe('dashboard autopilot output ingestion', () => {
       FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
     ])
     const prompt = createArgs[7]
+    expect(prompt).toContain(FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION)
     expect(prompt).toContain('Do the online research yourself')
     expect(prompt).toContain('Executive Overview')
     expect(prompt).toContain('Market Intelligence')
@@ -711,6 +721,42 @@ describe('dashboard autopilot output ingestion', () => {
         status: 'Scheduled Hermes Job',
       }),
     ])
+  })
+
+  it('repairs an existing stale full dashboard schedule without creating a duplicate', async () => {
+    writeFullDashboardJob(hermesHome, 'existing-stale-dashboard', {
+      prompt: 'Research online trusted sources and return dashboard_updates for the full dashboard.',
+      scheduleDisplay: '0 8,20 * * *',
+    })
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'edit') {
+        expect(args).toEqual(expect.arrayContaining([
+          'cron',
+          'edit',
+          'existing-stale-dashboard',
+          '--name',
+          'Full Dashboard Trusted Source Autopilot',
+          '--schedule',
+          FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+          '--deliver',
+          'local',
+          '--prompt',
+        ]))
+        expect(args[args.length - 1]).toContain(FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION)
+      }
+      cb(null, '', '')
+    })
+
+    const result = await ensureFullDashboardAutopilotScheduled('default', { startFirstRun: true })
+
+    expect(result).toMatchObject({
+      jobId: 'existing-stale-dashboard',
+      created: false,
+      repaired: true,
+      recordedResearchJob: true,
+      firstRunStarted: true,
+    })
+    expect(execFileMock.mock.calls.map(call => call[1][1])).toEqual(['edit', 'run'])
   })
 
   it('runs the due twice-daily full dashboard job when the latest slot has no output', async () => {

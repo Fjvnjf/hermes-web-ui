@@ -137,6 +137,7 @@ const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
 export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03'
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor']
 const SERVER_INTELLIGENCE_STATE_JOB_ID = 'server-dashboard-intelligence-state'
 const DASHBOARD_RESEARCH_GROUPS: DashboardResearchUpdateGroup[] = [
@@ -878,6 +879,7 @@ function fullDashboardAutopilotPrompt(): string {
 
   return [
     'Full Dashboard Trusted Source Autopilot',
+    `Prompt version: ${FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION}`,
     '',
     'Mission: research and refresh the Hermes feasibility intelligence dashboard automatically using trusted online sources and existing Hermes workspace evidence.',
     'Do the online research yourself using available web/search/source tools. Do not ask the user to manually search, copy, or paste source data.',

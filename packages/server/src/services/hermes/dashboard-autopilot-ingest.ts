@@ -13,6 +13,7 @@ import {
 
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -231,6 +232,7 @@ export interface FullDashboardAutopilotScheduleResult {
   profile: string
   jobId: string | null
   created: boolean
+  repaired: boolean
   recordedResearchJob: boolean
   firstRunStarted: boolean
   firstRunError: string
@@ -317,6 +319,7 @@ function getJobId(job: CronJobRecord): string {
 function fullDashboardAutopilotPrompt(): string {
   return [
     'Full Dashboard Trusted Source Autopilot',
+    `Prompt version: ${FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION}`,
     '',
     'Mission: automatically research and refresh the Hermes feasibility intelligence dashboard using trusted online sources and existing Hermes workspace evidence.',
     'Do the online research yourself using available web/search/source tools. Do not ask the user to manually search, copy, or paste source data.',
@@ -379,6 +382,22 @@ export function isFullDashboardAutopilotJobRecord(job: CronJobRecord | null | un
   ].map(stringValue).join('\n').toLowerCase()
   return text.includes(FULL_DASHBOARD_AUTOPILOT_JOB_NAME.toLowerCase()) ||
     (text.includes('dashboard_updates') && text.includes('trusted-source') && text.includes('full dashboard'))
+}
+
+function autopilotScheduleText(job: CronJobRecord): string {
+  const schedule = isPlainRecord((job as any).schedule) ? (job as any).schedule : null
+  return [
+    (schedule as any)?.expr,
+    (schedule as any)?.display,
+    (job as any).schedule_display,
+  ].map(stringValue).join('\n')
+}
+
+function autopilotJobNeedsRepair(job: CronJobRecord): boolean {
+  const prompt = stringValue(job.prompt)
+  if (!prompt.includes(FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION)) return true
+  const schedule = autopilotScheduleText(job)
+  return Boolean(schedule && !schedule.includes(FULL_DASHBOARD_AUTOPILOT_SCHEDULE) && !schedule.includes('07:00 / 19:00'))
 }
 
 function normalizeJobsPayload(payload: unknown): CronJobRecord[] {
@@ -484,15 +503,50 @@ export async function ensureFullDashboardAutopilotScheduled(
   const beforeJobs = await readCronJobs(profile)
   const existing = beforeJobs.find(isFullDashboardAutopilotJobRecord)
   const existingJobId = existing ? getJobId(existing) : ''
-  if (existingJobId) {
+  if (existing && existingJobId) {
+    let repaired = false
+    let firstRunStarted = false
+    let firstRunError = ''
+    if (autopilotJobNeedsRepair(existing)) {
+      try {
+        await runHermesCron(profile, [
+          'cron',
+          'edit',
+          existingJobId,
+          '--name',
+          FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+          '--schedule',
+          FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+          '--deliver',
+          'local',
+          '--prompt',
+          fullDashboardAutopilotPrompt(),
+        ], CREATE_TIMEOUT_MS)
+        repaired = true
+      } catch (err) {
+        firstRunError = err instanceof Error ? err.message : 'Hermes cron edit failed'
+        logger.warn({ err, profile, jobId: existingJobId }, '[dashboard-autopilot] existing trusted-source job could not be repaired')
+      }
+    }
+    if (options.startFirstRun && repaired && !firstRunError) {
+      try {
+        await runHermesCron(profile, ['cron', 'run', existingJobId], RUN_TIMEOUT_MS)
+        firstRunStarted = true
+        await ingestFullDashboardAutopilotOutputs(profile, { jobId: existingJobId, maxFilesPerJob: 5 })
+      } catch (err) {
+        firstRunError = err instanceof Error ? err.message : 'Hermes cron run failed'
+        logger.warn({ err, profile, jobId: existingJobId }, '[dashboard-autopilot] repaired trusted-source job could not start')
+      }
+    }
     const recordedResearchJob = await recordFullDashboardAutopilotResearchJob(profile, existingJobId)
     return {
       profile,
       jobId: existingJobId,
       created: false,
+      repaired,
       recordedResearchJob,
-      firstRunStarted: false,
-      firstRunError: '',
+      firstRunStarted,
+      firstRunError,
     }
   }
 
@@ -528,6 +582,7 @@ export async function ensureFullDashboardAutopilotScheduled(
     profile,
     jobId: jobId || null,
     created: true,
+    repaired: false,
     recordedResearchJob,
     firstRunStarted,
     firstRunError,
