@@ -16,6 +16,7 @@ import {
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v2'
+export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -286,6 +287,17 @@ interface DashboardIntelligenceState {
   dataRoomSources: Record<string, unknown>[]
 }
 
+interface CoverageTarget {
+  label: string
+  aliases: string[]
+}
+
+interface CoverageRequirement {
+  area: string
+  textScope: 'market' | 'competitor' | 'supplier' | 'regulatory' | 'financial' | 'investor'
+  targets: CoverageTarget[]
+}
+
 interface ImportRegistry {
   version: 1
   importedRunKeys: string[]
@@ -320,6 +332,7 @@ export interface DashboardAutopilotIngestResult {
   skippedRuns: number
   autoFilledCount: number
   stagedReviewCount: number
+  missingCoverageFollowUpStarted: boolean
   errors: string[]
 }
 
@@ -522,6 +535,110 @@ function firstString(...values: unknown[]): string {
   return ''
 }
 
+function normalizeCoverageAlias(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+}
+
+function target(label: string, ...aliases: string[]): CoverageTarget {
+  return {
+    label,
+    aliases: aliases.map(normalizeCoverageAlias),
+  }
+}
+
+const coverageRequirements: CoverageRequirement[] = [
+  {
+    area: 'Market Intelligence',
+    textScope: 'market',
+    targets: [
+      target('China', 'china', 'zhejiang', 'guangdong', 'jiangsu'),
+      target('Bangladesh', 'bangladesh'),
+      target('India', 'india'),
+      target('Vietnam', 'vietnam'),
+      target('Pakistan', 'pakistan'),
+      target('Turkey', 'turkey', 'turkiye'),
+      target('Indonesia', 'indonesia'),
+      target('EU / Germany', 'eu', 'europe', 'germany'),
+      target('United States', 'united states', 'usa', 'u.s.'),
+      target('GCC / Middle East', 'gcc', 'middle east', 'saudi', 'uae'),
+    ],
+  },
+  {
+    area: 'Competitor Intelligence',
+    textScope: 'competitor',
+    targets: [
+      target('Evonik Industries', 'evonik'),
+      target('Stepan Company', 'stepan'),
+      target('Kao Corporation', 'kao'),
+      target('WACKER', 'wacker'),
+      target('Rudolf Group', 'rudolf'),
+      target('CHT Group', 'cht'),
+      target('Archroma', 'archroma'),
+      target('Transfar', 'transfar'),
+      target('Zschimmer & Schwarz', 'zschimmer', 'schwarz'),
+      target('Pulcra Chemicals', 'pulcra'),
+      target('Syensqo / Solvay', 'syensqo', 'solvay'),
+    ],
+  },
+  {
+    area: 'Raw Materials / Supplier Scorecards',
+    textScope: 'supplier',
+    targets: [
+      target('Stearic acid', 'stearic'),
+      target('Triethanolamine / TEA', 'triethanolamine', 'tea'),
+      target('Dimethyl sulfate / DMS', 'dimethyl sulfate', 'dms'),
+      target('PDMS silicone oil', 'pdms', 'silicone oil'),
+      target('Acetic acid', 'acetic acid'),
+      target('Ethoxylates', 'ethoxylate'),
+      target('Packaging', 'packaging'),
+      target('Wilmar', 'wilmar'),
+      target('KLK OLEO', 'klk'),
+      target('BASF', 'basf'),
+      target('Dow', 'dow'),
+      target('WACKER', 'wacker'),
+    ],
+  },
+  {
+    area: 'Investment / IRR',
+    textScope: 'financial',
+    targets: [
+      target('Lean scenario', 'lean'),
+      target('Base scenario', 'base'),
+      target('Conservative scenario', 'conservative'),
+      target('Aggressive scenario', 'aggressive'),
+      target('Total investment', 'total investment'),
+      target('IRR', 'irr'),
+      target('NPV', 'npv'),
+      target('Payback', 'payback'),
+      target('ROI', 'roi'),
+      target('Working capital', 'working capital'),
+      target('Capex breakdown', 'capex', 'investment breakdown'),
+    ],
+  },
+  {
+    area: 'Regulatory / Data Room',
+    textScope: 'regulatory',
+    targets: [
+      target('DMS safety / regulatory status', 'dms', 'dimethyl sulfate'),
+      target('SDS / TDS / CAS evidence', 'sds', 'tds', 'cas'),
+      target('China import / storage / transport / use', 'china import', 'storage', 'transport', 'use requirements'),
+      target('Factory chemical approvals', 'factory approval', 'chemical approval', 'permit'),
+      target('IECSC / China inventory', 'iecsc', 'china chemical inventory'),
+    ],
+  },
+  {
+    area: 'Reports / Presentation',
+    textScope: 'investor',
+    targets: [
+      target('Approved facts', 'approved fact', 'source-backed'),
+      target('Approved assumptions', 'approved assumption'),
+      target('Risk register', 'risk register', 'risk'),
+      target('Data-room gaps', 'data-room', 'data room'),
+      target('Presentation snippets', 'presentation', 'slide', 'snippet'),
+    ],
+  },
+]
+
 function getJobId(job: CronJobRecord): string {
   return firstString(job.job_id, job.id)
 }
@@ -714,6 +831,275 @@ async function runHermesCron(profile: string, args: string[], timeoutMs: number)
     const stdout = String(error?.stdout || '').trim()
     throw new Error(stderr || stdout || error?.message || 'Hermes cron command failed')
   }
+}
+
+function coverageTextHasAlias(text: string, alias: string): boolean {
+  if (!alias) return false
+  if (alias.length <= 3) {
+    return new RegExp(`(^|\\s)${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s|$)`).test(text)
+  }
+  return text.includes(alias)
+}
+
+function coverageTextForScope(state: DashboardIntelligenceState, scope: CoverageRequirement['textScope']): string {
+  const marketParts = [
+    ...state.marketClaims.map(item => `${firstString(item.label)} ${firstString(item.value)} ${firstString(item.evidenceStatus)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
+    ...state.dataRoomSources
+      .filter(item => firstString(item.area) === 'market' || firstString(item.dashboardGroup) === 'rawMaterialSignals')
+      .map(item => `${firstString(item.checklistLabel)} ${firstString(item.proposedValue)} ${firstString(item.notes)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
+    ...state.researchFindings
+      .filter(item => firstString(item.area) === 'market' || firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).group) === 'marketClaims')
+      .map(item => `${firstString(item.keyClaim)} ${firstString(item.summary)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).proposedDashboardField)}`),
+  ]
+  const competitorParts = [
+    ...state.competitors.map(item => `${firstString(item.companyName)} ${firstString(item.countryRegion)} ${firstString(item.productEquivalent)} ${firstString(item.notes)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
+    ...state.researchFindings
+      .filter(item => firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).group) === 'competitorRecords')
+      .map(item => `${firstString(item.keyClaim)} ${firstString(item.summary)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).companyName)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).productEquivalent)}`),
+  ]
+  const supplierParts = [
+    ...state.dataRoomSources
+      .filter(item => firstString(item.area) === 'factory' || firstString(item.dashboardGroup) === 'supplierScorecards' || firstString(item.dashboardGroup) === 'rawMaterialSignals')
+      .map(item => `${firstString(item.checklistLabel)} ${firstString(item.supplier)} ${firstString(item.material)} ${firstString(item.proposedValue)} ${firstString(item.notes)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
+    ...state.researchFindings
+      .filter(item => {
+        const group = firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).group)
+        return group === 'supplierScorecards' || group === 'rawMaterialSignals'
+      })
+      .map(item => `${firstString(item.keyClaim)} ${firstString(item.summary)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).supplier)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).material)}`),
+  ]
+  const regulatoryParts = [
+    ...state.dataRoomSources
+      .filter(item => firstString(item.area) === 'regulatory' || firstString(item.dashboardGroup) === 'regulatoryFindings')
+      .map(item => `${firstString(item.checklistLabel)} ${firstString(item.proposedValue)} ${firstString(item.notes)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
+    ...state.researchFindings
+      .filter(item => firstString(item.area) === 'regulatory' || firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).group) === 'regulatoryFindings')
+      .map(item => `${firstString(item.keyClaim)} ${firstString(item.summary)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).proposedDashboardField)}`),
+  ]
+  const financialParts = [
+    ...state.financialModels.map(item => `${firstString(item.scenarioName)} ${firstString(item.projectName)} IRR NPV payback ROI capex working capital ${Array.isArray(item.warnings) ? item.warnings.join(' ') : ''}`),
+    ...state.dataRoomSources
+      .filter(item => firstString(item.area) === 'financial' || firstString(item.dashboardGroup) === 'financialEvidence')
+      .map(item => `${firstString(item.checklistLabel)} ${firstString(item.proposedValue)} ${firstString(item.notes)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
+    ...state.researchFindings
+      .filter(item => firstString(item.area) === 'financial' || firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).group) === 'financialEvidence')
+      .map(item => `${firstString(item.keyClaim)} ${firstString(item.summary)} ${firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).proposedDashboardField)}`),
+  ]
+  const investorParts = [
+    ...state.presentationMaterials.map(item => `${firstString(item.section)} ${firstString(item.content)} ${firstString(item.evidenceStatus)}`),
+    ...state.researchFindings
+      .filter(item => firstString(item.area) === 'presentation' || firstString(item.dashboardTarget && (item.dashboardTarget as Record<string, unknown>).group) === 'investorMaterialCandidates')
+      .map(item => `${firstString(item.keyClaim)} ${firstString(item.summary)} ${firstString(item.suggestedInvestorMaterial)}`),
+    ...state.dataRoomSources.map(item => `${firstString(item.checklistLabel)} ${firstString(item.area)} ${firstString(item.evidenceStatus)}`),
+  ]
+
+  const byScope: Record<CoverageRequirement['textScope'], string[]> = {
+    market: marketParts,
+    competitor: competitorParts,
+    supplier: supplierParts,
+    regulatory: regulatoryParts,
+    financial: financialParts,
+    investor: investorParts,
+  }
+  return normalizeCoverageAlias(byScope[scope].join(' '))
+}
+
+function missingCoverageRowsForState(state: DashboardIntelligenceState): Array<CoverageRequirement & { missingTargets: CoverageTarget[] }> {
+  return coverageRequirements
+    .map(row => {
+      const text = coverageTextForScope(state, row.textScope)
+      const missingTargets = row.targets.filter(item => !item.aliases.some(alias => coverageTextHasAlias(text, alias)))
+      return { ...row, missingTargets }
+    })
+    .filter(row => row.missingTargets.length > 0)
+}
+
+function dashboardHasImportedIntelligence(state: DashboardIntelligenceState): boolean {
+  return state.marketClaims.length > 0 ||
+    state.competitors.length > 0 ||
+    state.dataRoomSources.length > 0 ||
+    state.researchFindings.length > 0 ||
+    state.financialModels.length > 0 ||
+    state.presentationMaterials.length > 0
+}
+
+function hasFullDashboardAutopilotResearchRecord(state: DashboardIntelligenceState): boolean {
+  return state.researchJobs.some(job =>
+    firstString(job.title) === FULL_DASHBOARD_AUTOPILOT_JOB_NAME ||
+    firstString(job.question).toLowerCase().includes('refresh the full feasibility dashboard'),
+  )
+}
+
+function missingCoverageScope(rows: Array<CoverageRequirement & { missingTargets: CoverageTarget[] }>): string {
+  return rows
+    .map(row => `${row.area}: ${row.missingTargets.map(item => item.label).join(', ')}`)
+    .join('\n')
+}
+
+function missingCoverageSignature(scope: string): string {
+  return stableId('missing-coverage', scope)
+}
+
+function missingCoveragePrompt(rows: Array<CoverageRequirement & { missingTargets: CoverageTarget[] }>, signature: string): string {
+  const missingTargets = missingCoverageScope(rows) || 'None'
+  return [
+    'You are Hermes Full Dashboard Missing Coverage Research.',
+    'Do the online research yourself using trusted and verified sources. Do not ask the user to manually search, copy, or paste data.',
+    `Missing coverage signature: ${signature}`,
+    '',
+    'Objective:',
+    'Fill the missing dashboard coverage targets below with source-backed evidence candidates for the Hermes dashboard.',
+    '',
+    'Missing targets:',
+    missingTargets,
+    '',
+    'Dashboard areas to update when evidence exists:',
+    '- Executive Overview',
+    '- Market Intelligence',
+    '- Competitor Intelligence',
+    '- Investment Analysis / IRR',
+    '- Raw Material Sourcing / Supplier Scorecards',
+    '- Export Market Opportunity',
+    '- Regulatory / Data Room',
+    '- Investor Readiness',
+    '- Presentation Builder',
+    '',
+    'Source priority:',
+    '1. Government, regulator, customs, statistical, trade, and official standards sources.',
+    '2. Official company, product, catalog, SDS, TDS, annual report, or investor-relations sources.',
+    '3. Uploaded supplier evidence such as quote, SDS, TDS, COA, invoice, or internal file reference.',
+    '4. Paid or reputable market references, labeled as market reference and usually review-gated.',
+    '5. Public listings or marketplaces only as weak references, never as verified facts.',
+    '',
+    'Safety rules:',
+    '- No fake values and no unsupported claims.',
+    '- Missing values stay Missing or To Verify.',
+    '- Market size, CAGR, consumption growth, competitor share, supplier prices, financial outputs, regulatory status, and investor claims must be staged for owner review unless evidence is strong and official.',
+    '- Formula, cost-sensitive, product-development, supplier-price, and investor-sensitive details must remain protected.',
+    '- Financial outputs remain Derived from Assumptions unless tied to approved inputs.',
+    '',
+    'Return only structured dashboard_updates JSON compatible with the Full Dashboard Autopilot importer.',
+    'Each candidate must include fieldKey, value, sourceTitle, sourceUrl, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, and riskReason.',
+  ].join('\n')
+}
+
+function isMissingCoverageFollowUpJobRecord(job: CronJobRecord | null | undefined, signature?: string): boolean {
+  if (!job) return false
+  const text = [
+    job.name,
+    job.prompt,
+    job.prompt_preview,
+  ].map(stringValue).join('\n')
+  if (!text.includes(FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME)) return false
+  return signature ? text.includes(signature) : true
+}
+
+function findCreatedMissingCoverageJob(beforeJobs: CronJobRecord[], afterJobs: CronJobRecord[], signature: string): CronJobRecord | null {
+  const beforeIds = new Set(beforeJobs.map(getJobId).filter(Boolean))
+  return afterJobs.find(job => isMissingCoverageFollowUpJobRecord(job, signature) && !beforeIds.has(getJobId(job))) ||
+    afterJobs.find(job => isMissingCoverageFollowUpJobRecord(job, signature)) ||
+    null
+}
+
+function recordMissingCoverageResearchJob(
+  state: DashboardIntelligenceState,
+  input: {
+    jobId: string
+    scope: string
+    signature: string
+    status: 'Scheduled Hermes Job' | 'Manual Research Job'
+  },
+): boolean {
+  const existingIndex = state.researchJobs.findIndex(job =>
+    firstString(job.title) === FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME &&
+    firstString(job.sourceRequirements).includes(input.signature),
+  )
+  const now = new Date().toISOString()
+  const record = {
+    id: existingIndex >= 0
+      ? firstString(state.researchJobs[existingIndex].id) || stableId('research', FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME, input.signature)
+      : stableId('research', FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME, input.signature),
+    title: FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+    question: 'Automatically research the missing trusted-source dashboard coverage targets.',
+    scope: input.scope,
+    expectedOutput: 'dashboard_updates JSON with source metadata for the Full Dashboard Autopilot importer.',
+    sourceRequirements: [
+      `Missing coverage signature: ${input.signature}`,
+      'Official-first trusted sources; weak, sensitive, conflicting, financial, market-share, supplier-price, regulatory, and investor-impact findings stay review-gated.',
+    ].join('\n'),
+    priority: 'high',
+    schedulePreference: 'Custom',
+    scheduledJobId: input.jobId,
+    schedule: 'Immediate one-time follow-up from Trusted Sources coverage audit',
+    context: 'Full Dashboard Trusted Source Autopilot',
+    status: input.status,
+    createdAt: existingIndex >= 0 ? firstString(state.researchJobs[existingIndex].createdAt) || now : now,
+  }
+
+  if (existingIndex >= 0) {
+    state.researchJobs = [
+      ...state.researchJobs.slice(0, existingIndex),
+      { ...state.researchJobs[existingIndex], ...record },
+      ...state.researchJobs.slice(existingIndex + 1),
+    ]
+    return false
+  }
+
+  state.researchJobs = [record, ...state.researchJobs]
+  return true
+}
+
+async function ensureMissingCoverageFollowUp(profile: string, state: DashboardIntelligenceState): Promise<boolean> {
+  if (!dashboardHasImportedIntelligence(state)) return false
+  if (!hasFullDashboardAutopilotResearchRecord(state)) return false
+
+  const missingRows = missingCoverageRowsForState(state)
+  if (missingRows.length === 0) return false
+
+  const scope = missingCoverageScope(missingRows)
+  const signature = missingCoverageSignature(scope)
+  if (state.researchJobs.some(job =>
+    firstString(job.title) === FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME &&
+    firstString(job.sourceRequirements).includes(signature),
+  )) return false
+
+  const beforeJobs = await readCronJobs(profile)
+  const existing = beforeJobs.find(job => isMissingCoverageFollowUpJobRecord(job, signature))
+  let jobId = existing ? getJobId(existing) : ''
+
+  if (!jobId) {
+    await runHermesCron(profile, [
+      'cron',
+      'create',
+      '--name',
+      FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+      '--deliver',
+      'local',
+      '--repeat',
+      '1',
+      FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      missingCoveragePrompt(missingRows, signature),
+    ], CREATE_TIMEOUT_MS)
+    const createdJob = findCreatedMissingCoverageJob(beforeJobs, await readCronJobs(profile), signature)
+    jobId = createdJob ? getJobId(createdJob) : ''
+  }
+
+  if (!jobId) {
+    return recordMissingCoverageResearchJob(state, {
+      jobId: '',
+      scope,
+      signature,
+      status: 'Manual Research Job',
+    })
+  }
+
+  await runHermesCron(profile, ['cron', 'run', jobId], RUN_TIMEOUT_MS)
+  return recordMissingCoverageResearchJob(state, {
+    jobId,
+    scope,
+    signature,
+    status: 'Scheduled Hermes Job',
+  })
 }
 
 export async function ensureFullDashboardAutopilotScheduled(
@@ -1945,6 +2331,7 @@ export async function ingestFullDashboardAutopilotOutputs(
     skippedRuns: 0,
     autoFilledCount: 0,
     stagedReviewCount: 0,
+    missingCoverageFollowUpStarted: false,
     errors: [],
   }
   const maxFilesPerJob = options.maxFilesPerJob ?? 10
@@ -1990,7 +2377,18 @@ export async function ingestFullDashboardAutopilotOutputs(
     }
   }
 
-  if (result.importedRuns > 0 || result.autoFilledCount > 0 || result.stagedReviewCount > 0) {
+  try {
+    result.missingCoverageFollowUpStarted = await ensureMissingCoverageFollowUp(profile, state)
+  } catch (err) {
+    result.errors.push(`missing coverage follow-up: ${err instanceof Error ? err.message : 'failed to start follow-up research'}`)
+  }
+
+  if (
+    result.importedRuns > 0 ||
+    result.autoFilledCount > 0 ||
+    result.stagedReviewCount > 0 ||
+    result.missingCoverageFollowUpStarted
+  ) {
     await writeDashboardIntelligenceState({
       profile,
       state,

@@ -15,6 +15,7 @@ vi.mock('../../packages/server/src/services/hermes/hermes-path', () => ({
 }))
 
 import {
+  FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
   FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION,
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   dashboardSourceTierRank,
@@ -46,6 +47,25 @@ function writeFullDashboardJob(
       schedule_display: options.scheduleDisplay || FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
     }],
   }, null, 2))
+}
+
+function writeMissingCoverageJob(home: string, jobId: string, prompt: string) {
+  const cronDir = join(home, 'cron')
+  mkdirSync(cronDir, { recursive: true })
+  const jobsFile = join(cronDir, 'jobs.json')
+  const current = JSON.parse(readFileSync(jobsFile, 'utf-8'))
+  current.jobs = [
+    ...(Array.isArray(current.jobs) ? current.jobs : []),
+    {
+      id: jobId,
+      job_id: jobId,
+      name: FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+      prompt,
+      schedule_display: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      repeat: { times: 1, completed: 0 },
+    },
+  ]
+  writeFileSync(jobsFile, JSON.stringify(current, null, 2))
 }
 
 function writeRunOutput(home: string, jobId: string, fileName: string, payload: unknown, mtime?: Date) {
@@ -528,6 +548,84 @@ describe('dashboard autopilot output ingestion', () => {
     expect(rawState).not.toContain('"marketShare":"12%"')
   })
 
+  it('automatically starts a duplicate-safe missing coverage follow-up after partial imported intelligence', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    await ensureFullDashboardAutopilotScheduled('default')
+    execFileMock.mockReset()
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'create') {
+        writeMissingCoverageJob(hermesHome, 'job-missing-coverage-1', String(args[args.length - 1] || ''))
+      }
+      cb(null, '', '')
+    })
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T07-00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          label: 'Country-wise consumption growth - China',
+          value: 'Trade proxy signal found',
+          sourceTitle: 'WITS / World Bank Comtrade',
+          sourceUrl: 'https://wits.worldbank.org/',
+          sourceTier: 'Tier 1 - Official / regulator / trade source',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'trade_data',
+          reviewRequired: false,
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 1,
+      missingCoverageFollowUpStarted: true,
+    })
+    const createArgs = execFileMock.mock.calls.find(call => (call[1] as string[])[1] === 'create')?.[1] as string[]
+    expect(createArgs).toEqual(expect.arrayContaining([
+      'cron',
+      'create',
+      '--name',
+      FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+      '--deliver',
+      'local',
+      '--repeat',
+      '1',
+      FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    ]))
+    const prompt = createArgs[createArgs.length - 1]
+    expect(prompt).toContain('Do the online research yourself')
+    expect(prompt).toContain('Bangladesh')
+    expect(prompt).toContain('Stepan Company')
+    expect(prompt).toContain('Dimethyl sulfate / DMS')
+    expect(prompt).toContain('dashboard_updates JSON')
+    expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-1')).toBe(true)
+
+    const envelope = await readDashboardIntelligenceState('default')
+    expect(envelope?.state.researchJobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+        status: 'Scheduled Hermes Job',
+        scheduledJobId: 'job-missing-coverage-1',
+        scope: expect.stringContaining('Bangladesh'),
+        sourceRequirements: expect.stringContaining('Missing coverage signature:'),
+      }),
+      expect.objectContaining({
+        title: 'Full Dashboard Trusted Source Autopilot',
+        scheduledJobId: 'job-full-dashboard',
+      }),
+    ]))
+
+    execFileMock.mockClear()
+    const second = await ingestFullDashboardAutopilotOutputs('default')
+    expect(second).toMatchObject({
+      importedRuns: 0,
+      missingCoverageFollowUpStarted: false,
+    })
+    expect(execFileMock).not.toHaveBeenCalled()
+  })
+
   it('infers trusted official source tier from allowlisted domains without manual tier labels', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T09-00-00.000000+00-00.md', {
@@ -995,7 +1093,8 @@ describe('dashboard autopilot output ingestion', () => {
       firstRunStarted: true,
       firstRunError: '',
     })
-    expect(execFileMock.mock.calls.map(call => call[1][1])).toEqual(['create', 'run'])
+    expect(execFileMock.mock.calls.map(call => call[1][1]).slice(0, 2)).toEqual(['create', 'run'])
+    expect(execFileMock.mock.calls.map(call => call[1][1])).toContain('create')
   })
 
   it('reuses an existing full dashboard schedule without creating a duplicate', async () => {
@@ -1271,7 +1370,8 @@ describe('dashboard autopilot output ingestion', () => {
       firstRunStarted: true,
       firstRunError: '',
     })
-    expect(execFileMock.mock.calls.map(call => call[1][1])).toEqual(['create', 'run'])
+    expect(execFileMock.mock.calls.map(call => call[1][1]).slice(0, 2)).toEqual(['create', 'run'])
+    expect(execFileMock.mock.calls.map(call => call[1][1])).toContain('create')
     expect(envelope?.state.marketClaims).toEqual([
       expect.objectContaining({ label: 'Official low-risk textile reference' }),
     ])
