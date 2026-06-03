@@ -246,7 +246,7 @@ function normalizeClaim(input: Partial<NormalizedTrustedSourceClaim>, source: Tr
 
 export function createConnectorForSource(source: TrustedSourceRecord): TrustedSourceConnector {
   if (source.source_id === 'world-bank-indicators-api') return worldBankApiConnector(source)
-  if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return apiReadyConnector(source, 'UN Comtrade API requires exact HS code and API/rate-limit handling before exact consumption claims.')
+  if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return unComtradeApiConnector(source)
   if (source.source_id === 'oecd-data-api') return apiReadyConnector(source, 'OECD connector is API-ready; dataset selection must be reviewed before dashboard values are trusted.')
   if (source.source_id.includes('sunsirs')) return referenceConnector(source, 'SunSirs reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
   if (source.source_id.includes('echemi')) return referenceConnector(source, 'ECHEMI reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
@@ -276,6 +276,190 @@ function referenceConnector(source: TrustedSourceRecord, note: string): TrustedS
     evidence_status: source.tier === 'tier4-public-listing' ? 'Reference Only' : 'To Verify',
     review_required: true,
   }]
+  return connector
+}
+
+const UN_COMTRADE_REPORTER_NAMES: Record<number, string> = {
+  50: 'Bangladesh',
+  156: 'China',
+  360: 'Indonesia',
+  586: 'Pakistan',
+  699: 'India',
+  704: 'Vietnam',
+  792: 'Turkiye',
+}
+
+function comtradeCandidateHsCode(field: string, query?: string): string {
+  const text = `${field} ${query || ''}`
+  const explicit = text.match(/\b(\d{6})\b/)
+  return explicit?.[1] || '380991'
+}
+
+function comtradePeriodForRequest(request: TrustedSourceConnectorRequest): string {
+  const date = new Date(nowIso(request))
+  const year = Number.isNaN(date.getTime()) ? new Date().getUTCFullYear() : date.getUTCFullYear()
+  return String(Math.max(2020, year - 2))
+}
+
+function comtradeReporterCodesForRequest(request: TrustedSourceConnectorRequest): number[] {
+  if (/china/i.test(request.field) && !/country|export|target/i.test(request.field)) return [156]
+  return [156, 50, 699, 704, 360, 586, 792]
+}
+
+function comtradeRows(raw: unknown): Array<{
+  reporterCode?: number
+  reporterDesc?: string | null
+  period?: string
+  partnerCode?: number
+  partner2Code?: number
+  customsCode?: string | null
+  motCode?: number
+  cmdCode?: string
+  primaryValue?: number | null
+  cifvalue?: number | null
+  netWgt?: number | null
+  qty?: number | null
+  isAggregate?: boolean
+}> {
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { data?: unknown[] }).data)) {
+    return (raw as { data: ReturnType<typeof comtradeRows> }).data
+  }
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { rows?: unknown[] }).rows)) {
+    return (raw as { rows: ReturnType<typeof comtradeRows> }).rows
+  }
+  return []
+}
+
+function comtradeAggregateScore(row: ReturnType<typeof comtradeRows>[number]): number {
+  let score = 0
+  if (row.partnerCode === 0) score += 2
+  if (row.partner2Code === 0) score += 4
+  if (row.customsCode === 'C00') score += 2
+  if (row.motCode === 0) score += 1
+  if (row.isAggregate) score += 1
+  return score
+}
+
+function latestComtradeAggregateRows(rows: ReturnType<typeof comtradeRows>) {
+  const selected = new Map<number, {
+    country: string
+    period: string
+    value: number
+    netWeightKg: number | null
+    score: number
+  }>()
+
+  for (const row of rows) {
+    if (typeof row.reporterCode !== 'number') continue
+    const value = typeof row.primaryValue === 'number'
+      ? row.primaryValue
+      : typeof row.cifvalue === 'number'
+        ? row.cifvalue
+        : null
+    if (value == null) continue
+
+    const period = String(row.period || '')
+    const netWeightKg = typeof row.netWgt === 'number'
+      ? row.netWgt
+      : typeof row.qty === 'number'
+        ? row.qty
+        : null
+    const score = comtradeAggregateScore(row)
+    const existing = selected.get(row.reporterCode)
+    const country = row.reporterDesc || UN_COMTRADE_REPORTER_NAMES[row.reporterCode] || `Reporter ${row.reporterCode}`
+    if (!existing ||
+      Number(period) > Number(existing.period) ||
+      (period === existing.period && score > existing.score) ||
+      (period === existing.period && score === existing.score && value > existing.value)) {
+      selected.set(row.reporterCode, { country, period, value, netWeightKg, score })
+    }
+  }
+
+  return Array.from(selected.values()).sort((a, b) => b.value - a.value)
+}
+
+function formatUsd(value: number): string {
+  if (value >= 1_000_000_000) return `US$${(value / 1_000_000_000).toFixed(2)}B`
+  if (value >= 1_000_000) return `US$${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `US$${(value / 1_000).toFixed(1)}K`
+  return `US$${value.toFixed(0)}`
+}
+
+function formatMetricTons(kg: number | null): string {
+  if (kg == null) return 'weight To Verify'
+  const tons = kg / 1000
+  if (tons >= 1_000_000) return `${(tons / 1_000_000).toFixed(2)}M t`
+  if (tons >= 1000) return `${(tons / 1000).toFixed(1)}K t`
+  return `${tons.toFixed(1)} t`
+}
+
+function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
+  const connector = baseConnector(source)
+  connector.fetch = async (request) => {
+    const fetchImpl = request.fetchImpl || fetch
+    const cmdCode = comtradeCandidateHsCode(request.field, request.query)
+    const period = comtradePeriodForRequest(request)
+    const reporterCodes = comtradeReporterCodesForRequest(request)
+    const params = new URLSearchParams({
+      cmdCode,
+      flowCode: 'M',
+      reporterCode: reporterCodes.join(','),
+      partnerCode: '0',
+      period,
+    })
+    const endpoint = `https://comtradeapi.un.org/public/v1/preview/C/A/HS?${params.toString()}`
+    const response = await fetchImpl(endpoint)
+    if (!response.ok) throw new Error(`UN Comtrade API returned ${response.status}`)
+    const raw = await response.json()
+    return {
+      cmdCode,
+      period,
+      reporterCodes,
+      endpoint,
+      rows: comtradeRows(raw),
+    }
+  }
+  connector.parse = async (raw, request) => {
+    const cmdCode = raw && typeof raw === 'object' && 'cmdCode' in raw
+      ? String((raw as { cmdCode?: string }).cmdCode || comtradeCandidateHsCode(request.field, request.query))
+      : comtradeCandidateHsCode(request.field, request.query)
+    const period = raw && typeof raw === 'object' && 'period' in raw
+      ? String((raw as { period?: string }).period || comtradePeriodForRequest(request))
+      : comtradePeriodForRequest(request)
+    const endpoint = raw && typeof raw === 'object' && 'endpoint' in raw
+      ? String((raw as { endpoint?: string }).endpoint || source.url)
+      : source.url
+    const aggregates = latestComtradeAggregateRows(comtradeRows(raw))
+
+    if (!aggregates.length) {
+      return [{
+        field: request.field,
+        value: `UN Comtrade API reachable for HS ${cmdCode} / To Verify`,
+        source_url: endpoint,
+        source_date: period,
+        notes: `No aggregate import row was extracted. Keep this field staged and ask Hermes to research HS ${cmdCode} manually if needed.`,
+        evidence_status: 'Trade Proxy',
+        confidence: 'medium',
+        review_required: true,
+      }]
+    }
+
+    const value = aggregates
+      .map(row => `${row.country}: ${formatUsd(row.value)}, ${formatMetricTons(row.netWeightKg)} (${row.period})`)
+      .join('; ')
+
+    return [{
+      field: request.field,
+      value,
+      unit: 'import value / net weight',
+      source_url: endpoint,
+      source_date: period,
+      notes: `UN Comtrade public preview API aggregate import signal for HS ${cmdCode}. This is an official trade proxy, not product-specific consumption, market size, competitor share, or verified demand. Review HS fit, reporter coverage, and source context before dashboard/investor use.`,
+      evidence_status: 'Trade Proxy',
+      confidence: 'high',
+      review_required: true,
+    }]
+  }
   return connector
 }
 

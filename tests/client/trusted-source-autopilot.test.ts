@@ -178,7 +178,7 @@ describe('Trusted Source Autopilot', () => {
   })
 
   it('builds connector skeletons that return normalized To Verify claims instead of fake values', async () => {
-    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'un-comtrade-plus')!
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'oecd-data-api')!
     const { claims } = await runConnector({
       screen: 'market',
       field: 'Market Size / Scope',
@@ -190,11 +190,81 @@ describe('Trusted Source Autopilot', () => {
       screen: 'market',
       field: 'Market Size / Scope',
       value: 'Trade Proxy / To Verify',
-      source_id: 'un-comtrade-plus',
+      source_id: 'oecd-data-api',
       evidence_status: 'Trade Proxy',
       review_required: true,
     })
     expect(claims[0].value).not.toContain('$3.2B')
+  })
+
+  it('fetches UN Comtrade public preview import signals as official trade proxies', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'un-comtrade-plus')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            reporterCode: 156,
+            reporterDesc: null,
+            period: '2024',
+            partnerCode: 0,
+            partner2Code: 0,
+            customsCode: 'C00',
+            motCode: 0,
+            cmdCode: '380991',
+            primaryValue: 236608417,
+            netWgt: 65408986.289,
+            isAggregate: true,
+          },
+          {
+            reporterCode: 699,
+            reporterDesc: null,
+            period: '2024',
+            partnerCode: 0,
+            partner2Code: 784,
+            customsCode: 'C00',
+            motCode: 0,
+            cmdCode: '380991',
+            primaryValue: 36619.549,
+            netWgt: 23770.208,
+            isAggregate: true,
+          },
+          {
+            reporterCode: 699,
+            reporterDesc: null,
+            period: '2024',
+            partnerCode: 0,
+            partner2Code: 0,
+            customsCode: 'C00',
+            motCode: 0,
+            cmdCode: '380991',
+            primaryValue: 70912656.874,
+            netWgt: 24159689.198,
+            isAggregate: true,
+          },
+        ],
+      }),
+    } as Response)
+    const { claims } = await runConnector({
+      screen: 'exportMarkets',
+      field: 'Import / Export Signals',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('comtradeapi.un.org/public/v1/preview/C/A/HS'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('cmdCode=380991'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('flowCode=M'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('period=2024'))
+    expect(claims[0].value).toContain('China: US$236.6M, 65.4K t (2024)')
+    expect(claims[0].value).toContain('India: US$70.9M, 24.2K t (2024)')
+    expect(claims[0].value).not.toContain('US$36.6K')
+    expect(claims[0].evidence_status).toBe('Trade Proxy')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].notes).toContain('official trade proxy')
+    expect(claims[0].notes).toContain('not product-specific consumption')
   })
 
   it('fetches and normalizes a World Bank API claim when fetch is available', async () => {
