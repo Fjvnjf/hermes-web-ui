@@ -10,6 +10,9 @@ describe('visual research mode prompt wrapper', () => {
 
     expect(prompt).toContain('Owner-approved research permission is active')
     expect(prompt).toContain('source/evidence matrices')
+    expect(prompt).toContain('country-by-country tables')
+    expect(prompt).toContain('supplier scorecards')
+    expect(prompt).toContain('competitor matrices')
     expect(prompt).toContain('Research CWAS market evidence')
   })
 

@@ -682,7 +682,9 @@ function closeTextPreview(): void {
   }
 
   table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
+    max-width: none;
     border-collapse: collapse;
     margin: 12px 0 14px;
     display: block;
@@ -697,6 +699,7 @@ function closeTextPreview(): void {
       text-align: left;
       font-size: 13px;
       vertical-align: top;
+      min-width: 112px;
     }
 
     th {
@@ -726,9 +729,10 @@ function closeTextPreview(): void {
       linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), rgba(var(--accent-primary-rgb), 0.035)),
       #060a12;
     overflow-x: auto;
+    max-width: 100%;
 
     svg {
-      min-width: min(680px, 100%);
+      min-width: min(760px, 100%);
       max-width: none;
       height: auto;
       display: block;
@@ -811,6 +815,25 @@ function closeTextPreview(): void {
   .text-preview-markdown {
     padding: 12px;
     max-width: 100vw;
+  }
+
+  .markdown-body {
+    table {
+      min-width: 620px;
+
+      th, td {
+        min-width: 104px;
+        padding: 7px 9px;
+      }
+    }
+
+    .mermaid-diagram {
+      padding: 12px;
+
+      svg {
+        min-width: min(620px, 100%);
+      }
+    }
   }
 }
 </style>

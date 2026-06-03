@@ -496,9 +496,10 @@ function isImage(type: string): boolean {
                 <path d="M18 7h-4" />
               </svg>
               <span>Visual research</span>
+              <small v-if="visualResearchMode">tables, charts, sources</small>
             </div>
           </template>
-          Ask Hermes to use trusted sources, evidence labels, tables, diagrams, and visual summaries when useful.
+          Ask Hermes to use trusted sources, evidence labels, country tables, supplier scorecards, competitor matrices, diagrams, and chart-ready summaries when useful.
         </NTooltip>
         <NSwitch
           v-model:value="visualResearchMode"
@@ -758,14 +759,17 @@ function isImage(type: string): boolean {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border: 1px solid rgba(var(--accent-info-rgb), 0.22);
   border-radius: 7px;
   background: rgba(var(--accent-info-rgb), 0.05);
 
   &.active {
     border-color: rgba(var(--accent-primary-rgb), 0.42);
-    background: rgba(var(--accent-primary-rgb), 0.08);
+    background:
+      linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.12), rgba(var(--accent-info-rgb), 0.08)),
+      #0b111d;
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-primary-rgb), 0.08);
   }
 
   .switch-label {
@@ -776,6 +780,20 @@ function isImage(type: string): boolean {
     font-size: 11px;
     font-weight: 800;
     white-space: nowrap;
+
+    small {
+      display: inline-flex;
+      align-items: center;
+      min-height: 16px;
+      padding-left: 6px;
+      margin-left: 1px;
+      border-left: 1px solid rgba(var(--accent-info-rgb), 0.24);
+      color: $accent-primary;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
   }
 }
 
@@ -1002,7 +1020,8 @@ function isImage(type: string): boolean {
   .visual-research-switch {
     padding: 3px 6px;
 
-    .switch-label span {
+    .switch-label span,
+    .switch-label small {
       display: none;
     }
   }
