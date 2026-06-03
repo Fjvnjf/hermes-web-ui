@@ -781,6 +781,58 @@ describe('dashboard autopilot output ingestion', () => {
     expect(execFileMock).not.toHaveBeenCalled()
   })
 
+  it('retries a due slot after the existing output was skipped as unparseable', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    const now = new Date()
+    now.setHours(20, 20, 0, 0)
+    const outputTime = new Date(now)
+    outputTime.setHours(19, 5, 0, 0)
+    const outputDir = join(hermesHome, 'cron', 'output', 'job-full-dashboard')
+    mkdirSync(outputDir, { recursive: true })
+    writeFileSync(join(outputDir, 'unparseable-due-output.md'), 'Plain prose without source-backed dashboard updates.')
+    utimesSync(join(outputDir, 'unparseable-due-output.md'), outputTime, outputTime)
+
+    const skipped = await ingestFullDashboardAutopilotOutputs('default')
+    expect(skipped).toMatchObject({ skippedRuns: 1, importedRuns: 0 })
+
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'run') {
+        writeRunOutput(hermesHome, 'job-full-dashboard', 'retry-structured-output.md', {
+          dashboard_updates: {
+            marketClaims: [{
+              label: 'Retry official market source',
+              value: 'Official source located after retry',
+              sourceTitle: 'Retry official source',
+              sourceUrl: 'https://example.gov/retry',
+              sourceTier: 'Tier 1 - Official / regulator / trade source',
+              confidence: 'high',
+              evidenceStatus: 'Official Data',
+              dataType: 'company_data',
+            }],
+          },
+        }, now)
+      }
+      cb(null, '', '')
+    })
+
+    const result = await runDueFullDashboardAutopilot('default', { now, graceMs: 0 })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      outputAlreadyPresent: false,
+      skippedRecentAttempt: false,
+      runStarted: true,
+      importedRuns: 1,
+      autoFilledCount: 1,
+    })
+    expect(execFileMock).toHaveBeenCalledTimes(1)
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({ label: 'Retry official market source' }),
+    ])
+    const dueRegistry = readFileSync(join(hermesHome, 'dashboard-intelligence', 'autopilot-due-runs.json'), 'utf-8')
+    expect(dueRegistry).toContain('"outputSeen": true')
+  })
+
   it('does not hammer Hermes when a due full dashboard run recently produced no output', async () => {
     writeFullDashboardJob(hermesHome, 'job-full-dashboard')
     const now = new Date()

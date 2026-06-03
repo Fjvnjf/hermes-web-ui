@@ -1668,14 +1668,19 @@ export async function runDueFullDashboardAutopilot(
   }
   if (!jobId) return result
 
+  const importRegistry = await readImportRegistry(profile)
+  const skippedRunKeys = new Set(importRegistry.skippedRunKeys)
   const outputs = await listOutputFiles(profile, jobId, 50)
-  if (outputs.some(output => outputSatisfiesDueSlot(output, dueSlot))) {
+  if (outputs.some(output =>
+    outputSatisfiesDueSlot(output, dueSlot) &&
+    !skippedRunKeys.has(`${output.jobId}/${output.fileName}`),
+  )) {
     result.outputAlreadyPresent = true
     return result
   }
 
-  const registry = await readDueRunRegistry(profile)
-  const previousAttempt = registry.slots[dueSlotKey]
+  const dueRegistry = await readDueRunRegistry(profile)
+  const previousAttempt = dueRegistry.slots[dueSlotKey]
   const previousAttemptAt = previousAttempt ? Date.parse(stringValue(previousAttempt.attemptedAt)) : 0
   if (previousAttemptAt && Number.isFinite(previousAttemptAt) && now.getTime() - previousAttemptAt < retryAfterMs) {
     result.skippedRecentAttempt = true
@@ -1699,14 +1704,19 @@ export async function runDueFullDashboardAutopilot(
   }
 
   const refreshedOutputs = await listOutputFiles(profile, jobId, 50)
-  registry.slots[dueSlotKey] = {
+  const refreshedImportRegistry = await readImportRegistry(profile)
+  const refreshedSkippedRunKeys = new Set(refreshedImportRegistry.skippedRunKeys)
+  dueRegistry.slots[dueSlotKey] = {
     jobId,
     dueSlotAt,
     attemptedAt: now.toISOString(),
-    outputSeen: refreshedOutputs.some(output => outputSatisfiesDueSlot(output, dueSlot)),
+    outputSeen: refreshedOutputs.some(output =>
+      outputSatisfiesDueSlot(output, dueSlot) &&
+      !refreshedSkippedRunKeys.has(`${output.jobId}/${output.fileName}`),
+    ),
     error: result.runError,
   }
-  await writeDueRunRegistry(profile, registry)
+  await writeDueRunRegistry(profile, dueRegistry)
 
   return result
 }
