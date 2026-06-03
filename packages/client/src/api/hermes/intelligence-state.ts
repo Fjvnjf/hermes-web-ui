@@ -18,6 +18,9 @@ export interface DashboardAutopilotImportStatus {
   latestOutputFile: string
   latestOutputAt: string
   latestOutputImported: boolean
+  latestOutputParseStatus: 'none' | 'imported' | 'ready' | 'unparseable' | 'unreadable'
+  latestOutputCandidateCount: number
+  latestOutputParseError: string
   latestImportedRunKey: string
   registryUpdatedAt: string
   latestDueSlotAt: string

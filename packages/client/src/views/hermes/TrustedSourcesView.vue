@@ -165,6 +165,7 @@ const importedIntelligenceStatus = computed(() => {
 const serverAutopilotTone = computed(() => {
   if (!serverAutopilotStatus.value?.scheduled) return 'setup'
   if (serverAutopilotStatus.value.lastError || serverAutopilotStatus.value.errors.length) return 'warning'
+  if (['unparseable', 'unreadable'].includes(serverAutopilotStatus.value.latestOutputParseStatus)) return 'warning'
   if (!serverAutopilotStatus.value.latestOutputImported && serverAutopilotStatus.value.outputCount > 0) return 'review'
   return 'active'
 })
@@ -417,6 +418,14 @@ onMounted(() => {
           <article>
             <span>Latest imported</span>
             <strong>{{ serverAutopilotStatus?.latestOutputImported ? 'Yes' : 'No / pending' }}</strong>
+          </article>
+          <article>
+            <span>Parse status</span>
+            <strong>{{ serverAutopilotStatus?.latestOutputParseStatus || 'none' }}</strong>
+          </article>
+          <article>
+            <span>Candidate items</span>
+            <strong>{{ serverAutopilotStatus?.latestOutputCandidateCount ?? 0 }}</strong>
           </article>
           <article>
             <span>Due slot</span>

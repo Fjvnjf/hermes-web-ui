@@ -361,6 +361,9 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Do not ask the user to manually search')
     expect(prompt).toContain('Country-wise consumption growth')
     expect(prompt).toContain('Put the appendix in one fenced ```json block')
+    expect(prompt).toContain('source-backed Markdown tables')
+    expect(prompt).toContain('source-backed delimited bullets')
+    expect(prompt).toContain('unstructured or unsourced output will be ignored')
     expect(prompt).toContain('Do not invent market size')
     expect(prompt).toContain('competitor market share as To Verify')
   })
@@ -710,6 +713,9 @@ describe('Trusted Source Autopilot', () => {
         latestOutputFile: '2026-06-03T07-00-00.md',
         latestOutputAt: '2026-06-03T07:05:00.000Z',
         latestOutputImported: true,
+        latestOutputParseStatus: 'imported',
+        latestOutputCandidateCount: 0,
+        latestOutputParseError: '',
         latestImportedRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
         registryUpdatedAt: '2026-06-03T07:06:00.000Z',
         latestDueSlotAt: '2026-06-03T07:00:00.000Z',
@@ -724,6 +730,7 @@ describe('Trusted Source Autopilot', () => {
     expect(status.outputCount).toBe(7)
     expect(status.importedRunCount).toBe(6)
     expect(status.latestOutputImported).toBe(true)
+    expect(status.latestOutputParseStatus).toBe('imported')
     expect(status.latestOutputFile).toBe('2026-06-03T07-00-00.md')
     expect(status.latestDueSlotSatisfied).toBe(true)
     expect(status.latestDueSlotAttemptedAt).toBe('2026-06-03T07:01:00.000Z')
@@ -1324,6 +1331,9 @@ describe('Trusted Source Autopilot', () => {
         latestOutputFile: '2026-06-03T07-00-00.md',
         latestOutputAt: '2026-06-03T07:05:00.000Z',
         latestOutputImported: false,
+        latestOutputParseStatus: 'ready',
+        latestOutputCandidateCount: 3,
+        latestOutputParseError: '',
         latestImportedRunKey: '',
         registryUpdatedAt: '',
         latestDueSlotAt: '2026-06-03T07:00:00.000Z',
@@ -1339,10 +1349,14 @@ describe('Trusted Source Autopilot', () => {
     const text = wrapper.text()
     expect(text).toContain('Server job status')
     expect(text).toContain('Hermes research job is connected')
-    expect(text).toContain('A readable Hermes research output exists and is ready to import')
+    expect(text).toContain('The latest Hermes output has 3 source-backed candidate items ready for the source-gated importer')
     expect(text).toContain('job-full-dashboard')
     expect(text).toContain('Readable outputs')
     expect(text).toContain('Latest imported')
+    expect(text).toContain('Parse status')
+    expect(text).toContain('ready')
+    expect(text).toContain('Candidate items')
+    expect(text).toContain('3')
     expect(text).toContain('Due slot')
     expect(text).toContain('Due satisfied')
     expect(text).toContain('Last server kick')

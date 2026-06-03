@@ -169,6 +169,11 @@ interface DashboardResearchUpdateItem {
 
 type DashboardResearchUpdatesPayload = Partial<Record<DashboardResearchUpdateGroup, DashboardResearchUpdateItem[]>>
 
+function countDashboardPayloadItems(payload: DashboardResearchUpdatesPayload | null | undefined): number {
+  if (!payload) return 0
+  return DASHBOARD_UPDATE_GROUPS.reduce((count, group) => count + (payload[group]?.length || 0), 0)
+}
+
 interface DashboardIntelligenceState {
   evidenceItems: Record<string, unknown>[]
   marketClaims: Record<string, unknown>[]
@@ -254,6 +259,9 @@ export interface DashboardAutopilotImportStatus {
   latestOutputFile: string
   latestOutputAt: string
   latestOutputImported: boolean
+  latestOutputParseStatus: 'none' | 'imported' | 'ready' | 'unparseable' | 'unreadable'
+  latestOutputCandidateCount: number
+  latestOutputParseError: string
   latestImportedRunKey: string
   registryUpdatedAt: string
   latestDueSlotAt: string
@@ -346,6 +354,9 @@ function fullDashboardAutopilotPrompt(): string {
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep proxy values To Verify.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
     '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- If the JSON appendix fails, still include source-backed Markdown tables with Field/Value/Source Title/Source URL/Source Tier/Confidence/Evidence Status/Review Required columns.',
+    '- If tables are not possible, use source-backed delimited bullets such as: Field: Country-wise consumption growth - China | Value: Trade proxy found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes.',
+    '- Do not output unsupported plain numbers without source metadata; unstructured or unsourced output will be ignored by the dashboard importer.',
     '',
     'Safety rules:',
     '- Do not invent market size, growth rate, consumption, pricing, supplier score, market share, IRR, NPV, payback, formula, CAS list, or regulatory status.',
@@ -1559,6 +1570,22 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
   outputFiles.sort((a, b) => b.fileName.localeCompare(a.fileName) || b.mtimeMs - a.mtimeMs)
   const latestOutput = outputFiles[0] || null
   const latestOutputRunKey = latestOutput ? `${latestOutput.jobId}/${latestOutput.fileName}` : ''
+  const latestOutputImported = latestOutputRunKey ? importedRunKeys.has(latestOutputRunKey) : false
+  let latestOutputParseStatus: DashboardAutopilotImportStatus['latestOutputParseStatus'] = latestOutput ? 'unparseable' : 'none'
+  let latestOutputCandidateCount = 0
+  let latestOutputParseError = ''
+  if (latestOutputImported) {
+    latestOutputParseStatus = 'imported'
+  } else if (latestOutput) {
+    try {
+      const latestContent = await readFile(latestOutput.path, 'utf-8')
+      latestOutputCandidateCount = countDashboardPayloadItems(extractDashboardResearchUpdates(latestContent))
+      latestOutputParseStatus = latestOutputCandidateCount > 0 ? 'ready' : 'unparseable'
+    } catch (err) {
+      latestOutputParseStatus = 'unreadable'
+      latestOutputParseError = err instanceof Error ? err.message : 'Could not read latest output'
+    }
+  }
   const pendingOutputCount = outputFiles.filter(output => !importedRunKeys.has(`${output.jobId}/${output.fileName}`)).length
   const primaryJobId = jobs[0] ? getJobId(jobs[0]) : ''
   const dueSlot = primaryJobId ? latestReadyFullDashboardSlot(new Date(), DUE_RUN_GRACE_MS) : null
@@ -1578,7 +1605,10 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
     latestOutputRunKey,
     latestOutputFile: latestOutput?.fileName || '',
     latestOutputAt: latestOutput ? new Date(latestOutput.mtimeMs || Date.now()).toISOString() : '',
-    latestOutputImported: latestOutputRunKey ? importedRunKeys.has(latestOutputRunKey) : false,
+    latestOutputImported,
+    latestOutputParseStatus,
+    latestOutputCandidateCount,
+    latestOutputParseError,
     latestImportedRunKey: registry.importedRunKeys[registry.importedRunKeys.length - 1] || '',
     registryUpdatedAt: registry.updatedAt || '',
     latestDueSlotAt: dueSlotAt,

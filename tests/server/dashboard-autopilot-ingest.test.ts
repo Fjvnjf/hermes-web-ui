@@ -20,6 +20,7 @@ import {
   ensureFullDashboardAutopilotScheduled,
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
+  readFullDashboardAutopilotImportStatus,
   runDueFullDashboardAutopilot,
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
@@ -594,6 +595,34 @@ describe('dashboard autopilot output ingestion', () => {
     expect(registry).not.toContain('job-full-dashboard/2026-06-02T10-00-00.000000+00-00.md')
   })
 
+  it('reports whether the latest output is ready to import or unparseable without exposing content', async () => {
+    writeFullDashboardJob(hermesHome)
+    const outputDir = join(hermesHome, 'cron', 'output', 'job-full-dashboard')
+    mkdirSync(outputDir, { recursive: true })
+    writeFileSync(join(outputDir, '2026-06-02T11-00-00.000000+00-00.md'), 'Plain prose without source-backed dashboard updates.')
+
+    const unparseable = await readFullDashboardAutopilotImportStatus('default')
+    expect(unparseable).toMatchObject({
+      latestOutputParseStatus: 'unparseable',
+      latestOutputCandidateCount: 0,
+      latestOutputParseError: '',
+    })
+    expect(JSON.stringify(unparseable)).not.toContain('Plain prose')
+
+    writeFileSync(join(outputDir, '2026-06-02T12-00-00.000000+00-00.md'), [
+      '## Market Intelligence',
+      '- Field: Country-wise consumption growth - China | Value: Trade proxy signal found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes',
+    ].join('\n'))
+
+    const ready = await readFullDashboardAutopilotImportStatus('default')
+    expect(ready).toMatchObject({
+      latestOutputParseStatus: 'ready',
+      latestOutputCandidateCount: 1,
+      latestOutputParseError: '',
+    })
+    expect(JSON.stringify(ready)).not.toContain('Trade proxy signal found')
+  })
+
   it('creates the twice-daily full dashboard schedule when no job exists', async () => {
     execFileMock.mockImplementation((_bin, args: string[], opts, cb) => {
       expect(opts.env.HERMES_HOME).toBe(hermesHome)
@@ -642,6 +671,9 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('Investor Readiness')
     expect(prompt).toContain('Presentation Builder')
     expect(prompt).toContain('dashboard_updates')
+    expect(prompt).toContain('source-backed Markdown tables')
+    expect(prompt).toContain('source-backed delimited bullets')
+    expect(prompt).toContain('unstructured or unsourced output will be ignored')
     expect(prompt).toContain('Do not invent market size')
   })
 

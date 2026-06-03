@@ -116,6 +116,9 @@ export interface FullDashboardServerStatus {
   latestOutputFile: string
   importedRunCount: number
   latestOutputImported: boolean
+  latestOutputParseStatus: 'none' | 'imported' | 'ready' | 'unparseable' | 'unreadable'
+  latestOutputCandidateCount: number
+  latestOutputParseError: string
   latestDueSlotAt: string
   latestDueSlotSatisfied: boolean
   latestDueSlotAttemptedAt: string
@@ -911,6 +914,9 @@ function fullDashboardAutopilotPrompt(): string {
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep the value To Verify when the source is only a proxy.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
     '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- If the JSON appendix fails, still include source-backed Markdown tables with Field/Value/Source Title/Source URL/Source Tier/Confidence/Evidence Status/Review Required columns.',
+    '- If tables are not possible, use source-backed delimited bullets such as: Field: Country-wise consumption growth - China | Value: Trade proxy found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes.',
+    '- Do not output unsupported plain numbers without source metadata; unstructured or unsourced output will be ignored by the dashboard importer.',
     '',
     'Safety rules:',
     '- Do not invent market size, growth rate, consumption, pricing, supplier score, market share, IRR, NPV, payback, formula, CAS list, or regulatory status.',
@@ -1701,6 +1707,9 @@ function emptyFullDashboardServerStatus(message = 'Full dashboard autopilot sche
     latestOutputFile: '',
     importedRunCount: state.value.importedRunKeys.length,
     latestOutputImported: false,
+    latestOutputParseStatus: 'none',
+    latestOutputCandidateCount: 0,
+    latestOutputParseError: '',
     latestDueSlotAt: '',
     latestDueSlotSatisfied: false,
     latestDueSlotAttemptedAt: '',
@@ -1728,6 +1737,9 @@ function fullDashboardStatusMessage(status: FullDashboardServerStatus): string {
   if (!status.enabled) return 'Full Dashboard Autopilot exists but is disabled. Enable or resume it before relying on automatic updates.'
   if (status.lastError) return `Full Dashboard Autopilot is scheduled but the last run reported an error: ${status.lastError}`
   if (status.latestDueSlotRunError) return `The server attempted the latest due autopilot slot, but Hermes reported: ${status.latestDueSlotRunError}`
+  if (status.latestOutputParseStatus === 'unreadable') return `The latest Hermes output exists but could not be read: ${status.latestOutputParseError || 'unknown read error'}`
+  if (status.latestOutputParseStatus === 'unparseable') return 'The latest Hermes output exists, but it did not contain source-backed JSON, Markdown tables, or delimited findings that the dashboard can safely import.'
+  if (status.latestOutputParseStatus === 'ready') return `The latest Hermes output has ${status.latestOutputCandidateCount} source-backed candidate item${status.latestOutputCandidateCount === 1 ? '' : 's'} ready for the source-gated importer.`
   if (status.latestDueSlotAt && !status.latestDueSlotSatisfied && status.latestDueSlotAttemptedAt) return 'The server has kicked the latest due autopilot slot and is waiting for a readable Hermes output artifact.'
   if (status.latestDueSlotAt && !status.latestDueSlotSatisfied) return 'A twice-daily autopilot slot is due; the server will kick the Hermes research job automatically after the safety grace period.'
   if (!status.outputCount) return 'Full Dashboard Autopilot is scheduled. Waiting for the first readable research output.'
@@ -1778,6 +1790,9 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
       latestOutputImported: latestRunKey
         ? Boolean(serverImport?.latestOutputImported ?? state.value.importedRunKeys.includes(latestRunKey))
         : false,
+      latestOutputParseStatus: serverImport?.latestOutputParseStatus || 'none',
+      latestOutputCandidateCount: serverImport?.latestOutputCandidateCount || 0,
+      latestOutputParseError: serverImport?.latestOutputParseError || '',
       latestDueSlotAt: serverImport?.latestDueSlotAt || '',
       latestDueSlotSatisfied: Boolean(serverImport?.latestDueSlotSatisfied),
       latestDueSlotAttemptedAt: serverImport?.latestDueSlotAttemptedAt || '',
