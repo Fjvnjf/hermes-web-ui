@@ -167,6 +167,7 @@ const ownerResearchItems: NavItem[] = [
   { label: 'History', routeName: 'hermes.history', symbol: 'HS', activeNames: ['hermes.historySession'] },
   { label: 'Market Intelligence', routeName: 'hermes.marketIntelligence', symbol: 'MK' },
   { label: 'Raw Materials', routeName: 'hermes.rawMaterialSourcing', symbol: 'RM' },
+  { label: 'Regulatory', routeName: 'hermes.regulatory', symbol: 'RG' },
   { label: 'Export Markets', routeName: 'hermes.exportMarketOpportunity', symbol: 'EX' },
   { label: 'Competitors', routeName: 'hermes.competitorIntelligence', symbol: 'CP' },
   { label: 'Research Review', routeName: 'hermes.researchResultReview', symbol: 'RV' },
@@ -222,6 +223,7 @@ const researchAssistantItems: NavItem[] = [
   { label: 'Research Library', routeName: 'hermes.research', symbol: 'RL' },
   { label: 'Market', routeName: 'hermes.marketIntelligence', symbol: 'MK' },
   { label: 'Competitors', routeName: 'hermes.competitorIntelligence', symbol: 'CP' },
+  { label: 'Regulatory', routeName: 'hermes.regulatory', symbol: 'RG' },
   { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
   { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },
 ]
@@ -238,6 +240,7 @@ const financialAnalystItems: NavItem[] = [
 const regulatoryConsultantItems: NavItem[] = [
   { label: 'Home', routeName: 'hermes.dashboard', symbol: 'HM' },
   { label: 'My Tasks', routeName: 'hermes.kanban', symbol: 'TK' },
+  { label: 'Regulatory', routeName: 'hermes.regulatory', symbol: 'RG' },
   { label: 'Regulatory Review', routeName: 'hermes.researchResultReview', symbol: 'RV' },
   { label: 'Documents', routeName: 'hermes.files', symbol: 'DC' },
   { label: 'Reports / Outputs', routeName: 'hermes.reportsHub', symbol: 'RP' },

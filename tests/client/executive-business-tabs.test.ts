@@ -7,6 +7,7 @@ import MarketIntelligenceView from '@/views/hermes/MarketIntelligenceView.vue'
 import CompetitorIntelligenceView from '@/views/hermes/CompetitorIntelligenceView.vue'
 import RawMaterialSourcingView from '@/views/hermes/RawMaterialSourcingView.vue'
 import ExportMarketOpportunityView from '@/views/hermes/ExportMarketOpportunityView.vue'
+import RegulatoryIntelligenceView from '@/views/hermes/RegulatoryIntelligenceView.vue'
 import TrustedSourcesView from '@/views/hermes/TrustedSourcesView.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName } from '@/utils/accessControl'
@@ -430,10 +431,57 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('not proven actual consumption')
   })
 
+  it('surfaces autopilot regulatory findings without marking DMS or permits verified', () => {
+    useFeasibilityIntelligence().addDataRoomSource({
+      checklistLabel: 'DMS regulatory status in China',
+      area: 'regulatory',
+      dashboardGroup: 'regulatoryFindings',
+      proposedValue: 'Dimethyl sulfate handling and China use permissions require official review',
+      sourceTier: 'tier1-official',
+      dataType: 'regulatory_data',
+      confidence: 'high',
+      evidenceStatus: 'To Verify',
+      source: {
+        title: 'China Ministry of Emergency Management chemical safety notice',
+        url: 'https://www.mem.gov.cn/',
+      },
+      notes: [
+        'Autopilot candidate from regulatoryFindings.',
+        'Proposed value: Dimethyl sulfate handling and China use permissions require official review',
+        'Source tier: tier1-official',
+        'Review reason: sensitive price/cost/financial/regulatory data',
+        'This record was auto-staged to make the dashboard useful without manual copy-paste. It is not investor-approved.',
+      ].join('\n'),
+    })
+
+    const wrapper = mount(RegulatoryIntelligenceView)
+    const text = wrapper.text()
+
+    expect(text).toContain('Regulatory Intelligence')
+    expect(text).toContain('Autopilot Regulatory Candidates')
+    expect(text).toContain('DMS regulatory status in China')
+    expect(text).toContain('Hermes Autopilot has filled 1 regulatory candidate records')
+    expect(text).toContain('Dimethyl sulfate handling and China use permissions require official review')
+    expect(text).toContain('China Ministry of Emergency Management chemical safety notice')
+    expect(text).toContain('tier1-official / high')
+    expect(text).toContain('DMS / SDS / factory permission status')
+    expect(text).toContain('DMS meaning confirmation')
+    expect(text).toContain('China regulatory status')
+    expect(text).toContain('SDS / TDS / CAS evidence')
+    expect(text).toContain('factory permissions')
+    expect(text).toContain('not treated as verified legal advice or investor-approved facts')
+    expect(text).toContain('To Verify')
+    expect(text).not.toContain('Verified')
+    expect(text).not.toContain('Investor Approved')
+  })
+
   it('keeps employee and investor route access conservative', () => {
     expect(canAccessRouteName('hermes.executiveOverview', 'employee')).toBe(true)
     expect(canAccessRouteName('hermes.investmentAnalysis', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.investmentAnalysis', 'financial_analyst')).toBe(true)
+    expect(canAccessRouteName('hermes.regulatory', 'regulatory_consultant')).toBe(true)
+    expect(canAccessRouteName('hermes.regulatory', 'research_assistant')).toBe(true)
+    expect(canAccessRouteName('hermes.regulatory', 'employee')).toBe(false)
     expect(canAccessRouteName('hermes.executiveOverview', 'investor_viewer')).toBe(false)
   })
 })

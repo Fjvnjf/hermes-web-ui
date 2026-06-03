@@ -95,6 +95,12 @@ const router = createRouter({
       component: () => import('@/views/hermes/RawMaterialSourcingView.vue'),
     },
     {
+      path: '/hermes/regulatory',
+      name: 'hermes.regulatory',
+      meta: { sensitivity: 'confidential' },
+      component: () => import('@/views/hermes/RegulatoryIntelligenceView.vue'),
+    },
+    {
       path: '/hermes/export-market-opportunity',
       name: 'hermes.exportMarketOpportunity',
       meta: { sensitivity: 'employee-safe' },
