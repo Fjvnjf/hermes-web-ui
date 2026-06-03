@@ -528,6 +528,119 @@ describe('dashboard autopilot output ingestion', () => {
     expect(rawState).not.toContain('"marketShare":"12%"')
   })
 
+  it('infers trusted official source tier from allowlisted domains without manual tier labels', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T09-00-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          field: 'Official textile sector reference',
+          label: 'Official textile sector reference',
+          value: 'Official statistical source identified',
+          sourceTitle: 'National Bureau of Statistics reference',
+          sourceUrl: 'https://stats.gov.cn/english/statisticaldata/',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'company_data',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 1,
+      stagedReviewCount: 0,
+    })
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({
+        label: 'Official textile sector reference',
+        value: 'Official statistical source identified',
+        evidenceStatus: 'Official Data',
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual([])
+  })
+
+  it('downgrades claimed official tiers when the URL is a weak public listing', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T10-00-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          field: 'Official textile sector reference',
+          label: 'Official textile sector reference',
+          value: 'Supplier listing found',
+          sourceTitle: 'Marketplace supplier listing',
+          sourceUrl: 'https://www.alibaba.com/product-detail/esterquat-listing',
+          sourceTier: 'Tier 1 - Official / regulator / trade source',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'company_data',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 1,
+    })
+    expect(envelope?.state.marketClaims).toEqual([])
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        status: 'Pending Review',
+        riskNote: expect.stringContaining('source URL/domain policy downgraded the claimed source tier'),
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          sourceTier: 'tier5-public-listing',
+        }),
+      }),
+    ])
+  })
+
+  it('treats unknown HTTP domains as candidate sources even when Hermes claims Tier 1', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T10-30-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          field: 'Official textile sector reference',
+          label: 'Official textile sector reference',
+          value: 'Unregistered source found',
+          sourceTitle: 'Unknown industry blog',
+          sourceUrl: 'https://industry-blog.example/market-note',
+          sourceTier: 'Tier 1 - Official / regulator / trade source',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'company_data',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 1,
+    })
+    expect(envelope?.state.marketClaims).toEqual([])
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        status: 'Pending Review',
+        riskNote: expect.stringContaining('candidate source is not trusted yet'),
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          sourceTier: 'candidate-source',
+        }),
+      }),
+    ])
+  })
+
   it('auto-stages trusted-source market and competitor candidates into dashboards without approving them', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-30-00.000000+00-00.md', {
@@ -710,7 +823,7 @@ describe('dashboard autopilot output ingestion', () => {
           label: 'Official low-risk company fact',
           value: 'Official catalog page found',
           sourceTitle: 'Official company catalog',
-          sourceUrl: 'https://example.com/catalog',
+          sourceUrl: 'https://evonik.com/catalog',
           sourceTier: 'Tier 2 - Official company / product source',
           confidence: 'high',
           evidenceStatus: 'Source-backed',

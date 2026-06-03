@@ -127,6 +127,104 @@ type SourceTier =
 type Confidence = 'low' | 'medium' | 'high'
 type ResearchReviewStatus = 'Pending Review' | 'Approved' | 'Rejected' | 'To Verify'
 
+const OFFICIAL_SOURCE_DOMAINS = [
+  'comtradeplus.un.org',
+  'comtrade.un.org',
+  'uncomtrade.org',
+  'trademap.org',
+  'intracen.org',
+  'worldbank.org',
+  'wits.worldbank.org',
+  'wto.org',
+  'imf.org',
+  'oecd.org',
+  'stat.unido.org',
+  'unctadstat.unctad.org',
+  'ilostat.ilo.org',
+  'fao.org',
+  'europa.eu',
+  'census.gov',
+  'usitc.gov',
+  'fred.stlouisfed.org',
+  'bls.gov',
+  'stats.gov.cn',
+  'customs.gov.cn',
+  'mofcom.gov.cn',
+  'mee.gov.cn',
+  'english.www.gov.cn',
+  'samr.gov.cn',
+  'mem.gov.cn',
+  'miit.gov.cn',
+  'pbc.gov.cn',
+  'safe.gov.cn',
+  'bb.org.bd',
+  'epb.gov.bd',
+  'sec.gov',
+  'hkexnews.hk',
+  'echa.europa.eu',
+  'pubchem.ncbi.nlm.nih.gov',
+  'comptox.epa.gov',
+  'epa.gov',
+  'nite.go.jp',
+]
+
+const COMPANY_OFFICIAL_SOURCE_DOMAINS = [
+  'evonik.com',
+  'stepan.com',
+  'kao.com',
+  'wacker.com',
+  'rudolf.de',
+  'cht.com',
+  'archroma.com',
+  'zschimmer-schwarz.com',
+  'pulcra-chemicals.com',
+  'transfarchem.com',
+  'syensqo.com',
+  'basf.com',
+  'dow.com',
+  'shinetsu.co.jp',
+  'momentive.com',
+  'wilmar-international.com',
+  'klkoleo.com',
+]
+
+const MARKET_REFERENCE_SOURCE_DOMAINS = [
+  'icis.com',
+  'argusmedia.com',
+  'spglobal.com',
+  'chemanalyst.com',
+  'chemorbis.com',
+  'polymerupdate.com',
+  'asianmetal.com',
+  'itmf.org',
+  'textileexchange.org',
+  'iafnet.eu',
+  'fibre2fashion.com',
+  'just-style.com',
+  'grandviewresearch.com',
+  'marketsandmarkets.com',
+  'researchandmarkets.com',
+  'mordorintelligence.com',
+  'statista.com',
+  'euromonitor.com',
+  'mckinsey.com',
+  'deloitte.com',
+]
+
+const WEAK_PUBLIC_LISTING_DOMAINS = [
+  'alibaba.com',
+  'made-in-china.com',
+  '1688.com',
+  'lookchem.com',
+  'guidechem.com',
+  'chembk.com',
+  'specialchem.com',
+  'globalsources.com',
+  'indiamart.com',
+  'dhgate.com',
+  'go4worldbusiness.com',
+]
+
 interface CronJobRecord {
   id?: unknown
   job_id?: unknown
@@ -1252,56 +1350,48 @@ function normalizeSourceTier(value: unknown): SourceTier {
   return 'candidate-source'
 }
 
-function normalizeSourceTierForItem(item: DashboardResearchUpdateItem): SourceTier {
-  const explicit = normalizeSourceTier(item.sourceTier)
-  if (explicit !== 'candidate-source') return explicit
+function sourceDomain(value: unknown): string {
+  const text = stringValue(value)
+  if (!text || !/^https?:\/\//i.test(text)) return ''
+  try {
+    return new URL(text).hostname.toLowerCase().replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
 
+function domainMatches(domain: string, allowed: string[]): boolean {
+  return allowed.some(item => domain === item || domain.endsWith(`.${item}`))
+}
+
+function isGovernmentDomain(domain: string): boolean {
+  return /(^|\.)gov(?:\.[a-z]{2,})?$/.test(domain) || domain.includes('.gov.')
+}
+
+function inferSourceTierFromDomain(item: DashboardResearchUpdateItem): SourceTier {
+  const url = stringValue(item.sourceUrl)
+  if (/^file:\/\//i.test(url)) return 'tier3-supplier-evidence'
+
+  const domain = sourceDomain(url)
+  if (!domain) return 'candidate-source'
+  if (domainMatches(domain, WEAK_PUBLIC_LISTING_DOMAINS)) return 'tier5-public-listing'
+  if (isGovernmentDomain(domain) || domainMatches(domain, OFFICIAL_SOURCE_DOMAINS)) return 'tier1-official'
+  if (domainMatches(domain, COMPANY_OFFICIAL_SOURCE_DOMAINS)) return 'tier2-company-official'
+  if (domainMatches(domain, MARKET_REFERENCE_SOURCE_DOMAINS)) return 'tier4-market-reference'
+  return 'candidate-source'
+}
+
+function inferSourceTierFromText(item: DashboardResearchUpdateItem): SourceTier {
   const text = [
     item.sourceTitle,
     item.sourceName,
-    item.sourceUrl,
+    item.sourceTier,
   ].map(stringValue).join(' ').toLowerCase()
 
   if (
-    text.includes('wits.worldbank.org') ||
-    text.includes('world bank') ||
-    text.includes('un comtrade') ||
-    text.includes('comtrade') ||
-    text.includes('stats.gov.cn') ||
-    text.includes('.gov') ||
-    text.includes('echa.europa.eu') ||
-    text.includes('pubchem.ncbi.nlm.nih.gov') ||
-    text.includes('oecd.org') ||
-    text.includes('wto.org') ||
-    text.includes('trademap.org')
-  ) {
-    return 'tier1-official'
-  }
-
-  if (
-    text.includes('basf') ||
-    text.includes('dow.com') ||
-    text.includes('wacker.com') ||
-    text.includes('stepan.com') ||
-    text.includes('kao') ||
-    text.includes('evonik') ||
-    text.includes('cht.com') ||
-    text.includes('archroma') ||
-    text.includes('transfar') ||
-    text.includes('zschimmer') ||
-    text.includes('pulcra') ||
-    text.includes('wilmar') ||
-    text.includes('klkoleo') ||
-    text.includes('klk oleo')
-  ) {
-    return 'tier2-company-official'
-  }
-
-  if (
-    text.includes('.xlsx') ||
-    text.includes('.pdf') ||
-    text.includes('workbook') ||
+    text.includes('supplier evidence') ||
     text.includes('supplier quote') ||
+    text.includes('uploaded') ||
     text.includes('sds') ||
     text.includes('tds') ||
     text.includes('coa') ||
@@ -1310,6 +1400,37 @@ function normalizeSourceTierForItem(item: DashboardResearchUpdateItem): SourceTi
     return 'tier3-supplier-evidence'
   }
 
+  if (
+    text.includes('wits / world bank') ||
+    text.includes('world bank') ||
+    text.includes('un comtrade') ||
+    text.includes('comtrade') ||
+    text.includes('china customs') ||
+    text.includes('national bureau of statistics') ||
+    text.includes('echa') ||
+    text.includes('pubchem') ||
+    text.includes('oecd') ||
+    text.includes('wto')
+  ) {
+    return 'tier1-official'
+  }
+
+  return 'candidate-source'
+}
+
+function normalizeSourceTierForItem(item: DashboardResearchUpdateItem): SourceTier {
+  const explicit = normalizeSourceTier(item.sourceTier)
+  const domainTier = inferSourceTierFromDomain(item)
+  if (domainTier !== 'candidate-source') return domainTier
+
+  if (sourceDomain(item.sourceUrl)) {
+    if (explicit === 'tier5-public-listing') return explicit
+    if (explicit === 'tier3-supplier-evidence') return explicit
+    return 'candidate-source'
+  }
+
+  const textTier = inferSourceTierFromText(item)
+  if (textTier !== 'candidate-source') return textTier
   return explicit
 }
 
@@ -1320,6 +1441,14 @@ export function dashboardSourceTierRank(tier: SourceTier): number {
   if (tier === 'tier4-market-reference') return 4
   if (tier === 'tier5-public-listing') return 5
   return 6
+}
+
+function sourceTierDowngradeReason(item: DashboardResearchUpdateItem, effectiveTier: SourceTier): string {
+  const explicit = normalizeSourceTier(item.sourceTier)
+  if (explicit === 'candidate-source') return ''
+  if (dashboardSourceTierRank(effectiveTier) <= dashboardSourceTierRank(explicit)) return ''
+  if (sourceDomain(item.sourceUrl)) return 'source URL/domain policy downgraded the claimed source tier'
+  return 'source policy downgraded the claimed source tier'
 }
 
 function coerceConfidence(value: unknown): Confidence {
@@ -1395,7 +1524,9 @@ function riskReasons(input: {
 }): string[] {
   const reasons: string[] = []
   const fieldAndValue = `${input.field} ${input.value}`
+  const downgradeReason = sourceTierDowngradeReason(input.item, input.tier)
   if (!sourceIsUsable(input.source)) reasons.push('source title plus URL/date is missing')
+  if (downgradeReason) reasons.push(downgradeReason)
   if (input.item.reviewRequired === true) reasons.push('Hermes marked this finding review-required')
   if (CRITICAL_GROUPS.has(input.group)) reasons.push('dashboard area is critical or sensitive')
   if (input.item.sensitive === true || SENSITIVE_DATA_TYPES.has(input.dataType)) reasons.push('sensitive price/cost/financial/regulatory data')
