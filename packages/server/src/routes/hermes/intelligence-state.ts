@@ -48,6 +48,26 @@ intelligenceStateRoutes.get('/api/hermes/intelligence-state', requirePermission(
   }
 })
 
+intelligenceStateRoutes.get('/api/hermes/intelligence-state/autopilot-import-status', requirePermission('view:jobs'), async (ctx) => {
+  try {
+    const autopilotImport = await readFullDashboardAutopilotImportStatus(requestedProfile(ctx))
+    auditAccessEvent({
+      ctx,
+      action: `${ctx.method} ${ctx.path}`,
+      resource: 'dashboard-autopilot-import-status',
+      permission: 'view:jobs',
+      result: 'allowed',
+    })
+    ctx.body = {
+      ok: true,
+      profile: autopilotImport.profile,
+      autopilotImport,
+    }
+  } catch (err) {
+    handleStateError(ctx, err)
+  }
+})
+
 intelligenceStateRoutes.put('/api/hermes/intelligence-state', requirePermission('view:product-development'), async (ctx) => {
   try {
     const body = (ctx.request.body && typeof ctx.request.body === 'object') ? ctx.request.body as Record<string, unknown> : {}

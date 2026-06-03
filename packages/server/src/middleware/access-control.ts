@@ -141,6 +141,7 @@ export function permissionForRequest(ctx: Pick<Context, 'path' | 'method'>): Per
   if (path.startsWith('/api/hermes/access-denied')) return 'view:account'
   if (path.startsWith('/api/hermes/investor/portal')) return 'view:investor-approved'
   if (path.startsWith('/api/hermes/backup')) return 'export:backup'
+  if (path === '/api/hermes/intelligence-state/autopilot-import-status') return 'view:jobs'
   if (path.startsWith('/api/hermes/intelligence-state')) return 'view:product-development'
   if (path.startsWith('/api/hermes/memory')) return writing ? 'write:memory' : 'view:memory'
   if (path.startsWith('/api/hermes/usage')) return 'view:logs'

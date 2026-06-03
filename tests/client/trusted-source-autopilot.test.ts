@@ -38,6 +38,7 @@ const listJobsMock = vi.hoisted(() => vi.fn())
 const fetchAvailableModelsMock = vi.hoisted(() => vi.fn())
 const updateDefaultModelMock = vi.hoisted(() => vi.fn())
 const fetchDashboardIntelligenceStateMock = vi.hoisted(() => vi.fn())
+const fetchDashboardAutopilotImportStatusMock = vi.hoisted(() => vi.fn())
 const saveDashboardIntelligenceStateMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/client', () => ({
@@ -57,6 +58,7 @@ vi.mock('@/api/hermes/system', () => ({
 
 vi.mock('@/api/hermes/intelligence-state', () => ({
   fetchDashboardIntelligenceState: fetchDashboardIntelligenceStateMock,
+  fetchDashboardAutopilotImportStatus: fetchDashboardAutopilotImportStatusMock,
   saveDashboardIntelligenceState: saveDashboardIntelligenceStateMock,
 }))
 
@@ -119,6 +121,7 @@ describe('Trusted Source Autopilot', () => {
       savedAt: null,
       state: null,
     })
+    fetchDashboardAutopilotImportStatusMock.mockRejectedValue(new Error('server import status not configured'))
     saveDashboardIntelligenceStateMock.mockResolvedValue({
       ok: true,
       profile: 'default',
@@ -698,11 +701,9 @@ describe('Trusted Source Autopilot', () => {
       size: 2048,
       hasOutput: true,
     }])
-    fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
+    fetchDashboardAutopilotImportStatusMock.mockResolvedValueOnce({
       ok: true,
       profile: 'default',
-      savedAt: '2026-06-03T07:05:00.000Z',
-      state: null,
       autopilotImport: {
         profile: 'default',
         jobCount: 1,
@@ -727,6 +728,7 @@ describe('Trusted Source Autopilot', () => {
 
     const status = await useTrustedSourceAutopilot().refreshFullDashboardServerStatus()
 
+    expect(fetchDashboardAutopilotImportStatusMock).toHaveBeenCalled()
     expect(status.outputCount).toBe(7)
     expect(status.importedRunCount).toBe(6)
     expect(status.latestOutputImported).toBe(true)
@@ -1316,11 +1318,9 @@ describe('Trusted Source Autopilot', () => {
       size: 2048,
       hasOutput: true,
     }])
-    fetchDashboardIntelligenceStateMock.mockResolvedValue({
+    fetchDashboardAutopilotImportStatusMock.mockResolvedValue({
       ok: true,
       profile: 'default',
-      savedAt: '2026-06-03T07:08:00.000Z',
-      state: null,
       autopilotImport: {
         profile: 'default',
         jobCount: 1,

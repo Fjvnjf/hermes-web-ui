@@ -32,6 +32,7 @@ describe('RBAC request permission gate', () => {
     expect(permissionForRequest(ctx('/api/hermes/config', 'super_admin'))).toBe('view:settings')
     expect(permissionForRequest(ctx('/api/hermes/backup/export', 'super_admin'))).toBe('export:backup')
     expect(permissionForRequest(ctx('/api/hermes/intelligence-state', 'super_admin'))).toBe('view:product-development')
+    expect(permissionForRequest(ctx('/api/hermes/intelligence-state/autopilot-import-status', 'super_admin'))).toBe('view:jobs')
     expect(permissionForRequest(ctx('/v1/chat/completions', 'super_admin'))).toBe('use:proxy')
   })
 
@@ -115,6 +116,21 @@ describe('RBAC request permission gate', () => {
     const next = vi.fn(async () => {})
     await requireRequestPermission(owner, next)
     expect(next).toHaveBeenCalledOnce()
+  })
+
+  it('allows jobs-scoped users to read autopilot import health without granting full dashboard intelligence', async () => {
+    for (const role of ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'developer_admin', 'super_admin']) {
+      const request = ctx('/api/hermes/intelligence-state/autopilot-import-status', role)
+      const next = vi.fn(async () => {})
+      await requireRequestPermission(request, next)
+      expect(next).toHaveBeenCalledOnce()
+    }
+
+    const investor = ctx('/api/hermes/intelligence-state/autopilot-import-status', 'investor_viewer')
+    const denied = vi.fn(async () => {})
+    await requireRequestPermission(investor, denied)
+    expect(investor.status).toBe(403)
+    expect(denied).not.toHaveBeenCalled()
   })
 
   it('lets research assistants reach scoped jobs without granting raw system tools', async () => {

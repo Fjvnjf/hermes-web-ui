@@ -20,10 +20,10 @@ async function runRouteLayer(layer: any, ctx: any) {
   await dispatch(0)
 }
 
-function createCtx(method: string, body: Record<string, unknown> | null = null) {
+function createCtx(method: string, body: Record<string, unknown> | null = null, path = '/api/hermes/intelligence-state') {
   return {
     method,
-    path: '/api/hermes/intelligence-state',
+    path,
     request: { body },
     state: {
       user: { id: 1, username: 'owner', role: 'super_admin' },
@@ -167,6 +167,52 @@ describe('dashboard intelligence state routes', () => {
       },
     })
     expect(JSON.stringify(getCtx.body)).not.toContain('# output')
+  })
+
+  it('returns autopilot import status through the lightweight jobs-scoped endpoint', async () => {
+    const cronDir = join(hermesHome, 'cron')
+    const outputDir = join(cronDir, 'output', 'job-full-dashboard')
+    mkdirSync(outputDir, { recursive: true })
+    writeFileSync(join(cronDir, 'jobs.json'), JSON.stringify({
+      jobs: [{
+        id: 'job-full-dashboard',
+        job_id: 'job-full-dashboard',
+        name: 'Full Dashboard Trusted Source Autopilot',
+        prompt: 'Return dashboard_updates for the full dashboard.',
+      }],
+    }))
+    writeFileSync(join(outputDir, '2026-06-03T19-00-00.md'), [
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '',
+      '| Field | Value | Source | Source Tier | Confidence | Evidence Status | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      '| Target provinces | Zhejiang textile cluster source-backed | [Zhejiang official](https://www.zhejiang.gov.cn/) | Tier 1 | high | Official Data | no |',
+    ].join('\n'))
+
+    const getLayer = intelligenceStateRoutes.stack.find((entry: any) =>
+      entry.path === '/api/hermes/intelligence-state/autopilot-import-status' && entry.methods.includes('GET'),
+    )
+    const getCtx = createCtx('GET', null, '/api/hermes/intelligence-state/autopilot-import-status')
+
+    await runRouteLayer(getLayer, getCtx)
+
+    expect(getCtx.body).toMatchObject({
+      ok: true,
+      profile: 'default',
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 1,
+        importedRunCount: 0,
+        latestOutputFile: '2026-06-03T19-00-00.md',
+        latestOutputImported: false,
+        latestOutputParseStatus: 'ready',
+        latestOutputCandidateCount: 1,
+      },
+    })
+    expect(JSON.stringify(getCtx.body)).not.toContain('Zhejiang textile cluster source-backed')
   })
 
   it('rejects non-object dashboard intelligence payloads', async () => {

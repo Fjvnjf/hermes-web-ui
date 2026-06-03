@@ -35,8 +35,18 @@ export interface DashboardIntelligenceStateSaveResponse {
   savedAt: string
 }
 
+export interface DashboardAutopilotImportStatusResponse {
+  ok: boolean
+  profile: string
+  autopilotImport: DashboardAutopilotImportStatus
+}
+
 export function fetchDashboardIntelligenceState(): Promise<DashboardIntelligenceStateResponse> {
   return request<DashboardIntelligenceStateResponse>('/api/hermes/intelligence-state')
+}
+
+export function fetchDashboardAutopilotImportStatus(): Promise<DashboardAutopilotImportStatusResponse> {
+  return request<DashboardAutopilotImportStatusResponse>('/api/hermes/intelligence-state/autopilot-import-status')
 }
 
 export function saveDashboardIntelligenceState(state: unknown): Promise<DashboardIntelligenceStateSaveResponse> {

@@ -8,7 +8,9 @@ import {
 } from '@/composables/useFeasibilityIntelligence'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import { createJob, listJobs, runJob, scheduleToDisplayText, type Job } from '@/api/hermes/jobs'
-import { fetchDashboardIntelligenceState } from '@/api/hermes/intelligence-state'
+import {
+  fetchDashboardAutopilotImportStatus,
+} from '@/api/hermes/intelligence-state'
 import { fetchAvailableModels, updateDefaultModel } from '@/api/hermes/system'
 import {
   SCREEN_FIELD_MAPPINGS,
@@ -1753,11 +1755,11 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
   const counts = dashboardRecordCounts()
 
   try {
-    const [jobs, intelligenceEnvelope] = await Promise.all([
+    const [jobs, importEnvelope] = await Promise.all([
       listJobs(),
-      fetchDashboardIntelligenceState().catch(() => null),
+      fetchDashboardAutopilotImportStatus().catch(() => null),
     ])
-    const serverImport = intelligenceEnvelope?.autopilotImport
+    const serverImport = importEnvelope?.autopilotImport
     const job = jobs.find(isFullDashboardAutopilotJob)
     const jobId = job ? fullDashboardJobId(job) : ''
     if (!job || !jobId) {
