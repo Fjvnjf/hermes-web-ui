@@ -75,6 +75,24 @@ const simpleAutopilotCards = computed(() => [
   },
 ])
 
+const simpleFlowSteps = [
+  {
+    icon: '🔎',
+    title: 'Hermes researches',
+    detail: 'Official-first sources run in the background for this dashboard area.',
+  },
+  {
+    icon: '📥',
+    title: 'Safe facts fill',
+    detail: 'Low-risk source-backed records can appear here with source, date, confidence, and evidence labels.',
+  },
+  {
+    icon: '🧾',
+    title: 'You review risky',
+    detail: 'Market size, price, share, finance, regulatory, and investor claims stay staged until approved.',
+  },
+] as const
+
 type DurableMetricTone = 'active' | 'review' | 'empty'
 
 interface DurableMetric {
@@ -236,6 +254,16 @@ async function syncNow() {
           <small>{{ card.label }}</small>
           <strong>{{ card.value }}</strong>
           <em>{{ card.note }}</em>
+        </div>
+      </article>
+    </div>
+
+    <div class="autopilot-flow-strip" aria-label="Automatic source workflow">
+      <article v-for="step in simpleFlowSteps" :key="step.title">
+        <span aria-hidden="true">{{ step.icon }}</span>
+        <div>
+          <strong>{{ step.title }}</strong>
+          <small>{{ step.detail }}</small>
         </div>
       </article>
     </div>
@@ -484,6 +512,52 @@ async function syncNow() {
     color: $text-secondary;
     font-size: 11px;
     font-style: normal;
+    line-height: 1.35;
+  }
+}
+
+.autopilot-flow-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.22);
+    border-radius: 8px;
+    background: rgba(var(--bg-secondary-rgb), 0.38);
+  }
+
+  span {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.1);
+    font-size: 15px;
+  }
+
+  div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
     line-height: 1.35;
   }
 }
@@ -772,6 +846,7 @@ async function syncNow() {
   .autopilot-header,
   .autopilot-metrics,
   .simple-autopilot-grid,
+  .autopilot-flow-strip,
   .claim-strip,
   .durable-intelligence-status {
     grid-template-columns: 1fr;
