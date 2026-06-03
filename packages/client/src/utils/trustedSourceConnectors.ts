@@ -247,6 +247,7 @@ function normalizeClaim(input: Partial<NormalizedTrustedSourceClaim>, source: Tr
 export function createConnectorForSource(source: TrustedSourceRecord): TrustedSourceConnector {
   if (source.source_id === 'world-bank-indicators-api') return worldBankApiConnector(source)
   if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return unComtradeApiConnector(source)
+  if (source.source_id === 'pubchem') return pubChemApiConnector(source)
   if (source.source_id === 'oecd-data-api') return apiReadyConnector(source, 'OECD connector is API-ready; dataset selection must be reviewed before dashboard values are trusted.')
   if (source.source_id.includes('sunsirs')) return referenceConnector(source, 'SunSirs reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
   if (source.source_id.includes('echemi')) return referenceConnector(source, 'ECHEMI reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
@@ -276,6 +277,113 @@ function referenceConnector(source: TrustedSourceRecord, note: string): TrustedS
     evidence_status: source.tier === 'tier4-public-listing' ? 'Reference Only' : 'To Verify',
     review_required: true,
   }]
+  return connector
+}
+
+function pubChemChemicalNameForRequest(field: string, query?: string): string {
+  const text = `${field} ${query || ''}`.toLowerCase()
+  if (/\bdms\b|dimethyl\s+sulfate|dimethyl\s+sulphate/.test(text)) return 'dimethyl sulfate'
+  if (/\btea\b|triethanolamine/.test(text)) return 'triethanolamine'
+  if (/stearic/.test(text)) return 'stearic acid'
+  if (/\bpdms\b|silicone\s+oil|polydimethylsiloxane/.test(text)) return 'polydimethylsiloxane'
+  if (/cwas|cwms|ester\s+quat|cationic\s+softener/.test(text)) return 'quaternary ammonium compounds'
+  return 'dimethyl sulfate'
+}
+
+function pubChemProperty(raw: unknown): {
+  CID?: number
+  MolecularFormula?: string
+  MolecularWeight?: string | number
+  IUPACName?: string
+  CanonicalSMILES?: string
+  ConnectivitySMILES?: string
+} | null {
+  if (raw && typeof raw === 'object' && 'property' in raw) {
+    return (raw as { property?: ReturnType<typeof pubChemProperty> }).property || null
+  }
+  if (raw && typeof raw === 'object') {
+    const rows = (raw as { PropertyTable?: { Properties?: unknown[] } }).PropertyTable?.Properties
+    if (Array.isArray(rows) && rows[0] && typeof rows[0] === 'object') {
+      return rows[0] as ReturnType<typeof pubChemProperty>
+    }
+  }
+  return null
+}
+
+function pubChemSynonyms(raw: unknown): string[] {
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { synonyms?: unknown[] }).synonyms)) {
+    return (raw as { synonyms: unknown[] }).synonyms.filter((item): item is string => typeof item === 'string')
+  }
+  const synonyms = (raw as { InformationList?: { Information?: Array<{ Synonym?: unknown[] }> } } | null)?.InformationList?.Information?.[0]?.Synonym
+  return Array.isArray(synonyms) ? synonyms.filter((item): item is string => typeof item === 'string') : []
+}
+
+function firstCasNumber(synonyms: string[]): string | null {
+  return synonyms.find(item => /^\d{2,7}-\d{2}-\d$/.test(item.trim())) || null
+}
+
+function pubChemApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
+  const connector = baseConnector(source)
+  connector.fetch = async (request) => {
+    const fetchImpl = request.fetchImpl || fetch
+    const chemicalName = pubChemChemicalNameForRequest(request.field, request.query)
+    const encoded = encodeURIComponent(chemicalName)
+    const propertyEndpoint = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/property/MolecularFormula,MolecularWeight,IUPACName,CanonicalSMILES/JSON`
+    const synonymsEndpoint = `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/synonyms/JSON`
+    const [propertyResponse, synonymsResponse] = await Promise.all([
+      fetchImpl(propertyEndpoint),
+      fetchImpl(synonymsEndpoint),
+    ])
+    if (!propertyResponse.ok) throw new Error(`PubChem property API returned ${propertyResponse.status}`)
+    const propertyRaw = await propertyResponse.json()
+    const synonymsRaw = synonymsResponse.ok ? await synonymsResponse.json() : { synonyms: [] }
+    return {
+      chemicalName,
+      propertyEndpoint,
+      synonymsEndpoint,
+      property: pubChemProperty(propertyRaw),
+      synonyms: pubChemSynonyms(synonymsRaw).slice(0, 80),
+    }
+  }
+  connector.parse = async (raw, request) => {
+    const chemicalName = raw && typeof raw === 'object' && 'chemicalName' in raw
+      ? String((raw as { chemicalName?: string }).chemicalName || pubChemChemicalNameForRequest(request.field, request.query))
+      : pubChemChemicalNameForRequest(request.field, request.query)
+    const property = pubChemProperty(raw)
+    const synonyms = pubChemSynonyms(raw)
+    const cas = firstCasNumber(synonyms)
+
+    if (!property?.CID) {
+      return [{
+        field: request.field,
+        value: `${chemicalName}: PubChem identity not extracted / To Verify`,
+        source_url: source.url,
+        notes: 'PubChem API was reachable but no compound identity row was extracted. Keep regulatory, SDS/TDS, and product formula decisions under review.',
+        evidence_status: 'To Verify',
+        confidence: 'medium',
+        review_required: true,
+      }]
+    }
+
+    const formula = property.MolecularFormula || 'formula To Verify'
+    const molecularWeight = property.MolecularWeight || 'MW To Verify'
+    const iupacName = property.IUPACName || chemicalName
+    const smiles = property.CanonicalSMILES || property.ConnectivitySMILES || 'SMILES To Verify'
+    const sourceUrl = `https://pubchem.ncbi.nlm.nih.gov/compound/${property.CID}`
+
+    return [{
+      field: request.field,
+      value: `${chemicalName}: CID ${property.CID}; CAS ${cas || 'To Verify'}; molecular formula ${formula}; MW ${molecularWeight}; IUPAC ${iupacName}`,
+      unit: 'chemical identity',
+      source_url: sourceUrl,
+      source_date: nowIso(request).slice(0, 10),
+      notes: `PubChem official chemical identity reference. Canonical SMILES: ${smiles}. This is not SDS/TDS evidence, not China regulatory approval, not a supplier quote, and not product formulation verification. Use it as a source-backed identity/CAS candidate and keep regulatory/product decisions review-gated.`,
+      evidence_status: 'Official Data',
+      confidence: 'high',
+      review_required: true,
+      sensitive: /formula|product\s+development|cwas|cwms/i.test(request.field),
+    }]
+  }
   return connector
 }
 

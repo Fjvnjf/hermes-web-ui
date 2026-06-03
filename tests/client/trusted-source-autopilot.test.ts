@@ -267,6 +267,58 @@ describe('Trusted Source Autopilot', () => {
     expect(claims[0].notes).toContain('not product-specific consumption')
   })
 
+  it('fetches PubChem official chemical identity without treating it as regulatory approval', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'pubchem')!
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes('/property/')) {
+        return {
+          ok: true,
+          json: async () => ({
+            PropertyTable: {
+              Properties: [{
+                CID: 6497,
+                MolecularFormula: 'C2H6O4S',
+                MolecularWeight: '126.13',
+                IUPACName: 'dimethyl sulfate',
+                CanonicalSMILES: 'COS(=O)(=O)OC',
+              }],
+            },
+          }),
+        } as Response
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          InformationList: {
+            Information: [{
+              Synonym: ['DIMETHYL SULFATE', '77-78-1', 'DMS (methyl sulfate)'],
+            }],
+          },
+        }),
+      } as Response
+    })
+    const { claims } = await runConnector({
+      screen: 'regulatory',
+      field: 'DMS Regulatory Status',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('compound/name/dimethyl%20sulfate/property'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('compound/name/dimethyl%20sulfate/synonyms'))
+    expect(claims[0].value).toContain('dimethyl sulfate: CID 6497')
+    expect(claims[0].value).toContain('CAS 77-78-1')
+    expect(claims[0].value).toContain('molecular formula C2H6O4S')
+    expect(claims[0].source_url).toBe('https://pubchem.ncbi.nlm.nih.gov/compound/6497')
+    expect(claims[0].evidence_status).toBe('Official Data')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].notes).toContain('not SDS/TDS evidence')
+    expect(claims[0].notes).toContain('not China regulatory approval')
+    expect(claims[0].notes).toContain('not product formulation verification')
+  })
+
   it('fetches and normalizes a World Bank API claim when fetch is available', async () => {
     const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-indicators-api')!
     const fetchImpl = vi.fn().mockResolvedValue({
