@@ -56,6 +56,46 @@ const researchJobs = computed(() => intelligence.state.value.researchJobs)
 const findings = computed(() => intelligence.state.value.researchFindings)
 const pendingFindings = intelligence.pendingResearchFindings
 const approvedFindings = computed(() => findings.value.filter(item => item.status === 'Approved').length)
+const sourceBackedFindings = computed(() => findings.value.filter(item => hasUsableSource(item)).length)
+const weakOrMissingFindings = computed(() => findings.value.filter(item => needsEvidenceReview(item)).length)
+const appliedDashboardUpdates = computed(() => findings.value.filter(item => item.dashboardAppliedAt).length)
+
+const reviewGateSteps = computed(() => [
+  {
+    icon: '🔍',
+    title: 'Hermes researches automatically',
+    detail: `${researchJobs.value.length} source job${plural(researchJobs.value.length)} and ${pendingFindings.value.length} pending finding${plural(pendingFindings.value.length)} feed this queue.`,
+  },
+  {
+    icon: '🧾',
+    title: 'Risky claims wait here',
+    detail: `${weakOrMissingFindings.value} item${plural(weakOrMissingFindings.value)} need source proof before changing dashboard facts.`,
+  },
+  {
+    icon: '✅',
+    title: 'You approve dashboard truth',
+    detail: `${sourceBackedFindings.value} finding${plural(sourceBackedFindings.value)} have source evidence. Only approved items update readiness or reports.`,
+  },
+  {
+    icon: '📌',
+    title: 'Gaps become tasks',
+    detail: 'Missing market, competitor, supplier, finance, or regulatory proof becomes Kanban work instead of fake data.',
+  },
+])
+
+function plural(count: number): string {
+  return count === 1 ? '' : 's'
+}
+
+function hasUsableSource(item: ResearchReviewFinding): boolean {
+  return Boolean(item.source?.title && (item.source?.url || item.source?.date))
+}
+
+function needsEvidenceReview(item: ResearchReviewFinding): boolean {
+  return item.evidenceStatus === 'Missing' ||
+    item.evidenceStatus === 'To Verify' ||
+    !hasUsableSource(item)
+}
 
 function sourceFromForm(): SourceReference | null {
   const title = findingForm.value.sourceTitle.trim()
@@ -612,6 +652,18 @@ async function createTask(item: ResearchReviewFinding) {
       <span>{{ researchJobs.length }} research jobs</span>
       <span>{{ pendingFindings.length }} pending findings</span>
       <span>{{ approvedFindings }} approved findings</span>
+      <span>{{ sourceBackedFindings }} source-backed</span>
+      <span>{{ appliedDashboardUpdates }} dashboard updates</span>
+    </section>
+
+    <section class="review-gate-strip" aria-label="Automatic research review gate">
+      <article v-for="step in reviewGateSteps" :key="step.title" class="review-gate-card">
+        <span class="review-gate-icon" aria-hidden="true">{{ step.icon }}</span>
+        <div>
+          <h3>{{ step.title }}</h3>
+          <p>{{ step.detail }}</p>
+        </div>
+      </article>
     </section>
 
     <section class="job-panel">
@@ -754,7 +806,7 @@ async function createTask(item: ResearchReviewFinding) {
         v-for="item in findings"
         :key="item.id"
         class="finding-card"
-        :class="{ critical: item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify' || !item.source?.title }"
+        :class="{ critical: needsEvidenceReview(item) }"
       >
         <div class="finding-main">
           <div class="finding-title">
@@ -925,6 +977,50 @@ async function createTask(item: ResearchReviewFinding) {
     font-size: 12px;
     font-weight: 900;
   }
+}
+
+.review-gate-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.review-gate-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 116px;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), rgba(var(--accent-info-rgb), 0.04)),
+    $bg-card;
+
+  h3 {
+    margin: 0 0 6px;
+    color: $text-primary;
+    font-size: 14px;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.review-gate-icon {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+  border-radius: 999px;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  font-size: 17px;
 }
 
 .job-panel,
@@ -1107,6 +1203,10 @@ async function createTask(item: ResearchReviewFinding) {
 @media (max-width: 860px) {
   .page-header,
   .finding-card {
+    grid-template-columns: 1fr;
+  }
+
+  .review-gate-strip {
     grid-template-columns: 1fr;
   }
 

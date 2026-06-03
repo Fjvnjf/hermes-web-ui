@@ -1791,6 +1791,11 @@ describe('investor readiness pages', () => {
     })
 
     expect(wrapper.text()).toContain('Approve Research Before It Changes Anything')
+    expect(wrapper.text()).toContain('Hermes researches automatically')
+    expect(wrapper.text()).toContain('Risky claims wait here')
+    expect(wrapper.text()).toContain('You approve dashboard truth')
+    expect(wrapper.text()).toContain('Gaps become tasks')
+    expect(wrapper.text()).toContain('need source proof before changing dashboard facts')
     expect(wrapper.text()).toContain('DMS regulation in China')
     expect(wrapper.text()).toContain('DMS regulation source needed')
   })
