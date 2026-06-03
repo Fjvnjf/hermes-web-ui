@@ -105,6 +105,42 @@ export const SCREEN_FIELD_MAPPINGS: Record<AutopilotScreen, Array<{
     { field: 'Competitor Landscape Table', preferredDataTypes: ['competitor_data', 'company_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
     { field: 'Market Share Chart', preferredDataTypes: ['competitor_data', 'market_size'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
   ],
+  rawMaterials: [
+    { field: 'Supplier Scorecards', preferredDataTypes: ['supplier_quote', 'document_evidence'], fallbackDataTypes: ['price_data'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'Stearic Acid Source / Quote', preferredDataTypes: ['supplier_quote', 'price_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'Triethanolamine / TEA Source', preferredDataTypes: ['supplier_quote', 'price_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'Dimethyl Sulfate / DMS Source', preferredDataTypes: ['supplier_quote', 'regulatory_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'PDMS Silicone Oil Source', preferredDataTypes: ['supplier_quote', 'price_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'SDS / TDS / COA Evidence', preferredDataTypes: ['document_evidence', 'regulatory_data'], fallbackDataTypes: ['supplier_quote'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
+  ],
+  exportMarkets: [
+    { field: 'Country-wise Consumption Growth', preferredDataTypes: ['trade_data', 'market_size'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'Trade Proxy', autoUpdateAllowed: true },
+    { field: 'HS Code Candidates', preferredDataTypes: ['trade_data', 'regulatory_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'Trade Proxy', autoUpdateAllowed: true },
+    { field: 'Import / Export Signals', preferredDataTypes: ['trade_data'], fallbackDataTypes: ['market_size'], unavailableStatus: 'Trade Proxy', autoUpdateAllowed: true },
+    { field: 'Target Countries', preferredDataTypes: ['trade_data', 'market_size'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Export Evidence Gaps', preferredDataTypes: ['document_evidence'], fallbackDataTypes: ['trade_data'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+  ],
+  regulatory: [
+    { field: 'DMS Regulatory Status', preferredDataTypes: ['regulatory_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'China Import / Storage / Use Requirements', preferredDataTypes: ['regulatory_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'Factory Chemical Approval Requirements', preferredDataTypes: ['regulatory_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false, sensitive: true },
+    { field: 'IECSC / China Inventory References', preferredDataTypes: ['regulatory_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
+    { field: 'SDS / CAS Evidence Coverage', preferredDataTypes: ['regulatory_data', 'document_evidence'], fallbackDataTypes: ['supplier_quote'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
+  ],
+  investorReadiness: [
+    { field: 'Verified Facts Coverage', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['market_size'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Evidence Gaps', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['market_size'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Risk Register', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['regulatory_data'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Data Room Checklist', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['supplier_quote'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Financial Model Status', preferredDataTypes: ['financial_data', 'internal_activity'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'Derived from Assumptions', autoUpdateAllowed: false, sensitive: true },
+  ],
+  presentation: [
+    { field: 'Approved Investor Material', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['market_size'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Presentation Snippets', preferredDataTypes: ['document_evidence'], fallbackDataTypes: ['market_size'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
+    { field: 'Unsupported Claims', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['market_size'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Missing Proof Tasks', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['market_size'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Investor Export Readiness', preferredDataTypes: ['document_evidence', 'internal_activity'], fallbackDataTypes: ['financial_data'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
+  ],
 }
 
 function nowIso(request?: TrustedSourceConnectorRequest): string {

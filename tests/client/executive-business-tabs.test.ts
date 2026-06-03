@@ -465,8 +465,9 @@ describe('screenshot-matched executive business tabs', () => {
     await flushPromises()
 
     const findings = useFeasibilityIntelligence().pendingResearchFindings.value
-    expect(findings.some(item => item.keyClaim.includes('Market intelligence'))).toBe(true)
-    expect(findings.some(item => item.keyClaim.includes('Investment analysis'))).toBe(true)
+    const keyClaims = findings.map(item => item.keyClaim.toLowerCase())
+    expect(keyClaims.some(keyClaim => keyClaim.includes('market intelligence'))).toBe(true)
+    expect(keyClaims.some(keyClaim => keyClaim.includes('investment analysis'))).toBe(true)
     expect(findings.every(item => item.status === 'Pending Review' || item.status === 'To Verify')).toBe(true)
   })
 

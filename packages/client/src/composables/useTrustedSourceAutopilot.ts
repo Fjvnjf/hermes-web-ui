@@ -138,7 +138,17 @@ export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v2'
-const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor']
+const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = [
+  'executive',
+  'market',
+  'investment',
+  'competitor',
+  'rawMaterials',
+  'exportMarkets',
+  'regulatory',
+  'investorReadiness',
+  'presentation',
+]
 const SERVER_INTELLIGENCE_STATE_JOB_ID = 'server-dashboard-intelligence-state'
 const DASHBOARD_RESEARCH_GROUPS: DashboardResearchUpdateGroup[] = [
   'marketClaims',
@@ -372,6 +382,7 @@ function normalizedInternalClaim(input: {
 function internalClaimForField(screen: AutopilotScreen, field: string): NormalizedTrustedSourceClaim | null {
   const intelligence = useFeasibilityIntelligence()
   const financial = intelligence.latestFinancialModel.value
+  const stateValue = intelligence.state.value
   if ((screen === 'executive' || screen === 'investment') && financial) {
     const sourceName = financial.source?.title || 'IRR Calculator saved scenario'
     const sourceUrl = financial.source?.url
@@ -422,7 +433,7 @@ function internalClaimForField(screen: AutopilotScreen, field: string): Normaliz
     }
   }
   if (screen === 'market') {
-    const claim = intelligence.state.value.marketClaims.find(item => {
+    const claim = stateValue.marketClaims.find(item => {
       const text = `${item.label} ${item.value || ''}`.toLowerCase()
       return field.toLowerCase().split(/\s+|\/|-/).some(part => part.length > 3 && text.includes(part))
     })
@@ -442,7 +453,7 @@ function internalClaimForField(screen: AutopilotScreen, field: string): Normaliz
     }
   }
   if (screen === 'competitor') {
-    const competitors = intelligence.state.value.competitors
+    const competitors = stateValue.competitors
     if (field === 'Competitors Profiled') {
       return normalizedInternalClaim({
         screen,
@@ -464,6 +475,119 @@ function internalClaimForField(screen: AutopilotScreen, field: string): Normaliz
         sourceName: 'Competitor Intelligence records',
         dataType: 'competitor_data',
         notes: 'Source coverage summary. Market share remains To Verify unless source-backed.',
+      })
+    }
+  }
+  if (screen === 'rawMaterials') {
+    const supplierEvidence = stateValue.dataRoomSources.filter(item =>
+      item.dashboardGroup === 'supplierScorecards' ||
+      item.dashboardGroup === 'rawMaterialSignals' ||
+      /supplier|quote|stearic|tea|triethanolamine|dms|dimethyl|pdms|silicone|sds|tds|coa/i.test(`${item.checklistLabel} ${item.notes || ''} ${item.proposedValue || ''}`),
+    )
+    const materialText = supplierEvidence.map(item => `${item.checklistLabel} ${item.proposedValue || ''} ${item.notes || ''}`).join(' ').toLowerCase()
+    const hasFieldMatch = field.toLowerCase().split(/\s+|\/|-/).some(part => part.length > 3 && materialText.includes(part))
+    if (field === 'Supplier Scorecards' || field === 'SDS / TDS / COA Evidence' || hasFieldMatch) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: supplierEvidence.length ? `${supplierEvidence.length} supplier/raw-material evidence candidates` : 'Missing / To Verify',
+        evidenceStatus: supplierEvidence.length ? 'Reference Only' : 'To Verify',
+        confidence: supplierEvidence.length ? 'medium' : 'low',
+        sourceName: 'Raw Material Sourcing evidence records',
+        dataType: field.includes('SDS') || field.includes('TDS') || field.includes('COA') ? 'document_evidence' : 'supplier_quote',
+        notes: 'Local supplier/raw-material evidence summary. Supplier prices and quotes stay sensitive and require review.',
+        sensitive: !field.includes('SDS') && !field.includes('TDS') && !field.includes('COA'),
+      })
+    }
+  }
+  if (screen === 'exportMarkets') {
+    const exportClaims = stateValue.marketClaims.filter(item =>
+      /country|export|import|trade|consumption|hs code|growth/i.test(`${item.label} ${item.value || ''}`),
+    )
+    const matchingClaim = exportClaims.find(item => {
+      const text = `${item.label} ${item.value || ''}`.toLowerCase()
+      return field.toLowerCase().split(/\s+|\/|-/).some(part => part.length > 3 && text.includes(part))
+    })
+    if (matchingClaim?.value || field === 'Export Evidence Gaps') {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: matchingClaim?.value || (exportClaims.length ? `${exportClaims.length} export/trade claims saved` : 'Missing / To Verify'),
+        evidenceStatus: matchingClaim?.evidenceStatus || (exportClaims.length ? 'Reference Only' : 'Trade Proxy'),
+        confidence: matchingClaim?.confidence || 'medium',
+        sourceName: matchingClaim?.source?.title || 'Export Market Opportunity records',
+        sourceUrl: matchingClaim?.source?.url,
+        sourceDate: matchingClaim?.source?.date || matchingClaim?.lastChecked,
+        dataType: 'trade_data',
+        notes: 'Country-wise export/consumption evidence from saved market intelligence. Trade proxies stay To Verify until methodology is reviewed.',
+      })
+    }
+  }
+  if (screen === 'regulatory') {
+    const regulatorySources = stateValue.dataRoomSources.filter(item =>
+      item.dashboardGroup === 'regulatoryFindings' ||
+      /regulatory|dms|dimethyl|sds|tds|cas|permit|approval|iech?sc|inventory|storage|transport/i.test(`${item.checklistLabel} ${item.notes || ''} ${item.proposedValue || ''}`),
+    )
+    if (regulatorySources.length || field.includes('SDS') || field.includes('DMS')) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: regulatorySources.length ? `${regulatorySources.length} regulatory evidence candidates` : 'Missing / To Verify',
+        evidenceStatus: regulatorySources.length ? 'Reference Only' : 'To Verify',
+        confidence: regulatorySources.length ? 'medium' : 'low',
+        sourceName: 'Regulatory evidence records',
+        dataType: 'regulatory_data',
+        notes: 'Local regulatory evidence summary. DMS and factory chemical requirements remain review-gated.',
+        sensitive: /DMS|Storage|Use|Factory/i.test(field),
+      })
+    }
+  }
+  if (screen === 'investorReadiness') {
+    const factCount = stateValue.dataRoomSources.filter(item => item.evidenceStatus !== 'Missing' && item.evidenceStatus !== 'To Verify').length
+    const gapCount = intelligence.evidenceGaps.value.length
+    const riskCount = intelligence.riskRegisterItems.value.length
+    const dataRoomCount = stateValue.dataRoomSources.length
+    const readinessValues: Record<string, string> = {
+      'Verified Facts Coverage': factCount ? `${factCount} source-backed or reviewed records` : 'Missing / To Verify',
+      'Evidence Gaps': gapCount ? `${gapCount} open evidence gaps` : 'No open gaps recorded / To Verify',
+      'Risk Register': riskCount ? `${riskCount} risk items tracked` : 'Missing / To Verify',
+      'Data Room Checklist': dataRoomCount ? `${dataRoomCount} data-room/evidence records` : 'Missing / To Verify',
+      'Financial Model Status': financial ? 'Derived from saved IRR scenario' : 'Missing / To Verify',
+    }
+    if (readinessValues[field]) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: readinessValues[field],
+        evidenceStatus: field === 'Financial Model Status' && financial ? 'Derived from Assumptions' : factCount || gapCount || riskCount || dataRoomCount ? 'Reference Only' : 'To Verify',
+        confidence: 'medium',
+        sourceName: 'Investor Readiness workspace records',
+        dataType: field === 'Financial Model Status' ? 'financial_data' : 'document_evidence',
+        notes: 'Investor readiness status from approved/review-gated workspace records. It does not silently approve investor material.',
+        sensitive: field === 'Financial Model Status',
+      })
+    }
+  }
+  if (screen === 'presentation') {
+    const materialCount = stateValue.presentationMaterials.length
+    const unsupportedCount = stateValue.presentationMaterials.filter(item => item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify').length
+    const presentationValues: Record<string, string> = {
+      'Approved Investor Material': materialCount ? `${materialCount} investor material candidates` : 'Missing / To Verify',
+      'Presentation Snippets': materialCount ? `${materialCount} draft snippets available for review` : 'Missing / To Verify',
+      'Unsupported Claims': unsupportedCount ? `${unsupportedCount} unsupported claims need proof` : 'No unsupported claims recorded / To Verify',
+      'Missing Proof Tasks': intelligence.evidenceGaps.value.length ? `${intelligence.evidenceGaps.value.length} missing-proof tasks/gaps` : 'Missing / To Verify',
+      'Investor Export Readiness': materialCount && !unsupportedCount ? 'Review required before export' : 'Not investor-ready yet / To Verify',
+    }
+    if (presentationValues[field]) {
+      return normalizedInternalClaim({
+        screen,
+        field,
+        value: presentationValues[field],
+        evidenceStatus: materialCount && !unsupportedCount ? 'Reference Only' : 'To Verify',
+        confidence: 'medium',
+        sourceName: 'Investor Presentation Builder records',
+        dataType: 'document_evidence',
+        notes: 'Presentation readiness summary. Draft content stays review-gated and is not final investor truth.',
       })
     }
   }
@@ -536,6 +660,10 @@ function screenForDashboardGroup(group?: string): AutopilotScreen {
   if (group === 'financialEvidence') return 'investment'
   if (group === 'competitorRecords') return 'competitor'
   if (group === 'marketClaims') return 'market'
+  if (group === 'rawMaterialSignals' || group === 'supplierScorecards') return 'rawMaterials'
+  if (group === 'regulatoryFindings') return 'regulatory'
+  if (group === 'investorMaterialCandidates') return 'presentation'
+  if (group === 'evidenceGaps' || group === 'suggestedTasks') return 'investorReadiness'
   return 'executive'
 }
 
@@ -838,7 +966,7 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
         `Risk reason: ${update.riskReason}`,
       ].join('\n'),
       keyClaim: `${hasConflict ? 'Conflict Detected' : 'Trusted source review'}: ${input.label}`,
-      area: input.screen === 'investment' ? 'financial' : input.screen === 'competitor' || input.screen === 'market' ? 'market' : 'presentation',
+      area: refreshAreaForScreen(input.screen),
       evidenceStatus: hasConflict ? 'Conflict Detected' : evidenceStatus,
       confidence: sourceRecord.confidence_default,
       source: input.source,
@@ -866,7 +994,12 @@ function screenRefreshPrompt(screen: AutopilotScreen): string {
   if (screen === 'executive') return ['Refresh Executive Overview from internal Hermes activity: sessions, Kanban, Jobs, Files, Memory-safe summaries, Research Result Review, Investor Readiness, and IRR status.', ...common].join('\n')
   if (screen === 'market') return ['Refresh Market Intelligence using official trade/statistical sources first, then market references. Label uncertain HS-code data as Trade Proxy / To Verify.', ...common].join('\n')
   if (screen === 'investment') return ['Refresh Investment Analysis from saved IRR Calculator snapshots and user/source-backed files only. Never pull IRR/NPV/payback from random web sources.', ...common].join('\n')
-  return ['Refresh Competitor Intelligence using official company/product pages, filings, catalogs, regulator/certification sources, and source-backed market reports. Unknown market share stays To Verify.', ...common].join('\n')
+  if (screen === 'competitor') return ['Refresh Competitor Intelligence using official company/product pages, filings, catalogs, regulator/certification sources, and source-backed market reports. Unknown market share stays To Verify.', ...common].join('\n')
+  if (screen === 'rawMaterials') return ['Refresh Raw Material Sourcing and Supplier Scorecards from uploaded supplier evidence, official company pages, SDS/TDS/COA files, and price references. Supplier prices stay review-gated.', ...common].join('\n')
+  if (screen === 'exportMarkets') return ['Refresh Export Market Opportunity using official trade datasets, HS-code candidates, country-wise import/export proxies, and growth indicators. Label proxy data clearly.', ...common].join('\n')
+  if (screen === 'regulatory') return ['Refresh Regulatory Intelligence using official regulator/chemical databases first. DMS, storage, transport, use, and factory chemical approval claims stay To Verify until reviewed.', ...common].join('\n')
+  if (screen === 'investorReadiness') return ['Refresh Investor Readiness from approved/review-gated evidence, source coverage, risk register, data-room checklist, and financial model completeness. Never approve investor material silently.', ...common].join('\n')
+  return ['Refresh Investor Presentation Builder from approved facts, approved assumptions, unsupported-claim warnings, missing-proof tasks, and source-backed snippets. Generate draft material only, not final truth.', ...common].join('\n')
 }
 
 function fullDashboardAutopilotPrompt(): string {
@@ -996,6 +1129,29 @@ async function ensureDefaultModelForAutopilot(): Promise<{ configured: boolean; 
   return { configured: true, model, provider }
 }
 
+function refreshDataTypeForScreen(screen: AutopilotScreen): TrustedSourceDataType {
+  if (screen === 'executive') return 'internal_activity'
+  if (screen === 'investment') return 'financial_data'
+  if (screen === 'competitor') return 'competitor_data'
+  if (screen === 'rawMaterials') return 'supplier_quote'
+  if (screen === 'exportMarkets') return 'trade_data'
+  if (screen === 'regulatory') return 'regulatory_data'
+  if (screen === 'investorReadiness' || screen === 'presentation') return 'document_evidence'
+  return 'market_size'
+}
+
+function refreshAreaForScreen(screen: AutopilotScreen): EvidenceArea {
+  if (screen === 'investment') return 'financial'
+  if (screen === 'rawMaterials') return 'factory'
+  if (screen === 'regulatory') return 'regulatory'
+  if (screen === 'investorReadiness' || screen === 'presentation' || screen === 'executive') return 'presentation'
+  return 'market'
+}
+
+function refreshIsSensitive(screen: AutopilotScreen): boolean {
+  return screen === 'investment' || screen === 'rawMaterials' || screen === 'regulatory'
+}
+
 function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): TrustedSourceRefreshResult {
   ensureLoaded()
   const intelligence = useFeasibilityIntelligence()
@@ -1006,11 +1162,11 @@ function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): Trusted
   const source = registerCandidate({
     name: internalSource.title,
     domain: screen === 'executive' ? 'internal.hermes.local' : 'scheduled.hermes.local',
-    dataType: screen === 'executive' ? 'internal_activity' : screen === 'investment' ? 'financial_data' : screen === 'competitor' ? 'competitor_data' : 'market_size',
+    dataType: refreshDataTypeForScreen(screen),
     screen,
   })
   const refreshEvidenceStatus: IntelligenceEvidenceStatus = screen === 'executive' ? 'Reference Only' : 'To Verify'
-  const refreshDataType: TrustedSourceDataType = screen === 'executive' ? 'internal_activity' : screen === 'investment' ? 'financial_data' : screen === 'competitor' ? 'competitor_data' : 'market_size'
+  const refreshDataType = refreshDataTypeForScreen(screen)
   const update = buildDashboardUpdateCandidate({
     screen,
     field: `${screenLabel(screen)} refresh status`,
@@ -1022,7 +1178,7 @@ function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): Trusted
     confidence: screen === 'executive' ? 'medium' : 'low',
     reviewRequired: screen !== 'executive',
     dataType: refreshDataType,
-    sensitive: screen === 'investment',
+    sensitive: refreshIsSensitive(screen),
   }, source)
   const claim: TrustedSourceSnapshotClaim = {
     id: idFrom('claim', `${screen}-refresh`),
@@ -1056,8 +1212,8 @@ function createRefreshSnapshot(screen: AutopilotScreen, jobId?: string): Trusted
         `Source: ${internalSource.title}`,
         'No dashboard facts were marked verified automatically.',
       ].join('\n'),
-      keyClaim: `${screen === 'market' ? 'Market intelligence' : screen === 'investment' ? 'Investment analysis' : screenLabel(screen)} trusted-source refresh needs review`,
-      area: screen === 'investment' ? 'financial' : 'market',
+      keyClaim: `${screenLabel(screen)} trusted-source refresh needs review`,
+      area: refreshAreaForScreen(screen),
       evidenceStatus: 'To Verify',
       confidence: claim.confidence,
       source: internalSource,
@@ -1193,8 +1349,8 @@ async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: strin
         ...reviewRows,
         'No fake values were inserted. Missing fields remain To Verify/Missing or Trade Proxy.',
       ].join('\n'),
-      keyClaim: `${screen === 'market' ? 'Market intelligence' : screen === 'investment' ? 'Investment analysis' : screenLabel(screen)} trusted-source refresh produced review items`,
-      area: screen === 'investment' ? 'financial' : screen === 'executive' ? 'presentation' : 'market',
+      keyClaim: `${screenLabel(screen)} trusted-source refresh produced review items`,
+      area: refreshAreaForScreen(screen),
       evidenceStatus: 'To Verify',
       confidence: 'medium',
       source: {
@@ -1277,11 +1433,26 @@ function asText(value: unknown, fallback = 'To Verify'): string {
   return fallback
 }
 
+function isAutopilotScreen(value: unknown): value is AutopilotScreen {
+  return value === 'executive' ||
+    value === 'market' ||
+    value === 'investment' ||
+    value === 'competitor' ||
+    value === 'rawMaterials' ||
+    value === 'exportMarkets' ||
+    value === 'regulatory' ||
+    value === 'investorReadiness' ||
+    value === 'presentation'
+}
+
 function groupDefaultScreen(group: DashboardResearchUpdateGroup, item: DashboardResearchUpdateItem): AutopilotScreen {
-  if (item.screen === 'executive' || item.screen === 'market' || item.screen === 'investment' || item.screen === 'competitor') return item.screen
+  if (isAutopilotScreen(item.screen)) return item.screen
   if (group === 'financialEvidence') return 'investment'
   if (group === 'competitorRecords') return 'competitor'
-  if (group === 'investorMaterialCandidates') return 'executive'
+  if (group === 'rawMaterialSignals' || group === 'supplierScorecards') return 'rawMaterials'
+  if (group === 'regulatoryFindings') return 'regulatory'
+  if (group === 'investorMaterialCandidates') return 'presentation'
+  if (group === 'evidenceGaps' || group === 'suggestedTasks') return 'investorReadiness'
   return 'market'
 }
 
@@ -1907,7 +2078,12 @@ function screenLabel(screen: AutopilotScreen): string {
   if (screen === 'executive') return 'Executive Overview'
   if (screen === 'market') return 'Market Intelligence'
   if (screen === 'investment') return 'Investment Analysis'
-  return 'Competitor Intelligence'
+  if (screen === 'competitor') return 'Competitor Intelligence'
+  if (screen === 'rawMaterials') return 'Raw Material Sourcing'
+  if (screen === 'exportMarkets') return 'Export Market Opportunity'
+  if (screen === 'regulatory') return 'Regulatory Intelligence'
+  if (screen === 'investorReadiness') return 'Investor Readiness'
+  return 'Investor Presentation Builder'
 }
 
 function resetTrustedSourceAutopilotForTests() {

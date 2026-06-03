@@ -165,11 +165,16 @@ describe('Trusted Source Autopilot', () => {
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.tier === 'tier4-public-listing' && source.requires_review)).toBe(true)
   })
 
-  it('defines source mappings for the four screenshot dashboard screens', () => {
+  it('defines source mappings for all full-dashboard research screens', () => {
     expect(SCREEN_FIELD_MAPPINGS.executive.map(item => item.field)).toContain('Revenue Target')
     expect(SCREEN_FIELD_MAPPINGS.market.map(item => item.field)).toContain('Market Size / Scope')
     expect(SCREEN_FIELD_MAPPINGS.investment.map(item => item.field)).toContain('Project IRR')
     expect(SCREEN_FIELD_MAPPINGS.competitor.map(item => item.field)).toContain('Market Share Chart')
+    expect(SCREEN_FIELD_MAPPINGS.rawMaterials.map(item => item.field)).toContain('Supplier Scorecards')
+    expect(SCREEN_FIELD_MAPPINGS.exportMarkets.map(item => item.field)).toContain('Country-wise Consumption Growth')
+    expect(SCREEN_FIELD_MAPPINGS.regulatory.map(item => item.field)).toContain('DMS Regulatory Status')
+    expect(SCREEN_FIELD_MAPPINGS.investorReadiness.map(item => item.field)).toContain('Evidence Gaps')
+    expect(SCREEN_FIELD_MAPPINGS.presentation.map(item => item.field)).toContain('Unsupported Claims')
   })
 
   it('builds connector skeletons that return normalized To Verify claims instead of fake values', async () => {
@@ -958,7 +963,7 @@ describe('Trusted Source Autopilot', () => {
     expect(result).toMatchObject({ snapshotCount: 3, claimCount: 3 })
     expect(autopilot.lastSnapshotForScreen('market')?.claims[0].label).toBe('Country-wise consumption growth - China')
     expect(autopilot.lastSnapshotForScreen('competitor')?.claims[0].label).toBe('Evonik Industries')
-    expect(autopilot.lastSnapshotForScreen('executive')?.claims[0].label).toBe('Stearic acid supplier scorecard')
+    expect(autopilot.lastSnapshotForScreen('rawMaterials')?.claims[0].label).toBe('Stearic acid supplier scorecard')
     expect(loadFullDashboardAutopilotStatus().lastStatus).toContain('Durable server intelligence hydrated')
   })
 
@@ -1089,12 +1094,17 @@ describe('Trusted Source Autopilot', () => {
     const intelligence = useFeasibilityIntelligence()
     const result = await autopilot.runFullDashboardDataEngine('job-full-dashboard')
 
-    expect(result.snapshots).toHaveLength(4)
+    expect(result.snapshots).toHaveLength(9)
     expect(result.reviewItemCount).toBeGreaterThan(0)
     expect(autopilot.lastSnapshotForScreen('executive')).not.toBeNull()
     expect(autopilot.lastSnapshotForScreen('market')).not.toBeNull()
     expect(autopilot.lastSnapshotForScreen('investment')).not.toBeNull()
     expect(autopilot.lastSnapshotForScreen('competitor')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('rawMaterials')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('exportMarkets')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('regulatory')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('investorReadiness')).not.toBeNull()
+    expect(autopilot.lastSnapshotForScreen('presentation')).not.toBeNull()
     expect(result.snapshots[0].claims[0]).toMatchObject({
       fieldKey: expect.any(String),
       sourceTier: expect.any(String),

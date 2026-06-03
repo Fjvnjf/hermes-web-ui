@@ -29,7 +29,16 @@ export type TrustedSourceDataType =
   | 'document_evidence'
   | 'internal_activity'
 
-export type AutopilotScreen = 'executive' | 'market' | 'investment' | 'competitor'
+export type AutopilotScreen =
+  | 'executive'
+  | 'market'
+  | 'investment'
+  | 'competitor'
+  | 'rawMaterials'
+  | 'exportMarkets'
+  | 'regulatory'
+  | 'investorReadiness'
+  | 'presentation'
 
 export interface TrustedSourceRecord {
   source_id: string
@@ -217,11 +226,12 @@ type SourceSeed = {
   notes: string
 }
 
-const officialScreens: AutopilotScreen[] = ['executive', 'market']
-const marketScreens: AutopilotScreen[] = ['market']
-const chemicalScreens: AutopilotScreen[] = ['market', 'competitor']
+const fullDashboardScreens: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor', 'rawMaterials', 'exportMarkets', 'regulatory', 'investorReadiness', 'presentation']
+const officialScreens: AutopilotScreen[] = ['executive', 'market', 'exportMarkets', 'regulatory', 'investorReadiness']
+const marketScreens: AutopilotScreen[] = ['market', 'exportMarkets']
+const chemicalScreens: AutopilotScreen[] = ['market', 'competitor', 'rawMaterials', 'regulatory']
 const competitorScreens: AutopilotScreen[] = ['competitor']
-const supplierScreens: AutopilotScreen[] = ['executive', 'investment', 'competitor']
+const supplierScreens: AutopilotScreen[] = ['executive', 'investment', 'competitor', 'rawMaterials']
 
 function seed(
   source_id: string,
@@ -421,7 +431,7 @@ export function classifySourceCandidate(candidate: TrustedSourceCandidate): Omit
     category: candidate.dataType === 'price_data' ? 'price' : candidate.dataType === 'competitor_data' ? 'competitor' : candidate.dataType === 'financial_data' ? 'finance' : candidate.dataType === 'regulatory_data' ? 'regulatory' : 'market',
     data_type: candidate.dataType,
     data_types_supported: [candidate.dataType],
-    allowed_for: candidate.screen ? [candidate.screen] : ['executive', 'market', 'investment', 'competitor'],
+    allowed_for: candidate.screen ? [candidate.screen] : fullDashboardScreens,
     connector_type: tier === 'tier1-official' ? 'API' : tier === 'candidate-source' ? 'research_job' : 'web_reference',
     update_frequency: tier === 'tier1-official' ? 'twice_daily' : 'daily_review',
     confidence_default: tier === 'tier1-official' ? 'high' : tier === 'tier2-market-reference' ? 'medium' : 'low',
@@ -466,6 +476,6 @@ export function isSensitiveAutopilotDataType(dataType: TrustedSourceDataType): b
 
 export function snapshotVisibility(screen: AutopilotScreen, dataTypes: TrustedSourceDataType[]): TrustedSourceSnapshot['user_visibility'] {
   if (screen === 'investment' || dataTypes.some(isSensitiveAutopilotDataType)) return 'financial-only'
-  if (screen === 'executive') return 'owner-only'
+  if (screen === 'executive' || screen === 'investorReadiness' || screen === 'presentation') return 'owner-only'
   return 'employee-safe'
 }
