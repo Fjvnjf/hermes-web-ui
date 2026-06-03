@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildVisualResearchPrompt,
   stripVisualResearchPrompt,
+  VISUAL_RESEARCH_PRESETS,
 } from '../../packages/client/src/utils/visualResearchMode'
 
 describe('visual research mode prompt wrapper', () => {
@@ -13,7 +14,22 @@ describe('visual research mode prompt wrapper', () => {
     expect(prompt).toContain('country-by-country tables')
     expect(prompt).toContain('supplier scorecards')
     expect(prompt).toContain('competitor matrices')
+    expect(prompt).toContain('at least one useful visual structure')
     expect(prompt).toContain('Research CWAS market evidence')
+  })
+
+  it('provides one-click visual research presets for common business analysis needs', () => {
+    expect(VISUAL_RESEARCH_PRESETS.map(preset => preset.label)).toEqual([
+      'Market map',
+      'Competitors',
+      'Suppliers',
+      'Investment',
+    ])
+    expect(VISUAL_RESEARCH_PRESETS.map(preset => preset.icon)).toEqual(['🌍', '🏭', '🧾', '💎'])
+    expect(VISUAL_RESEARCH_PRESETS[0].prompt).toContain('country-wise market map')
+    expect(VISUAL_RESEARCH_PRESETS[1].prompt).toContain('To Verify market share')
+    expect(VISUAL_RESEARCH_PRESETS[2].prompt).toContain('supplier scorecards')
+    expect(VISUAL_RESEARCH_PRESETS[3].prompt).toContain('IRR/NPV')
   })
 
   it('strips the frontend instruction before displaying user messages', () => {

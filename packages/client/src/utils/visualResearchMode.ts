@@ -4,6 +4,29 @@ const VISUAL_RESEARCH_PREFIX = '[Hermes Visual Research Mode - frontend instruct
 const VISUAL_RESEARCH_SUFFIX = '[End Hermes Visual Research Mode]'
 const USER_REQUEST_MARKER = 'User request:'
 
+export const VISUAL_RESEARCH_PRESETS = [
+  {
+    icon: '🌍',
+    label: 'Market map',
+    prompt: 'Build a country-wise market map with consumption/growth signals, source, confidence, evidence status, and gaps to verify.',
+  },
+  {
+    icon: '🏭',
+    label: 'Competitors',
+    prompt: 'Build a competitor matrix with product equivalents, price evidence only if sourced, source, confidence, strengths, weaknesses, and To Verify market share where unsupported.',
+  },
+  {
+    icon: '🧾',
+    label: 'Suppliers',
+    prompt: 'Build supplier scorecards for key raw materials with quote/TDS/SDS/COA evidence gaps, source links, confidence, and suggested next tasks.',
+  },
+  {
+    icon: '💎',
+    label: 'Investment',
+    prompt: 'Build an investment summary with assumption tables, sensitivity grid, evidence status, risks, and source-backed next actions. Do not present IRR/NPV as verified unless assumptions are approved.',
+  },
+] as const
+
 export const VISUAL_RESEARCH_INSTRUCTION = `${VISUAL_RESEARCH_PREFIX}
 Owner-approved research permission is active for this answer.
 
@@ -15,6 +38,7 @@ When the request needs facts, market data, competitors, finance, product/regulat
 - Do not mark anything Verified without clear source evidence and user review.
 - If sources conflict, explain the conflict and recommend a review step instead of choosing silently.
 - For substantive answers, include good graphical content: Markdown tables, source/evidence matrices, KPI blocks, evidence-gap checklists, and Mermaid diagrams/charts when useful.
+- For business/research answers, include at least one useful visual structure (table, matrix, checklist, diagram, or chart-ready summary) unless the user explicitly asks for plain text.
 - For market, competitor, raw-material, supplier, finance, or dashboard-filling requests, prefer dense business visuals: country-by-country tables, competitor landscapes, competitor matrices, supplier scorecards, assumption/source matrices, sensitivity grids, and clearly labeled chart-ready summaries.
 - Keep graphical output readable in Markdown: use concise column names, split very wide analysis into multiple tables, and put source/confidence/status columns near the right edge.
 - For business work, finish with concrete next actions that can become tasks, documents, memory, or report snippets.

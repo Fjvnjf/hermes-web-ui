@@ -9,7 +9,7 @@ import { NButton, NTooltip, NSwitch, NModal, NInputNumber, useMessage } from 'na
 import { computed, ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
-import { buildVisualResearchPrompt, VISUAL_RESEARCH_STORAGE_KEY } from '@/utils/visualResearchMode'
+import { buildVisualResearchPrompt, VISUAL_RESEARCH_PRESETS, VISUAL_RESEARCH_STORAGE_KEY } from '@/utils/visualResearchMode'
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -154,6 +154,20 @@ function selectBridgeCommand(command: { name: string; args: string; insertText?:
     const pos = inputText.value.length
     el.setSelectionRange(pos, pos)
     el.focus()
+  })
+}
+
+function insertVisualResearchPreset(prompt: string) {
+  const current = inputText.value.trim()
+  inputText.value = current ? `${current}\n\n${prompt}` : prompt
+  nextTick(() => {
+    const el = textareaRef.value
+    if (!el) return
+    const pos = inputText.value.length
+    el.setSelectionRange(pos, pos)
+    el.focus()
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
   })
 }
 
@@ -568,6 +582,23 @@ function isImage(type: string): boolean {
       </div>
     </div>
 
+    <div
+      v-if="visualResearchMode"
+      class="visual-research-presets"
+      aria-label="Visual research answer templates"
+    >
+      <button
+        v-for="preset in VISUAL_RESEARCH_PRESETS"
+        :key="preset.label"
+        type="button"
+        class="visual-research-preset"
+        @click="insertVisualResearchPreset(preset.prompt)"
+      >
+        <span class="preset-icon">{{ preset.icon }}</span>
+        <span>{{ preset.label }}</span>
+      </button>
+    </div>
+
     <!-- Attachment previews -->
     <div v-if="attachments.length > 0" class="attachment-previews">
       <div
@@ -797,6 +828,55 @@ function isImage(type: string): boolean {
   }
 }
 
+.visual-research-presets {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 10px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.visual-research-preset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: 7px;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), rgba(var(--accent-primary-rgb), 0.05)),
+    #0b111d;
+  color: $text-secondary;
+  font-family: $font-ui;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color $transition-fast, color $transition-fast, background $transition-fast;
+
+  &:hover,
+  &:focus-visible {
+    border-color: rgba(var(--accent-primary-rgb), 0.55);
+    color: $text-primary;
+    background:
+      linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.14), rgba(var(--accent-info-rgb), 0.1)),
+      #101827;
+    outline: none;
+  }
+}
+
+.preset-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 13px;
+  line-height: 1;
+}
+
 .tool-trace-toggle {
   display: inline-flex;
   align-items: center;
@@ -1024,6 +1104,15 @@ function isImage(type: string): boolean {
     .switch-label small {
       display: none;
     }
+  }
+
+  .visual-research-presets {
+    padding-bottom: 8px;
+  }
+
+  .visual-research-preset {
+    min-height: 30px;
+    padding: 6px 8px;
   }
 
   .context-info,
