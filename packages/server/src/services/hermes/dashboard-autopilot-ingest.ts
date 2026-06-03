@@ -914,12 +914,53 @@ function getCell(row: Record<string, string>, ...headers: string[]): string {
 }
 
 function parseMarkdownLink(value: string): { title: string, url: string } | null {
-  const match = value.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/i)
+  const match = value.match(/\[([^\]]+)\]\(((?:https?|file):\/\/[^)\s]+)\)/i)
   if (!match) return null
   return {
     title: match[1].trim(),
     url: match[2].trim(),
   }
+}
+
+function normalizeCitationKey(value: string): string {
+  return value.trim().replace(/^[\[(\s]+|[\])\s.:-]+$/g, '')
+}
+
+function citationKeysFromValue(value: string): string[] {
+  const keys = new Set<string>()
+  const bracketed = value.matchAll(/\[(\d{1,3})\]/g)
+  for (const match of bracketed) keys.add(match[1])
+  const bare = normalizeCitationKey(value)
+  if (/^\d{1,3}$/.test(bare)) keys.add(bare)
+  return [...keys]
+}
+
+function stripCitationMarkers(value: string): string {
+  return value.replace(/\s*\[\d{1,3}\]/g, '').trim()
+}
+
+function parseCitationReferences(content: string): Map<string, { title: string, url: string, date?: string }> {
+  const references = new Map<string, { title: string, url: string, date?: string }>()
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    const match = trimmed.match(/^(?:[-*]\s*)?(?:\[(\d{1,3})\]|(\d{1,3})[.)])\s+(.+?)$/)
+    if (!match) continue
+    const key = match[1] || match[2]
+    const body = match[3].trim()
+    const markdownLink = parseMarkdownLink(body)
+    const urlMatch = body.match(/(?:https?|file):\/\/[^\s)\]]+/i)
+    const url = markdownLink?.url || urlMatch?.[0]?.trim() || ''
+    if (!url) continue
+    const withoutUrl = body
+      .replace(/\[([^\]]+)\]\(((?:https?|file):\/\/[^)\s]+)\)/i, '$1')
+      .replace(url, '')
+      .replace(/\s*[—–-]\s*$/, '')
+      .trim()
+    const title = markdownLink?.title || withoutUrl || `Source ${key}`
+    const dateMatch = body.match(/\b(20\d{2}(?:-\d{2})?(?:-\d{2})?|accessed\s+[^|,;]+)/i)
+    references.set(key, { title, url, ...(dateMatch ? { date: dateMatch[1].trim() } : {}) })
+  }
+  return references
 }
 
 function inferGroupFromMarkdownTable(headers: string[], context: string): DashboardResearchUpdateGroup {
@@ -942,21 +983,33 @@ function sectionContextForLine(lines: string[], index: number): string {
   return lines.slice(Math.max(0, index - 4), index).join('\n')
 }
 
-function markdownSourceFields(row: Record<string, string>): Pick<DashboardResearchUpdateItem, 'sourceTitle' | 'sourceUrl' | 'sourceDate'> {
+function markdownSourceFields(
+  row: Record<string, string>,
+  references: Map<string, { title: string, url: string, date?: string }> = new Map(),
+): Pick<DashboardResearchUpdateItem, 'sourceTitle' | 'sourceUrl' | 'sourceDate'> {
   const explicitTitle = getCell(row, 'source title', 'source name', 'source')
   const explicitUrl = getCell(row, 'source url', 'url', 'link')
   const sourceDate = getCell(row, 'source date', 'date', 'last checked', 'checked')
   const markdownLink = parseMarkdownLink(explicitTitle)
-  const sourceTitle = markdownLink?.title || (explicitTitle && /^https?:\/\//i.test(explicitTitle) ? 'Source link' : explicitTitle)
-  const sourceUrl = explicitUrl || markdownLink?.url || (/^https?:\/\//i.test(explicitTitle) ? explicitTitle : '')
-  return { sourceTitle, sourceUrl, sourceDate }
+  const reference = citationKeysFromValue(`${explicitTitle} ${explicitUrl}`)
+    .map(key => references.get(key))
+    .find(Boolean)
+  const explicitSourceUrl = citationKeysFromValue(explicitUrl).length > 0 ? '' : explicitUrl
+  const sourceTitle = markdownLink?.title || reference?.title || (explicitTitle && /^https?:\/\//i.test(explicitTitle) ? 'Source link' : explicitTitle)
+  const sourceUrl = explicitSourceUrl || markdownLink?.url || (/^(?:https?|file):\/\//i.test(explicitTitle) ? explicitTitle : '')
+  return {
+    sourceTitle: stripCitationMarkers(sourceTitle || ''),
+    sourceUrl: sourceUrl || reference?.url || '',
+    sourceDate: sourceDate || reference?.date || '',
+  }
 }
 
 function markdownRowToDashboardItem(
   row: Record<string, string>,
   group: DashboardResearchUpdateGroup,
+  references: Map<string, { title: string, url: string, date?: string }> = new Map(),
 ): DashboardResearchUpdateItem | null {
-  const source = markdownSourceFields(row)
+  const source = markdownSourceFields(row, references)
   if (!source.sourceTitle && !source.sourceUrl && !source.sourceDate) return null
 
   const field = getCell(row, 'field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item')
@@ -1010,6 +1063,7 @@ function markdownRowToDashboardItem(
 
 function extractMarkdownDashboardTables(content: string): DashboardResearchUpdatesPayload | null {
   const lines = content.split(/\r?\n/)
+  const references = parseCitationReferences(content)
   const payload: DashboardResearchUpdatesPayload = {}
 
   for (let i = 0; i < lines.length - 1; i += 1) {
@@ -1040,7 +1094,7 @@ function extractMarkdownDashboardTables(content: string): DashboardResearchUpdat
       headers.forEach((header, index) => {
         row[normalizeHeader(header)] = cells[index] || ''
       })
-      const item = markdownRowToDashboardItem(row, group)
+      const item = markdownRowToDashboardItem(row, group, references)
       if (item) items.push(item)
     }
     if (items.length) payload[group] = [...(payload[group] || []), ...items]
@@ -1050,7 +1104,10 @@ function extractMarkdownDashboardTables(content: string): DashboardResearchUpdat
   return DASHBOARD_UPDATE_GROUPS.some(group => (payload[group]?.length || 0) > 0) ? payload : null
 }
 
-function parseDelimitedBulletRow(line: string): Record<string, string> | null {
+function parseDelimitedBulletRow(
+  line: string,
+  references: Map<string, { title: string, url: string, date?: string }> = new Map(),
+): Record<string, string> | null {
   const cleaned = line
     .trim()
     .replace(/^[-*]\s+/, '')
@@ -1068,7 +1125,7 @@ function parseDelimitedBulletRow(line: string): Record<string, string> | null {
 
   const hasFieldish = Boolean(getCell(row, 'field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item', 'company', 'competitor', 'manufacturer', 'supplier', 'material'))
   const hasValueish = Boolean(getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'market share', 'share', 'pricing evidence', 'price', 'cost', 'notes', 'summary'))
-  const sourceFields = markdownSourceFields(row)
+  const sourceFields = markdownSourceFields(row, references)
   const hasSource = Boolean(sourceFields.sourceTitle || sourceFields.sourceUrl || sourceFields.sourceDate)
 
   return hasFieldish && hasValueish && hasSource ? row : null
@@ -1076,15 +1133,16 @@ function parseDelimitedBulletRow(line: string): Record<string, string> | null {
 
 function extractDelimitedDashboardBullets(content: string): DashboardResearchUpdatesPayload | null {
   const lines = content.split(/\r?\n/)
+  const references = parseCitationReferences(content)
   const payload: DashboardResearchUpdatesPayload = {}
 
   lines.forEach((line, index) => {
     if (!/^\s*(?:[-*]|\d+[.)])\s+/.test(line)) return
-    const row = parseDelimitedBulletRow(line)
+    const row = parseDelimitedBulletRow(line, references)
     if (!row) return
     const context = sectionContextForLine(lines, index)
     const group = inferGroupFromMarkdownTable(Object.keys(row), context)
-    const item = markdownRowToDashboardItem(row, group)
+    const item = markdownRowToDashboardItem(row, group, references)
     if (!item) return
     payload[group] = [...(payload[group] || []), item]
   })

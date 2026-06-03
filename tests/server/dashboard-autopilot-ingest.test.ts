@@ -172,6 +172,45 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('resolves markdown table citation markers to source-backed dashboard updates', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '| Field | Value | Source | Source Tier | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      '| Country-wise consumption growth - China | Trade proxy signal found | [1] | Tier 1 - Official / regulator / trade source | Official Data | high | yes |',
+      '',
+      '## Competitor Intelligence',
+      '| Company | Product Equivalent | Market Share | Link | Source Tier | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      '| Evonik Industries | VARISOFT official esterquat product family | To Verify | [2] | Tier 2 - Official company / product source | To Verify | medium | yes |',
+      '',
+      '## Sources',
+      '- [1] [WITS / World Bank Comtrade](https://wits.worldbank.org/) accessed 2026-06-03',
+      '2. Evonik official product page — https://www.evonik.com/',
+    ].join('\n'))
+
+    expect(payload?.marketClaims).toEqual([
+      expect.objectContaining({
+        field: 'Country-wise consumption growth - China',
+        value: 'Trade proxy signal found',
+        sourceTitle: 'WITS / World Bank Comtrade',
+        sourceUrl: 'https://wits.worldbank.org/',
+        sourceDate: 'accessed 2026-06-03',
+        reviewRequired: true,
+      }),
+    ])
+    expect(payload?.competitorRecords).toEqual([
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        productEquivalent: 'VARISOFT official esterquat product family',
+        sourceTitle: 'Evonik official product page',
+        sourceUrl: 'https://www.evonik.com/',
+      }),
+    ])
+  })
+
   it('ignores decorative markdown tables that lack source metadata', () => {
     const payload = extractDashboardResearchUpdates([
       '| KPI | Value |',
@@ -209,6 +248,30 @@ describe('dashboard autopilot output ingestion', () => {
         value: 'Trade proxy signal found',
         sourceTitle: 'WITS / World Bank Comtrade',
         sourceUrl: 'https://wits.worldbank.org/',
+      }),
+    ])
+  })
+
+  it('resolves delimited bullet citation markers before deciding whether output is sourced', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Supplier Scorecards',
+      '- Supplier: Wilmar | Material: Stearic Acid TP | Price: To Verify | Source: [1] | Source Tier: Tier 3 - Uploaded supplier evidence | Evidence Status: To Verify | Confidence: medium | Review Required: yes',
+      '',
+      '## Sources',
+      '[1] Uploaded Wilmar supplier quote index - file://supplier-quotes/wilmar-stearic-acid.md',
+    ].join('\n'))
+
+    expect(payload?.supplierScorecards).toEqual([
+      expect.objectContaining({
+        supplier: 'Wilmar',
+        material: 'Stearic Acid TP',
+        value: 'To Verify',
+        sourceTitle: 'Uploaded Wilmar supplier quote index',
+        sourceUrl: 'file://supplier-quotes/wilmar-stearic-acid.md',
+        sourceDate: '',
+        reviewRequired: true,
       }),
     ])
   })
