@@ -202,8 +202,10 @@ async function bootstrapFullDashboardAutopilotRuntime() {
   fullDashboardAutopilotBootstrapping = true
   try {
     await feasibilityIntelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: true })
+    trustedSourceAutopilot.hydrateSnapshotsFromServerIntelligenceState()
     await trustedSourceAutopilot.ensureFullDashboardAutopilotScheduled({ startFirstRun: true })
     await importFullDashboardAutopilotOutputInBackground()
+    trustedSourceAutopilot.hydrateSnapshotsFromServerIntelligenceState()
     await feasibilityIntelligence.persistFeasibilityIntelligenceToServer()
   } catch (err) {
     console.warn('[trusted-source-autopilot] automatic schedule bootstrap failed', err)

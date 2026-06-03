@@ -1,5 +1,11 @@
 import { computed, ref } from 'vue'
-import { type EvidenceArea, useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import {
+  type DataRoomSourceRecord,
+  type EvidenceArea,
+  type FeasibilityIntelligenceState,
+  type ResearchReviewFinding,
+  useFeasibilityIntelligence,
+} from '@/composables/useFeasibilityIntelligence'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import { createJob, listJobs, runJob, type Job } from '@/api/hermes/jobs'
 import { fetchAvailableModels, updateDefaultModel } from '@/api/hermes/system'
@@ -98,6 +104,7 @@ export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = ['executive', 'market', 'investment', 'competitor']
+const SERVER_INTELLIGENCE_STATE_JOB_ID = 'server-dashboard-intelligence-state'
 const DASHBOARD_RESEARCH_GROUPS: DashboardResearchUpdateGroup[] = [
   'marketClaims',
   'competitorRecords',
@@ -470,6 +477,236 @@ function createSnapshot(input: {
   state.value.snapshots = [snapshot, ...state.value.snapshots].slice(0, 50)
   persist()
   return snapshot
+}
+
+function sourceReferenceFromUnknown(value: unknown, fallbackTitle: string): SourceReference {
+  const source = value && typeof value === 'object' ? value as Partial<SourceReference> : {}
+  return {
+    title: asText(source.title, fallbackTitle),
+    url: asText(source.url, ''),
+    date: asText(source.date, nowIso().slice(0, 10)),
+  }
+}
+
+function sourceRecordForServerClaim(source: SourceReference, screen: AutopilotScreen, dataType: TrustedSourceDataType): TrustedSourceRecord {
+  return findSourceByReference(source) || registerCandidate({
+    name: source.title,
+    url: source.url,
+    dataType,
+    screen,
+  })
+}
+
+function screenForDashboardGroup(group?: string): AutopilotScreen {
+  if (group === 'financialEvidence') return 'investment'
+  if (group === 'competitorRecords') return 'competitor'
+  if (group === 'marketClaims') return 'market'
+  return 'executive'
+}
+
+function evidenceStatusFromUnknown(value: unknown, fallback: IntelligenceEvidenceStatus = 'To Verify'): IntelligenceEvidenceStatus {
+  return coerceDashboardEvidenceStatus(value, fallback)
+}
+
+function confidenceFromUnknown(value: unknown): 'low' | 'medium' | 'high' {
+  return coerceDashboardConfidence(value)
+}
+
+function snapshotClaimFromServerState(input: {
+  idSeed: string
+  screen: AutopilotScreen
+  label: string
+  value: string
+  source: SourceReference
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence: 'low' | 'medium' | 'high'
+  dataType: TrustedSourceDataType
+  sensitive?: boolean
+  notes?: string
+  reviewRequired?: boolean
+}): TrustedSourceSnapshotClaim {
+  const sourceRecord = sourceRecordForServerClaim(input.source, input.screen, input.dataType)
+  const update = buildDashboardUpdateCandidate({
+    screen: input.screen,
+    field: input.label,
+    value: input.value,
+    source: input.source,
+    sourceId: sourceRecord.source_id,
+    fetchedAt: input.source.date || nowIso(),
+    evidenceStatus: input.evidenceStatus,
+    confidence: input.confidence,
+    reviewRequired: input.reviewRequired,
+    dataType: input.dataType,
+    sensitive: input.sensitive,
+  }, sourceRecord)
+
+  return {
+    id: `server-${input.idSeed}`,
+    fieldKey: update.fieldKey,
+    label: input.label,
+    value: input.value,
+    evidenceStatus: input.evidenceStatus,
+    confidence: update.confidence,
+    source: input.source,
+    sourceTier: update.sourceTier,
+    sourceTierLabel: update.sourceTierLabel,
+    lastChecked: update.lastChecked,
+    riskReason: update.riskReason,
+    dataType: input.dataType,
+    reviewRequired: update.reviewRequired,
+    sensitive: update.sensitive,
+    notes: [
+      input.notes,
+      'Hydrated from durable dashboard intelligence state.',
+      `Autopilot action: ${update.action}`,
+      `Risk reason: ${update.riskReason}`,
+    ].filter(Boolean).join('\n'),
+  }
+}
+
+function buildServerStateSnapshot(
+  screen: AutopilotScreen,
+  claims: TrustedSourceSnapshotClaim[],
+): TrustedSourceSnapshot | null {
+  if (!claims.length) return null
+  const generatedAt = nowIso()
+  const sourceIds = claims
+    .map(claim => findSourceByReference(claim.source)?.source_id || '')
+    .filter(Boolean)
+  return {
+    snapshot_id: `server-${screen}-${claims.map(claim => claim.id).join('-').slice(0, 80)}`,
+    screen,
+    generated_at: generatedAt,
+    source_ids: Array.from(new Set(sourceIds)),
+    claims,
+    evidence_status: claims.some(claim => claim.reviewRequired) ? 'To Verify' : claims[0].evidenceStatus,
+    confidence: claims.some(claim => claim.confidence === 'high') ? 'high' : claims.some(claim => claim.confidence === 'medium') ? 'medium' : 'low',
+    changed_fields: claims.map(claim => claim.label),
+    conflicts: [],
+    review_required: claims.some(claim => claim.reviewRequired),
+    job_id: SERVER_INTELLIGENCE_STATE_JOB_ID,
+    user_visibility: snapshotVisibility(screen, claims.map(claim => claim.dataType)),
+    redaction_rules: claims.some(claim => claim.sensitive)
+      ? ['Hide price, cost, supplier, formula, financial, regulatory, and product-development values from restricted roles.']
+      : ['Investor viewers cannot access raw auto-updated dashboards.'],
+  }
+}
+
+function claimsFromDurableIntelligenceState(intelligenceState: FeasibilityIntelligenceState): Map<AutopilotScreen, TrustedSourceSnapshotClaim[]> {
+  const claimsByScreen = new Map<AutopilotScreen, TrustedSourceSnapshotClaim[]>()
+  const addClaim = (screen: AutopilotScreen, claim: TrustedSourceSnapshotClaim) => {
+    const list = claimsByScreen.get(screen) || []
+    claimsByScreen.set(screen, [...list, claim])
+  }
+
+  for (const item of intelligenceState.marketClaims.slice(0, 12)) {
+    addClaim('market', snapshotClaimFromServerState({
+      idSeed: `market-${item.id || item.label}`,
+      screen: 'market',
+      label: item.label,
+      value: item.value || 'To Verify',
+      source: sourceReferenceFromUnknown(item.source, 'Saved Market Intelligence claim'),
+      evidenceStatus: evidenceStatusFromUnknown(item.evidenceStatus),
+      confidence: confidenceFromUnknown(item.confidence),
+      dataType: item.label.toLowerCase().includes('trade') || item.value?.toLowerCase().includes('trade proxy') ? 'trade_data' : 'market_size',
+      notes: 'Server-persisted market claim created by dashboard workflow or Full Dashboard Autopilot.',
+    }))
+  }
+
+  for (const item of intelligenceState.competitors.slice(0, 12)) {
+    addClaim('competitor', snapshotClaimFromServerState({
+      idSeed: `competitor-${item.id || item.companyName}`,
+      screen: 'competitor',
+      label: item.companyName,
+      value: [
+        item.productEquivalent ? `Product: ${item.productEquivalent}` : '',
+        item.marketShare ? `Market share: ${item.marketShare}` : 'Market share: To Verify',
+        item.pricingEvidence ? `Pricing: ${item.pricingEvidence}` : '',
+      ].filter(Boolean).join('; '),
+      source: sourceReferenceFromUnknown(item.source, 'Competitor Intelligence record'),
+      evidenceStatus: evidenceStatusFromUnknown(item.evidenceStatus),
+      confidence: 'medium',
+      dataType: 'competitor_data',
+      sensitive: Boolean(item.pricingEvidence?.trim() || item.marketShare?.trim()),
+      notes: item.notes,
+    }))
+  }
+
+  for (const item of intelligenceState.dataRoomSources.slice(0, 12) as DataRoomSourceRecord[]) {
+    const dashboardGroup = item.dashboardGroup || ''
+    const screen = screenForDashboardGroup(dashboardGroup)
+    const dataType = coerceDashboardDataType(item.dataType, dashboardGroup === 'financialEvidence' ? 'financial_data' : dashboardGroup === 'supplierScorecards' ? 'supplier_quote' : dashboardGroup === 'regulatoryFindings' ? 'regulatory_data' : 'document_evidence')
+    addClaim(screen, snapshotClaimFromServerState({
+      idSeed: `source-${item.id || item.checklistLabel}`,
+      screen,
+      label: item.checklistLabel,
+      value: item.proposedValue || item.notes || 'Source-backed evidence candidate',
+      source: sourceReferenceFromUnknown(item.source, 'Dashboard data-room source'),
+      evidenceStatus: evidenceStatusFromUnknown(item.evidenceStatus),
+      confidence: confidenceFromUnknown(item.confidence),
+      dataType,
+      sensitive: dataType === 'financial_data' || dataType === 'supplier_quote' || dataType === 'regulatory_data',
+      notes: item.notes,
+    }))
+  }
+
+  for (const finding of intelligenceState.researchFindings.filter(item => item.status === 'Pending Review' || item.status === 'To Verify').slice(0, 12) as ResearchReviewFinding[]) {
+    const target = finding.dashboardTarget
+    if (!target) continue
+    const screen = screenForDashboardGroup(target.group)
+    const dataType = coerceDashboardDataType(target.dataType, target.group === 'financialEvidence' ? 'financial_data' : target.group === 'competitorRecords' ? 'competitor_data' : target.group === 'supplierScorecards' ? 'supplier_quote' : 'market_size')
+    addClaim(screen, snapshotClaimFromServerState({
+      idSeed: `finding-${finding.id || finding.keyClaim}`,
+      screen,
+      label: target.proposedDashboardField || target.field || finding.keyClaim,
+      value: target.value || target.content || finding.summary,
+      source: sourceReferenceFromUnknown(finding.source, 'Research Result Review finding'),
+      evidenceStatus: evidenceStatusFromUnknown(finding.evidenceStatus),
+      confidence: confidenceFromUnknown(finding.confidence),
+      dataType,
+      sensitive: Boolean(target.sensitive),
+      notes: finding.riskNote || finding.summary,
+      reviewRequired: true,
+    }))
+  }
+
+  return claimsByScreen
+}
+
+function hydrateSnapshotsFromServerIntelligenceState(
+  intelligenceState: FeasibilityIntelligenceState = useFeasibilityIntelligence().state.value,
+): { snapshotCount: number; claimCount: number } {
+  ensureLoaded()
+  const claimsByScreen = claimsFromDurableIntelligenceState(intelligenceState)
+  const nextSnapshots: TrustedSourceSnapshot[] = []
+  let claimCount = 0
+
+  for (const screen of FULL_DASHBOARD_SCREENS) {
+    const claims = claimsByScreen.get(screen) || []
+    const snapshot = buildServerStateSnapshot(screen, claims)
+    if (!snapshot) continue
+    nextSnapshots.push(snapshot)
+    claimCount += claims.length
+  }
+
+  state.value.snapshots = [
+    ...nextSnapshots,
+    ...state.value.snapshots.filter(snapshot => snapshot.job_id !== SERVER_INTELLIGENCE_STATE_JOB_ID),
+  ].slice(0, 50)
+  persist()
+
+  if (claimCount > 0) {
+    persistFullDashboardAutopilotStatus({
+      enabled: true,
+      lastRun: new Date().toISOString(),
+      lastStatus: `Durable server intelligence hydrated into source panels. Source-backed fields: ${claimCount}. Screens updated: ${nextSnapshots.length}.`,
+    })
+  }
+
+  return {
+    snapshotCount: nextSnapshots.length,
+    claimCount,
+  }
 }
 
 function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSourceSnapshot {
@@ -1533,6 +1770,7 @@ export function useTrustedSourceAutopilot() {
     activeSourcesForScreen,
     fullDashboardAutopilotPrompt,
     runFullDashboardDataEngine,
+    hydrateSnapshotsFromServerIntelligenceState,
     registerCandidate,
     updateSource,
     applyTrustedSourceClaim,

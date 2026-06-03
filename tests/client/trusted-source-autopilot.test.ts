@@ -595,6 +595,82 @@ describe('Trusted Source Autopilot', () => {
     expect(window.localStorage.getItem('hermes.feasibilityIntelligence.v1')).toContain('Country-wise consumption growth - China')
   })
 
+  it('hydrates trusted-source panels from durable server intelligence state', async () => {
+    fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-02T19:00:00.000Z',
+      state: {
+        marketClaims: [{
+          id: 'market-server-1',
+          label: 'Country-wise consumption growth - China',
+          value: 'Official trade proxy / To Verify',
+          evidenceStatus: 'Trade Proxy',
+          confidence: 'medium',
+          source: {
+            title: 'UN Comtrade',
+            url: 'https://comtradeplus.un.org',
+            date: '2026-06-02',
+          },
+          lastChecked: '2026-06-02',
+        }],
+        competitors: [{
+          id: 'competitor-server-1',
+          companyName: 'Evonik Industries',
+          countryRegion: 'Germany',
+          productEquivalent: 'Esterquat / softener portfolio',
+          activeContent: 'To Verify',
+          pricingEvidence: 'To Verify',
+          certifications: 'Official company source needed',
+          distributionPresence: 'Global',
+          marketShare: '',
+          evidenceStatus: 'Source-backed',
+          source: {
+            title: 'Evonik official website',
+            url: 'https://www.evonik.com/',
+            date: '2026-06-02',
+          },
+          notes: 'Imported by Full Dashboard Autopilot.',
+          updatedAt: '2026-06-02T19:00:00.000Z',
+        }],
+        researchFindings: [{
+          id: 'finding-server-1',
+          summary: 'Supplier scorecard finding needs owner review before dashboard use.',
+          keyClaim: 'Supplier scorecard: stearic acid source',
+          area: 'factory',
+          evidenceStatus: 'Supplier Evidence',
+          confidence: 'medium',
+          source: {
+            title: 'Supplier quote upload',
+            date: '2026-06-02',
+          },
+          riskNote: 'Supplier price and score are sensitive.',
+          status: 'Pending Review',
+          createdAt: '2026-06-02T19:00:00.000Z',
+          dashboardTarget: {
+            group: 'supplierScorecards',
+            proposedDashboardField: 'Stearic acid supplier scorecard',
+            value: 'Quote evidence candidate',
+            sourceTier: 'tier3-supplier-evidence',
+            dataType: 'supplier_quote',
+            sensitive: true,
+          },
+        }],
+      },
+    })
+
+    const intelligence = useFeasibilityIntelligence()
+    await intelligence.hydrateFeasibilityIntelligenceFromServer()
+    const autopilot = useTrustedSourceAutopilot()
+    const result = autopilot.hydrateSnapshotsFromServerIntelligenceState()
+
+    expect(result).toMatchObject({ snapshotCount: 3, claimCount: 3 })
+    expect(autopilot.lastSnapshotForScreen('market')?.claims[0].label).toBe('Country-wise consumption growth - China')
+    expect(autopilot.lastSnapshotForScreen('competitor')?.claims[0].label).toBe('Evonik Industries')
+    expect(autopilot.lastSnapshotForScreen('executive')?.claims[0].label).toBe('Stearic acid supplier scorecard')
+    expect(loadFullDashboardAutopilotStatus().lastStatus).toContain('Durable server intelligence hydrated')
+  })
+
   it('persists auto-filled dashboard intelligence to the server once sync is enabled', async () => {
     const intelligence = useFeasibilityIntelligence()
     await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })

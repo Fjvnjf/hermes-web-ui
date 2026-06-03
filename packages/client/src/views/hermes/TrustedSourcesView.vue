@@ -64,6 +64,50 @@ const activeSourceCount = computed(() => autopilot.activeSources.value.length)
 const needsReviewCount = computed(() => autopilot.needsReviewSnapshots.value.length)
 const fullAutopilotSnapshotCount = computed(() => autopilot.state.value.snapshots.length)
 const fullAutopilotReviewCount = computed(() => autopilot.needsReviewSnapshots.value.length)
+const fullAutopilotStatusTone = computed(() => {
+  if (!fullAutopilotStatus.value.enabled) return 'setup'
+  if (fullAutopilotStatus.value.lastStatus.toLowerCase().includes('failed')) return 'warning'
+  if (fullAutopilotStatus.value.lastStatus.toLowerCase().includes('review')) return 'review'
+  return 'active'
+})
+const fullAutopilotOwnerAction = computed(() => {
+  if (!fullAutopilotStatus.value.enabled) return 'Enable once. Hermes will schedule the twice-daily online research job and start importing evidence-backed outputs.'
+  if (fullAutopilotReviewCount.value > 0) return 'Open Research Result Review and approve only the source-backed items you trust.'
+  if (!fullAutopilotStatus.value.lastRun) return 'Wait for the first scheduled Hermes research output or run a source snapshot now.'
+  return 'Autopilot is running. Keep reviewing staged findings; safe source-backed fields will hydrate from durable server state.'
+})
+const coverageRows = [
+  {
+    area: 'Market Intelligence',
+    fills: 'Trade proxies, country signals, market questions, source-backed segments',
+    review: 'Market size, CAGR, consumption, and target claims stay To Verify unless strong evidence exists',
+  },
+  {
+    area: 'Competitor Intelligence',
+    fills: 'Company presence, product equivalents, certifications, distribution evidence',
+    review: 'Market share, pricing, strengths/weaknesses, and unsupported rankings are staged for review',
+  },
+  {
+    area: 'Raw Materials / Supplier Scorecards',
+    fills: 'Supplier evidence candidates, material signals, SDS/TDS/COA/quote references',
+    review: 'Supplier prices, payment terms, quality/reliability scores, and cost data remain sensitive',
+  },
+  {
+    area: 'Investment / IRR',
+    fills: 'Approved internal scenario snapshots and finance evidence candidates',
+    review: 'IRR, NPV, payback, ROI, capex, costing, and investor claims are never silently approved',
+  },
+  {
+    area: 'Regulatory / Data Room',
+    fills: 'Regulatory findings, source gaps, document evidence candidates',
+    review: 'DMS, CAS, formula, permit, factory approval, and safety claims require owner review',
+  },
+  {
+    area: 'Reports / Presentation',
+    fills: 'Investor material candidates only after evidence labels are preserved',
+    review: 'Investor-approved material remains approval-gated and excludes unsupported claims',
+  },
+]
 
 function updateFullAutopilotStatus(patch: Partial<typeof fullAutopilotStatus.value>) {
   fullAutopilotStatus.value = persistFullDashboardAutopilotStatus(patch)
@@ -245,6 +289,15 @@ onMounted(() => {
           <strong>{{ fullAutopilotReviewCount }}</strong>
         </article>
       </div>
+      <div class="full-autopilot-command" :class="fullAutopilotStatusTone">
+        <div>
+          <span>Current owner action</span>
+          <strong>{{ fullAutopilotOwnerAction }}</strong>
+        </div>
+        <small>
+          Durable server intelligence hydrates the source panels after every successful import, so refreshed data survives browser reloads and public tunnel changes.
+        </small>
+      </div>
       <ul class="autopilot-rule-list">
         <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
         <li>Runs on the existing Hermes Jobs scheduler at 07:00 and 19:00; no separate database or backend migration is required.</li>
@@ -262,6 +315,22 @@ onMounted(() => {
         {{ fullAutopilotStatus.lastStatus }}
         <span v-if="fullAutopilotStatus.scheduledJobId"> Job: {{ fullAutopilotStatus.scheduledJobId }}</span>
       </p>
+      <div class="coverage-map" aria-label="Full dashboard autopilot coverage map">
+        <div class="coverage-map-header">
+          <h4>What Hermes can fill automatically</h4>
+          <span>official-first / review critical</span>
+        </div>
+        <div class="coverage-row head">
+          <span>Dashboard area</span>
+          <span>Auto-filled or hydrated when source-backed</span>
+          <span>Review-gated / protected</span>
+        </div>
+        <div v-for="row in coverageRows" :key="row.area" class="coverage-row">
+          <strong>{{ row.area }}</strong>
+          <span>{{ row.fills }}</span>
+          <span>{{ row.review }}</span>
+        </div>
+      </div>
     </section>
 
     <section class="source-form">
@@ -497,6 +566,49 @@ onMounted(() => {
   }
 }
 
+.full-autopilot-command {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.065);
+
+  &.active {
+    border-color: rgba(var(--success-rgb), 0.3);
+    background: rgba(var(--success-rgb), 0.07);
+  }
+
+  &.review {
+    border-color: rgba(var(--warning-rgb), 0.38);
+    background: rgba(var(--warning-rgb), 0.08);
+  }
+
+  &.warning {
+    border-color: rgba(var(--danger-rgb), 0.34);
+    background: rgba(var(--danger-rgb), 0.06);
+  }
+
+  div {
+    display: grid;
+    gap: 5px;
+  }
+
+  span,
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+}
+
 .autopilot-rule-list {
   display: grid;
   gap: 8px;
@@ -530,6 +642,65 @@ onMounted(() => {
 .autopilot-status-note {
   margin: 0 !important;
   color: $warning !important;
+}
+
+.coverage-map {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow-x: auto;
+}
+
+.coverage-map-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+
+  h4 {
+    margin: 0;
+    color: $warning;
+    font-size: 14px;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.coverage-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(260px, 1.1fr) minmax(280px, 1.25fr);
+  gap: 10px;
+  min-width: 820px;
+  padding: 10px;
+  border: 1px solid $border-color;
+  border-radius: 7px;
+  background: $bg-secondary;
+
+  &.head {
+    border-color: rgba(var(--accent-primary-rgb), 0.34);
+    background: rgba(var(--accent-primary-rgb), 0.07);
+    color: $warning;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-info;
+  }
+
+  span {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
 }
 
 .source-form {
@@ -663,6 +834,20 @@ onMounted(() => {
 
   .source-form .wide {
     grid-column: auto;
+  }
+
+  .coverage-map {
+    overflow-x: visible;
+  }
+
+  .coverage-map-header {
+    display: grid;
+    justify-items: start;
+  }
+
+  .coverage-row {
+    grid-template-columns: 1fr;
+    min-width: 0;
   }
 }
 </style>
