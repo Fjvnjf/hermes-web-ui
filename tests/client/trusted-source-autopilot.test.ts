@@ -1257,13 +1257,13 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('Disable Auto Update for this field')
   })
 
-  it('creates a real data-engine snapshot from the Sync Now control', async () => {
+  it('creates a real data-engine snapshot from the Request Refresh Check control', async () => {
     const autopilot = useTrustedSourceAutopilot()
     const wrapper = mount(TrustedSourceAutopilotPanel, {
       props: { screen: 'market', title: 'Market Auto Source Status' },
     })
 
-    await wrapper.findAll('button').find(button => button.text().includes('Sync Now'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('Request Refresh Check'))!.trigger('click')
     await vi.dynamicImportSettled()
 
     expect(autopilot.lastSnapshotForScreen('market')?.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
@@ -1345,7 +1345,8 @@ describe('Trusted Source Autopilot', () => {
     expect(text).toContain('Safe records')
     expect(text).toContain('Review gate')
     expect(text).toContain('Evidence rules')
-    expect(text).toContain('Manual controls')
+    expect(text).toContain('Troubleshooting')
+    expect(text).toContain('Request Refresh Check')
     expect(text).toContain('Imported dashboard records')
     expect(text).toContain('3 imported dashboard records visible on this screen.')
     expect(text).toContain('Market claims')

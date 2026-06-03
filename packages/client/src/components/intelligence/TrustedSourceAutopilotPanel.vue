@@ -255,10 +255,10 @@ async function syncNow() {
       </div>
     </details>
 
-    <details class="autopilot-disclosure manual-controls">
+    <details class="autopilot-disclosure troubleshooting-controls">
       <summary>
-        <strong>Manual controls</strong>
-        <span>Optional refresh, sources, jobs, and diagnostics</span>
+        <strong>Troubleshooting</strong>
+        <span>Optional status check, sources, jobs, and diagnostics</span>
       </summary>
       <div class="disclosure-body">
         <div class="autopilot-metrics">
@@ -280,7 +280,7 @@ async function syncNow() {
           </button>
         </div>
         <div class="autopilot-actions">
-          <NButton size="small" type="primary" :loading="saving" @click="syncNow">Sync Now</NButton>
+          <NButton size="small" type="primary" :loading="saving" @click="syncNow">Request Refresh Check</NButton>
           <NButton size="small" secondary @click="openDrawer()">View Sources</NButton>
           <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">View Review Queue</RouterLink>
           <NButton size="small" secondary :loading="saving" @click="createResearchJob">Create Research Job</NButton>
@@ -345,7 +345,7 @@ async function syncNow() {
         </div>
         <div v-else class="source-detail">
           <h4>No source-backed field selected yet</h4>
-          <p>Use Sync Now to schedule a refresh, or add trusted-source records from a structured source result.</p>
+          <p>Hermes refreshes this screen automatically. Use Request Refresh Check only when troubleshooting a stale source run.</p>
         </div>
         <div class="source-list">
           <h4>Active sources for this screen</h4>
@@ -561,7 +561,7 @@ async function syncNow() {
   background: rgba(var(--accent-info-rgb), 0.045);
 }
 
-.manual-controls {
+.troubleshooting-controls {
   border-color: rgba(var(--accent-primary-rgb), 0.22);
   background: rgba(var(--accent-primary-rgb), 0.035);
 }
