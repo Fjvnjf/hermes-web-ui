@@ -301,6 +301,24 @@ const automaticResearchCards = computed(() => [
   },
 ])
 
+const automaticResearchPromiseCards = [
+  {
+    icon: '🌐',
+    title: 'No manual web searching',
+    detail: 'Hermes researches trusted online, official, company, supplier, and regulatory sources on the twice-daily schedule.',
+  },
+  {
+    icon: '📥',
+    title: 'Safe facts fill themselves',
+    detail: 'Low-risk source-backed records hydrate the dashboard with source, date, confidence, and evidence labels.',
+  },
+  {
+    icon: '🧾',
+    title: 'Important claims wait for review',
+    detail: 'Market size, prices, competitor share, IRR, regulatory status, and investor material stay staged until approved.',
+  },
+]
+
 type AutopilotFlowState = 'done' | 'active' | 'waiting'
 
 const automaticResearchFlow = computed(() => {
@@ -425,103 +443,103 @@ async function createNextActionTask(action: InvestorNextAction) {
 const workspaceActions = [
   {
     label: 'Executive Overview',
-    icon: 'EO',
+    icon: '🏠',
     detail: 'Open the executive intelligence, market, finance, daily brief, and action board.',
     to: { name: 'hermes.executiveOverview' },
   },
   {
     label: 'Last 24 Hours',
-    icon: '24H',
+    icon: '🕘',
     detail: 'Review chats, captures, tasks, jobs, files, and failures from available data.',
     to: { name: 'hermes.last24Hours' },
   },
   {
     label: 'Continue Chat',
-    icon: 'AI',
+    icon: '💬',
     detail: 'Resume Hermes conversation work.',
     to: { name: 'hermes.chat' },
   },
   {
     label: 'Open Feasibility Studio',
-    icon: 'FS',
+    icon: '🧪',
     detail: 'Work on feasibility drafts, questions, gaps, and outputs.',
     to: { name: 'hermes.feasibility' },
   },
   {
     label: 'Open Investor Readiness',
-    icon: 'IR',
+    icon: '📈',
     detail: 'Check evidence gaps, risks, and investor-safe preparation status.',
     to: { name: 'hermes.investorReadiness' },
   },
   {
     label: 'Open IRR Calculator',
-    icon: 'IRR',
+    icon: '💎',
     detail: 'Model assumptions, NPV, IRR, MIRR, payback, and sensitivity.',
     to: { name: 'hermes.investmentCalculator' },
   },
   {
     label: 'Investment Analysis',
-    icon: 'IA',
+    icon: '📊',
     detail: 'Review investor economics with To Verify and Derived from Assumptions labels.',
     to: { name: 'hermes.investmentAnalysis' },
   },
   {
     label: 'Market Intelligence',
-    icon: 'MK',
+    icon: '🌍',
     detail: 'Track source-backed market claims and competitor proof without fake market data.',
     to: { name: 'hermes.marketIntelligence' },
   },
   {
     label: 'Open Projects',
-    icon: 'PRJ',
+    icon: '🗂️',
     detail: 'Choose the research or feasibility workspace to continue.',
     to: { name: 'hermes.projects' },
   },
   {
     label: 'Raw Material Sourcing',
-    icon: 'RM',
+    icon: '⚗️',
     detail: 'Track sourced price entries, supplier evidence, and alerts.',
     to: { name: 'hermes.rawMaterialSourcing' },
   },
   {
     label: 'Export Markets',
-    icon: 'EXP',
+    icon: '🚢',
     detail: 'Research country opportunity with HS-code and trade-proxy warnings.',
     to: { name: 'hermes.exportMarketOpportunity' },
   },
   {
     label: 'Open Research Library',
-    icon: 'RES',
+    icon: '📚',
     detail: 'Use history, memory, and saved evidence paths.',
     to: { name: 'hermes.research' },
   },
   {
     label: 'Open Documents',
-    icon: 'DOC',
+    icon: '📄',
     detail: 'Access Hermes files and uploaded evidence.',
     to: { name: 'hermes.files' },
   },
   {
     label: 'Open Tasks',
-    icon: 'TASK',
+    icon: '✅',
     detail: 'Track work in the existing Kanban board.',
     to: { name: 'hermes.kanban' },
   },
   {
     label: 'Open Reports',
-    icon: 'RPT',
+    icon: '📝',
     detail: 'Prepare outputs and check existing usage analytics.',
     to: { name: 'hermes.reportsHub' },
   },
   {
     label: 'Open Memory',
-    icon: 'MEM',
+    icon: '🧠',
     detail: 'Review retained Hermes memory.',
     to: { name: 'hermes.memory' },
   },
   {
     label: 'Backup Vault',
-    icon: 'BK',
+    icon: '🛟',
     detail: 'Owner-only disaster recovery exports with secrets redacted by default.',
     to: { name: 'hermes.localBackupVault' },
   },
@@ -824,6 +842,15 @@ onMounted(() => {
             <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
             <RouterLink v-if="canUseResearchReview" class="brief-primary-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
             <RouterLink v-if="canUseRouteName('hermes.jobs')" class="brief-primary-link" :to="{ name: 'hermes.jobs' }">Jobs</RouterLink>
+          </div>
+          <div class="autopilot-promise-strip" aria-label="What Hermes does automatically">
+            <article v-for="card in automaticResearchPromiseCards" :key="card.title">
+              <span aria-hidden="true">{{ card.icon }}</span>
+              <div>
+                <strong>{{ card.title }}</strong>
+                <small>{{ card.detail }}</small>
+              </div>
+            </article>
           </div>
           <div class="automatic-research-flow" aria-label="Automatic research flow">
             <article v-for="step in automaticResearchFlow" :key="step.title" :class="step.state">
@@ -1502,6 +1529,52 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.autopilot-promise-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-info-rgb), 0.055);
+  }
+
+  span {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.24);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    font-size: 15px;
+  }
+
+  div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 10.5px;
+    line-height: 1.35;
+  }
 }
 
 .automatic-research-flow {
@@ -2331,6 +2404,10 @@ onMounted(() => {
   .automatic-research-title {
     display: grid;
     justify-items: start;
+  }
+
+  .autopilot-promise-strip {
+    grid-template-columns: 1fr;
   }
 
   .automatic-research-flow article {
