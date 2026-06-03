@@ -947,6 +947,13 @@ function appendDataRoomCandidate(
     id: stableId('autopilot-source', input.runKey, checklistLabel),
     checklistLabel,
     area: areaForGroup(input.group),
+    dashboardGroup: input.group,
+    supplier: firstString(input.item.supplier),
+    material: firstString(input.item.material),
+    proposedValue: input.value,
+    sourceTier: input.tier,
+    dataType: input.dataType,
+    confidence: input.item.confidence,
     evidenceStatus: safeCandidateStatus(input.evidenceStatus),
     source: input.source,
     notes: [

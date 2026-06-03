@@ -301,10 +301,38 @@ describe('screenshot-matched executive business tabs', () => {
   })
 
   it('renders supplier scorecards as source-gated raw material verification targets', () => {
+    useFeasibilityIntelligence().addDataRoomSource({
+      checklistLabel: 'Autopilot supplier scorecard - Official Supplier',
+      area: 'factory',
+      dashboardGroup: 'supplierScorecards',
+      supplier: 'Official Supplier Candidate',
+      material: 'Stearic Acid TP',
+      proposedValue: 'Quote/TDS requested; price To Verify',
+      sourceTier: 'tier2-company-official',
+      dataType: 'supplier_quote',
+      confidence: 'medium',
+      evidenceStatus: 'To Verify',
+      source: {
+        title: 'Official supplier product catalog',
+        url: 'https://example.com/official-product-catalog',
+      },
+      notes: [
+        'Autopilot candidate from supplierScorecards.',
+        'Proposed value: Quote/TDS requested; price To Verify',
+        'Source tier: tier2-company-official',
+        'This record was auto-staged to make the dashboard useful without manual copy-paste. It is not investor-approved.',
+      ].join('\n'),
+    })
+
     const wrapper = mount(RawMaterialSourcingView)
     const text = wrapper.text()
 
     expect(text).toContain('Supplier Scorecards - Key Raw Materials')
+    expect(text).toContain('Hermes Autopilot has staged 1 supplier/raw-material candidates')
+    expect(text).toContain('Official Supplier Candidate')
+    expect(text).toContain('Stearic Acid TP')
+    expect(text).toContain('Quote/TDS requested; price To Verify')
+    expect(text).toContain('Official supplier product catalog')
     expect(text).toContain('Stearic Acid TP / Stearic acid 1842')
     expect(text).toContain('Triethanolamine / TEA')
     expect(text).toContain('PDMS Silicone Oil / 1000 cSt target')

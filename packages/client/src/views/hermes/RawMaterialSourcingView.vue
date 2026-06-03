@@ -158,6 +158,65 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
   },
 ]
 
+function noteLine(notes: string, label: string): string {
+  const match = notes.match(new RegExp(`^${label}:\\s*(.+)$`, 'im'))
+  return match?.[1]?.trim() || ''
+}
+
+function isAutopilotSupplierRecord(record: typeof intelligence.state.value.dataRoomSources[number]): boolean {
+  const group = record.dashboardGroup || ''
+  const text = `${record.checklistLabel} ${record.notes} ${record.supplier || ''} ${record.material || ''}`.toLowerCase()
+  return group === 'supplierScorecards' ||
+    group === 'rawMaterialSignals' ||
+    text.includes('supplier scorecard') ||
+    text.includes('raw material') ||
+    text.includes('autopilot candidate from supplierscorecards') ||
+    text.includes('autopilot candidate from rawmaterialsignals')
+}
+
+function supplierRecordKey(row: Pick<SupplierScorecardRow, 'supplier' | 'material'>): string {
+  return `${row.supplier}::${row.material}`.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
+  intelligence.state.value.dataRoomSources
+    .filter(isAutopilotSupplierRecord)
+    .map(record => {
+      const supplier = record.supplier || noteLine(record.notes, 'Supplier') || record.checklistLabel
+      const material = record.material || noteLine(record.notes, 'Material') || 'Material To Verify'
+      const value = record.proposedValue || noteLine(record.notes, 'Proposed value') || 'To Verify'
+      const sourceTitle = record.source?.title || 'Source review needed'
+      const sourceUrl = record.source?.url
+      const status = record.evidenceStatus === 'Verified' || record.evidenceStatus === 'Investor Approved'
+        ? 'To Verify'
+        : record.evidenceStatus
+      return {
+        supplier,
+        region: 'Autopilot source candidate',
+        material,
+        pricePerTon: value,
+        quality: 'Review source evidence',
+        reliability: 'To Verify',
+        payment: 'To Verify',
+        score: 'Review needed',
+        evidenceStatus: status,
+        sourceTitle,
+        sourceUrl,
+        nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score To Verify until quote/TDS/SDS/COA evidence is approved.`,
+        highRisk: isDmsMaterial(`${supplier} ${material}`),
+      }
+    }),
+)
+
+const displayedSupplierScorecardRows = computed(() => {
+  const autopilotRows = autopilotSupplierScorecardRows.value
+  const used = new Set(autopilotRows.map(supplierRecordKey))
+  return [
+    ...autopilotRows,
+    ...supplierScorecardRows.filter(row => !used.has(supplierRecordKey(row))),
+  ]
+})
+
 const priceForm = ref({
   rmbPrice: null as number | null,
   usdPrice: null as number | null,
@@ -519,6 +578,10 @@ async function scheduleResearch(material: RawMaterialRecord) {
             Supplier names and product targets are source/candidate-backed; prices, quality scores, reliability,
             payment terms, and total scores remain To Verify until quote/TDS/SDS/COA evidence is attached.
           </p>
+          <p v-if="autopilotSupplierScorecardRows.length" class="autopilot-note">
+            Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier/raw-material candidates from trusted-source research.
+            They are visible here as To Verify candidates and still require source review before costing or investor use.
+          </p>
         </div>
         <div class="scorecard-actions">
           <NButton
@@ -549,7 +612,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
             <span>Action</span>
           </div>
           <div
-            v-for="row in supplierScorecardRows"
+            v-for="row in displayedSupplierScorecardRows"
             :key="`${row.supplier}-${row.material}`"
             class="supplier-scorecard-row"
             :class="{ risk: row.highRisk }"
@@ -822,6 +885,15 @@ label,
   background:
     linear-gradient(135deg, rgba(242, 200, 107, 0.06), transparent 42%),
     rgba(5, 14, 24, 0.9);
+}
+
+.autopilot-note {
+  margin: 10px 0 0;
+  border: 1px solid rgba(56, 213, 255, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(56, 213, 255, 0.06);
+  color: #c8d4e3;
 }
 
 .supplier-scorecard-table-wrap {

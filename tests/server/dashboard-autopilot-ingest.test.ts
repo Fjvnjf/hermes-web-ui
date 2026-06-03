@@ -171,6 +171,7 @@ describe('dashboard autopilot output ingestion', () => {
             material: 'Stearic Acid TP',
             value: '$1,180/t',
             sourceTitle: 'Supplier quote needed',
+            sourceUrl: 'https://example.com/wilmar-stearic-acid-quote',
             sourceTier: 'Tier 3 - Uploaded supplier evidence',
             confidence: 'medium',
             evidenceStatus: 'To Verify',
@@ -263,6 +264,22 @@ describe('dashboard autopilot output ingestion', () => {
         }),
       }),
     ]))
+    expect(envelope?.state.dataRoomSources).toEqual([
+      expect.objectContaining({
+        checklistLabel: 'Supplier scorecard - Wilmar',
+        dashboardGroup: 'supplierScorecards',
+        supplier: 'Wilmar',
+        material: 'Stearic Acid TP',
+        proposedValue: '$1,180/t',
+        sourceTier: 'tier3-supplier-evidence',
+        dataType: 'supplier_quote',
+        evidenceStatus: 'To Verify',
+        source: expect.objectContaining({
+          title: 'Supplier quote needed',
+          url: 'https://example.com/wilmar-stearic-acid-quote',
+        }),
+      }),
+    ])
 
     const rawState = readFileSync(join(hermesHome, 'dashboard-intelligence', 'state.json'), 'utf-8')
     expect(rawState).not.toContain('"financialModels":[{"scenarioName"')

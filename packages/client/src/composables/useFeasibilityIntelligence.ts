@@ -163,6 +163,13 @@ export interface DataRoomSourceRecord {
   source: SourceReference | null
   notes: string
   updatedAt: string
+  dashboardGroup?: string
+  supplier?: string
+  material?: string
+  proposedValue?: string
+  sourceTier?: string
+  dataType?: string
+  confidence?: 'low' | 'medium' | 'high' | string
 }
 
 export interface FeasibilityIntelligenceState {
