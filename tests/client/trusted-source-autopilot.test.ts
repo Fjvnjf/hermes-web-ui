@@ -564,6 +564,64 @@ describe('Trusted Source Autopilot', () => {
     expect(useFeasibilityIntelligence().state.value.marketClaims[0].label).toBe('Target Countries / Provinces')
   })
 
+  it('refreshes live server autopilot status from jobs and cron history', async () => {
+    listJobsMock.mockResolvedValueOnce([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule: { kind: 'cron', expr: FULL_DASHBOARD_AUTOPILOT_SCHEDULE, display: '07:00 / 19:00' },
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValueOnce([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-03T07-00-00.md',
+      runTime: '2026-06-03T07:00:00.000Z',
+      size: 2048,
+      hasOutput: true,
+    }])
+
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Official low-risk source',
+      value: 'Official page found',
+      evidenceStatus: 'Official Data',
+      confidence: 'high',
+      source: { title: 'Official source', url: 'https://example.gov' },
+    })
+    intelligence.addResearchFinding({
+      summary: 'Review market share claim.',
+      keyClaim: 'Market share To Verify',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: { title: 'Weak source', date: '2026-06-03' },
+    })
+
+    const status = await useTrustedSourceAutopilot().refreshFullDashboardServerStatus()
+
+    expect(listJobsMock).toHaveBeenCalled()
+    expect(listCronRuns).toHaveBeenCalledWith('job-full-dashboard')
+    expect(status).toMatchObject({
+      scheduled: true,
+      jobId: 'job-full-dashboard',
+      enabled: true,
+      state: 'scheduled',
+      outputCount: 1,
+      latestOutputFile: '2026-06-03T07-00-00.md',
+      latestOutputImported: false,
+      dashboardRecordCount: 1,
+      pendingReviewCount: 1,
+    })
+    expect(status.message).toContain('ready to import')
+  })
+
   it('hydrates dashboard intelligence from the owner-only server state before local rendering', async () => {
     fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
       ok: true,
@@ -1068,6 +1126,43 @@ describe('Trusted Source Autopilot', () => {
       expect.stringContaining('Research review findings'),
       expect.stringContaining('Scheduled research jobs'),
     ])
+  })
+
+  it('renders live server job status for the full dashboard autopilot', async () => {
+    listJobsMock.mockResolvedValueOnce([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValueOnce([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-03T07-00-00.md',
+      runTime: '2026-06-03T07:00:00.000Z',
+      size: 2048,
+      hasOutput: true,
+    }])
+
+    const wrapper = mount(TrustedSourcesView)
+    await vi.dynamicImportSettled()
+
+    const text = wrapper.text()
+    expect(text).toContain('Server job status')
+    expect(text).toContain('Hermes research job is connected')
+    expect(text).toContain('A readable Hermes research output exists and is ready to import')
+    expect(text).toContain('job-full-dashboard')
+    expect(text).toContain('Readable outputs')
+    expect(text).toContain('Latest imported')
+    expect(text).toContain('No / pending')
+    expect(text).toContain('Latest file: 2026-06-03T07-00-00.md')
   })
 
   it('enables the full dashboard autopilot schedule and starts the first Hermes run immediately', async () => {

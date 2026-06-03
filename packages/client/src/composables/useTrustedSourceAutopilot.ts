@@ -7,7 +7,7 @@ import {
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
 import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
-import { createJob, listJobs, runJob, type Job } from '@/api/hermes/jobs'
+import { createJob, listJobs, runJob, scheduleToDisplayText, type Job } from '@/api/hermes/jobs'
 import { fetchAvailableModels, updateDefaultModel } from '@/api/hermes/system'
 import {
   SCREEN_FIELD_MAPPINGS,
@@ -97,6 +97,28 @@ export interface FullDashboardAutopilotBootstrapResult {
   firstRunStarted: boolean
   defaultModelConfigured: boolean
   message: string
+}
+
+export interface FullDashboardServerStatus {
+  scheduled: boolean
+  jobId: string
+  jobName: string
+  schedule: string
+  enabled: boolean
+  state: string
+  lastRunAt: string
+  nextRunAt: string
+  lastStatus: string
+  lastError: string
+  outputCount: number
+  latestOutputAt: string
+  latestOutputFile: string
+  importedRunCount: number
+  latestOutputImported: boolean
+  dashboardRecordCount: number
+  pendingReviewCount: number
+  message: string
+  errors: string[]
 }
 
 const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
@@ -1657,6 +1679,102 @@ async function importEnabledFullDashboardRunOutput(): Promise<DashboardResearchI
   }
 }
 
+function emptyFullDashboardServerStatus(message = 'Full dashboard autopilot schedule has not been found yet'): FullDashboardServerStatus {
+  return {
+    scheduled: false,
+    jobId: '',
+    jobName: '',
+    schedule: FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+    enabled: false,
+    state: 'missing',
+    lastRunAt: '',
+    nextRunAt: '',
+    lastStatus: '',
+    lastError: '',
+    outputCount: 0,
+    latestOutputAt: '',
+    latestOutputFile: '',
+    importedRunCount: state.value.importedRunKeys.length,
+    latestOutputImported: false,
+    dashboardRecordCount: 0,
+    pendingReviewCount: 0,
+    message,
+    errors: [],
+  }
+}
+
+function dashboardRecordCounts(): { dashboardRecordCount: number; pendingReviewCount: number } {
+  const intelligence = useFeasibilityIntelligence()
+  const dashboardRecordCount =
+    intelligence.state.value.marketClaims.length +
+    intelligence.state.value.competitors.length +
+    intelligence.state.value.dataRoomSources.length +
+    intelligence.state.value.researchJobs.length
+  const pendingReviewCount = intelligence.pendingResearchFindings.value.length
+  return { dashboardRecordCount, pendingReviewCount }
+}
+
+function fullDashboardStatusMessage(status: FullDashboardServerStatus): string {
+  if (!status.scheduled) return 'Hermes has not found the twice-daily Full Dashboard Autopilot job yet.'
+  if (!status.enabled) return 'Full Dashboard Autopilot exists but is disabled. Enable or resume it before relying on automatic updates.'
+  if (status.lastError) return `Full Dashboard Autopilot is scheduled but the last run reported an error: ${status.lastError}`
+  if (!status.outputCount) return 'Full Dashboard Autopilot is scheduled. Waiting for the first readable research output.'
+  if (!status.latestOutputImported) return 'A readable Hermes research output exists and is ready to import into the source-gated dashboard pipeline.'
+  if (status.pendingReviewCount > 0) return 'Full Dashboard Autopilot is filling the dashboard and has review-gated findings waiting for approval.'
+  return 'Full Dashboard Autopilot is scheduled and imported outputs are reflected in dashboard intelligence.'
+}
+
+async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerStatus> {
+  ensureLoaded()
+  const counts = dashboardRecordCounts()
+
+  try {
+    const jobs = await listJobs()
+    const job = jobs.find(isFullDashboardAutopilotJob)
+    const jobId = job ? fullDashboardJobId(job) : ''
+    if (!job || !jobId) {
+      return {
+        ...emptyFullDashboardServerStatus(),
+        ...counts,
+      }
+    }
+
+    const runs = await listCronRuns(jobId)
+    const readableRuns = runs.filter(run => run.hasOutput !== false && !run.synthetic)
+    const latest = readableRuns[0] || runs[0] || null
+    const latestRunKey = latest?.jobId && latest?.fileName ? `${latest.jobId}/${latest.fileName}` : ''
+    const next: FullDashboardServerStatus = {
+      scheduled: true,
+      jobId,
+      jobName: job.name || FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      schedule: job.schedule_display || scheduleToDisplayText(job.schedule, FULL_DASHBOARD_AUTOPILOT_SCHEDULE),
+      enabled: job.enabled !== false,
+      state: job.state || '',
+      lastRunAt: job.last_run_at || latest?.runTime || '',
+      nextRunAt: job.next_run_at || '',
+      lastStatus: job.last_status || latest?.status || '',
+      lastError: job.last_error || latest?.error || '',
+      outputCount: readableRuns.length,
+      latestOutputAt: latest?.runTime || '',
+      latestOutputFile: latest?.fileName || '',
+      importedRunCount: state.value.importedRunKeys.length,
+      latestOutputImported: latestRunKey ? state.value.importedRunKeys.includes(latestRunKey) : false,
+      ...counts,
+      message: '',
+      errors: [],
+    }
+    next.message = fullDashboardStatusMessage(next)
+    return next
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Could not read server autopilot status'
+    return {
+      ...emptyFullDashboardServerStatus(`Could not read server autopilot status: ${detail}`),
+      ...counts,
+      errors: [detail],
+    }
+  }
+}
+
 async function ensureFullDashboardAutopilotScheduled(options: { startFirstRun?: boolean } = {}): Promise<FullDashboardAutopilotBootstrapResult> {
   const defaultModel = await ensureDefaultModelForAutopilot()
   const status = loadFullDashboardAutopilotStatus()
@@ -1779,6 +1897,7 @@ export function useTrustedSourceAutopilot() {
     importDashboardResearchOutput,
     importEnabledFullDashboardRunOutput,
     importLatestFullDashboardRunOutput,
+    refreshFullDashboardServerStatus,
     runTrustedSourceDataEngine,
     resetTrustedSourceAutopilotForTests,
   }

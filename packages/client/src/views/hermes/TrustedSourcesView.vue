@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NSelect, NSwitch, useMessage } from 'naive-ui'
 import {
+  type FullDashboardServerStatus,
   loadFullDashboardAutopilotStatus,
   persistFullDashboardAutopilotStatus,
   useTrustedSourceAutopilot,
@@ -15,7 +16,9 @@ const autopilot = useTrustedSourceAutopilot()
 const intelligence = useFeasibilityIntelligence()
 const fullAutopilotSaving = ref(false)
 const importingLatestOutput = ref(false)
+const refreshingServerStatus = ref(false)
 const fullAutopilotStatus = ref(loadFullDashboardAutopilotStatus())
+const serverAutopilotStatus = ref<FullDashboardServerStatus | null>(null)
 
 const form = ref({
   name: '',
@@ -159,12 +162,27 @@ const importedIntelligenceStatus = computed(() => {
   }
   return 'Waiting for the first structured Hermes research output to import.'
 })
+const serverAutopilotTone = computed(() => {
+  if (!serverAutopilotStatus.value?.scheduled) return 'setup'
+  if (serverAutopilotStatus.value.lastError || serverAutopilotStatus.value.errors.length) return 'warning'
+  if (!serverAutopilotStatus.value.latestOutputImported && serverAutopilotStatus.value.outputCount > 0) return 'review'
+  return 'active'
+})
 
 function formatTimestamp(value: string): string {
   if (!value) return 'Not loaded yet'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+async function refreshServerAutopilotStatus() {
+  refreshingServerStatus.value = true
+  try {
+    serverAutopilotStatus.value = await autopilot.refreshFullDashboardServerStatus()
+  } finally {
+    refreshingServerStatus.value = false
+  }
 }
 
 function updateFullAutopilotStatus(patch: Partial<typeof fullAutopilotStatus.value>) {
@@ -203,6 +221,7 @@ async function enableFullDashboardAutopilot() {
     await autopilot.runFullDashboardDataEngine(result.scheduledJobId)
     fullAutopilotStatus.value = loadFullDashboardAutopilotStatus()
     void importLatestDashboardResearchOutput(false)
+    void refreshServerAutopilotStatus()
     message.success(result.firstRunStarted ? 'Full dashboard autopilot enabled and first run started' : 'Full dashboard autopilot enabled')
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown scheduling error'
@@ -226,6 +245,7 @@ async function runFullDashboardSnapshotNow() {
       lastRun: new Date().toISOString(),
       lastStatus: `${result.message}. Review items: ${result.reviewItemCount}.`,
     })
+    void refreshServerAutopilotStatus()
     message.success('Full dashboard source snapshot created')
   } finally {
     fullAutopilotSaving.value = false
@@ -252,6 +272,7 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
     } else {
       message.warning(result.message)
     }
+    void refreshServerAutopilotStatus()
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Unknown import error'
     updateFullAutopilotStatus({
@@ -264,6 +285,9 @@ async function importLatestDashboardResearchOutput(showMessages = true) {
 }
 
 onMounted(() => {
+  void intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false }).then(() => {
+    void refreshServerAutopilotStatus()
+  })
   if (fullAutopilotStatus.value.enabled && fullAutopilotStatus.value.scheduledJobId) {
     void importLatestDashboardResearchOutput(false)
   }
@@ -354,6 +378,57 @@ onMounted(() => {
         </div>
         <small>
           Durable server intelligence hydrates the source panels after every successful import, so refreshed data survives browser reloads and public tunnel changes.
+        </small>
+      </div>
+      <div class="server-autopilot-status" :class="serverAutopilotTone" aria-label="Server autopilot job status">
+        <div class="server-autopilot-header">
+          <div>
+            <p class="eyebrow">Server job status</p>
+            <h4>{{ serverAutopilotStatus?.scheduled ? 'Hermes research job is connected' : 'Hermes research job not confirmed yet' }}</h4>
+          </div>
+          <NButton tertiary size="small" :loading="refreshingServerStatus" @click="refreshServerAutopilotStatus">
+            Refresh Status
+          </NButton>
+        </div>
+        <p class="server-autopilot-message">
+          {{ serverAutopilotStatus?.message || 'Reading the Hermes Jobs and Cron History APIs for live autopilot status.' }}
+        </p>
+        <div class="server-autopilot-grid">
+          <article>
+            <span>Job</span>
+            <strong>{{ serverAutopilotStatus?.jobId || 'Not found' }}</strong>
+          </article>
+          <article>
+            <span>State</span>
+            <strong>{{ serverAutopilotStatus?.enabled ? (serverAutopilotStatus.state || 'enabled') : 'disabled / unknown' }}</strong>
+          </article>
+          <article>
+            <span>Latest output</span>
+            <strong>{{ serverAutopilotStatus?.latestOutputAt ? formatTimestamp(serverAutopilotStatus.latestOutputAt) : 'No output yet' }}</strong>
+          </article>
+          <article>
+            <span>Readable outputs</span>
+            <strong>{{ serverAutopilotStatus?.outputCount ?? 0 }}</strong>
+          </article>
+          <article>
+            <span>Imported runs</span>
+            <strong>{{ serverAutopilotStatus?.importedRunCount ?? 0 }}</strong>
+          </article>
+          <article>
+            <span>Latest imported</span>
+            <strong>{{ serverAutopilotStatus?.latestOutputImported ? 'Yes' : 'No / pending' }}</strong>
+          </article>
+          <article>
+            <span>Dashboard records</span>
+            <strong>{{ serverAutopilotStatus?.dashboardRecordCount ?? importedIntelligenceTotal }}</strong>
+          </article>
+          <article>
+            <span>Needs review</span>
+            <strong>{{ serverAutopilotStatus?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length }}</strong>
+          </article>
+        </div>
+        <small v-if="serverAutopilotStatus?.latestOutputFile">
+          Latest file: {{ serverAutopilotStatus.latestOutputFile }}
         </small>
       </div>
       <div class="imported-intelligence-panel" aria-label="Live imported dashboard intelligence">
@@ -692,6 +767,85 @@ onMounted(() => {
     color: $text-primary;
     font-size: 14px;
     line-height: 1.45;
+  }
+}
+
+.server-autopilot-status {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.055);
+
+  &.active {
+    border-color: rgba(var(--success-rgb), 0.28);
+    background: rgba(var(--success-rgb), 0.055);
+  }
+
+  &.review {
+    border-color: rgba(var(--warning-rgb), 0.38);
+    background: rgba(var(--warning-rgb), 0.075);
+  }
+
+  &.warning {
+    border-color: rgba(var(--danger-rgb), 0.34);
+    background: rgba(var(--danger-rgb), 0.06);
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 850;
+  }
+}
+
+.server-autopilot-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+
+  h4 {
+    margin: 2px 0 0;
+    color: $accent-info;
+    font-size: 15px;
+  }
+}
+
+.server-autopilot-message {
+  margin: 0;
+  color: $text-secondary;
+  line-height: 1.45;
+}
+
+.server-autopilot-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    gap: 5px;
+    min-height: 72px;
+    padding: 9px;
+    border: 1px solid $border-color;
+    border-radius: 7px;
+    background: $bg-secondary;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    overflow-wrap: anywhere;
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 1.35;
   }
 }
 
@@ -1055,6 +1209,19 @@ onMounted(() => {
 
   .imported-intelligence-row {
     min-height: 0;
+  }
+
+  .server-autopilot-header {
+    display: grid;
+    justify-items: start;
+  }
+
+  .server-autopilot-grid {
+    grid-template-columns: 1fr;
+
+    article {
+      min-height: 0;
+    }
   }
 }
 </style>
