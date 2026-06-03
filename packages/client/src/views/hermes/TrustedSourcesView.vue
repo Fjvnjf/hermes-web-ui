@@ -83,7 +83,7 @@ const fullAutopilotStatusTone = computed(() => {
   return 'active'
 })
 const fullAutopilotOwnerAction = computed(() => {
-  if (!fullAutopilotStatus.value.enabled) return 'Enable once. Hermes will schedule the twice-daily online research job and start importing evidence-backed outputs.'
+  if (!fullAutopilotStatus.value.enabled) return 'Hermes starts the twice-daily online research job automatically for owner sessions. Use the repair action only if scheduling stays unavailable.'
   if (fullAutopilotReviewCount.value > 0) return 'Open Research Result Review and approve only the source-backed items you trust.'
   if (!fullAutopilotStatus.value.lastRun) return 'Wait for the first scheduled Hermes research output or run a source snapshot now.'
   return 'Autopilot is running. Keep reviewing staged findings; safe source-backed fields will hydrate from durable server state.'
@@ -97,10 +97,10 @@ const easyAutopilotState = computed(() => {
   if (!fullAutopilotStatus.value.enabled && !serverStatus?.scheduled) {
     return {
       tone: 'setup',
-      label: 'Setup needed',
-      title: 'Turn on automatic research once',
-      body: 'Hermes is ready to research trusted sources twice daily, but the dashboard still needs the scheduled job enabled.',
-      action: 'Click Enable Full Autopilot.',
+      label: 'Auto-starting',
+      title: 'Hermes is checking automatic research',
+      body: 'Owner sessions automatically create or repair the twice-daily trusted-source research job. No manual searching is needed.',
+      action: 'Use Repair / Run Now only if the scheduled job still does not appear.',
     }
   }
   if (hasServerWarning) {
@@ -475,7 +475,7 @@ onMounted(() => {
         <p>{{ easyAutopilotState.body }}</p>
         <strong>{{ easyAutopilotState.action }}</strong>
         <div class="easy-autopilot-actions">
-          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
+          <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair / Run Now</NButton>
           <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">Review Findings</RouterLink>
           <RouterLink class="autopilot-link" :to="{ name: 'hermes.jobs' }">View Jobs</RouterLink>
         </div>
@@ -707,7 +707,7 @@ onMounted(() => {
         </div>
       </details>
       <div class="full-autopilot-actions">
-        <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Enable Full Autopilot</NButton>
+        <NButton type="primary" :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">Repair / Run Full Autopilot</NButton>
         <NButton secondary :loading="fullAutopilotSaving" @click="runFullDashboardSnapshotNow">Run Source Snapshot Now</NButton>
         <NButton tertiary :loading="importingLatestOutput" @click="importLatestDashboardResearchOutput(true)">Import Latest Output</NButton>
         <NButton

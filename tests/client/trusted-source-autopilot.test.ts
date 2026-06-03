@@ -1265,13 +1265,14 @@ describe('Trusted Source Autopilot', () => {
 
     expect(wrapper.text()).toContain('Full dashboard autopilot')
     expect(wrapper.text()).toContain('Easy autopilot')
-    expect(wrapper.text()).toContain('Turn on automatic research once')
+    expect(wrapper.text()).toContain('Hermes is checking automatic research')
+    expect(wrapper.text()).toContain('No manual searching is needed')
     expect(wrapper.text()).toContain('1. Research')
     expect(wrapper.text()).toContain('2. Fill')
     expect(wrapper.text()).toContain('3. Review')
     expect(wrapper.text()).toContain('Advanced source registry')
     expect(wrapper.text()).toContain('Automatic Source Research For The Whole Dashboard')
-    expect(wrapper.text()).toContain('Enable Full Autopilot')
+    expect(wrapper.text()).toContain('Repair / Run Now')
     expect(wrapper.text()).toContain('Run Source Snapshot Now')
     expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
     expect(wrapper.text()).toContain('Tier 1: official / regulator / trade')
@@ -1572,7 +1573,7 @@ describe('Trusted Source Autopilot', () => {
     vi.mocked(listCronRuns).mockResolvedValue([])
     const wrapper = mount(TrustedSourcesView)
 
-    await wrapper.findAll('button').find(button => button.text().includes('Enable Full Autopilot'))!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text().includes('Repair / Run Now'))!.trigger('click')
     await vi.dynamicImportSettled()
 
     expect(createJobMock).toHaveBeenCalledWith(expect.objectContaining({

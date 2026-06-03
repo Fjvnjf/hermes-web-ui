@@ -233,10 +233,10 @@ const automaticResearchState = computed(() => {
   if (status.jobCount === 0) {
     return {
       tone: 'warn',
-      label: 'Setup needed',
-      title: 'Automatic research is not scheduled yet',
-      body: 'Enable Full Autopilot once so Hermes can research trusted sources twice daily without manual searching.',
-      action: 'Open Trusted Sources and enable the autopilot.',
+      label: 'Auto-starting',
+      title: 'Hermes is setting up automatic research',
+      body: 'Owner sessions automatically check and create the twice-daily trusted-source research job. No manual searching is needed.',
+      action: 'Open Trusted Sources only if this remains unscheduled, then use Repair / Run Now.',
     }
   }
   if (status.latestDueSlotRunError || ['unparseable', 'unreadable'].includes(status.latestOutputParseStatus)) {
@@ -323,7 +323,7 @@ const automaticResearchFlow = computed(() => {
       title: 'Research online',
       detail: hasJob
         ? 'Hermes is scheduled to search official, company, trade, and uploaded evidence sources twice daily.'
-        : 'Enable Full Autopilot once so Hermes can start the twice-daily source search.',
+        : 'Hermes is checking and creating the twice-daily source search automatically for owner sessions.',
       state: state(hasJob && !hasError, !hasJob || hasError),
     },
     {
