@@ -217,6 +217,37 @@ describe('Trusted Source Autopilot', () => {
     expect(claims[0].review_required).toBe(true)
   })
 
+  it('uses World Bank official data for country-wise consumption growth without pretending it is product demand', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-indicators-api')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [null, [
+        { countryiso3code: 'CHN', country: { id: 'CHN', value: 'China' }, date: '2024', value: 5.12 },
+        { countryiso3code: 'BGD', country: { id: 'BGD', value: 'Bangladesh' }, date: '2024', value: 3.45 },
+        { countryiso3code: 'IND', country: { id: 'IND', value: 'India' }, date: '2023', value: 6.78 },
+        { countryiso3code: 'CHN', country: { id: 'CHN', value: 'China' }, date: '2023', value: 4.9 },
+      ]],
+    } as Response)
+    const { claims } = await runConnector({
+      screen: 'exportMarkets',
+      field: 'Country-wise Consumption Growth',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('NE.CON.PRVT.KD.ZG'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('CHN;BGD;IND;VNM;IDN;PAK;TUR'))
+    expect(claims[0].value).toContain('China: 5.12% (2024)')
+    expect(claims[0].value).toContain('Bangladesh: 3.45% (2024)')
+    expect(claims[0].value).toContain('India: 6.78% (2023)')
+    expect(claims[0].evidence_status).toBe('Trade Proxy')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].notes).toContain('not product-specific textile softener demand')
+    expect(claims[0].source_url).toBe('https://data.worldbank.org/indicator/NE.CON.PRVT.KD.ZG')
+  })
+
   it('gracefully falls back when a connector cannot fetch', async () => {
     const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-indicators-api')!
     const { claims } = await runConnector({

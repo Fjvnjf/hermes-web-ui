@@ -279,23 +279,132 @@ function referenceConnector(source: TrustedSourceRecord, note: string): TrustedS
   return connector
 }
 
+const WORLD_BANK_COUNTRY_NAMES: Record<string, string> = {
+  CHN: 'China',
+  BGD: 'Bangladesh',
+  IND: 'India',
+  VNM: 'Vietnam',
+  IDN: 'Indonesia',
+  PAK: 'Pakistan',
+  TUR: 'Turkiye',
+}
+
+function worldBankIndicatorForField(field: string): {
+  code: string
+  label: string
+  sourceUrl: string
+  proxyNote: string
+} {
+  if (/country-wise|consumption/i.test(field)) {
+    return {
+      code: 'NE.CON.PRVT.KD.ZG',
+      label: 'Households and NPISHs final consumption expenditure (annual % growth)',
+      sourceUrl: 'https://data.worldbank.org/indicator/NE.CON.PRVT.KD.ZG',
+      proxyNote: 'Official household consumption growth macro proxy. It is not product-specific textile softener demand.',
+    }
+  }
+  if (/manufacturing|industry|industrial/i.test(field)) {
+    return {
+      code: 'NV.IND.MANF.KD.ZG',
+      label: 'Manufacturing, value added (annual % growth)',
+      sourceUrl: 'https://data.worldbank.org/indicator/NV.IND.MANF.KD.ZG',
+      proxyNote: 'Official manufacturing growth macro proxy. It is not product-specific textile chemical demand.',
+    }
+  }
+  return {
+    code: 'NY.GDP.MKTP.KD.ZG',
+    label: 'GDP growth (annual %)',
+    sourceUrl: 'https://data.worldbank.org/indicator/NY.GDP.MKTP.KD.ZG',
+    proxyNote: 'Official macro growth reference. Map to product demand only after review.',
+  }
+}
+
+function worldBankCountriesForField(field: string): string[] {
+  if (/country-wise|target countries|export|consumption/i.test(field)) {
+    return ['CHN', 'BGD', 'IND', 'VNM', 'IDN', 'PAK', 'TUR']
+  }
+  return ['CHN']
+}
+
+function worldBankRows(raw: unknown): Array<{
+  countryiso3code?: string
+  country?: { id?: string; value?: string }
+  date?: string | number
+  value?: number | null
+}> {
+  if (Array.isArray(raw) && Array.isArray(raw[1])) return raw[1]
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { rows?: unknown[] }).rows)) {
+    return (raw as { rows: ReturnType<typeof worldBankRows> }).rows
+  }
+  return []
+}
+
+function latestWorldBankRowsByCountry(rows: ReturnType<typeof worldBankRows>) {
+  const byCountry = new Map<string, { country: string; year: string; value: number }>()
+  for (const row of rows) {
+    if (typeof row.value !== 'number') continue
+    const code = String(row.countryiso3code || row.country?.id || '').toUpperCase()
+    const country = WORLD_BANK_COUNTRY_NAMES[code] || row.country?.value || code || 'Country'
+    if (!country) continue
+    const year = String(row.date || '')
+    const existing = byCountry.get(country)
+    if (!existing || Number(year) > Number(existing.year)) {
+      byCountry.set(country, { country, year, value: row.value })
+    }
+  }
+  return Array.from(byCountry.values())
+}
+
 function worldBankApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
   const connector = baseConnector(source)
   connector.fetch = async (request) => {
     const fetchImpl = request.fetchImpl || fetch
-    const endpoint = 'https://api.worldbank.org/v2/country/CHN/indicator/NY.GDP.MKTP.KD.ZG?format=json&per_page=2'
+    const indicator = worldBankIndicatorForField(request.field)
+    const countries = worldBankCountriesForField(request.field)
+    const endpoint = `https://api.worldbank.org/v2/country/${countries.join(';')}/indicator/${indicator.code}?format=json&per_page=100`
     const response = await fetchImpl(endpoint)
     if (!response.ok) throw new Error(`World Bank API returned ${response.status}`)
-    return response.json()
+    const raw = await response.json()
+    return {
+      indicator,
+      countries,
+      rows: Array.isArray(raw) && Array.isArray(raw[1]) ? raw[1] : [],
+    }
   }
   connector.parse = async (raw, request) => {
-    const rows = Array.isArray(raw) && Array.isArray(raw[1]) ? raw[1] : []
-    const latest = rows.find((row: { value?: number | null }) => typeof row.value === 'number')
+    const indicator = raw && typeof raw === 'object' && 'indicator' in raw
+      ? (raw as { indicator: ReturnType<typeof worldBankIndicatorForField> }).indicator
+      : worldBankIndicatorForField(request.field)
+    const rows = worldBankRows(raw)
+    const latestByCountry = latestWorldBankRowsByCountry(rows)
+
+    if (/country-wise|consumption/i.test(request.field) && latestByCountry.length) {
+      return [{
+        field: request.field,
+        value: latestByCountry
+          .map(row => `${row.country}: ${row.value.toFixed(2)}% (${row.year})`)
+          .join('; '),
+        unit: '% annual growth',
+        source_url: indicator.sourceUrl,
+        source_date: latestByCountry
+          .map(row => row.year)
+          .filter(Boolean)
+          .sort()
+          .at(-1) || nowIso(request).slice(0, 10),
+        notes: `${indicator.label}. ${indicator.proxyNote} Keep as Trade Proxy / To Verify until linked to textile or softener-specific evidence.`,
+        evidence_status: 'Trade Proxy',
+        confidence: 'high',
+        review_required: true,
+      }]
+    }
+
+    const latest = latestByCountry[0]
     if (!latest) {
       return [{
         field: request.field,
         value: 'World Bank API reachable / To Verify',
-        notes: 'No usable indicator row returned for the requested field.',
+        source_url: indicator.sourceUrl,
+        notes: `No usable ${indicator.label} row returned for the requested field.`,
         evidence_status: 'To Verify',
         review_required: true,
       }]
@@ -304,8 +413,9 @@ function worldBankApiConnector(source: TrustedSourceRecord): TrustedSourceConnec
       field: request.field,
       value: `${latest.value.toFixed(2)}%`,
       unit: '%',
-      source_date: String(latest.date || nowIso(request).slice(0, 10)),
-      notes: 'Official World Bank indicator value. Map to market context only as macro reference, not product demand.',
+      source_url: indicator.sourceUrl,
+      source_date: latest.year || nowIso(request).slice(0, 10),
+      notes: `${indicator.label}. ${indicator.proxyNote}`,
       evidence_status: 'Official Data',
       review_required: true,
     }]
