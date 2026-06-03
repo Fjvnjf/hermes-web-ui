@@ -614,6 +614,67 @@ function normalizeSourceTier(value: unknown): SourceTier {
   return 'candidate-source'
 }
 
+function normalizeSourceTierForItem(item: DashboardResearchUpdateItem): SourceTier {
+  const explicit = normalizeSourceTier(item.sourceTier)
+  if (explicit !== 'candidate-source') return explicit
+
+  const text = [
+    item.sourceTitle,
+    item.sourceName,
+    item.sourceUrl,
+  ].map(stringValue).join(' ').toLowerCase()
+
+  if (
+    text.includes('wits.worldbank.org') ||
+    text.includes('world bank') ||
+    text.includes('un comtrade') ||
+    text.includes('comtrade') ||
+    text.includes('stats.gov.cn') ||
+    text.includes('.gov') ||
+    text.includes('echa.europa.eu') ||
+    text.includes('pubchem.ncbi.nlm.nih.gov') ||
+    text.includes('oecd.org') ||
+    text.includes('wto.org') ||
+    text.includes('trademap.org')
+  ) {
+    return 'tier1-official'
+  }
+
+  if (
+    text.includes('basf') ||
+    text.includes('dow.com') ||
+    text.includes('wacker.com') ||
+    text.includes('stepan.com') ||
+    text.includes('kao') ||
+    text.includes('evonik') ||
+    text.includes('cht.com') ||
+    text.includes('archroma') ||
+    text.includes('transfar') ||
+    text.includes('zschimmer') ||
+    text.includes('pulcra') ||
+    text.includes('wilmar') ||
+    text.includes('klkoleo') ||
+    text.includes('klk oleo')
+  ) {
+    return 'tier2-company-official'
+  }
+
+  if (
+    text.includes('.xlsx') ||
+    text.includes('.pdf') ||
+    text.includes('workbook') ||
+    text.includes('supplier quote') ||
+    text.includes('sds') ||
+    text.includes('tds') ||
+    text.includes('coa') ||
+    text.includes('invoice')
+  ) {
+    return 'tier3-supplier-evidence'
+  }
+
+  return explicit
+}
+
 export function dashboardSourceTierRank(tier: SourceTier): number {
   if (tier === 'tier1-official') return 1
   if (tier === 'tier2-company-official') return 2
@@ -816,6 +877,146 @@ function appendCompetitorRecord(
   return true
 }
 
+function safeCandidateStatus(status: string): string {
+  if (status === 'Verified' || status === 'Investor Approved') return 'To Verify'
+  return coerceEvidenceStatus(status, 'To Verify')
+}
+
+function shouldShowMarketCandidate(input: {
+  value: string
+  source: Record<string, unknown> | null
+  tier: SourceTier
+  dataType: string
+  item: DashboardResearchUpdateItem
+}): boolean {
+  if (!sourceIsUsable(input.source)) return false
+  if (!input.value || PLACEHOLDER_PATTERN.test(input.value)) return false
+  if (input.item.sensitive === true || SENSITIVE_DATA_TYPES.has(input.dataType)) return false
+  if (input.tier === 'tier5-public-listing' || input.tier === 'candidate-source') return false
+  return true
+}
+
+function shouldShowCompetitorCandidate(input: {
+  item: DashboardResearchUpdateItem
+  source: Record<string, unknown> | null
+  tier: SourceTier
+  dataType: string
+}): boolean {
+  if (!sourceIsUsable(input.source)) return false
+  if (input.item.sensitive === true || SENSITIVE_DATA_TYPES.has(input.dataType)) return false
+  if (input.tier === 'tier5-public-listing' || input.tier === 'candidate-source') return false
+  const companyName = firstString(input.item.companyName, input.item.title, input.item.label)
+  const productEquivalent = firstString(input.item.productEquivalent)
+  return Boolean(companyName && productEquivalent && !PLACEHOLDER_PATTERN.test(productEquivalent))
+}
+
+function shouldShowDataRoomCandidate(input: {
+  value: string
+  source: Record<string, unknown> | null
+  tier: SourceTier
+}): boolean {
+  if (!sourceIsUsable(input.source)) return false
+  if (!input.value || PLACEHOLDER_PATTERN.test(input.value)) return false
+  return input.tier === 'tier1-official' || input.tier === 'tier2-company-official' || input.tier === 'tier3-supplier-evidence'
+}
+
+function appendDataRoomCandidate(
+  state: DashboardIntelligenceState,
+  input: {
+    item: DashboardResearchUpdateItem
+    group: DashboardResearchUpdateGroup
+    field: string
+    value: string
+    source: Record<string, unknown> | null
+    evidenceStatus: string
+    lastChecked: string
+    runKey: string
+    tier: SourceTier
+    dataType: string
+    reasons: string[]
+  },
+): boolean {
+  const checklistLabel = firstString(input.item.proposedDashboardField, input.item.fieldKey, input.field)
+  if (!checklistLabel) return false
+  if (includesExisting(state.dataRoomSources, record =>
+    stringValue(record.checklistLabel).toLowerCase() === checklistLabel.toLowerCase() &&
+    stringValue((record.source as Record<string, unknown> | undefined)?.title) === stringValue(input.source?.title),
+  )) return false
+
+  state.dataRoomSources.push({
+    id: stableId('autopilot-source', input.runKey, checklistLabel),
+    checklistLabel,
+    area: areaForGroup(input.group),
+    evidenceStatus: safeCandidateStatus(input.evidenceStatus),
+    source: input.source,
+    notes: [
+      `Autopilot candidate from ${input.group}.`,
+      `Proposed value: ${input.value}`,
+      `Source tier: ${input.tier}`,
+      `Data type: ${input.dataType}`,
+      input.reasons.length ? `Review reason: ${input.reasons.join('; ')}` : '',
+      'This record was auto-staged to make the dashboard useful without manual copy-paste. It is not investor-approved.',
+    ].filter(Boolean).join('\n'),
+    updatedAt: input.lastChecked,
+  })
+  return true
+}
+
+function appendVisibleDashboardCandidate(
+  state: DashboardIntelligenceState,
+  input: {
+    item: DashboardResearchUpdateItem
+    group: DashboardResearchUpdateGroup
+    field: string
+    value: string
+    source: Record<string, unknown> | null
+    evidenceStatus: string
+    confidence: Confidence
+    lastChecked: string
+    runKey: string
+    tier: SourceTier
+    dataType: string
+    reasons: string[]
+  },
+): boolean {
+  if (input.group === 'marketClaims' && shouldShowMarketCandidate(input)) {
+    return appendMarketClaim(state, {
+      item: input.item,
+      group: input.group,
+      field: input.field,
+      value: input.value,
+      source: input.source,
+      confidence: input.confidence,
+      evidenceStatus: safeCandidateStatus(input.evidenceStatus),
+      lastChecked: input.lastChecked,
+      runKey: input.runKey,
+    })
+  }
+
+  if (input.group === 'competitorRecords' && shouldShowCompetitorCandidate(input)) {
+    return appendCompetitorRecord(state, {
+      item: input.item,
+      value: input.value,
+      source: input.source,
+      evidenceStatus: safeCandidateStatus(input.evidenceStatus),
+      lastChecked: input.lastChecked,
+      runKey: input.runKey,
+    })
+  }
+
+  if (
+    (input.group === 'rawMaterialSignals' ||
+      input.group === 'supplierScorecards' ||
+      input.group === 'regulatoryFindings' ||
+      input.group === 'financialEvidence') &&
+    shouldShowDataRoomCandidate(input)
+  ) {
+    return appendDataRoomCandidate(state, input)
+  }
+
+  return false
+}
+
 function appendReviewFinding(
   state: DashboardIntelligenceState,
   input: {
@@ -872,7 +1073,7 @@ function appendReviewFinding(
       material: firstString(input.item.material),
       section: firstString(input.item.section),
       content: firstString(input.item.content, input.item.value),
-      sourceTier: normalizeSourceTier(input.item.sourceTier),
+      sourceTier: normalizeSourceTierForItem(input.item),
       dataType: coerceDataType(input.item.dataType, GROUP_DEFAULT_DATA_TYPE[input.group]),
       sensitive: input.item.sensitive === true,
       runKey: input.runKey,
@@ -895,7 +1096,7 @@ function applyDashboardUpdates(
       const field = fieldLabel(item, group)
       const value = itemValueText(item)
       const source = sourceFromItem(item)
-      const tier = normalizeSourceTier(item.sourceTier)
+      const tier = normalizeSourceTierForItem(item)
       const confidence = coerceConfidence(item.confidence)
       const evidenceStatus = coerceEvidenceStatus(item.evidenceStatus, 'To Verify')
       const dataType = coerceDataType(item.dataType, GROUP_DEFAULT_DATA_TYPE[group])
@@ -904,6 +1105,20 @@ function applyDashboardUpdates(
       const reviewRequired = reasons.length > 0
 
       if (reviewRequired) {
+        appendVisibleDashboardCandidate(state, {
+          item,
+          group,
+          field,
+          value,
+          source,
+          evidenceStatus,
+          confidence,
+          lastChecked,
+          runKey,
+          tier,
+          dataType,
+          reasons,
+        })
         if (appendReviewFinding(state, {
           item,
           group,

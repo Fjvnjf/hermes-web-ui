@@ -269,6 +269,90 @@ describe('dashboard autopilot output ingestion', () => {
     expect(rawState).not.toContain('"marketShare":"12%"')
   })
 
+  it('auto-stages trusted-source market and competitor candidates into dashboards without approving them', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T08-30-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          field: 'Country-wise consumption growth - China',
+          value: '2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg',
+          sourceTitle: 'WITS / World Bank Comtrade - China imports of HS 380991',
+          sourceUrl: 'https://wits.worldbank.org/trade/comtrade/en/country/CHN/year/2024/tradeflow/Imports/partner/ALL/product/380991',
+          confidence: 'medium',
+          evidenceStatus: 'To Verify',
+          dataType: 'market_size',
+          riskReason: 'Broad HS-code proxy, not product-specific demand.',
+        }],
+        competitorRecords: [{
+          companyName: 'Stepan',
+          countryRegion: 'United States / global',
+          productEquivalent: 'STEPANTEX SP-90 official product page describes a textile softening additive.',
+          activeContent: 'Solids 90% shown on official page; exact active chemistry requires TDS/SDS review.',
+          pricingEvidence: 'Missing / To Verify',
+          certifications: 'Bio-Based / Naturally Derived / Plant Derived labels shown on page; documents To Verify.',
+          distributionPresence: 'Missing / To Verify',
+          marketShare: 'To Verify',
+          sourceTitle: 'STEPANTEX SP-90',
+          sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/products-markets/product/STEPANTEXSP90.html',
+          confidence: 'medium',
+          evidenceStatus: 'To Verify',
+          dataType: 'competitor_data',
+          riskReason: 'No pricing, China distribution, market share, or Chemicon product equivalence proof.',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 2,
+    })
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({
+        label: 'Country-wise consumption growth - China',
+        value: '2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg',
+        evidenceStatus: 'To Verify',
+        source: expect.objectContaining({
+          title: 'WITS / World Bank Comtrade - China imports of HS 380991',
+          url: expect.stringContaining('wits.worldbank.org'),
+        }),
+      }),
+    ])
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan',
+        productEquivalent: expect.stringContaining('STEPANTEX SP-90'),
+        marketShare: '',
+        evidenceStatus: 'To Verify',
+        source: expect.objectContaining({
+          title: 'STEPANTEX SP-90',
+          url: expect.stringContaining('stepan.com'),
+        }),
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Country-wise consumption growth - China'),
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          sourceTier: 'tier1-official',
+        }),
+      }),
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Stepan'),
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          sourceTier: 'tier2-company-official',
+        }),
+      }),
+    ]))
+  })
+
   it('deduplicates imported run files with an import registry', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T09-00-00.000000+00-00.md', {
