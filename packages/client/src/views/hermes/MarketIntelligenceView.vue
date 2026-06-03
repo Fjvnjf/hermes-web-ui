@@ -119,6 +119,32 @@ const topCompetitorRows = computed(() => {
     status: record.evidenceStatus,
   }))
 })
+const marketAutopilotCards = computed(() => [
+  {
+    icon: '🔎',
+    label: 'Research',
+    value: 'Trusted sources',
+    note: 'Hermes searches official, company, trade, regulatory, and uploaded evidence sources.',
+  },
+  {
+    icon: '📊',
+    label: 'Market data',
+    value: `${claims.value.length} claims`,
+    note: 'Safe source-backed market records fill this page without manual copy-paste.',
+  },
+  {
+    icon: '🌍',
+    label: 'Country growth',
+    value: `${countryConsumptionGrowthRows.length} signals`,
+    note: 'Country rows use proxy evidence until direct textile-softener consumption is verified.',
+  },
+  {
+    icon: '✅',
+    label: 'Review gate',
+    value: `${intelligence.pendingResearchFindings.value.filter(item => item.area === 'market').length} waiting`,
+    note: 'Market size, CAGR, competitor share, prices, and investor claims wait for approval.',
+  },
+])
 const sourceBackedTemplateKpis = [
   {
     label: 'China Market',
@@ -879,6 +905,32 @@ onMounted(loadRefreshState)
       </div>
     </header>
 
+    <section class="market-autopilot-brief" aria-label="Automatic market research summary">
+      <div class="market-autopilot-copy">
+        <p class="eyebrow">Automatic market research</p>
+        <h3>Hermes researches the market and fills only source-backed evidence</h3>
+        <p>
+          Use this page as your global market command view. Hermes keeps looking for trusted sources, fills safe
+          records, and leaves weak or investor-impacting values as To Verify until you approve the evidence.
+        </p>
+      </div>
+      <div class="market-autopilot-grid">
+        <article v-for="card in marketAutopilotCards" :key="card.label">
+          <span aria-hidden="true">{{ card.icon }}</span>
+          <div>
+            <small>{{ card.label }}</small>
+            <strong>{{ card.value }}</strong>
+            <em>{{ card.note }}</em>
+          </div>
+        </article>
+      </div>
+      <div class="market-autopilot-actions">
+        <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review staged market findings</RouterLink>
+        <RouterLink :to="{ name: 'hermes.trustedSources' }">Autopilot status</RouterLink>
+        <RouterLink :to="{ name: 'hermes.competitorIntelligence' }">Competitor analysis</RouterLink>
+      </div>
+    </section>
+
     <TrustedSourceAutopilotPanel screen="market" title="Market Auto Source Status" />
 
     <section class="global-market-intelligence" aria-label="Global market intelligence">
@@ -1491,6 +1543,111 @@ onMounted(loadRefreshState)
   gap: 12px;
   margin: 14px 0;
   padding: 16px;
+}
+
+.market-autopilot-brief {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+  gap: 16px;
+  align-items: stretch;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.4);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.1), transparent 45%),
+    $bg-card;
+}
+
+.market-autopilot-copy {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+
+  h3 {
+    margin: 0;
+    color: $warning;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.market-autopilot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+  }
+
+  span {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.25);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-info-rgb), 0.08);
+    font-size: 18px;
+  }
+
+  div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    overflow-wrap: anywhere;
+  }
+
+  em {
+    color: $text-secondary;
+    font-size: 12px;
+    font-style: normal;
+    line-height: 1.45;
+  }
+}
+
+.market-autopilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 8px;
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 6px 10px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-info-rgb), 0.08);
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
+  }
 }
 
 .global-market-intelligence {
