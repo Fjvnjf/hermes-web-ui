@@ -6,9 +6,19 @@ const USER_REQUEST_MARKER = 'User request:'
 
 export const VISUAL_RESEARCH_PRESETS = [
   {
+    icon: '🧭',
+    label: 'Fill dashboard',
+    prompt: 'Research trusted sources and return dashboard-fill candidates grouped by Executive Overview, Market Intelligence, Competitors, Raw Materials, Investment Analysis, Regulatory, Investor Readiness, and Reports. For every field include value, source title, URL/domain, date, confidence, evidence status, reviewRequired, and why it can or cannot auto-fill.',
+  },
+  {
     icon: '🌍',
     label: 'Market map',
     prompt: 'Build a country-wise market map with consumption/growth signals, source, confidence, evidence status, and gaps to verify.',
+  },
+  {
+    icon: '📈',
+    label: 'Country growth',
+    prompt: 'Build a country-wise consumption growth tracker for textile softeners and related textile-finishing demand. Separate direct softener evidence from proxy signals such as cotton mill use, textile output, apparel exports, imports, and wet-processing clusters. Include source, date, confidence, evidence status, and next verification task for each country.',
   },
   {
     icon: '🏭',

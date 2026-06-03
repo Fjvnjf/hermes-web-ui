@@ -20,16 +20,22 @@ describe('visual research mode prompt wrapper', () => {
 
   it('provides one-click visual research presets for common business analysis needs', () => {
     expect(VISUAL_RESEARCH_PRESETS.map(preset => preset.label)).toEqual([
+      'Fill dashboard',
       'Market map',
+      'Country growth',
       'Competitors',
       'Suppliers',
       'Investment',
     ])
-    expect(VISUAL_RESEARCH_PRESETS.map(preset => preset.icon)).toEqual(['🌍', '🏭', '🧾', '💎'])
-    expect(VISUAL_RESEARCH_PRESETS[0].prompt).toContain('country-wise market map')
-    expect(VISUAL_RESEARCH_PRESETS[1].prompt).toContain('To Verify market share')
-    expect(VISUAL_RESEARCH_PRESETS[2].prompt).toContain('supplier scorecards')
-    expect(VISUAL_RESEARCH_PRESETS[3].prompt).toContain('IRR/NPV')
+    expect(VISUAL_RESEARCH_PRESETS.map(preset => preset.icon)).toEqual(['🧭', '🌍', '📈', '🏭', '🧾', '💎'])
+    expect(VISUAL_RESEARCH_PRESETS[0].prompt).toContain('dashboard-fill candidates')
+    expect(VISUAL_RESEARCH_PRESETS[0].prompt).toContain('reviewRequired')
+    expect(VISUAL_RESEARCH_PRESETS[1].prompt).toContain('country-wise market map')
+    expect(VISUAL_RESEARCH_PRESETS[2].prompt).toContain('direct softener evidence')
+    expect(VISUAL_RESEARCH_PRESETS[2].prompt).toContain('proxy signals')
+    expect(VISUAL_RESEARCH_PRESETS[3].prompt).toContain('To Verify market share')
+    expect(VISUAL_RESEARCH_PRESETS[4].prompt).toContain('supplier scorecards')
+    expect(VISUAL_RESEARCH_PRESETS[5].prompt).toContain('IRR/NPV')
   })
 
   it('strips the frontend instruction before displaying user messages', () => {
