@@ -25,6 +25,10 @@ import {
   type PresentationMaterial,
 } from '@/utils/investorIntelligence'
 import { canAccessRouteName, getFrontendAccessRole, type FrontendAccessRole } from '@/utils/accessControl'
+import {
+  buildDashboardCoverageRows,
+  missingDashboardCoverageTargetCount,
+} from '@/utils/dashboardCoverage'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -206,6 +210,14 @@ const importedDashboardRecordCount = computed(() =>
 const autopilotReviewQueueCount = computed(() =>
   autopilotImportStatus.value?.pendingOutputCount || intelligence.pendingResearchFindings.value.length
 )
+const dashboardCoverageRows = computed(() => buildDashboardCoverageRows(intelligence.state.value))
+const missingDashboardCoverageRows = computed(() =>
+  dashboardCoverageRows.value
+    .filter(row => row.missingTargets.length > 0)
+    .sort((a, b) => b.missingTargets.length - a.missingTargets.length)
+)
+const missingDashboardCoverageCount = computed(() => missingDashboardCoverageTargetCount(missingDashboardCoverageRows.value))
+const topMissingDashboardCoverageRows = computed(() => missingDashboardCoverageRows.value.slice(0, 3))
 const automaticResearchState = computed(() => {
   const status = autopilotImportStatus.value
   const reviewCount = autopilotReviewQueueCount.value
@@ -830,6 +842,35 @@ onMounted(() => {
             <strong>{{ card.value }}</strong>
             <small>{{ card.note }}</small>
           </article>
+        </div>
+        <div class="automatic-coverage-focus" aria-label="Missing trusted-source dashboard coverage">
+          <div class="coverage-focus-header">
+            <div>
+              <p class="executive-eyebrow">🎯 Missing research focus</p>
+              <h4>
+                {{ missingDashboardCoverageCount ? `${missingDashboardCoverageCount} trusted-source targets still need coverage` : 'Trusted-source coverage looks complete' }}
+              </h4>
+              <p>
+                Hermes uses this map to keep researching the dashboard automatically. Missing values stay Missing or To Verify until source-backed evidence is imported.
+              </p>
+            </div>
+            <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Open Coverage Map</RouterLink>
+          </div>
+          <div v-if="topMissingDashboardCoverageRows.length" class="coverage-focus-grid">
+            <article v-for="row in topMissingDashboardCoverageRows" :key="row.area" :class="row.status">
+              <span class="coverage-focus-icon" aria-hidden="true">{{ row.status === 'missing' ? '🧭' : '🔍' }}</span>
+              <div>
+                <strong>{{ row.area }}</strong>
+                <small>{{ row.coveredCount }}/{{ row.totalTargets }} covered</small>
+                <p>{{ row.missingTargets.slice(0, 4).map(item => item.label).join(', ') }}<template v-if="row.missingTargets.length > 4">...</template></p>
+              </div>
+            </article>
+          </div>
+          <div v-else class="coverage-focus-complete">
+            <span aria-hidden="true">✅</span>
+            <strong>Every required dashboard area has imported evidence or review items.</strong>
+            <small>Keep the twice-daily autopilot active so freshness and source checks continue.</small>
+          </div>
         </div>
       </section>
 
@@ -1578,6 +1619,128 @@ onMounted(() => {
   }
 }
 
+.automatic-coverage-focus {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.24);
+  border-radius: $radius-sm;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.coverage-focus-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  h4,
+  p {
+    margin: 0;
+  }
+
+  h4 {
+    color: $accent-primary;
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  p {
+    max-width: 780px;
+    margin-top: 5px;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.coverage-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(var(--warning-rgb), 0.28);
+    border-radius: $radius-sm;
+    background: rgba(var(--warning-rgb), 0.06);
+
+    &.missing {
+      border-color: rgba(var(--error-rgb), 0.28);
+      background: rgba(var(--error-rgb), 0.055);
+    }
+  }
+
+  strong,
+  small,
+  p {
+    display: block;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  small {
+    margin-top: 3px;
+    color: $accent-info;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.coverage-focus-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+  border-radius: 999px;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  font-size: 15px;
+}
+
+.coverage-focus-complete {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(var(--success-rgb), 0.28);
+  border-radius: $radius-sm;
+  background: rgba(var(--success-rgb), 0.07);
+
+  span {
+    grid-row: 1 / span 2;
+    font-size: 18px;
+  }
+
+  strong {
+    color: $success;
+    font-size: 12px;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+  }
+}
+
 .brief-primary-link,
 .today-priority-strip a {
   display: inline-flex;
@@ -2185,6 +2348,14 @@ onMounted(() => {
     article {
       min-height: 0;
     }
+  }
+
+  .coverage-focus-header {
+    display: grid;
+  }
+
+  .coverage-focus-grid {
+    grid-template-columns: 1fr;
   }
 
   .home-advanced-section {
