@@ -50,6 +50,66 @@ const durableStatusText = computed(() => {
   }
   return 'Waiting for the first trusted-source import for this screen.'
 })
+const screenActionSummary = computed(() => {
+  const reviewCount = pendingReviewFindings.value.length || needsReviewCount.value
+  if (reviewCount > 0) {
+    return {
+      tone: 'review',
+      icon: '🧾',
+      eyebrow: 'Your next action',
+      title: 'Review staged evidence',
+      detail: `Hermes found ${reviewCount} review-gated item${reviewCount === 1 ? '' : 's'} for this screen. Approve only source-backed items you trust; weak, sensitive, or investor-impacting claims stay out of the dashboard until reviewed.`,
+      primary: 'Review staged findings',
+      secondary: 'Source controls',
+      primaryRoute: { name: 'hermes.researchResultReview' },
+      secondaryRoute: { name: 'hermes.trustedSources' },
+      sync: false,
+    }
+  }
+
+  if (durableRecordTotal.value > 0) {
+    return {
+      tone: 'filled',
+      icon: '📊',
+      eyebrow: 'Automatic filling',
+      title: 'Dashboard data is filling itself',
+      detail: `${durableRecordTotal.value} source-backed record${durableRecordTotal.value === 1 ? ' is' : 's are'} already visible here. Keep using the screen; Hermes continues researching in the background and sends risky values to review.`,
+      primary: 'View review queue',
+      secondary: 'Trusted Sources',
+      primaryRoute: { name: 'hermes.researchResultReview' },
+      secondaryRoute: { name: 'hermes.trustedSources' },
+      sync: false,
+    }
+  }
+
+  if (activeSources.value.length > 0) {
+    return {
+      tone: 'waiting',
+      icon: '🔎',
+      eyebrow: 'No manual web searching',
+      title: 'Hermes is watching trusted sources',
+      detail: 'Official-first sources are connected. Missing values stay Missing or To Verify until Hermes imports source-backed output or stages a review item.',
+      primary: 'Run source check',
+      secondary: 'Trusted Sources',
+      primaryRoute: null,
+      secondaryRoute: { name: 'hermes.trustedSources' },
+      sync: true,
+    }
+  }
+
+  return {
+    tone: 'setup',
+    icon: '🛟',
+    eyebrow: 'Setup needed',
+    title: 'Connect automatic research',
+    detail: 'This screen has no active trusted sources yet. Open Trusted Sources to repair the full-dashboard autopilot and source registry.',
+    primary: 'Repair auto research',
+    secondary: 'View review queue',
+    primaryRoute: { name: 'hermes.trustedSources' },
+    secondaryRoute: { name: 'hermes.researchResultReview' },
+    sync: false,
+  }
+})
 const simpleAutopilotCards = computed(() => [
   {
     icon: '🌐',
@@ -244,6 +304,40 @@ async function syncNow() {
         <span>Online auto-update: {{ sourceStatusLabel }}</span>
         <strong>{{ activeSources.length }}</strong>
         <small>trusted sources active</small>
+      </div>
+    </div>
+
+    <div class="screen-action-summary" :class="screenActionSummary.tone" aria-label="Your next trusted-source action">
+      <span class="screen-action-icon" aria-hidden="true">{{ screenActionSummary.icon }}</span>
+      <div class="screen-action-copy">
+        <small>{{ screenActionSummary.eyebrow }}</small>
+        <strong>{{ screenActionSummary.title }}</strong>
+        <p>{{ screenActionSummary.detail }}</p>
+      </div>
+      <div class="screen-action-buttons">
+        <NButton
+          v-if="screenActionSummary.sync"
+          size="small"
+          type="primary"
+          :loading="saving"
+          @click="syncNow"
+        >
+          {{ screenActionSummary.primary }}
+        </NButton>
+        <RouterLink
+          v-else-if="screenActionSummary.primaryRoute"
+          class="autopilot-link primary"
+          :to="screenActionSummary.primaryRoute"
+        >
+          {{ screenActionSummary.primary }}
+        </RouterLink>
+        <RouterLink
+          v-if="screenActionSummary.secondaryRoute"
+          class="autopilot-link"
+          :to="screenActionSummary.secondaryRoute"
+        >
+          {{ screenActionSummary.secondary }}
+        </RouterLink>
       </div>
     </div>
 
@@ -516,6 +610,83 @@ async function syncNow() {
   }
 }
 
+.screen-action-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.055);
+
+  &.review {
+    border-color: rgba(var(--warning-rgb), 0.5);
+    background: rgba(var(--warning-rgb), 0.08);
+
+    .screen-action-icon {
+      border-color: rgba(var(--warning-rgb), 0.45);
+      background: rgba(var(--warning-rgb), 0.12);
+    }
+  }
+
+  &.filled {
+    border-color: rgba(var(--success-rgb), 0.36);
+    background: rgba(var(--success-rgb), 0.07);
+
+    .screen-action-icon {
+      border-color: rgba(var(--success-rgb), 0.36);
+      background: rgba(var(--success-rgb), 0.11);
+    }
+  }
+}
+
+.screen-action-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.32);
+  border-radius: 999px;
+  background: rgba(var(--accent-primary-rgb), 0.09);
+  font-size: 20px;
+}
+
+.screen-action-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+
+  small {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $warning;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.screen-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
 .autopilot-flow-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -774,6 +945,7 @@ async function syncNow() {
 .autopilot-link {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 30px;
   padding: 5px 10px;
   border: 1px solid $border-color;
@@ -783,6 +955,12 @@ async function syncNow() {
   font-size: 12px;
   font-weight: 800;
   text-decoration: none;
+
+  &.primary {
+    border-color: rgba(var(--accent-primary-rgb), 0.48);
+    background: rgba(var(--accent-primary-rgb), 0.1);
+    color: $accent-primary;
+  }
 }
 
 .source-detail {
@@ -847,9 +1025,19 @@ async function syncNow() {
   .autopilot-metrics,
   .simple-autopilot-grid,
   .autopilot-flow-strip,
+  .screen-action-summary,
   .claim-strip,
   .durable-intelligence-status {
     grid-template-columns: 1fr;
+  }
+
+  .screen-action-buttons {
+    justify-content: stretch;
+
+    .autopilot-link,
+    :deep(.n-button) {
+      width: 100%;
+    }
   }
 
   .autopilot-disclosure summary {

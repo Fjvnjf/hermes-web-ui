@@ -1710,6 +1710,11 @@ describe('Trusted Source Autopilot', () => {
       props: { screen: 'market', title: 'Market Auto Source Status' },
     })
 
+    expect(wrapper.text()).toContain('No manual web searching')
+    expect(wrapper.text()).toContain('Hermes is watching trusted sources')
+    expect(wrapper.text()).toContain('Run source check')
+    expect(wrapper.text()).toContain('Trusted Sources')
+
     await wrapper.findAll('button').find(button => button.text().includes('Run Source Check Now'))!.trigger('click')
 
     await waitForExpectation(() => {
@@ -1804,6 +1809,10 @@ describe('Trusted Source Autopilot', () => {
     const text = wrapper.text()
 
     expect(text).toContain('No manual web searching is needed')
+    expect(text).toContain('Your next action')
+    expect(text).toContain('Review staged evidence')
+    expect(text).toContain('Review staged findings')
+    expect(text).toContain('Source controls')
     expect(text).toContain('Auto research')
     expect(text).toContain('Safe records')
     expect(text).toContain('Review gate')
