@@ -413,6 +413,48 @@ describe('Trusted Source Autopilot', () => {
     expect(claims[0].notes).toContain('not product formulation verification')
   })
 
+  it('fetches BLS official chemical PPI without treating it as supplier pricing', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'bls-ppi')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'REQUEST_SUCCEEDED',
+        Results: {
+          series: [{
+            seriesID: 'PCU325---325---',
+            data: [
+              { year: '2026', period: 'M04', periodName: 'April', value: '368.156' },
+              { year: '2026', period: 'M03', periodName: 'March', value: '361.254' },
+              { year: '2025', period: 'M04', periodName: 'April', value: '357.264' },
+            ],
+          }],
+        },
+      }),
+    } as Response)
+    const { claims } = await runConnector({
+      screen: 'investment',
+      field: 'Investment Breakdown',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('api.bls.gov/publicAPI/v2/timeseries/data/PCU325---325---'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('startyear=2025'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('endyear=2026'))
+    expect(claims[0].value).toContain('Producer Price Index by Industry: Chemical Manufacturing: 368.156 (April 2026)')
+    expect(claims[0].value).toContain('year-over-year index change 3.05%')
+    expect(claims[0].unit).toBe('PPI index')
+    expect(claims[0].source_date).toBe('2026-04')
+    expect(claims[0].evidence_status).toBe('Official Data')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].sensitive).toBe(true)
+    expect(claims[0].notes).toContain('not a supplier quote')
+    expect(claims[0].notes).toContain('not a supplier quote, landed cost')
+    expect(claims[0].notes).toContain('IRR, NPV')
+  })
+
   it('fetches World Bank official document candidates without treating them as market proof', async () => {
     const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'world-bank-documents-api')!
     const fetchImpl = vi.fn().mockResolvedValue({
@@ -664,6 +706,7 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Supplier Scorecards')
     expect(prompt).toContain('UN Comtrade')
     expect(prompt).toContain('PubChem')
+    expect(prompt).toContain('BLS')
     expect(prompt).toContain('Wilmar')
     expect(prompt).toContain('WACKER')
     expect(prompt).toContain('Do the online research yourself')

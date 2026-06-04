@@ -249,6 +249,7 @@ export function createConnectorForSource(source: TrustedSourceRecord): TrustedSo
   if (source.source_id === 'world-bank-documents-api') return worldBankDocumentsApiConnector(source)
   if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return unComtradeApiConnector(source)
   if (source.source_id === 'pubchem') return pubChemApiConnector(source)
+  if (source.source_id === 'bls-ppi') return blsPpiApiConnector(source)
   if (source.source_id === 'oecd-data-api') return apiReadyConnector(source, 'OECD connector is API-ready; dataset selection must be reviewed before dashboard values are trusted.')
   if (source.source_id.includes('sunsirs')) return referenceConnector(source, 'SunSirs reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
   if (source.source_id.includes('echemi')) return referenceConnector(source, 'ECHEMI reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
@@ -500,6 +501,118 @@ function formatMetricTons(kg: number | null): string {
   if (tons >= 1_000_000) return `${(tons / 1_000_000).toFixed(2)}M t`
   if (tons >= 1000) return `${(tons / 1000).toFixed(1)}K t`
   return `${tons.toFixed(1)} t`
+}
+
+function blsSeriesForRequest(_field: string, _query?: string): {
+  seriesId: string
+  label: string
+  sourceUrl: string
+  proxyNote: string
+} {
+  return {
+    seriesId: 'PCU325---325---',
+    label: 'Producer Price Index by Industry: Chemical Manufacturing',
+    sourceUrl: 'https://www.bls.gov/ppi/',
+    proxyNote: 'Official U.S. chemical manufacturing producer-price index proxy. It is not a supplier quote, landed cost, China procurement price, product-specific ester quat price, or investment assumption.',
+  }
+}
+
+function blsPeriodMonth(period: string | undefined): number {
+  const match = String(period || '').match(/^M(\d{2})$/)
+  return match ? Number(match[1]) : 0
+}
+
+function blsRows(raw: unknown): Array<{
+  year?: string
+  period?: string
+  periodName?: string
+  value?: string
+}> {
+  if (raw && typeof raw === 'object' && Array.isArray((raw as { rows?: unknown[] }).rows)) {
+    return (raw as { rows: ReturnType<typeof blsRows> }).rows
+  }
+  const series = (raw as { Results?: { series?: Array<{ data?: unknown[] }> } } | null)?.Results?.series?.[0]
+  return Array.isArray(series?.data) ? series.data as ReturnType<typeof blsRows> : []
+}
+
+function sortedBlsRows(raw: unknown) {
+  return blsRows(raw)
+    .map(row => ({
+      year: String(row.year || ''),
+      period: String(row.period || ''),
+      periodName: String(row.periodName || ''),
+      value: Number(row.value),
+    }))
+    .filter(row => row.year && row.period && Number.isFinite(row.value))
+    .sort((a, b) => Number(b.year) - Number(a.year) || blsPeriodMonth(b.period) - blsPeriodMonth(a.period))
+}
+
+function blsPpiApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
+  const connector = baseConnector(source)
+  connector.fetch = async (request) => {
+    const fetchImpl = request.fetchImpl || fetch
+    const series = blsSeriesForRequest(request.field, request.query)
+    const date = new Date(nowIso(request))
+    const year = Number.isNaN(date.getTime()) ? new Date().getUTCFullYear() : date.getUTCFullYear()
+    const startyear = String(Math.max(2000, year - 1))
+    const endyear = String(year)
+    const endpoint = `https://api.bls.gov/publicAPI/v2/timeseries/data/${series.seriesId}?${new URLSearchParams({ startyear, endyear }).toString()}`
+    const response = await fetchImpl(endpoint)
+    if (!response.ok) throw new Error(`BLS PPI API returned ${response.status}`)
+    const raw = await response.json()
+    return {
+      series,
+      endpoint,
+      rows: blsRows(raw),
+    }
+  }
+  connector.parse = async (raw, request) => {
+    const series = raw && typeof raw === 'object' && 'series' in raw
+      ? (raw as { series: ReturnType<typeof blsSeriesForRequest> }).series
+      : blsSeriesForRequest(request.field, request.query)
+    const endpoint = raw && typeof raw === 'object' && 'endpoint' in raw
+      ? String((raw as { endpoint?: string }).endpoint || series.sourceUrl)
+      : series.sourceUrl
+    const rows = sortedBlsRows(raw)
+    const latest = rows[0]
+
+    if (!latest) {
+      return [{
+        field: request.field,
+        value: 'BLS PPI API reachable / To Verify',
+        source_url: endpoint,
+        source_date: nowIso(request).slice(0, 10),
+        notes: `No usable ${series.label} row was extracted. Keep price/cost/investment fields staged and request deeper source review.`,
+        evidence_status: 'To Verify',
+        confidence: 'medium',
+        review_required: true,
+        sensitive: true,
+      }]
+    }
+
+    const sameMonthPriorYear = rows.find(row =>
+      row.period === latest.period &&
+      Number(row.year) === Number(latest.year) - 1 &&
+      row.value > 0
+    )
+    const comparison = sameMonthPriorYear
+      ? `; year-over-year index change ${(((latest.value - sameMonthPriorYear.value) / sameMonthPriorYear.value) * 100).toFixed(2)}% vs ${sameMonthPriorYear.periodName || sameMonthPriorYear.period} ${sameMonthPriorYear.year}`
+      : ''
+
+    return [{
+      field: request.field,
+      value: `${series.label}: ${latest.value.toFixed(3)} (${latest.periodName || latest.period} ${latest.year})${comparison}`,
+      unit: 'PPI index',
+      source_url: endpoint,
+      source_date: `${latest.year}-${String(blsPeriodMonth(latest.period)).padStart(2, '0')}`,
+      notes: `${series.proxyNote} Use this only as an official price-trend reference. Supplier prices, payment terms, landed cost, IRR, NPV, and procurement decisions remain review-gated and need direct supplier/internal evidence.`,
+      evidence_status: 'Official Data',
+      confidence: 'high',
+      review_required: true,
+      sensitive: true,
+    }]
+  }
+  return connector
 }
 
 function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
