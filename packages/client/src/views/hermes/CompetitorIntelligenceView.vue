@@ -29,6 +29,8 @@ const competitorForm = ref({
   certifications: '',
   distributionPresence: '',
   marketShare: '',
+  revenue: '',
+  yearlyGrowth: '',
   evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
   sourceTitle: '',
   sourceUrl: '',
@@ -432,8 +434,8 @@ const competitorMetricsRows = computed(() => {
     productFocus: competitor.productEquivalent || autoVerifyingText,
     priceKg: visibleSensitiveValue(competitor.pricingEvidence),
     marketShare: autoVerifyText(competitorMarketShareLabel(competitor)),
-    revenue: autoVerifyingText,
-    yearlyGrowth: autoVerifyingText,
+    revenue: autoVerifyText(competitor.revenue),
+    yearlyGrowth: autoVerifyText(competitor.yearlyGrowth),
     source: competitor.source?.title || 'Source search running',
     sourceUrl: competitor.source?.url,
     evidenceStatus: competitor.evidenceStatus,
@@ -486,7 +488,7 @@ function syncCompetitorsNow() {
     summary: [
       'Competitor Intelligence refresh draft',
       `Competitor records: ${competitors.value.length}`,
-      'Unknown market share stays To Verify.',
+      'Unknown market share, price, revenue, and yearly growth stay in Hermes automatic verification.',
       'Pricing and formula-sensitive fields remain restricted where required.',
     ].join('\n'),
     keyClaim: 'Competitor intelligence requires source review',
@@ -517,6 +519,8 @@ function resetCompetitorForm() {
     certifications: '',
     distributionPresence: '',
     marketShare: '',
+    revenue: '',
+    yearlyGrowth: '',
     evidenceStatus: 'To Verify',
     sourceTitle: '',
     sourceUrl: '',
@@ -537,8 +541,8 @@ async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
       body: [
         `Competitor: ${competitor.companyName}`,
         'Collect company name, country/region, product equivalent, active content, pricing evidence, certifications, distribution presence, source links, and notes.',
-        'Market share must stay To Verify unless backed by a credible source.',
-        'Tags: Competitor Intelligence, Research Job, To Verify',
+        'Market share, price, revenue, and yearly growth must stay in Hermes automatic verification unless backed by a credible source.',
+        'Tags: Competitor Intelligence, Research Job, Hermes Automatic Verification',
       ].join('\n'),
       priority: 2,
       tenant: 'Chemicon China Feasibility',
@@ -546,9 +550,9 @@ async function createResearchTask(competitor: CompetitorIntelligenceRecord) {
     intelligence.addResearchJob({
       title: `Competitor research: ${competitor.companyName}`,
       question: `Verify ${competitor.companyName} product equivalent, pricing evidence, distribution, certifications, and market-share source if available.`,
-      scope: 'Competitor identity, region, product equivalent, active content, pricing proof, certifications, distribution presence, and source-backed market-share status.',
-      expectedOutput: 'Structured competitor evidence record with sources, confidence, and To Verify labels for unsupported claims.',
-      sourceRequirements: 'Market share must stay To Verify unless supported by a credible source title plus URL or date.',
+      scope: 'Competitor identity, region, product equivalent, active content, pricing proof, certifications, distribution presence, revenue, yearly growth, and source-backed market-share status.',
+      expectedOutput: 'Structured competitor evidence record with sources, confidence, and Hermes automatic-verification labels for unsupported claims.',
+      sourceRequirements: 'Market share, price, revenue, and yearly growth must stay in automatic verification unless supported by a credible source title plus URL or date.',
       priority: 'medium',
       schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
@@ -574,6 +578,8 @@ async function createGenericCompetitorTask(title: string, notes: string) {
     certifications: 'To Verify',
     distributionPresence: 'To Verify',
     marketShare: '',
+    revenue: '',
+    yearlyGrowth: '',
     evidenceStatus: 'To Verify',
     source: null,
     notes,
@@ -593,6 +599,8 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       `Certifications: ${competitor.certifications}`,
       `Distribution presence: ${competitor.distributionPresence}`,
       `Market share: ${competitorMarketShareLabel(competitor)}`,
+      `Revenue: ${autoVerifyText(competitor.revenue)}`,
+      `Yearly growth: ${autoVerifyText(competitor.yearlyGrowth)}`,
       `Notes: ${competitor.notes}`,
     ].join('\n'),
     keyClaim: `Competitor evidence: ${competitor.companyName}`,
@@ -606,15 +614,15 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       ? `Review competitor evidence for ${competitor.companyName} before using it in investor material.`
       : `Collect usable source evidence for ${competitor.companyName}.`,
     suggestedInvestorMaterial: usableSource
-      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence}. Market share: ${competitorMarketShareLabel(competitor)}.`
+      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence}. Market share: ${competitorMarketShareLabel(competitor)}. Revenue: ${autoVerifyText(competitor.revenue)}. Yearly growth: ${autoVerifyText(competitor.yearlyGrowth)}.`
       : '',
     riskNote: usableSource
       ? 'Review source quality before approving this competitor evidence for investor use.'
-      : 'Competitor evidence remains To Verify until a source title plus URL or date is attached.',
+      : 'Competitor evidence remains in Hermes automatic verification until a source title plus URL or date is attached.',
   })
 
   if (competitor.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Staged as To Verify because verified findings need usable source evidence')
+    message.warning('Staged for automatic verification because verified findings need usable source evidence')
   } else {
     message.success('Competitor evidence staged for research review')
   }
@@ -638,6 +646,8 @@ function startEditCompetitor(competitor: CompetitorIntelligenceRecord) {
     certifications: competitor.certifications,
     distributionPresence: competitor.distributionPresence,
     marketShare: competitor.marketShare || '',
+    revenue: competitor.revenue || '',
+    yearlyGrowth: competitor.yearlyGrowth || '',
     evidenceStatus: competitor.evidenceStatus,
     sourceTitle: competitor.source?.title || '',
     sourceUrl: competitor.source?.url || '',
@@ -668,6 +678,8 @@ function addCompetitor() {
     certifications: competitorForm.value.certifications.trim() || 'To Verify',
     distributionPresence: competitorForm.value.distributionPresence.trim() || 'To Verify',
     marketShare: competitorForm.value.marketShare.trim(),
+    revenue: competitorForm.value.revenue.trim(),
+    yearlyGrowth: competitorForm.value.yearlyGrowth.trim(),
     evidenceStatus: competitorForm.value.evidenceStatus,
     source,
     notes: competitorForm.value.notes.trim() || 'No competitor claim should be treated as real until source evidence is attached.',
@@ -680,7 +692,7 @@ function addCompetitor() {
     return
   }
   if (competitorForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Competitor saved as To Verify because verified records need usable source evidence')
+    message.warning('Competitor saved for automatic verification because verified records need usable source evidence')
   } else {
     message.success(editingCompetitorId.value ? 'Competitor record updated' : 'Competitor record saved in this browser workspace')
   }
@@ -974,6 +986,8 @@ function addCompetitor() {
       <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="Hermes verifies automatically" /></label>
       <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="Hermes verifies automatically" /></label>
       <label>Market share<input v-model="competitorForm.marketShare" type="text" placeholder="Leave blank unless sourced" /></label>
+      <label>Revenue<input v-model="competitorForm.revenue" type="text" placeholder="Hermes verifies automatically" /></label>
+      <label>Yearly growth<input v-model="competitorForm.yearlyGrowth" type="text" placeholder="Hermes verifies automatically" /></label>
       <label>
         Evidence status
         <select v-model="competitorForm.evidenceStatus">

@@ -370,6 +370,21 @@ describe('screenshot-matched executive business tabs', () => {
   })
 
   it('renders Competitor Intelligence product context, landscape, and source-gated market share chart', () => {
+    useFeasibilityIntelligence().addCompetitor({
+      companyName: 'Source Backed Softener Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: '90% active',
+      pricingEvidence: 'Distributor quote under review',
+      certifications: 'Company product certificate',
+      distributionPresence: 'Official distributor page',
+      marketShare: '',
+      revenue: '$42M source-backed',
+      yearlyGrowth: '+8% source-backed',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Official annual profile', url: 'https://example.com/annual-profile' },
+      notes: 'Revenue and growth should appear when source-backed.',
+    })
     const wrapper = mount(CompetitorIntelligenceView)
     const competitorText = wrapper.text()
     const competitorTextLower = competitorText.toLowerCase()
@@ -395,6 +410,9 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Market share')
     expect(wrapper.text()).toContain('Revenue')
     expect(wrapper.text()).toContain('Yearly growth')
+    expect(wrapper.text()).toContain('Source Backed Softener Co')
+    expect(wrapper.text()).toContain('$42M source-backed')
+    expect(wrapper.text()).toContain('+8% source-backed')
     expect(wrapper.text()).toContain('Hermes verifying twice daily')
     expect(competitorTextLower).toContain('global competitor analysis')
     expect(wrapper.text()).toContain('Supplier Types, Strategic Threats, and Evidence Gaps')

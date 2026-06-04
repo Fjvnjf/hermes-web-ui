@@ -1663,11 +1663,13 @@ function applySafeDashboardResearchItem(group: DashboardResearchUpdateGroup, ite
       certifications: asText(item.certifications, 'To Verify'),
       distributionPresence: asText(item.distributionPresence, 'To Verify'),
       marketShare: '',
+      revenue: asText(item.revenue, ''),
+      yearlyGrowth: asText(item.yearlyGrowth, ''),
       evidenceStatus: claim.evidenceStatus,
       source: claim.source,
       notes: [
         item.notes ? asText(item.notes) : '',
-        'Imported by Full Dashboard Trusted Source Autopilot. Market share remains To Verify unless separately source-backed and reviewed.',
+        'Imported by Full Dashboard Trusted Source Autopilot. Market share, revenue, yearly growth, and pricing remain review-gated unless separately source-backed and approved.',
       ].filter(Boolean).join('\n'),
     })
     return true

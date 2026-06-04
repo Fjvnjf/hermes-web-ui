@@ -78,6 +78,8 @@ export interface DashboardResearchUpdateItem {
   certifications?: string
   distributionPresence?: string
   marketShare?: string
+  revenue?: string
+  yearlyGrowth?: string
   material?: string
   supplier?: string
   section?: string

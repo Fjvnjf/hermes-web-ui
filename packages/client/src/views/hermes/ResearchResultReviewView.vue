@@ -516,6 +516,8 @@ function saveAsCompetitorRecord(item: ResearchReviewFinding) {
       certifications: reviewLine(item, 'Certifications') || 'To Verify',
       distributionPresence: reviewLine(item, 'Distribution presence') || 'To Verify',
       marketShare: normalizedMarketShareValue(reviewLine(item, 'Market share')),
+      revenue: reviewLine(item, 'Revenue') || reviewLine(item, 'Annual revenue') || '',
+      yearlyGrowth: reviewLine(item, 'Yearly growth') || reviewLine(item, 'Growth') || '',
       evidenceStatus: item.evidenceStatus,
       source: item.source || null,
       notes: [

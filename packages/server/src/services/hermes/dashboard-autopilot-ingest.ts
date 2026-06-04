@@ -250,6 +250,8 @@ interface DashboardResearchUpdateItem {
   certifications?: unknown
   distributionPresence?: unknown
   marketShare?: unknown
+  revenue?: unknown
+  yearlyGrowth?: unknown
   section?: unknown
   content?: unknown
   sourceTitle?: unknown
@@ -2039,6 +2041,8 @@ function appendCompetitorRecord(
     certifications: firstString(input.item.certifications) || 'To Verify',
     distributionPresence: firstString(input.item.distributionPresence) || 'To Verify',
     marketShare: '',
+    revenue: firstString(input.item.revenue) || '',
+    yearlyGrowth: firstString(input.item.yearlyGrowth) || '',
     evidenceStatus: input.evidenceStatus,
     source: input.source,
     notes: firstString(input.item.notes, input.value) || 'Imported by Full Dashboard Autopilot from a source-backed non-sensitive company record.',

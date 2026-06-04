@@ -43,6 +43,8 @@ export interface CompetitorIntelligenceRecord {
   certifications: string
   distributionPresence: string
   marketShare?: string
+  revenue?: string
+  yearlyGrowth?: string
   evidenceStatus: IntelligenceEvidenceStatus
   source?: SourceReference | null
   notes: string
@@ -110,6 +112,8 @@ export interface ResearchReviewDashboardTarget {
   certifications?: string
   distributionPresence?: string
   marketShare?: string
+  revenue?: string
+  yearlyGrowth?: string
   supplier?: string
   material?: string
   section?: string
@@ -718,6 +722,8 @@ export function useFeasibilityIntelligence() {
       ...record,
       id: idFrom('competitor', record.companyName || 'unknown'),
       marketShare: record.marketShare?.trim() || '',
+      revenue: record.revenue?.trim() || '',
+      yearlyGrowth: record.yearlyGrowth?.trim() || '',
       evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source) ? 'To Verify' : record.evidenceStatus,
       updatedAt: nowIso(),
     }
@@ -737,6 +743,8 @@ export function useFeasibilityIntelligence() {
       ...patch,
       id,
       marketShare: patch.marketShare?.trim() ?? state.value.competitors[index].marketShare,
+      revenue: patch.revenue?.trim() ?? state.value.competitors[index].revenue,
+      yearlyGrowth: patch.yearlyGrowth?.trim() ?? state.value.competitors[index].yearlyGrowth,
       updatedAt: nowIso(),
     }
     const updated: CompetitorIntelligenceRecord = {
@@ -886,6 +894,8 @@ export function useFeasibilityIntelligence() {
         certifications: nonEmpty(target.certifications) || 'To Verify',
         distributionPresence: nonEmpty(target.distributionPresence) || 'To Verify',
         marketShare: nonEmpty(target.marketShare),
+        revenue: nonEmpty(target.revenue),
+        yearlyGrowth: nonEmpty(target.yearlyGrowth),
         evidenceStatus: current.evidenceStatus,
         source: current.source || null,
         notes: [

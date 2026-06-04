@@ -1860,6 +1860,8 @@ describe('investor readiness pages', () => {
         certifications: 'To Verify',
         distributionPresence: 'Official product page and distributor mention',
         marketShare: '',
+        revenue: '$80M source-backed',
+        yearlyGrowth: '+6% source-backed',
         sourceTier: 'tier2-company-official',
         dataType: 'competitor_data',
       },
@@ -1876,6 +1878,8 @@ describe('investor readiness pages', () => {
     expect(competitor.companyName).toBe('Example Softener Co')
     expect(competitor.productEquivalent).toBe('Cationic softener')
     expect(competitor.distributionPresence).toBe('Official product page and distributor mention')
+    expect(competitor.revenue).toBe('$80M source-backed')
+    expect(competitor.yearlyGrowth).toBe('+6% source-backed')
     expect(competitor.evidenceStatus).toBe('Source-backed')
     expect(formatMarketShare(competitor.marketShare)).toBe('To Verify')
   })
@@ -2265,6 +2269,8 @@ describe('investor readiness pages', () => {
         'Certifications: To Verify',
         'Distribution presence: Distributor in China',
         'Market share: To Verify',
+        'Revenue: $51M source-backed',
+        'Yearly growth: +9% source-backed',
         'Notes: Pricing source needs investor review before use.',
       ].join('\n'),
       keyClaim: 'Competitor evidence: Example Softener Co',
@@ -2285,6 +2291,8 @@ describe('investor readiness pages', () => {
     expect(competitor.companyName).toBe('Example Softener Co')
     expect(competitor.productEquivalent).toBe('CWAS equivalent')
     expect(competitor.pricingEvidence).toBe('Distributor quote note')
+    expect(competitor.revenue).toBe('$51M source-backed')
+    expect(competitor.yearlyGrowth).toBe('+9% source-backed')
     expect(competitor.evidenceStatus).toBe('Verified')
     expect(competitor.source?.title).toBe('Distributor quote')
     expect(formatMarketShare(competitor.marketShare)).toBe('To Verify')
