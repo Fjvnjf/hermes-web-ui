@@ -231,6 +231,7 @@ const competitorResearchQueue = [
   'Kao esterquat textile relevance',
   'Transfar CWAS/CWMS equivalent products',
 ]
+const autoVerifyingText = 'Hermes verifying twice daily'
 const competitorSourcePack = [
   {
     title: 'Transfar Chemicals official site',
@@ -408,13 +409,65 @@ const marketShareChartRows = computed(() =>
     }))
     .filter(row => Number.isFinite(row.numericShare) && row.numericShare > 0 && (row.isAssumption || row.isSourceBacked)),
 )
+const competitorMetricsRows = computed(() => {
+  const templateRows = sourceBackedCompetitorTemplateRows.map(row => ({
+    id: `template-${row.competitor}`,
+    competitor: row.competitor,
+    hq: row.hq,
+    productFocus: productFocusForCompetitor(row.competitor),
+    priceKg: autoVerifyText(row.price),
+    marketShare: autoVerifyText(row.share),
+    revenue: autoVerifyingText,
+    yearlyGrowth: autoVerifyingText,
+    source: row.sourceTitle,
+    sourceUrl: row.sourceUrl,
+    evidenceStatus: row.status,
+    nextAction: row.weakness,
+  }))
+
+  const savedRows = competitors.value.map(competitor => ({
+    id: `saved-${competitor.id}`,
+    competitor: competitor.companyName,
+    hq: competitor.countryRegion || autoVerifyingText,
+    productFocus: competitor.productEquivalent || autoVerifyingText,
+    priceKg: visibleSensitiveValue(competitor.pricingEvidence),
+    marketShare: autoVerifyText(competitorMarketShareLabel(competitor)),
+    revenue: autoVerifyingText,
+    yearlyGrowth: autoVerifyingText,
+    source: competitor.source?.title || 'Source search running',
+    sourceUrl: competitor.source?.url,
+    evidenceStatus: competitor.evidenceStatus,
+    nextAction: competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
+  }))
+
+  return [...savedRows, ...templateRows]
+})
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
   return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
 }
 
+function autoVerifyText(value: string | null | undefined): string {
+  const normalized = String(value || '').trim()
+  if (!normalized || normalized === 'Missing' || normalized === 'To Verify') return autoVerifyingText
+  return normalized
+}
+
+function displayEvidenceStatus(status: IntelligenceEvidenceStatus): string {
+  if (status === 'To Verify' || status === 'Missing') return autoVerifyingText
+  return status
+}
+
+function productFocusForCompetitor(competitor: string): string {
+  if (/wacker|silicone/i.test(competitor)) return 'Silicone softeners / CHEMISIL benchmark'
+  if (/rudolf|cht|archroma|zschimmer|pulcra|transfar/i.test(competitor)) return 'Textile softeners / CHEMISOFT and CHEMISIL benchmark'
+  if (/kao|evonik|stepan|basf|syensqo|solvay/i.test(competitor)) return 'Esterquat active / cationic softener reference'
+  return 'Textile auxiliary competitor benchmark'
+}
+
 function visibleSensitiveValue(value: string): string {
-  return String(redactForEmployee(value || 'Missing'))
+  const visible = String(redactForEmployee(value || 'Missing'))
+  return autoVerifyText(visible)
 }
 
 function statusClass(status: IntelligenceEvidenceStatus): string {
@@ -643,9 +696,10 @@ function addCompetitor() {
         <h2 class="header-title">Evidence-Backed Competitor Tracking</h2>
         <p class="page-copy">
           Track product equivalents, certifications, distribution presence, and source links. Pricing/cost fields are
-          restricted for employee-style roles. Unknown market share is always displayed as To Verify.
+          restricted for employee-style roles. Unknown market share, price, revenue, and growth are shown as Hermes
+          verifying twice daily until source-backed evidence is attached.
         </p>
-        <p class="section-help-text">Market share must be source-backed or labeled as an assumption. Unknown values stay To Verify and should become research tasks.</p>
+        <p class="section-help-text">Market share must be source-backed or labeled as an assumption. Unknown values stay out of investor truth while Hermes researches them automatically twice daily.</p>
       </div>
       <div class="refresh-card">
         <span>Last updated: {{ formatDateTime(refreshState.lastRun) }}</span>
@@ -666,7 +720,8 @@ function addCompetitor() {
           <h3>Competitors Tab Template</h3>
           <p>
             Screenshot-style competitor board using verified public source references where available. Market share,
-            price/kg, product equivalence, and local supplier claims remain To Verify until source evidence is attached.
+            price/kg, revenue, yearly growth, product equivalence, and local supplier claims remain in Hermes automatic
+            verification until source evidence is attached.
           </p>
         </div>
         <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review competitor evidence</RouterLink>
@@ -674,12 +729,42 @@ function addCompetitor() {
 
       <div class="template-kpi-strip">
         <article v-for="kpi in screenshotCompetitorKpis" :key="kpi.label" class="template-kpi-card">
-          <strong>{{ kpi.value }}</strong>
+          <strong>{{ autoVerifyText(kpi.value) }}</strong>
           <span>{{ kpi.label }}</span>
-          <small class="status-badge" :class="statusClass(kpi.status)">{{ kpi.status }}</small>
+          <small class="status-badge" :class="statusClass(kpi.status)">{{ displayEvidenceStatus(kpi.status) }}</small>
           <p>{{ kpi.note }}</p>
         </article>
       </div>
+
+      <section class="template-panel competitor-metrics-panel" aria-label="Competitor product price share revenue growth table">
+        <div class="template-panel-title">
+          <div>
+            <h3>Competitor Product / Price / Share / Revenue / Growth</h3>
+            <p>
+              One table for the numbers you asked for. Hermes fills cells from trusted-source output when available;
+              unknown or sensitive values show automatic twice-daily verification instead of fake figures.
+            </p>
+          </div>
+          <RouterLink class="template-link" :to="{ name: 'hermes.trustedSources' }">Source Autopilot</RouterLink>
+        </div>
+        <div class="competitor-metrics-table">
+          <div class="competitor-metrics-row head">
+            <span>Competitor</span><span>Product focus</span><span>Price/kg</span><span>Market share</span><span>Revenue</span><span>Yearly growth</span><span>Source</span><span>Status</span><span>Next Hermes action</span>
+          </div>
+          <div v-for="row in competitorMetricsRows" :key="row.id" class="competitor-metrics-row">
+            <strong>{{ row.competitor }}</strong>
+            <span>{{ row.productFocus }}</span>
+            <span class="verify-pill">{{ row.priceKg }}</span>
+            <span class="verify-pill">{{ row.marketShare }}</span>
+            <span class="verify-pill">{{ row.revenue }}</span>
+            <span class="verify-pill">{{ row.yearlyGrowth }}</span>
+            <a v-if="row.sourceUrl" :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">{{ row.source }}</a>
+            <span v-else>{{ row.source }}</span>
+            <span class="status-badge" :class="statusClass(row.evidenceStatus)">{{ displayEvidenceStatus(row.evidenceStatus) }}</span>
+            <span class="weakness-label">{{ row.nextAction }}</span>
+          </div>
+        </div>
+      </section>
 
       <div class="template-product-grid">
         <article v-for="family in screenshotProductFamilies" :key="family.title" class="template-panel product-family-panel">
@@ -692,11 +777,11 @@ function addCompetitor() {
           </div>
           <div v-for="row in family.rows" :key="`${family.title}-${row.product}`" class="template-product-row">
             <strong>{{ row.product }}</strong>
-            <span>{{ row.form }}</span>
-            <span>{{ row.dosing }}</span>
-            <span>{{ row.ph }}</span>
+            <span>{{ autoVerifyText(row.form) }}</span>
+            <span>{{ autoVerifyText(row.dosing) }}</span>
+            <span>{{ autoVerifyText(row.ph) }}</span>
             <span>{{ row.application }}</span>
-            <span class="status-badge" :class="statusClass(row.status)">{{ row.status }}</span>
+            <span class="status-badge" :class="statusClass(row.status)">{{ displayEvidenceStatus(row.status) }}</span>
           </div>
         </article>
       </div>
@@ -705,7 +790,7 @@ function addCompetitor() {
         <div class="template-panel-title">
           <div>
             <h3>Competitor Landscape - China Softener Market</h3>
-            <p>Public-source competitor presence; unsupported shares and prices stay as evidence gaps.</p>
+            <p>Public-source competitor presence; unsupported shares and prices stay queued for Hermes automatic verification.</p>
           </div>
           <NButton size="small" secondary @click="syncCompetitorsNow">Sync / stage review</NButton>
         </div>
@@ -716,8 +801,8 @@ function addCompetitor() {
           <div v-for="row in sourceBackedCompetitorTemplateRows" :key="row.competitor" class="template-landscape-row">
             <strong>{{ row.competitor }}</strong>
             <span>{{ row.hq }}</span>
-            <span class="verify-pill">{{ row.share }}</span>
-            <span class="verify-pill">{{ row.price }}</span>
+            <span class="verify-pill">{{ autoVerifyText(row.share) }}</span>
+            <span class="verify-pill">{{ autoVerifyText(row.price) }}</span>
             <span>{{ row.strength }}</span>
             <span class="weakness-label">{{ row.weakness }}</span>
             <a :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">{{ row.sourceTitle }}</a>
@@ -736,7 +821,7 @@ function addCompetitor() {
         <div v-for="row in sourceBackedCompetitorTemplateRows" :key="`${row.competitor}-share`" class="template-share-row">
           <span>{{ row.competitor }}</span>
           <div class="template-share-track"><i></i></div>
-          <strong>To Verify</strong>
+          <strong>{{ autoVerifyingText }}</strong>
         </div>
       </section>
 
@@ -751,7 +836,7 @@ function addCompetitor() {
       <section class="template-panel research-queue-panel" aria-label="Competitor verification queue">
         <div class="template-panel-title">
           <h3>Competitor Verification Queue</h3>
-          <span>research tasks needed</span>
+          <span>Hermes checks twice daily</span>
         </div>
         <div class="queue-list">
           <span v-for="item in competitorResearchQueue" :key="item">{{ item }}</span>
@@ -765,7 +850,8 @@ function addCompetitor() {
           <h3>User PDF Competitor / Importer Tables</h3>
           <p>
             These rows reproduce the PDF you provided. Company presence is useful for research, but import volumes,
-            supplier names, price, capacity, and market-share values remain To Verify until a source title plus URL/date is attached.
+            supplier names, price, capacity, and market-share values stay in Hermes automatic verification until a
+            source title plus URL/date is attached.
           </p>
         </div>
         <NButton size="small" secondary @click="createGenericCompetitorTask('PDF competitor table verification', 'Verify Chinese distributor list, global ester-quat manufacturer capacity, and market-share figures from source-backed documents')">
@@ -800,7 +886,7 @@ function addCompetitor() {
           <span>{{ row.hq }}</span>
           <span>{{ row.capacity }}</span>
           <span>{{ row.share }}</span>
-          <span class="verify-pill">To Verify</span>
+          <span class="verify-pill">{{ autoVerifyingText }}</span>
         </div>
       </div>
     </section>
@@ -833,7 +919,7 @@ function addCompetitor() {
         <div class="template-panel-title">
           <div>
             <h3>Global Competitor Matrix</h3>
-            <p>Source-backed public facts are separated from research gaps. Price and market share remain To Verify.</p>
+            <p>Source-backed public facts are separated from research gaps. Price, market share, revenue, and growth remain queued for Hermes verification.</p>
           </div>
         </div>
         <div class="global-competitor-table">
@@ -859,25 +945,25 @@ function addCompetitor() {
     <section class="product-context-panel" aria-label="Product context panel">
       <div>
         <h3>Product Context Panel</h3>
-        <p>Brochure-backed product context only. Missing form, dosing, pH, and application data stays To Verify.</p>
+        <p>Brochure-backed product context only. Missing form, dosing, pH, and application data stays queued for Hermes automatic verification.</p>
       </div>
       <div class="product-context-row head">
         <span>Product</span><span>Form / Type</span><span>Dosing</span><span>pH</span><span>Application</span><span>Evidence Status</span>
       </div>
       <div v-for="row in productContextRows" :key="row.product" class="product-context-row">
         <span>{{ row.product }}</span>
-        <span>{{ row.formType }}</span>
-        <span>{{ row.dosing }}</span>
-        <span>{{ row.ph }}</span>
+        <span>{{ autoVerifyText(row.formType) }}</span>
+        <span>{{ autoVerifyText(row.dosing) }}</span>
+        <span>{{ autoVerifyText(row.ph) }}</span>
         <span>{{ row.application }}</span>
-        <span class="status-badge to-verify">{{ row.evidenceStatus }}</span>
+        <span class="status-badge to-verify">{{ displayEvidenceStatus(row.evidenceStatus) }}</span>
       </div>
     </section>
 
     <section class="competitor-form" aria-label="Add competitor record">
       <div>
         <h3>Add competitor evidence</h3>
-        <p>Saved locally in this browser workspace. Unknown market share is always displayed as To Verify.</p>
+        <p>Saved locally in this browser workspace. Unknown numbers display as Hermes verifying twice daily until evidence is attached.</p>
       </div>
       <label>Company<input v-model="competitorForm.companyName" type="text" placeholder="Company name" /></label>
       <label>Region<input v-model="competitorForm.countryRegion" type="text" placeholder="Country / region" /></label>
@@ -885,13 +971,13 @@ function addCompetitor() {
       <label>Active content<input v-model="competitorForm.activeContent" type="text" placeholder="Active content" /></label>
       <label v-if="!redactSensitiveFields">Pricing evidence<input v-model="competitorForm.pricingEvidence" type="text" placeholder="Quote, source, or Missing" /></label>
       <label v-else>Pricing evidence<input type="text" value="Restricted" disabled /></label>
-      <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="To Verify" /></label>
-      <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="To Verify" /></label>
+      <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="Hermes verifies automatically" /></label>
+      <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="Hermes verifies automatically" /></label>
       <label>Market share<input v-model="competitorForm.marketShare" type="text" placeholder="Leave blank unless sourced" /></label>
       <label>
         Evidence status
         <select v-model="competitorForm.evidenceStatus">
-          <option>To Verify</option>
+          <option value="To Verify">Hermes verifying twice daily</option>
           <option>Missing</option>
           <option>Assumption</option>
           <option>Powerful Assumption</option>
@@ -924,12 +1010,12 @@ function addCompetitor() {
       >
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
-        <span class="market-share-label">{{ competitorMarketShareLabel(competitor) }}</span>
+        <span class="market-share-label">{{ autoVerifyText(competitorMarketShareLabel(competitor)) }}</span>
         <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
-        <span>{{ competitor.productEquivalent || 'To Verify' }}</span>
-        <span class="weakness-label">{{ competitor.notes || 'To Verify' }}</span>
+        <span>{{ autoVerifyText(competitor.productEquivalent) }}</span>
+        <span class="weakness-label">{{ autoVerifyText(competitor.notes) }}</span>
         <span>{{ competitor.source?.title || 'Source missing' }}</span>
-        <span class="status-badge" :class="competitor.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ competitor.evidenceStatus }}</span>
+        <span class="status-badge" :class="competitor.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ displayEvidenceStatus(competitor.evidenceStatus) }}</span>
         <span class="row-actions">
           <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">
             Edit
@@ -953,7 +1039,7 @@ function addCompetitor() {
         <p>Source-backed bars are green; assumption bars are amber. Unknown shares do not become fake bars.</p>
       </div>
       <p v-if="marketShareChartRows.length === 0" class="empty-state">
-        No source-backed competitor share data yet.
+        No source-backed competitor share data yet. Hermes verifies competitor share twice daily and stages sourced claims for review.
       </p>
       <div v-for="row in marketShareChartRows" :key="row.competitor.id" class="share-row" :class="{ assumption: row.isAssumption }">
         <span>{{ row.label }}</span>
@@ -980,7 +1066,7 @@ function addCompetitor() {
     <section class="detail-grid">
       <article>
         <h3>Product equivalents</h3>
-        <p>To Verify until product active content and source documents are attached.</p>
+        <p>Hermes verifies product active content and source documents automatically; unresolved items stay out of investor truth.</p>
       </article>
       <article>
         <h3>Pricing evidence</h3>
@@ -988,7 +1074,7 @@ function addCompetitor() {
       </article>
       <article>
         <h3>Strengths / weaknesses</h3>
-        <p>Write notes only after sources are reviewed. Unsourced claims should remain To Verify.</p>
+        <p>Use reviewed sources. Unsourced claims stay queued for Hermes verification instead of becoming dashboard truth.</p>
       </article>
       <article>
         <h3>Research jobs</h3>
@@ -1290,6 +1376,41 @@ function addCompetitor() {
 
 .template-landscape-table {
   overflow-x: auto;
+}
+
+.competitor-metrics-table {
+  overflow-x: auto;
+}
+
+.competitor-metrics-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.95fr) minmax(210px, 1.2fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr) minmax(170px, 0.9fr) minmax(140px, 0.8fr) minmax(260px, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 1580px;
+  padding: 10px 0;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &.head {
+    border-top: 0;
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  a {
+    color: $accent-info;
+    font-weight: 850;
+    text-decoration: none;
+  }
 }
 
 .template-landscape-row {

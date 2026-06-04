@@ -218,6 +218,19 @@ const missingDashboardCoverageRows = computed(() =>
 )
 const missingDashboardCoverageCount = computed(() => missingDashboardCoverageTargetCount(missingDashboardCoverageRows.value))
 const topMissingDashboardCoverageRows = computed(() => missingDashboardCoverageRows.value.slice(0, 3))
+const automaticResearchQueue = computed(() =>
+  missingDashboardCoverageRows.value.flatMap(row =>
+    row.missingTargets.slice(0, 3).map(target => ({
+      id: `${row.area}-${target.label}`,
+      icon: coverageIcon(row.area),
+      area: row.area,
+      target: target.label,
+      sourceFamily: sourceFamilyForCoverageArea(row.area),
+      gate: row.review,
+      to: { name: coverageRouteName(row.area) },
+    })),
+  ).filter(item => canUseRouteTarget(item.to)).slice(0, 6)
+)
 const automaticResearchState = computed(() => {
   const status = autopilotImportStatus.value
   const reviewCount = autopilotReviewQueueCount.value
@@ -458,6 +471,36 @@ function evidenceGapRouteName(gapId: string): string {
   if (gapId === 'market') return 'hermes.marketIntelligence'
   if (gapId === 'financial') return 'hermes.investmentCalculator'
   return 'hermes.investorReadiness'
+}
+
+function coverageRouteName(area: string): string {
+  if (/market intelligence/i.test(area)) return 'hermes.marketIntelligence'
+  if (/competitor/i.test(area)) return 'hermes.competitorIntelligence'
+  if (/raw materials|supplier/i.test(area)) return 'hermes.rawMaterialSourcing'
+  if (/investment|irr/i.test(area)) return 'hermes.investmentAnalysis'
+  if (/regulatory|data room/i.test(area)) return 'hermes.regulatory'
+  if (/reports|presentation/i.test(area)) return 'hermes.investorPresentation'
+  return 'hermes.trustedSources'
+}
+
+function coverageIcon(area: string): string {
+  if (/market intelligence/i.test(area)) return '🌍'
+  if (/competitor/i.test(area)) return '🏭'
+  if (/raw materials|supplier/i.test(area)) return '⚗️'
+  if (/investment|irr/i.test(area)) return '💎'
+  if (/regulatory|data room/i.test(area)) return '📋'
+  if (/reports|presentation/i.test(area)) return '🧾'
+  return '🔎'
+}
+
+function sourceFamilyForCoverageArea(area: string): string {
+  if (/market intelligence/i.test(area)) return 'Trade, country, and official market sources'
+  if (/competitor/i.test(area)) return 'Company, catalog, filing, and reviewed market sources'
+  if (/raw materials|supplier/i.test(area)) return 'Supplier quotes, SDS/TDS/COA, and official chemical sources'
+  if (/investment|irr/i.test(area)) return 'Approved internal assumptions and finance evidence'
+  if (/regulatory|data room/i.test(area)) return 'Regulators, inventories, SDS/CAS, permit evidence'
+  if (/reports|presentation/i.test(area)) return 'Approved facts, assumptions, risks, and data-room proof'
+  return 'Trusted source registry'
 }
 
 function materialStatusLabel(material: PresentationMaterial): string {
@@ -1014,6 +1057,26 @@ onMounted(() => {
               </p>
             </div>
             <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Coverage Status</RouterLink>
+          </div>
+          <div v-if="automaticResearchQueue.length" class="automatic-research-queue" aria-label="What Hermes will research next">
+            <div class="research-queue-header">
+              <span aria-hidden="true">🤖</span>
+              <div>
+                <strong>What Hermes will research next</strong>
+                <small>Auto-generated from missing dashboard coverage. You do not need to search these manually.</small>
+              </div>
+            </div>
+            <div class="research-queue-list">
+              <RouterLink v-for="item in automaticResearchQueue" :key="item.id" :to="item.to">
+                <span class="queue-icon" aria-hidden="true">{{ item.icon }}</span>
+                <span class="queue-copy">
+                  <strong>{{ item.target }}</strong>
+                  <small>{{ item.area }}</small>
+                  <em>{{ item.sourceFamily }}</em>
+                  <b>{{ item.gate }}</b>
+                </span>
+              </RouterLink>
+            </div>
           </div>
           <div v-if="topMissingDashboardCoverageRows.length" class="coverage-focus-grid">
             <article v-for="row in topMissingDashboardCoverageRows" :key="row.area" :class="row.status">
@@ -2128,6 +2191,111 @@ onMounted(() => {
   }
 }
 
+.automatic-research-queue {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-info-rgb), 0.055);
+}
+
+.research-queue-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+
+  > span {
+    display: inline-grid;
+    place-items: center;
+    width: 31px;
+    height: 31px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.3);
+    border-radius: 999px;
+    background: rgba(var(--accent-info-rgb), 0.08);
+    font-size: 15px;
+  }
+
+  strong {
+    display: block;
+    color: $accent-info;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  small {
+    display: block;
+    margin-top: 3px;
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.research-queue-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  a {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.2);
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.15);
+    text-decoration: none;
+  }
+}
+
+.queue-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.26);
+  border-radius: 999px;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  font-size: 15px;
+}
+
+.queue-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  small,
+  em,
+  b {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  small {
+    color: $accent-primary;
+    font-weight: 850;
+  }
+
+  em {
+    color: $text-secondary;
+    font-style: normal;
+  }
+
+  b {
+    color: $warning;
+    font-weight: 750;
+  }
+}
+
 .coverage-focus-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2845,6 +3013,10 @@ onMounted(() => {
 
   .coverage-focus-header {
     display: grid;
+  }
+
+  .research-queue-list {
+    grid-template-columns: 1fr;
   }
 
   .coverage-focus-grid {

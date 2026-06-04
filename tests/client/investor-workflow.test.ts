@@ -1639,7 +1639,7 @@ describe('investor readiness pages', () => {
     })
 
     expect(wrapper.text()).toContain('Evidence-Backed Competitor Tracking')
-    expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).toContain('Hermes verifying twice daily')
   })
 
   it('hides unsourced competitor market share values behind To Verify in the workspace UI', () => {
@@ -1663,7 +1663,7 @@ describe('investor readiness pages', () => {
     })
 
     expect(wrapper.text()).toContain('Unsourced share competitor')
-    expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).toContain('Hermes verifying twice daily')
     expect(wrapper.text()).not.toContain('12%')
   })
 
@@ -2946,6 +2946,13 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Missing research focus')
     expect(wrapper.text()).toContain('trusted-source targets still need coverage')
     expect(wrapper.text()).toContain('Coverage Status')
+    expect(wrapper.text()).toContain('What Hermes will research next')
+    expect(wrapper.text()).toContain('Auto-generated from missing dashboard coverage')
+    expect(wrapper.text()).toContain('You do not need to search these manually.')
+    expect(wrapper.text()).toContain('Supplier quotes, SDS/TDS/COA, and official chemical sources')
+    expect(wrapper.text()).toContain('Company, catalog, filing, and reviewed market sources')
+    expect(wrapper.find('.automatic-research-queue').exists()).toBe(true)
+    expect(wrapper.findAll('.research-queue-list a').length).toBeGreaterThan(0)
     expect(wrapper.text()).toContain('No manual searching needed')
     expect(wrapper.text()).toContain('Start Here')
     expect(wrapper.text()).toContain('Daily owner actions only')
