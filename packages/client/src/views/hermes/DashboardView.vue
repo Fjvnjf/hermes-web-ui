@@ -21,6 +21,7 @@ import {
 import {
   buildInvestorNextActions,
   displayAutomaticVerificationText,
+  displayEvidenceStatus,
   isPresentationMaterialAllowed,
   type InvestorNextAction,
   type PresentationMaterial,
@@ -197,6 +198,90 @@ const deckMaterialsNeedingEvidence = computed(() =>
     .filter(material => !isPresentationMaterialAllowed(material))
     .slice(0, 4),
 )
+const sourceBackedGrowthClaim = computed(() =>
+  intelligence.state.value.marketClaims.find(claim =>
+    claim.source?.title &&
+    ['Verified', 'User Provided', 'Investor Approved'].includes(claim.evidenceStatus) &&
+    /growth|cagr|demand|consumption/i.test(`${claim.label} ${claim.value}`)
+  ) || null
+)
+const sourceBackedProductSignal = computed(() =>
+  intelligence.state.value.marketClaims.find(claim =>
+    claim.source?.title &&
+    ['Verified', 'User Provided', 'Investor Approved'].includes(claim.evidenceStatus) &&
+    /product|cwas|cwms|softener|ester|quat|silicone/i.test(`${claim.label} ${claim.value}`)
+  ) || null
+)
+const sourceBackedCompetitorCount = computed(() =>
+  intelligence.state.value.competitors.filter(competitor => competitor.source?.title).length
+)
+const executiveSnapshotCards = computed(() => {
+  const financial = latestFinancialSnapshot.value
+  const growthClaim = sourceBackedGrowthClaim.value
+  const productSignal = sourceBackedProductSignal.value
+  const nextRun = autopilotImportStatus.value?.latestDueSlotAt
+    ? formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)
+    : 'twice daily'
+
+  return [
+    {
+      icon: '💰',
+      label: 'Revenue',
+      value: financial?.yearOneRevenue ? formatCompactMoney(financial.yearOneRevenue, financial.currency) : displayAutomaticVerificationText('To Verify'),
+      note: financial ? `${financial.scenarioName} / ${displayEvidenceStatus(financial.evidenceStatus)}` : 'Waiting for a saved source-backed model',
+      tone: financial ? 'gold' : 'checking',
+      to: { name: 'hermes.investmentAnalysis' },
+    },
+    {
+      icon: '📈',
+      label: 'Growth Rate',
+      value: growthClaim?.value || displayAutomaticVerificationText('To Verify'),
+      note: growthClaim?.source?.title || 'Hermes checks country and market sources twice daily',
+      tone: growthClaim ? 'ok' : 'checking',
+      to: { name: 'hermes.marketIntelligence' },
+    },
+    {
+      icon: '🏆',
+      label: 'Market Position',
+      value: sourceBackedCompetitorCount.value ? `${sourceBackedCompetitorCount.value} profiled` : displayAutomaticVerificationText('To Verify'),
+      note: sourceBackedCompetitorCount.value ? 'Source-backed competitor records' : 'Competitor ranking waits for evidence',
+      tone: sourceBackedCompetitorCount.value ? 'info' : 'checking',
+      to: { name: 'hermes.competitorIntelligence' },
+    },
+    {
+      icon: '🎯',
+      label: 'Key Opportunities',
+      value: nextBestActions.value.length ? `${nextBestActions.value.length} actions` : 'Auto-scanning',
+      note: todayPriority.value?.title || 'Generated from readiness and research queues',
+      tone: nextBestActions.value.length ? 'ok' : 'checking',
+      to: { name: todayPriority.value?.routeName || 'hermes.feasibility' },
+    },
+    {
+      icon: '⚠️',
+      label: 'Critical Risks',
+      value: String(visibleTopInvestorRisks.value.length),
+      note: visibleTopInvestorRisks.value[0]?.title || 'No high-priority visible risk',
+      tone: visibleTopInvestorRisks.value.length ? 'danger' : 'ok',
+      to: { name: 'hermes.investorReadiness' },
+    },
+    {
+      icon: '🔥',
+      label: 'Trending Products',
+      value: productSignal?.value || 'Hermes scanning',
+      note: productSignal?.source?.title || 'Product demand signals update from trusted sources',
+      tone: productSignal ? 'info' : 'checking',
+      to: { name: 'hermes.marketIntelligence' },
+    },
+    {
+      icon: '🤖',
+      label: 'Hermes Status',
+      value: automaticResearchState.value.label,
+      note: `Next verification: ${nextRun}`,
+      tone: automaticResearchState.value.tone,
+      to: { name: 'hermes.trustedSources' },
+    },
+  ].filter(card => canUseRouteTarget(card.to))
+})
 
 const canUseInvestorReadiness = computed(() => canUseRouteName('hermes.investorReadiness'))
 const canUseResearchReview = computed(() => canUseRouteName('hermes.researchResultReview'))
@@ -466,6 +551,15 @@ function formatAutopilotTimestamp(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatCompactMoney(value: number, currency = 'USD'): string {
+  const prefix = currency === 'USD' ? '$' : `${currency} `
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000) return `${prefix}${(value / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000) return `${prefix}${(value / 1_000_000).toFixed(abs >= 100_000_000 ? 0 : 1)}M`
+  if (abs >= 1_000) return `${prefix}${(value / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}K`
+  return `${prefix}${value.toLocaleString()}`
 }
 
 function evidenceGapRouteName(gapId: string): string {
@@ -951,9 +1045,30 @@ onMounted(() => {
         <RouterLink class="brief-primary-link" :to="{ name: 'hermes.feasibility' }">Open Feasibility Studio</RouterLink>
       </section>
 
+      <section class="executive-snapshot-strip" aria-label="Executive business snapshot">
+        <div class="snapshot-strip-heading">
+          <span>Executive business snapshot</span>
+          <small>One-screen scan of finance, market, risk, product, and Hermes automation status.</small>
+        </div>
+        <RouterLink
+          v-for="card in executiveSnapshotCards"
+          :key="card.label"
+          class="snapshot-metric-card"
+          :class="card.tone"
+          :to="card.to"
+        >
+          <span class="snapshot-icon" aria-hidden="true">{{ card.icon }}</span>
+          <span class="snapshot-copy">
+            <small>{{ card.label }}</small>
+            <strong>{{ card.value }}</strong>
+            <em>{{ card.note }}</em>
+          </span>
+        </RouterLink>
+      </section>
+
       <section class="automatic-research-card" :class="automaticResearchState.tone" aria-label="Automatic trusted-source research status">
         <div class="automatic-research-main">
-          <p class="executive-eyebrow">Automatic Research</p>
+          <p class="executive-eyebrow">Hermes Automation Center</p>
           <div class="automatic-research-title">
             <h3>{{ automaticResearchState.title }}</h3>
             <span>{{ automaticResearchState.label }}</span>
@@ -1633,6 +1748,121 @@ onMounted(() => {
   font-weight: 900;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.executive-snapshot-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.snapshot-strip-heading {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+
+  span {
+    color: $accent-primary;
+    font-size: 12px;
+    font-weight: 950;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: right;
+  }
+}
+
+.snapshot-metric-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+  min-height: 116px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.32);
+  border-radius: $radius-md;
+  background:
+    linear-gradient(180deg, rgba(var(--accent-primary-rgb), 0.1), rgba(0, 0, 0, 0.08)),
+    $bg-card;
+  color: inherit;
+  text-decoration: none;
+
+  &:hover {
+    border-color: rgba(var(--accent-primary-rgb), 0.58);
+    background:
+      linear-gradient(180deg, rgba(var(--accent-primary-rgb), 0.14), rgba(var(--accent-info-rgb), 0.06)),
+      $bg-card-hover;
+  }
+
+  &.ok {
+    border-color: rgba(var(--success-rgb), 0.34);
+  }
+
+  &.info {
+    border-color: rgba(var(--accent-info-rgb), 0.36);
+  }
+
+  &.warn,
+  &.checking {
+    border-color: rgba(var(--warning-rgb), 0.36);
+  }
+
+  &.danger {
+    border-color: rgba(var(--error-rgb), 0.4);
+  }
+}
+
+.snapshot-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.28);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  font-size: 17px;
+}
+
+.snapshot-copy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+
+  small {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: clamp(17px, 2.1vw, 23px);
+    font-weight: 950;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  em {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    color: $text-secondary;
+    font-size: 11px;
+    font-style: normal;
+    line-height: 1.32;
+  }
 }
 
 .automatic-research-card {
@@ -2938,6 +3168,10 @@ onMounted(() => {
 }
 
 @media (max-width: 1100px) {
+  .executive-snapshot-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .triage-grid,
   .ops-grid {
     grid-template-columns: 1fr;
@@ -2961,6 +3195,23 @@ onMounted(() => {
 
   .dashboard-content {
     padding: 12px;
+  }
+
+  .executive-snapshot-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .snapshot-strip-heading {
+    display: grid;
+    gap: 4px;
+
+    small {
+      text-align: left;
+    }
+  }
+
+  .snapshot-metric-card {
+    min-height: 88px;
   }
 
   .executive-brief-card,
