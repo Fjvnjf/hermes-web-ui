@@ -23,6 +23,8 @@ import {
   displayAutomaticVerificationText,
   displayEvidenceStatus,
   isPresentationMaterialAllowed,
+  normalizedMarketClaimStatus,
+  sourceIsUsable,
   type InvestorNextAction,
   type PresentationMaterial,
 } from '@/utils/investorIntelligence'
@@ -569,6 +571,159 @@ const automaticFillDestinations = computed(() => [
   },
 ].filter(destination => canUseRouteTarget(destination.to)))
 
+const autoCheckingLabel = displayAutomaticVerificationText('To Verify')
+
+const revenueTrendRows = computed(() => {
+  const rows = intelligence.state.value.financialModels
+    .filter(model => Number.isFinite(model.yearOneRevenue) && model.yearOneRevenue > 0)
+    .slice(0, 5)
+    .map(model => ({
+      id: model.id,
+      label: model.scenarioName || model.projectName || 'Financial model',
+      value: model.yearOneRevenue,
+      displayValue: formatCompactMoney(model.yearOneRevenue, model.currency),
+      status: displayEvidenceStatus(model.evidenceStatus),
+      source: sourceIsUsable(model.source) ? model.source?.title || 'Source attached' : model.evidenceStatus,
+    }))
+  const max = Math.max(...rows.map(row => row.value), 0)
+  return rows.map(row => ({
+    ...row,
+    width: metricBarWidth(row.value, max),
+  }))
+})
+
+const marketShareVisualRows = computed(() => {
+  const rows = intelligence.state.value.competitors
+    .map(competitor => {
+      const numericShare = parseDashboardNumber(competitor.marketShare)
+      const usableSource = sourceIsUsable(competitor.source)
+      if (!usableSource || numericShare === null) return null
+      return {
+        id: competitor.id,
+        label: competitor.companyName,
+        value: numericShare,
+        displayValue: `${numericShare.toFixed(numericShare >= 10 ? 0 : 1)}%`,
+        status: displayEvidenceStatus(competitor.evidenceStatus),
+        source: competitor.source?.title || 'Source attached',
+      }
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5)
+  const max = Math.max(...rows.map(row => row.value), 0)
+  return rows.map(row => ({
+    ...row,
+    width: metricBarWidth(row.value, max),
+  }))
+})
+
+const marketSharePieStyle = computed(() => {
+  const rows = marketShareVisualRows.value
+  if (!rows.length) return {}
+  const colors = ['#d6b85a', '#69c9ff', '#7bcf7a', '#e9a23b', '#d96a62']
+  let cursor = 0
+  const segments = rows.map((row, index) => {
+    const end = Math.min(100, cursor + Math.max(0, row.value))
+    const segment = `${colors[index % colors.length]} ${cursor}% ${end}%`
+    cursor = end
+    return segment
+  })
+  if (cursor < 100) segments.push(`rgba(91, 112, 148, 0.24) ${cursor}% 100%`)
+  return {
+    background: `conic-gradient(${segments.join(', ')})`,
+  }
+})
+
+const growthTrendVisualRows = computed(() => {
+  const acceptedStatuses = new Set(['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated', 'User Approved', 'Investor Approved'])
+  const rows = intelligence.state.value.marketClaims
+    .map(claim => {
+      const status = normalizedMarketClaimStatus(claim)
+      const numericGrowth = parseDashboardNumber(claim.value)
+      if (!sourceIsUsable(claim.source) || numericGrowth === null || !acceptedStatuses.has(status)) return null
+      if (!/growth|cagr|demand|consumption|market/i.test(`${claim.label} ${claim.value}`)) return null
+      return {
+        id: claim.id || claim.label,
+        label: claim.label,
+        value: numericGrowth,
+        displayValue: claim.value || `${numericGrowth}%`,
+        status: displayEvidenceStatus(status),
+        source: claim.source?.title || 'Source attached',
+      }
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5)
+  const max = Math.max(...rows.map(row => row.value), 0)
+  return rows.map(row => ({
+    ...row,
+    width: metricBarWidth(row.value, max),
+  }))
+})
+
+const opportunityScoreRows = computed(() => {
+  const readiness = intelligence.readinessScore.value
+  const sourceCoverage = dashboardCoverageConfidenceScore.value
+  const nextActions = nextBestActions.value.length
+  const reviewQueue = autopilotReviewQueueCount.value
+
+  return [
+    {
+      label: 'Investor readiness',
+      value: readiness,
+      displayValue: `${readiness}%`,
+      note: 'Evidence-status score',
+      tone: readiness >= 70 ? 'ok' : readiness >= 35 ? 'warn' : 'danger',
+    },
+    {
+      label: 'Source coverage',
+      value: sourceCoverage ?? 0,
+      displayValue: sourceCoverage === null ? 'Calculating' : `${sourceCoverage}%`,
+      note: `${dashboardCoverageCoveredTotal.value}/${dashboardCoverageTargetTotal.value || 0} targets covered`,
+      tone: sourceCoverage === null ? 'checking' : sourceCoverage >= 70 ? 'ok' : sourceCoverage >= 35 ? 'warn' : 'danger',
+    },
+    {
+      label: 'Action pipeline',
+      value: Math.min(100, nextActions * 20),
+      displayValue: `${nextActions} action${nextActions === 1 ? '' : 's'}`,
+      note: reviewQueue ? `${reviewQueue} review-gated item${reviewQueue === 1 ? '' : 's'}` : 'No pending review queue',
+      tone: nextActions ? 'info' : 'checking',
+    },
+  ]
+})
+
+const riskHeatRows = computed(() => {
+  const labels: Array<{ id: string; label: string; icon: string }> = [
+    { id: 'companyLegal', label: 'Legal', icon: '🏢' },
+    { id: 'product', label: 'Product', icon: '🧪' },
+    { id: 'factory', label: 'Factory', icon: '🏭' },
+    { id: 'regulatory', label: 'Regulatory', icon: '📋' },
+    { id: 'market', label: 'Market', icon: '🌍' },
+    { id: 'financial', label: 'Finance', icon: '💰' },
+    { id: 'presentation', label: 'Deck', icon: '🧾' },
+  ]
+
+  return labels.map(area => {
+    const risks = intelligence.riskRegisterItems.value.filter(item => item.area === area.id)
+    const priority = Math.max(...risks.map(item => item.priority), 0)
+    const tone = priority >= 3 ? 'high' : priority === 2 ? 'medium' : priority === 1 ? 'low' : 'clear'
+    return {
+      ...area,
+      count: risks.length,
+      tone,
+      summary: risks[0]?.title || 'No current risk',
+    }
+  })
+})
+
+const executiveVisualCardsReady = computed(() =>
+  revenueTrendRows.value.length > 0 ||
+  marketShareVisualRows.value.length > 0 ||
+  growthTrendVisualRows.value.length > 0 ||
+  opportunityScoreRows.value.some(row => row.value > 0) ||
+  riskHeatRows.value.some(row => row.count > 0)
+)
+
 function formatAutopilotTimestamp(value: string): string {
   if (!value) return 'not available'
   const date = new Date(value)
@@ -583,6 +738,32 @@ function formatCompactMoney(value: number, currency = 'USD'): string {
   if (abs >= 1_000_000) return `${prefix}${(value / 1_000_000).toFixed(abs >= 100_000_000 ? 0 : 1)}M`
   if (abs >= 1_000) return `${prefix}${(value / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}K`
   return `${prefix}${value.toLocaleString()}`
+}
+
+function parseDashboardNumber(value?: string | number | null): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const text = String(value || '').trim()
+  if (!text || /verify|missing|restricted|source search|auto-checking/i.test(text)) return null
+  const range = text.match(/([\d,.]+)\s*[-–]\s*([\d,.]+)/)
+  if (range) {
+    const left = Number.parseFloat(range[1].replace(/,/g, ''))
+    const right = Number.parseFloat(range[2].replace(/,/g, ''))
+    if (Number.isFinite(left) && Number.isFinite(right)) return (left + right) / 2
+  }
+  const match = text.match(/-?\d[\d,.]*/)
+  if (!match) return null
+  let parsed = Number.parseFloat(match[0].replace(/,/g, ''))
+  if (!Number.isFinite(parsed)) return null
+  const suffixText = text.slice(match.index! + match[0].length)
+  if (/^\s*b\b/i.test(suffixText)) parsed *= 1_000_000_000
+  else if (/^\s*m\b/i.test(suffixText)) parsed *= 1_000_000
+  else if (/^\s*k\b/i.test(suffixText)) parsed *= 1_000
+  return parsed
+}
+
+function metricBarWidth(value: number, max: number): string {
+  if (!Number.isFinite(value) || !Number.isFinite(max) || max <= 0) return '0%'
+  return `${Math.max(8, Math.min(100, Math.round((value / max) * 100)))}%`
 }
 
 function evidenceGapRouteName(gapId: string): string {
@@ -1087,6 +1268,125 @@ onMounted(() => {
             <em>{{ card.note }}</em>
           </span>
         </RouterLink>
+      </section>
+
+      <section class="executive-visual-board" aria-label="Executive visual intelligence snapshot">
+        <div class="visual-board-header">
+          <div>
+            <p class="executive-eyebrow">📊 Visual Intelligence Snapshot</p>
+            <h3>Business picture from source-backed dashboard state</h3>
+            <small>Charts only use saved models, verified/source-backed claims, or review-gated workspace state. Unknowns stay in Hermes twice-daily verification.</small>
+          </div>
+          <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Source Status</RouterLink>
+        </div>
+
+        <div v-if="executiveVisualCardsReady" class="visual-board-grid">
+          <article class="visual-panel wide" aria-label="Revenue trend chart">
+            <div class="visual-panel-title">
+              <span aria-hidden="true">💰</span>
+              <div>
+                <strong>Revenue trend</strong>
+                <small>Saved IRR/investment model snapshots</small>
+              </div>
+            </div>
+            <div v-if="revenueTrendRows.length" class="visual-bar-list">
+              <div v-for="row in revenueTrendRows" :key="row.id" class="visual-bar-row">
+                <span>{{ row.label }}</span>
+                <div class="visual-bar-track">
+                  <i :style="{ width: row.width }"></i>
+                </div>
+                <strong>{{ row.displayValue }}</strong>
+                <small>{{ row.status }} / {{ row.source }}</small>
+              </div>
+            </div>
+            <div v-else class="visual-empty">{{ autoCheckingLabel }}</div>
+          </article>
+
+          <article class="visual-panel market-share-panel" aria-label="Market share pie chart">
+            <div class="visual-panel-title">
+              <span aria-hidden="true">🏆</span>
+              <div>
+                <strong>Market share comparison</strong>
+                <small>Source-backed competitor share only</small>
+              </div>
+            </div>
+            <div v-if="marketShareVisualRows.length" class="market-share-visual">
+              <div class="market-share-donut" :style="marketSharePieStyle">
+                <span>{{ marketShareVisualRows[0]?.displayValue }}</span>
+                <small>leader</small>
+              </div>
+              <div class="market-share-legend">
+                <div v-for="row in marketShareVisualRows" :key="row.id">
+                  <span>{{ row.label }}</span>
+                  <strong>{{ row.displayValue }}</strong>
+                </div>
+              </div>
+            </div>
+            <div v-else class="visual-empty">{{ autoCheckingLabel }}</div>
+          </article>
+
+          <article class="visual-panel" aria-label="Growth trend graph">
+            <div class="visual-panel-title">
+              <span aria-hidden="true">📈</span>
+              <div>
+                <strong>Growth trend</strong>
+                <small>Verified market-growth signals</small>
+              </div>
+            </div>
+            <div v-if="growthTrendVisualRows.length" class="visual-bar-list compact">
+              <div v-for="row in growthTrendVisualRows" :key="row.id" class="visual-bar-row">
+                <span>{{ row.label }}</span>
+                <div class="visual-bar-track">
+                  <i :style="{ width: row.width }"></i>
+                </div>
+                <strong>{{ row.displayValue }}</strong>
+              </div>
+            </div>
+            <div v-else class="visual-empty">{{ autoCheckingLabel }}</div>
+          </article>
+
+          <article class="visual-panel" aria-label="Opportunity score indicators">
+            <div class="visual-panel-title">
+              <span aria-hidden="true">🎯</span>
+              <div>
+                <strong>Opportunity score</strong>
+                <small>Readiness, source coverage, and action pipeline</small>
+              </div>
+            </div>
+            <div class="opportunity-score-list">
+              <div v-for="row in opportunityScoreRows" :key="row.label" :class="row.tone">
+                <span>{{ row.label }}</span>
+                <strong>{{ row.displayValue }}</strong>
+                <div class="score-track">
+                  <i :style="{ width: `${Math.max(0, Math.min(100, row.value))}%` }"></i>
+                </div>
+                <small>{{ row.note }}</small>
+              </div>
+            </div>
+          </article>
+
+          <article class="visual-panel wide" aria-label="Risk heat map">
+            <div class="visual-panel-title">
+              <span aria-hidden="true">⚠️</span>
+              <div>
+                <strong>Risk heat map</strong>
+                <small>Highest current evidence and investor-readiness risks</small>
+              </div>
+            </div>
+            <div class="risk-heat-grid">
+              <div v-for="row in riskHeatRows" :key="row.id" :class="row.tone">
+                <span aria-hidden="true">{{ row.icon }}</span>
+                <strong>{{ row.label }}</strong>
+                <small>{{ row.count ? `${row.count} risk${row.count === 1 ? '' : 's'}` : 'Clear' }}</small>
+                <em>{{ row.summary }}</em>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div v-else class="visual-empty full">
+          Hermes is verifying twice daily. Visual charts will fill when source-backed dashboard state is available.
+        </div>
       </section>
 
       <section class="automatic-research-card" :class="automaticResearchState.tone" aria-label="Automatic trusted-source research status">
@@ -1885,6 +2185,377 @@ onMounted(() => {
     font-size: 11px;
     font-style: normal;
     line-height: 1.32;
+  }
+}
+
+.executive-visual-board {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.32);
+  border-radius: $radius-md;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), rgba(var(--accent-info-rgb), 0.04) 58%, transparent),
+    $bg-card;
+}
+
+.visual-board-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  h3,
+  small {
+    margin: 0;
+  }
+
+  h3 {
+    color: $accent-primary;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  small {
+    display: block;
+    max-width: 760px;
+    margin-top: 5px;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.visual-board-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.visual-panel {
+  display: grid;
+  align-content: start;
+  gap: 11px;
+  min-width: 0;
+  min-height: 214px;
+  padding: 12px;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
+  background: rgba(0, 0, 0, 0.14);
+
+  &.wide {
+    grid-column: span 2;
+  }
+}
+
+.visual-panel-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+
+  > span {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.28);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    font-size: 17px;
+  }
+
+  div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 13px;
+    line-height: 1.25;
+    text-transform: uppercase;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.visual-bar-list {
+  display: grid;
+  gap: 9px;
+
+  &.compact {
+    gap: 8px;
+  }
+}
+
+.visual-bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(90px, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+
+  span,
+  strong,
+  small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    color: $text-secondary;
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 12px;
+  }
+
+  small {
+    grid-column: 1 / -1;
+    color: $text-muted;
+    font-size: 10.5px;
+  }
+}
+
+.visual-bar-track,
+.score-track {
+  position: relative;
+  height: 9px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.18);
+  border-radius: 999px;
+  background: rgba(var(--accent-info-rgb), 0.08);
+
+  i {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, $accent-primary, $accent-info);
+  }
+}
+
+.market-share-visual {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.market-share-donut {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 128px;
+  height: 128px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+  border-radius: 999px;
+
+  &::after {
+    position: absolute;
+    inset: 28px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.22);
+    border-radius: inherit;
+    background: $bg-card;
+    content: '';
+  }
+
+  span,
+  small {
+    position: relative;
+    z-index: 1;
+    display: block;
+    text-align: center;
+  }
+
+  span {
+    color: $accent-primary;
+    font-size: 18px;
+    font-weight: 950;
+    line-height: 1;
+  }
+
+  small {
+    margin-top: 4px;
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.market-share-legend {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+
+  div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    min-width: 0;
+    padding-bottom: 7px;
+    border-bottom: 1px solid rgba(var(--accent-primary-rgb), 0.12);
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    color: $text-secondary;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 12px;
+  }
+}
+
+.opportunity-score-list {
+  display: grid;
+  gap: 9px;
+
+  > div {
+    display: grid;
+    gap: 5px;
+    padding: 9px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.12);
+
+    &.ok {
+      border-color: rgba(var(--success-rgb), 0.3);
+    }
+
+    &.warn {
+      border-color: rgba(var(--warning-rgb), 0.32);
+    }
+
+    &.danger {
+      border-color: rgba(var(--error-rgb), 0.32);
+    }
+
+    &.info,
+    &.checking {
+      border-color: rgba(var(--accent-info-rgb), 0.25);
+    }
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 17px;
+    line-height: 1.1;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.risk-heat-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7px;
+
+  div {
+    display: grid;
+    align-content: start;
+    gap: 5px;
+    min-width: 0;
+    min-height: 112px;
+    padding: 9px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.12);
+
+    &.high {
+      border-color: rgba(var(--error-rgb), 0.45);
+      background: rgba(var(--error-rgb), 0.09);
+    }
+
+    &.medium {
+      border-color: rgba(var(--warning-rgb), 0.43);
+      background: rgba(var(--warning-rgb), 0.08);
+    }
+
+    &.low {
+      border-color: rgba(var(--accent-info-rgb), 0.28);
+      background: rgba(var(--accent-info-rgb), 0.06);
+    }
+
+    &.clear {
+      border-color: rgba(var(--success-rgb), 0.22);
+      background: rgba(var(--success-rgb), 0.045);
+    }
+  }
+
+  span {
+    font-size: 18px;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  em {
+    display: -webkit-box;
+    overflow: hidden;
+    color: $text-muted;
+    font-size: 10.5px;
+    font-style: normal;
+    line-height: 1.3;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+}
+
+.visual-empty {
+  display: grid;
+  place-items: center;
+  min-height: 116px;
+  padding: 18px;
+  border: 1px dashed rgba(var(--accent-info-rgb), 0.24);
+  border-radius: $radius-sm;
+  color: $text-muted;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+
+  &.full {
+    min-height: 126px;
   }
 }
 
@@ -3195,6 +3866,14 @@ onMounted(() => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .visual-board-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-heat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
   .triage-grid,
   .ops-grid {
     grid-template-columns: 1fr;
@@ -3235,6 +3914,46 @@ onMounted(() => {
 
   .snapshot-metric-card {
     min-height: 88px;
+  }
+
+  .visual-board-header {
+    display: grid;
+  }
+
+  .visual-board-grid,
+  .visual-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .visual-panel,
+  .visual-panel.wide {
+    grid-column: auto;
+  }
+
+  .visual-bar-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+
+    .visual-bar-track {
+      grid-column: 1 / -1;
+      order: 3;
+    }
+
+    small {
+      order: 4;
+    }
+  }
+
+  .market-share-visual {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .market-share-legend {
+    width: 100%;
+  }
+
+  .risk-heat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .executive-brief-card,
