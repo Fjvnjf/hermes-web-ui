@@ -319,6 +319,39 @@ const automaticResearchPromiseCards = [
   },
 ]
 
+const automaticSourceConnectorCards = [
+  {
+    icon: '🌍',
+    title: 'Trade and country data',
+    sources: 'UN Comtrade, World Bank',
+    detail: 'Imports and country-growth proxies. Product demand still stays To Verify until matched to textile-softener evidence.',
+  },
+  {
+    icon: '🧪',
+    title: 'Chemical identity',
+    sources: 'PubChem',
+    detail: 'CAS and chemical identity candidates for DMS, TEA, stearic acid, PDMS, and related inputs. Not SDS/TDS or product-formula proof.',
+  },
+  {
+    icon: '📈',
+    title: 'Price trend proxy',
+    sources: 'U.S. BLS PPI',
+    detail: 'Official chemical manufacturing price-index context. Not supplier quote, landed cost, or procurement truth.',
+  },
+  {
+    icon: '🏢',
+    title: 'Public company facts',
+    sources: 'SEC EDGAR',
+    detail: 'Official public-company filing facts for competitor context. Not market share, product pricing, or investor approval.',
+  },
+  {
+    icon: '📎',
+    title: 'Supplier evidence',
+    sources: 'Uploaded quotes, SDS, TDS, COA',
+    detail: 'Direct supplier documents can support scorecards after review. Sensitive prices and cost sheets stay protected.',
+  },
+]
+
 type AutopilotFlowState = 'done' | 'active' | 'waiting'
 
 const automaticResearchFlow = computed(() => {
@@ -910,6 +943,25 @@ onMounted(() => {
                     <small>{{ card.detail }}</small>
                   </div>
                 </article>
+              </div>
+              <div class="source-connector-map" aria-label="Trusted source connector map">
+                <div class="source-connector-header">
+                  <span aria-hidden="true">🔌</span>
+                  <div>
+                    <strong>Connected trusted-source families</strong>
+                    <small>These are the automatic source paths Hermes can use today. Sensitive or high-risk findings still go through review.</small>
+                  </div>
+                </div>
+                <div class="source-connector-grid">
+                  <article v-for="card in automaticSourceConnectorCards" :key="card.title">
+                    <span class="connector-icon" aria-hidden="true">{{ card.icon }}</span>
+                    <div>
+                      <strong>{{ card.title }}</strong>
+                      <em>{{ card.sources }}</em>
+                      <small>{{ card.detail }}</small>
+                    </div>
+                  </article>
+                </div>
               </div>
               <div class="automatic-research-flow" aria-label="Automatic research flow">
                 <article v-for="step in automaticResearchFlow" :key="step.title" :class="step.state">
@@ -1730,6 +1782,103 @@ onMounted(() => {
     color: $text-secondary;
     font-size: 10.5px;
     line-height: 1.35;
+  }
+}
+
+.source-connector-map {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), rgba(var(--accent-primary-rgb), 0.04)),
+    rgba(0, 0, 0, 0.12);
+}
+
+.source-connector-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+
+  > span {
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+    border-radius: 999px;
+    background: rgba(var(--accent-info-rgb), 0.08);
+    font-size: 16px;
+  }
+
+  strong {
+    display: block;
+    color: $accent-info;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  small {
+    display: block;
+    color: $text-secondary;
+    line-height: 1.4;
+  }
+}
+
+.source-connector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: rgba(0, 0, 0, 0.14);
+  }
+
+  .connector-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.24);
+    border-radius: 999px;
+    background: rgba(var(--accent-primary-rgb), 0.07);
+    font-size: 15px;
+  }
+
+  div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  em {
+    color: $accent-info;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.4;
   }
 }
 
