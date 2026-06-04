@@ -23,7 +23,13 @@ import {
   nextTwiceDailyRefresh,
   type ExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
-import { normalizedMarketClaimStatus, type MarketClaim } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  displayUnresolvedValue,
+  normalizedMarketClaimStatus,
+  type MarketClaim,
+} from '@/utils/investorIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
@@ -177,6 +183,18 @@ function marketMetric(label: string, claim: MarketClaim | null) {
   }
 }
 
+function displayBoardValue(value?: string | number | null): string {
+  return displayUnresolvedValue(value)
+}
+
+function displayBoardStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displayBoardText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
+}
+
 function displayExecutiveKpi<T extends { key: string; label: string }>(item: T): T {
   const labels: Record<string, string> = {
     revenueTarget: 'Revenue Target',
@@ -308,7 +326,7 @@ async function enableTwiceDailyRefresh() {
       question: 'What changed in executive feasibility intelligence since the previous refresh?',
       scope: 'Last 24 Hours, raw materials, market, competitors, investor readiness, IRR status, evidence gaps, and presentation improvements.',
       expectedOutput: 'A review-ready result for Research Result Review, not investor-approved facts.',
-      sourceRequirements: 'Every value or claim needs source title plus URL/date, or it stays To Verify.',
+      sourceRequirements: 'Every value or claim needs source title plus URL/date, or it stays in Hermes automatic verification.',
       priority: 'high',
       schedulePreference: 'Custom',
       scheduledJobId: job.job_id || job.id,
@@ -362,10 +380,10 @@ async function createMissingDataTask() {
   await createBoardTask(
     'Fill missing executive intelligence data',
     [
-      'Resolve Missing / To Verify fields on the Executive Intelligence Board.',
+      displayBoardText('Resolve Missing / To Verify fields on the Executive Intelligence Board.'),
       'Focus on financial model inputs, capacity, blended ASP, investment breakdown, market size, growth, competitor share, and source labels.',
       'Every value needs evidence status and source before investor use.',
-      'Tags: Executive Intelligence, Evidence Gap, To Verify',
+      'Tags: Executive Intelligence, Evidence Gap, Hermes Automatic Verification',
     ].join('\n'),
     3,
   )
@@ -441,8 +459,8 @@ onMounted(() => {
           <div class="economics-kpis">
             <div v-for="kpi in visibleEconomicsKpis" :key="kpi.key" class="economics-kpi">
               <span>{{ kpi.label }}</span>
-              <strong>{{ kpi.value }}</strong>
-              <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ kpi.evidenceStatus }}</NTag>
+              <strong>{{ displayBoardValue(kpi.value) }}</strong>
+              <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayBoardStatus(kpi.evidenceStatus) }}</NTag>
               <small>{{ kpi.sourceLabel }}</small>
             </div>
           </div>
@@ -457,8 +475,8 @@ onMounted(() => {
               </div>
               <div v-for="row in investmentBreakdown" :key="row.label" class="mini-row">
                 <span>{{ row.label }}</span>
-                <span>{{ redactsSensitiveValues ? 'Restricted' : row.value }}</span>
-                <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+                <span>{{ redactsSensitiveValues ? 'Restricted' : displayBoardValue(row.value) }}</span>
+                <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayBoardStatus(row.evidenceStatus) }}</NTag>
               </div>
             </div>
           </div>
@@ -474,7 +492,7 @@ onMounted(() => {
           <div class="panel-heading">
             <div>
               <h4>Market & Competitor Intelligence Panel</h4>
-              <p>Unknown market share stays To Verify. Assumptions stay visibly labeled.</p>
+              <p>Unknown market share stays in Hermes twice-daily verification. Assumptions stay visibly labeled.</p>
             </div>
             <RouterLink :to="{ name: 'hermes.marketIntelligence' }">Open Market Intelligence</RouterLink>
           </div>
@@ -482,8 +500,8 @@ onMounted(() => {
           <div class="market-metrics">
             <div v-for="metric in marketMetrics" :key="metric.label" class="market-metric">
               <span>{{ metric.label }}</span>
-              <strong>{{ metric.value }}</strong>
-              <NTag size="small" :type="statusType(metric.evidenceStatus)">{{ metric.evidenceStatus }}</NTag>
+              <strong>{{ displayBoardValue(metric.value) }}</strong>
+              <NTag size="small" :type="statusType(metric.evidenceStatus)">{{ displayBoardStatus(metric.evidenceStatus) }}</NTag>
               <small>{{ metric.sourceLabel }}</small>
             </div>
           </div>
@@ -499,9 +517,9 @@ onMounted(() => {
               </div>
               <div v-for="claim in marketSegments" :key="claim.id || claim.label" class="mini-row">
                 <span>{{ claim.label }}</span>
-                <span>{{ marketClaimValue(claim) }}</span>
+                <span>{{ displayBoardValue(marketClaimValue(claim)) }}</span>
                 <span>{{ marketClaimSourceLabel(claim) }}</span>
-                <NTag size="small" :type="statusType(normalizedMarketClaimStatus(claim))">{{ normalizedMarketClaimStatus(claim) }}</NTag>
+                <NTag size="small" :type="statusType(normalizedMarketClaimStatus(claim))">{{ displayBoardStatus(normalizedMarketClaimStatus(claim)) }}</NTag>
               </div>
             </div>
           </div>
@@ -521,11 +539,11 @@ onMounted(() => {
               <div v-for="row in competitorRows" :key="`${row.rank}-${row.manufacturer}`" class="mini-row">
                 <span>{{ row.rank }}</span>
                 <span>{{ row.manufacturer }}</span>
-                <span>{{ row.hq }}</span>
-                <span>{{ row.productEquivalent }}</span>
-                <span>{{ row.capacity }}</span>
-                <span>{{ row.marketShare }}</span>
-                <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+                <span>{{ displayBoardValue(row.hq) }}</span>
+                <span>{{ displayBoardValue(row.productEquivalent) }}</span>
+                <span>{{ displayBoardValue(row.capacity) }}</span>
+                <span>{{ displayBoardValue(row.marketShare) }}</span>
+                <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayBoardStatus(row.evidenceStatus) }}</NTag>
               </div>
             </div>
           </div>
@@ -533,7 +551,7 @@ onMounted(() => {
           <div v-if="topCountries.length" class="source-list">
             <strong>Country opportunity records</strong>
             <span v-for="record in topCountries" :key="record.id">
-              {{ record.country }} / {{ record.evidenceStatus }} / {{ record.source || 'Source missing' }}
+              {{ record.country }} / {{ displayBoardStatus(record.evidenceStatus) }} / {{ record.source || 'Source missing' }}
             </span>
           </div>
 

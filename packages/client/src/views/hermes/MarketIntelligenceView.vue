@@ -10,7 +10,14 @@ import {
   getFrontendAccessRole,
   shouldRedactForEmployee,
 } from '@/utils/accessControl'
-import { normalizedMarketClaimStatus, type IntelligenceEvidenceStatus, type MarketClaim } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  displayUnresolvedValue,
+  normalizedMarketClaimStatus,
+  type IntelligenceEvidenceStatus,
+  type MarketClaim,
+} from '@/utils/investorIntelligence'
 import {
   EXECUTIVE_INTELLIGENCE_STORAGE_KEY,
   EXECUTIVE_REFRESH_JOB_NAME,
@@ -64,7 +71,7 @@ const sections = [
   'Pricing Evidence',
   'Source Library',
   'Research Jobs',
-  'Verified / To Verify Claims',
+  'Verified / Auto-Verification Claims',
 ]
 
 const claims = computed(() => intelligence.state.value.marketClaims)
@@ -626,6 +633,18 @@ function statusType(status: IntelligenceEvidenceStatus): 'default' | 'success' |
   return 'info'
 }
 
+function displayMarketValue(value?: string | number | null): string {
+  return displayUnresolvedValue(value)
+}
+
+function displayMarketStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displayMarketText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
+}
+
 function findMarketClaim(keywords: string[]): MarketClaim | null {
   return claims.value.find(claim => {
     const haystack = `${claim.label} ${claim.value || ''}`.toLowerCase()
@@ -1015,14 +1034,14 @@ onMounted(loadRefreshState)
         <p class="eyebrow">Market intelligence</p>
         <h2 class="header-title">Source-Backed Market Research Workspace</h2>
         <p class="page-copy">
-          Track market questions without fake market size, growth, CAGR, country ranking, or demand numbers. Claims
-          stay To Verify until they have source evidence.
+          Track market questions without fake market size, growth, CAGR, country ranking, or demand numbers. Hermes
+          keeps verifying unresolved claims twice daily until they have source evidence.
         </p>
         <p class="section-help-text">Market claims need source title, date, and review before investor use. Use the cards below to create research tasks, not unsupported claims.</p>
         <div class="research-permission-strip" aria-label="Owner research permission">
           <strong>Owner research permission active</strong>
           <span>Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.</span>
-          <small>Important data needs source title, URL/date, confidence, evidence status, and review. Unknown or conflicting data remains To Verify.</small>
+          <small>Important data needs source title, URL/date, confidence, evidence status, and review. Unknown or conflicting data stays in automatic verification.</small>
         </div>
       </div>
       <div class="summary-card">
@@ -1042,7 +1061,7 @@ onMounted(loadRefreshState)
         <h3>Hermes researches the market and fills only source-backed evidence</h3>
         <p>
           Use this page as your global market command view. Hermes keeps looking for trusted sources, fills safe
-          records, and leaves weak or investor-impacting values as To Verify until you approve the evidence.
+          records, and leaves weak or investor-impacting values in automatic verification until you approve the evidence.
         </p>
       </div>
       <div class="market-autopilot-grid">
@@ -1050,8 +1069,8 @@ onMounted(loadRefreshState)
           <span aria-hidden="true">{{ card.icon }}</span>
           <div>
             <small>{{ card.label }}</small>
-            <strong>{{ card.value }}</strong>
-            <em>{{ card.note }}</em>
+            <strong>{{ displayMarketValue(card.value) }}</strong>
+            <em>{{ displayMarketText(card.note) }}</em>
           </div>
         </article>
       </div>
@@ -1071,7 +1090,7 @@ onMounted(loadRefreshState)
           <h3>Where Hermes Should Focus Market Research Next</h3>
           <p>
             This is the easy view: country signals first, direct textile-softener proof clearly separated from proxy
-            evidence. Hermes can research these automatically, but unsupported consumption stays To Verify.
+            evidence. Hermes can research these automatically, but unsupported consumption stays in twice-daily verification.
           </p>
         </div>
         <RouterLink class="template-link" :to="{ name: 'hermes.trustedSources' }">Autopilot coverage</RouterLink>
@@ -1082,8 +1101,8 @@ onMounted(loadRefreshState)
           <span aria-hidden="true">{{ card.icon }}</span>
           <div>
             <small>{{ card.label }}</small>
-            <strong>{{ card.value }}</strong>
-            <em>{{ card.detail }}</em>
+            <strong>{{ displayMarketValue(card.value) }}</strong>
+            <em>{{ displayMarketText(card.detail) }}</em>
           </div>
         </article>
       </div>
@@ -1097,7 +1116,7 @@ onMounted(loadRefreshState)
               <small v-if="row.autoImported">Auto-imported trusted-source row</small>
               <small v-else>Source-guided research target</small>
             </div>
-            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+            <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
           </div>
           <p>{{ row.growthSignal }}</p>
           <dl>
@@ -1107,7 +1126,7 @@ onMounted(loadRefreshState)
             </div>
             <div>
               <dt>Direct demand</dt>
-              <dd :class="{ warning: row.directDemandMissing }">{{ row.directSoftenerConsumption }}</dd>
+              <dd :class="{ warning: row.directDemandMissing }">{{ displayMarketValue(row.directSoftenerConsumption) }}</dd>
             </div>
             <div>
               <dt>Source</dt>
@@ -1138,12 +1157,12 @@ onMounted(loadRefreshState)
         <article v-for="row in globalMarketIntelligenceRows" :key="row.signal" class="global-signal-card">
           <div>
             <h4>{{ row.signal }}</h4>
-            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+            <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
           </div>
           <p>{{ row.finding }}</p>
           <small>Source: {{ row.source }}</small>
           <strong>Business meaning</strong>
-          <span>{{ row.businessMeaning }}</span>
+          <span>{{ displayMarketText(row.businessMeaning) }}</span>
           <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">
             {{ row.nextAction }}
           </NButton>
@@ -1167,7 +1186,7 @@ onMounted(loadRefreshState)
             <span>{{ region.demandSignal }}</span>
             <span>{{ region.verifiedEvidence }}</span>
             <span>{{ region.missingEvidence }}</span>
-            <NTag size="small" :type="statusType(region.status)">{{ region.status }}</NTag>
+            <NTag size="small" :type="statusType(region.status)">{{ displayMarketStatus(region.status) }}</NTag>
           </div>
         </div>
       </article>
@@ -1195,8 +1214,8 @@ onMounted(loadRefreshState)
             <span>{{ row.growthSignal }}</span>
             <span>{{ row.proxyMetric }}</span>
             <span>{{ row.sourceBackedEvidence }} <small>Source: {{ row.source }}</small></span>
-            <strong class="verify-text">{{ row.directSoftenerConsumption }}</strong>
-            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+            <strong class="verify-text">{{ displayMarketValue(row.directSoftenerConsumption) }}</strong>
+            <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
             <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">{{ row.nextAction }}</NButton>
           </div>
         </div>
@@ -1227,10 +1246,10 @@ onMounted(loadRefreshState)
           <h3>Imported Market Tables From Your Document</h3>
           <p>
             These tables reproduce the information from the PDF you provided. They are useful for dashboard planning,
-            but remain User Provided / To Verify until Hermes confirms the source, HS-code scope, date, and product fit.
+            but remain user-provided and automatically verified until Hermes confirms the source, HS-code scope, date, and product fit.
           </p>
         </div>
-        <NTag size="small" type="warning">User Provided / To Verify</NTag>
+        <NTag size="small" type="warning">User Provided / {{ displayMarketStatus('To Verify') }}</NTag>
       </div>
 
       <article class="template-panel pdf-table-panel">
@@ -1279,7 +1298,7 @@ onMounted(loadRefreshState)
               <span>{{ row.kt2023 }}</span>
               <span>{{ row.kt2024 }}</span>
               <span>{{ row.change }}</span>
-              <NTag size="small" type="error">To Verify</NTag>
+              <NTag size="small" type="error">{{ displayMarketStatus('To Verify') }}</NTag>
             </div>
           </div>
         </article>
@@ -1311,7 +1330,7 @@ onMounted(loadRefreshState)
           <h3>Market Intelligence Template</h3>
           <p>
             Screenshot-style market board populated only with source-backed public facts, user-provided assumptions,
-            or To Verify gaps. Unsupported market size, share, CAGR, province split, and capacity values are not shown
+            or automatic-verification gaps. Unsupported market size, share, CAGR, province split, and capacity values are not shown
             as facts.
           </p>
         </div>
@@ -1320,11 +1339,11 @@ onMounted(loadRefreshState)
 
       <div class="template-kpis">
         <article v-for="kpi in sourceBackedTemplateKpis" :key="kpi.label" class="template-kpi-card">
-          <strong>{{ kpi.value }}</strong>
+          <strong>{{ displayMarketValue(kpi.value) }}</strong>
           <span>{{ kpi.label }}</span>
-          <NTag size="small" :type="statusType(kpi.status)">{{ kpi.status }}</NTag>
+          <NTag size="small" :type="statusType(kpi.status)">{{ displayMarketStatus(kpi.status) }}</NTag>
           <small>{{ kpi.source }}</small>
-          <p>{{ kpi.note }}</p>
+          <p>{{ displayMarketText(kpi.note) }}</p>
         </article>
       </div>
 
@@ -1340,9 +1359,9 @@ onMounted(loadRefreshState)
             </div>
             <div v-for="segment in sourceBackedSegments" :key="segment.segment" class="template-row">
               <span>{{ segment.segment }}</span>
-              <span>{{ segment.size }}</span>
-              <span>{{ segment.growth }}</span>
-              <NTag size="small" :type="statusType(segment.status)">{{ segment.status }}</NTag>
+              <span>{{ displayMarketValue(segment.size) }}</span>
+              <span>{{ displayMarketValue(segment.growth) }}</span>
+              <NTag size="small" :type="statusType(segment.status)">{{ displayMarketStatus(segment.status) }}</NTag>
               <span>{{ segment.source }}</span>
             </div>
           </div>
@@ -1356,9 +1375,9 @@ onMounted(loadRefreshState)
           <div class="target-source-list">
             <div v-for="region in sourceBackedTargetRegions" :key="region.region" class="target-source-row">
               <strong>{{ region.region }}</strong>
-              <span>{{ region.value }}</span>
+              <span>{{ displayMarketValue(region.value) }}</span>
               <small>{{ region.source }}</small>
-              <NTag size="small" :type="statusType(region.status)">{{ region.status }}</NTag>
+              <NTag size="small" :type="statusType(region.status)">{{ displayMarketStatus(region.status) }}</NTag>
             </div>
           </div>
         </article>
@@ -1368,7 +1387,7 @@ onMounted(loadRefreshState)
         <div class="template-panel-title">
           <div>
             <h3>Ester Quat Manufacturers & Market Share</h3>
-            <p>Company presence is source-backed; capacity and market share remain To Verify until source evidence is attached.</p>
+            <p>Company presence is source-backed; capacity and market share remain in automatic verification until source evidence is attached.</p>
           </div>
           <RouterLink class="template-link" :to="{ name: 'hermes.competitorIntelligence' }">Open Competitors</RouterLink>
         </div>
@@ -1380,9 +1399,9 @@ onMounted(loadRefreshState)
             <span>{{ competitor.rank }}</span>
             <strong>{{ competitor.manufacturer }}</strong>
             <span>{{ competitor.role }}</span>
-            <span>{{ competitor.capacity }}</span>
-            <span>{{ competitor.share }}</span>
-            <NTag size="small" :type="statusType(competitor.status)">{{ competitor.status }}</NTag>
+            <span>{{ displayMarketValue(competitor.capacity) }}</span>
+            <span>{{ displayMarketValue(competitor.share) }}</span>
+            <NTag size="small" :type="statusType(competitor.status)">{{ displayMarketStatus(competitor.status) }}</NTag>
             <span>{{ competitor.source }}</span>
           </div>
         </div>
@@ -1415,7 +1434,7 @@ onMounted(loadRefreshState)
           <h3>Market Size, Growth, Pricing, Competitors</h3>
           <p>
             This panel mirrors the executive dashboard style, but it refuses to invent market size, CAGR, pricing, or
-            market-share values. Unsourced values stay To Verify.
+            market-share values. Unsourced values stay in automatic verification.
           </p>
         </div>
         <div class="refresh-card">
@@ -1430,8 +1449,8 @@ onMounted(loadRefreshState)
       <div class="market-kpi-grid">
         <article v-for="metric in executiveMarketMetrics" :key="metric.label" class="market-kpi-card">
           <span>{{ metric.label }}</span>
-          <strong>{{ metric.value }}</strong>
-          <NTag size="small" :type="statusType(metric.evidenceStatus)">{{ metric.evidenceStatus }}</NTag>
+          <strong>{{ displayMarketValue(metric.value) }}</strong>
+          <NTag size="small" :type="statusType(metric.evidenceStatus)">{{ displayMarketStatus(metric.evidenceStatus) }}</NTag>
           <small>{{ metric.sourceLabel }}</small>
         </article>
       </div>
@@ -1440,7 +1459,7 @@ onMounted(loadRefreshState)
         <div class="panel-heading-inline">
           <div>
             <h3>Market Segmentation Table</h3>
-            <p>Segment values remain To Verify until a source title, source date, and review status are attached.</p>
+            <p>Segment values remain in automatic verification until a source title, source date, and review status are attached.</p>
           </div>
         </div>
         <div class="segmentation-row head">
@@ -1448,10 +1467,10 @@ onMounted(loadRefreshState)
         </div>
         <div v-for="segment in marketSegments" :key="segment.label" class="segmentation-row">
           <span>{{ segment.label }}</span>
-          <span>{{ segment.value }}</span>
-          <span>{{ segment.growth }}</span>
+          <span>{{ displayMarketValue(segment.value) }}</span>
+          <span>{{ displayMarketValue(segment.growth) }}</span>
           <span>{{ segment.source }}</span>
-          <NTag size="small" :type="statusType(segment.evidenceStatus)">{{ segment.evidenceStatus }}</NTag>
+          <NTag size="small" :type="statusType(segment.evidenceStatus)">{{ displayMarketStatus(segment.evidenceStatus) }}</NTag>
         </div>
       </div>
 
@@ -1459,7 +1478,7 @@ onMounted(loadRefreshState)
         <div class="panel-heading-inline">
           <div>
             <h3>Target Countries / Provinces</h3>
-            <p>HS-code unknowns stay Trade Proxy / To Verify. Do not treat these rows as actual consumption without source proof.</p>
+            <p>HS-code unknowns stay {{ displayMarketStatus('Trade Proxy / To Verify') }}. Do not treat these rows as actual consumption without source proof.</p>
           </div>
           <label>
             Growth period
@@ -1474,9 +1493,9 @@ onMounted(loadRefreshState)
         <div class="target-grid">
           <article v-for="row in targetOpportunityRows" :key="row.label">
             <span>{{ row.label }}</span>
-            <strong>{{ row.score }}</strong>
+            <strong>{{ displayMarketValue(row.score) }}</strong>
             <small>{{ row.period }} / {{ row.source }}</small>
-            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayMarketStatus(row.evidenceStatus) }}</NTag>
           </article>
         </div>
       </div>
@@ -1487,11 +1506,11 @@ onMounted(loadRefreshState)
         </div>
         <div v-for="(row, index) in topCompetitorRows" :key="`${row.company}-${row.product}-${index}`" class="competitor-row">
           <span>{{ row.company }}</span>
-          <span>{{ row.region }}</span>
-          <span>{{ row.product }}</span>
-          <span>{{ row.share }}</span>
+          <span>{{ displayMarketValue(row.region) }}</span>
+          <span>{{ displayMarketValue(row.product) }}</span>
+          <span>{{ displayMarketValue(row.share) }}</span>
           <span>{{ row.source }}</span>
-          <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
         </div>
       </div>
     </section>
@@ -1501,11 +1520,11 @@ onMounted(loadRefreshState)
         v-for="section in visibleSections"
         :key="section"
         class="workspace-card"
-        :class="{ priority: section === 'Verified / To Verify Claims' || section === 'Source Library' }"
+        :class="{ priority: section === 'Verified / Auto-Verification Claims' || section === 'Source Library' }"
       >
-        <span v-if="section === 'Verified / To Verify Claims' || section === 'Source Library'" class="priority-star" aria-label="Investor-relevant research area"></span>
+        <span v-if="section === 'Verified / Auto-Verification Claims' || section === 'Source Library'" class="priority-star" aria-label="Investor-relevant research area"></span>
         <h3>{{ section }}</h3>
-        <p>Missing / To Verify until source-backed research is captured and approved.</p>
+        <p>Missing / {{ displayMarketStatus('To Verify') }} until source-backed research is captured and approved.</p>
         <div class="actions">
           <NButton v-if="section === 'Market Questions'" size="tiny" secondary @click="createResearchTask('Research HS Codes')">
             Research HS Codes
@@ -1530,12 +1549,12 @@ onMounted(loadRefreshState)
       </label>
       <label>
         Value
-        <input v-model="claimForm.value" type="text" placeholder="Leave blank if still To Verify" />
+        <input v-model="claimForm.value" type="text" placeholder="Leave blank and Hermes will verify twice daily" />
       </label>
       <label>
         Evidence status
         <select v-model="claimForm.evidenceStatus">
-          <option>To Verify</option>
+          <option value="To Verify">{{ displayMarketStatus('To Verify') }}</option>
           <option>Assumption</option>
           <option>Powerful Assumption</option>
           <option>Source-backed</option>
@@ -1568,7 +1587,7 @@ onMounted(loadRefreshState)
     </section>
 
     <section class="claims-panel">
-      <h3>Verified / To Verify Claims</h3>
+      <h3>Verified / Auto-Verification Claims</h3>
       <div class="claim-row head">
         <span>Claim</span><span>Value</span><span>Source</span><span>Status</span><span>Last checked</span><span>Action</span>
       </div>
@@ -1580,7 +1599,7 @@ onMounted(loadRefreshState)
         <span>{{ visibleClaimValue(claim) }}</span>
         <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source missing') }}</span>
         <span class="status-badge" :class="restricted ? 'restricted' : normalizedMarketClaimStatus(claim).toLowerCase().replace(/\s+/g, '-')">
-          {{ restricted ? 'Restricted' : normalizedMarketClaimStatus(claim) }}
+          {{ restricted ? 'Restricted' : displayMarketStatus(normalizedMarketClaimStatus(claim)) }}
         </span>
         <span>{{ restricted ? 'Restricted' : (claim.lastChecked || 'Not checked') }}</span>
         <span class="row-actions">

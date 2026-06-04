@@ -17,7 +17,12 @@ import {
   nextTwiceDailyRefresh,
   type ExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
-import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  displayUnresolvedValue,
+  type IntelligenceEvidenceStatus,
+} from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const intelligence = useFeasibilityIntelligence()
@@ -247,6 +252,18 @@ function statusType(status: IntelligenceEvidenceStatus): 'default' | 'success' |
   return 'info'
 }
 
+function displayInvestmentValue(value?: string | number | null): string {
+  return displayUnresolvedValue(value)
+}
+
+function displayInvestmentStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displayInvestmentText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
+}
+
 function detailRow(item: string, spec: string) {
   return {
     item,
@@ -380,7 +397,7 @@ onMounted(loadRefreshState)
         <h2>Investor Economics Control Panel</h2>
         <p>
           IRR, NPV, payback, investment breakdown, and return analysis use saved IRR Calculator snapshots.
-          Missing values stay To Verify, and financial outputs are labeled Derived from Assumptions until reviewed.
+          Missing values stay in Hermes twice-daily verification, and financial outputs are labeled Derived from Assumptions until reviewed.
         </p>
       </div>
       <div class="refresh-card">
@@ -434,13 +451,13 @@ onMounted(loadRefreshState)
         </div>
         <div v-for="candidate in financialEvidenceCandidates" :key="candidate.id" class="financial-candidate-row">
           <strong>{{ candidate.label }}</strong>
-          <span>{{ candidate.value }}</span>
+          <span>{{ displayInvestmentValue(candidate.value) }}</span>
           <span>
             <a v-if="candidate.sourceUrl" class="analysis-link inline" :href="candidate.sourceUrl" target="_blank" rel="noopener noreferrer">{{ candidate.sourceTitle }}</a>
             <template v-else>{{ candidate.sourceTitle }}</template>
           </span>
           <span>{{ candidate.sourceTier }} / {{ candidate.confidence }}</span>
-          <NTag size="small" :type="statusType(candidate.evidenceStatus)">{{ candidate.evidenceStatus }}</NTag>
+          <NTag size="small" :type="statusType(candidate.evidenceStatus)">{{ displayInvestmentStatus(candidate.evidenceStatus) }}</NTag>
         </div>
       </div>
       <p class="financial-candidate-note">
@@ -451,8 +468,8 @@ onMounted(loadRefreshState)
     <section class="kpi-grid" aria-label="Investment analysis KPI cards">
       <article v-for="kpi in kpis" :key="kpi.key" class="kpi-card">
         <span>{{ kpi.label }}</span>
-        <strong>{{ kpi.value }}</strong>
-        <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ kpi.evidenceStatus }}</NTag>
+        <strong>{{ displayInvestmentValue(kpi.value) }}</strong>
+        <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayInvestmentStatus(kpi.evidenceStatus) }}</NTag>
         <small>{{ kpi.sourceLabel }}</small>
       </article>
     </section>
@@ -464,7 +481,7 @@ onMounted(loadRefreshState)
           <h3>{{ projectAnalysisTemplateTitle }}</h3>
           <p>
             Screenshot-style investment analysis board. Saved IRR Calculator scenarios can feed the KPI cards, while
-            plant line items stay To Verify until quotes, source files, and user-approved assumptions are attached.
+            plant line items stay in automatic verification until quotes, source files, and user-approved assumptions are attached.
           </p>
         </div>
         <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
@@ -472,9 +489,9 @@ onMounted(loadRefreshState)
 
       <div class="template-kpi-grid">
         <article v-for="kpi in projectAnalysisTemplateKpis" :key="`template-${kpi.key}`" class="template-kpi-card">
-          <strong>{{ kpi.value }}</strong>
+          <strong>{{ displayInvestmentValue(kpi.value) }}</strong>
           <span>{{ kpi.label }}</span>
-          <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ kpi.evidenceStatus }}</NTag>
+          <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayInvestmentStatus(kpi.evidenceStatus) }}</NTag>
           <small>{{ kpi.sourceLabel }}</small>
         </article>
       </div>
@@ -496,20 +513,20 @@ onMounted(loadRefreshState)
           <div v-for="row in projectAnalysisBreakdownTemplateRows" :key="row.category" class="template-breakdown-row">
             <strong><span>{{ row.icon }}</span> {{ row.category }}</strong>
             <span>{{ row.keyItems }}</span>
-            <span>{{ row.amount }}</span>
-            <span>{{ row.percent }}</span>
-            <span class="template-placeholder-bar" aria-label="To Verify bar"></span>
+            <span>{{ displayInvestmentValue(row.amount) }}</span>
+            <span>{{ displayInvestmentValue(row.percent) }}</span>
+            <span class="template-placeholder-bar" aria-label="Hermes verifying twice daily bar"></span>
             <span>{{ row.source }}</span>
-            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
           </div>
           <div class="template-breakdown-row total">
             <strong>Total</strong>
-            <span>{{ selectedFinancialModel?.projectName || 'Project scope and location To Verify' }}</span>
-            <span>{{ selectedFinancialModel && !redactsFinancials ? projectAnalysisTemplateKpis[0]?.value : redactsFinancials ? 'Restricted' : 'To Verify' }}</span>
-            <span>{{ selectedFinancialModel && !redactsFinancials ? 'Derived' : redactsFinancials ? 'Restricted' : 'To Verify' }}</span>
+            <span>{{ selectedFinancialModel?.projectName || 'Project scope and location under Hermes verification' }}</span>
+            <span>{{ selectedFinancialModel && !redactsFinancials ? displayInvestmentValue(projectAnalysisTemplateKpis[0]?.value) : redactsFinancials ? 'Restricted' : displayInvestmentStatus('To Verify') }}</span>
+            <span>{{ selectedFinancialModel && !redactsFinancials ? 'Derived' : redactsFinancials ? 'Restricted' : displayInvestmentStatus('To Verify') }}</span>
             <span class="template-placeholder-bar"></span>
             <span>{{ selectedFinancialModel?.source?.title || 'IRR Calculator / source missing' }}</span>
-            <NTag size="small" :type="statusType(evidenceStatus)">{{ evidenceStatus }}</NTag>
+            <NTag size="small" :type="statusType(evidenceStatus)">{{ displayInvestmentStatus(evidenceStatus) }}</NTag>
           </div>
         </div>
       </article>
@@ -524,8 +541,8 @@ onMounted(loadRefreshState)
           <div v-for="row in card.rows" :key="`${card.title}-${row.item}`" class="template-detail-row">
             <strong>{{ row.item }}</strong>
             <span>{{ row.spec }}</span>
-            <span>{{ row.cost }}</span>
-            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+            <span>{{ displayInvestmentValue(row.cost) }}</span>
+            <NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
           </div>
         </article>
       </div>
@@ -539,12 +556,12 @@ onMounted(loadRefreshState)
               They are not treated as verified model outputs; they remain User Provided / Derived from Assumptions until source-backed quotes and approved IRR inputs exist.
             </p>
           </div>
-          <NTag size="small" type="warning">User Provided / To Verify</NTag>
+          <NTag size="small" type="warning">User Provided / {{ displayInvestmentStatus('To Verify') }}</NTag>
         </div>
 
         <div class="pdf-kpi-grid">
           <article v-for="kpi in pdfProjectAnalysisKpis" :key="kpi.label" class="template-kpi-card">
-            <strong>{{ redactsFinancials ? 'Restricted' : kpi.value }}</strong>
+            <strong>{{ redactsFinancials ? 'Restricted' : displayInvestmentValue(kpi.value) }}</strong>
             <span>{{ kpi.label }}</span>
             <NTag size="small" type="warning">Derived from Assumptions</NTag>
             <small>User PDF screenshot / source quotes needed</small>
@@ -569,7 +586,7 @@ onMounted(loadRefreshState)
             <span>{{ redactsFinancials ? 'Restricted' : '$16,000,000' }}</span>
             <span>{{ redactsFinancials ? 'Restricted' : '100%' }}</span>
             <span>User PDF screenshot</span>
-            <NTag size="small" type="warning">To Verify</NTag>
+            <NTag size="small" type="warning">{{ displayInvestmentStatus('To Verify') }}</NTag>
           </div>
         </div>
       </article>
@@ -580,7 +597,7 @@ onMounted(loadRefreshState)
         <div class="panel-title">
           <div>
             <h3>Investment Breakdown</h3>
-            <p>Line items remain To Verify until source-backed storage exists.</p>
+            <p>Line items remain in Hermes twice-daily verification until source-backed storage exists.</p>
           </div>
         </div>
         <div class="table-grid">
@@ -590,11 +607,11 @@ onMounted(loadRefreshState)
           <div v-for="row in breakdownRows" :key="row.label" class="table-row">
             <span>{{ row.label }}</span>
             <span>No source-backed line items yet</span>
-            <span>{{ row.value }}</span>
-            <span>To Verify</span>
+            <span>{{ displayInvestmentValue(row.value) }}</span>
+            <span>{{ displayInvestmentStatus('To Verify') }}</span>
             <span class="placeholder-bar" aria-label="gray placeholder bar"></span>
             <span>{{ row.sourceLabel }}</span>
-            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ row.evidenceStatus }}</NTag>
+            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
           </div>
         </div>
       </article>
@@ -625,7 +642,7 @@ onMounted(loadRefreshState)
         <div class="scenario-grid">
           <div v-for="scenario in scenarioCards" :key="scenario.name" class="scenario-card">
             <strong>{{ scenario.name }}</strong>
-            <NTag size="small" :type="statusType(scenario.status as IntelligenceEvidenceStatus)">{{ scenario.status }}</NTag>
+            <NTag size="small" :type="statusType(scenario.status as IntelligenceEvidenceStatus)">{{ displayInvestmentStatus(scenario.status) }}</NTag>
             <small>{{ scenario.detail }}</small>
           </div>
         </div>
@@ -640,7 +657,7 @@ onMounted(loadRefreshState)
         </div>
         <div class="detail-row head"><span>Equipment</span><span>Spec</span><span>Cost</span><span>Source</span><span>Status</span></div>
         <div v-for="row in processEquipmentRows" :key="row.item" class="detail-row">
-          <span>{{ row.item }}</span><span>{{ row.spec }}</span><span>{{ row.cost }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          <span>{{ row.item }}</span><span>{{ displayInvestmentText(row.spec) }}</span><span>{{ displayInvestmentValue(row.cost) }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
         </div>
       </article>
 
@@ -648,12 +665,12 @@ onMounted(loadRefreshState)
         <div class="panel-title">
           <div>
             <h3>Utilities & Buildings Detail</h3>
-            <p>Utility, building, and compliance scope must stay To Verify until quoted.</p>
+            <p>Utility, building, and compliance scope must stay in Hermes twice-daily verification until quoted.</p>
           </div>
         </div>
         <div class="detail-row head"><span>Item</span><span>Spec</span><span>Cost</span><span>Source</span><span>Status</span></div>
         <div v-for="row in utilitiesBuildingRows" :key="row.item" class="detail-row">
-          <span>{{ row.item }}</span><span>{{ row.spec }}</span><span>{{ row.cost }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          <span>{{ row.item }}</span><span>{{ displayInvestmentText(row.spec) }}</span><span>{{ displayInvestmentValue(row.cost) }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
         </div>
       </article>
 
@@ -666,7 +683,7 @@ onMounted(loadRefreshState)
         </div>
         <div class="detail-row head"><span>Item</span><span>Assumption</span><span>Need</span><span>Source</span><span>Status</span></div>
         <div v-for="row in workingCapitalRows" :key="row.item" class="detail-row">
-          <span>{{ row.item }}</span><span>{{ row.spec }}</span><span>{{ row.cost }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          <span>{{ row.item }}</span><span>{{ displayInvestmentText(row.spec) }}</span><span>{{ displayInvestmentValue(row.cost) }}</span><span>{{ row.source }}</span><NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
         </div>
       </article>
 

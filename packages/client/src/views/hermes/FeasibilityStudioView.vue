@@ -8,7 +8,12 @@ import {
   getFrontendAccessRole,
   shouldRedactForEmployee,
 } from '@/utils/accessControl'
-import { isPresentationMaterialAllowed, type PresentationMaterial } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  isPresentationMaterialAllowed,
+  type PresentationMaterial,
+} from '@/utils/investorIntelligence'
 
 type RouteName =
   | 'hermes.chat'
@@ -80,6 +85,14 @@ const frontendRole = computed(() => getFrontendAccessRole())
 const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
 
 const sensitiveChecklistTerms = /\b(price|pricing|cost|costing|supplier\s+quote|landed\s+cost|raw\s+material\s+cost|formula|cas\s+list|raw\s+material\s+ratio|dms|dimethyl\s+sulfate|working\s+capital|irr|npv|payback|investor\s+structure|investor\s+terms|use\s+of\s+funds|15,000\s*mt|60,000\s*mt)\b/i
+
+function displayFeasibilityStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displayFeasibilityText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
+}
 
 const workspaceLinks: WorkspaceLink[] = [
   {
@@ -649,7 +662,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
               :to="{ name: routeForEvidenceGap(gap) }"
             >
               <strong>{{ gap.label }}</strong>
-              <span>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</span>
+              <span>{{ displayFeasibilityStatus(gap.evidenceStatus) }} / {{ gap.nextAction }}</span>
             </RouterLink>
           </div>
           <p v-else class="live-empty">No missing readiness areas in the current workspace state.</p>
@@ -668,7 +681,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
               :to="{ name: 'hermes.researchResultReview' }"
             >
               <strong>{{ finding.keyClaim || finding.summary }}</strong>
-              <span>{{ finding.status }} / {{ finding.evidenceStatus }}</span>
+              <span>{{ displayFeasibilityStatus(finding.status) }} / {{ displayFeasibilityStatus(finding.evidenceStatus) }}</span>
             </RouterLink>
             <RouterLink
               v-for="job in openResearchJobs"
@@ -696,7 +709,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
               :to="{ name: risk.routeName }"
             >
               <strong>{{ risk.title }}</strong>
-              <span>{{ risk.origin }} / {{ risk.evidenceStatus }} / {{ risk.detail }}</span>
+              <span>{{ risk.origin }} / {{ displayFeasibilityStatus(risk.evidenceStatus) }} / {{ risk.detail }}</span>
             </RouterLink>
           </div>
           <p v-else class="live-empty">No current investor risks in the local intelligence state.</p>
@@ -785,7 +798,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
                 <p>{{ visibleChecklistAction(group, item) }}</p>
               </div>
               <div class="item-actions">
-                <span class="status-pill" :class="statusClass(item.status)">{{ item.status }}</span>
+                <span class="status-pill" :class="statusClass(item.status)">{{ displayFeasibilityStatus(item.status) }}</span>
                 <NButton
                   v-if="canUseChecklistAction(group, item)"
                   size="tiny"
@@ -853,7 +866,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <h3 id="investor-title">Feasibility Intelligence Next Steps</h3>
         <p>
           Use these connected workspaces to move from feasibility checklist gaps into source-backed investor preparation.
-          Missing items stay To Verify until you approve evidence.
+          Missing items stay in Hermes twice-daily verification until you approve evidence.
         </p>
       </div>
       <div class="investor-link-grid">
@@ -870,7 +883,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <h3 id="report-title">Report Preparation</h3>
         <p>
           Reports Hub and Presentation Builder now use the real local feasibility intelligence state. Outputs stay
-          evidence-labeled and unsupported claims remain To Verify or excluded from investor-facing drafts.
+          evidence-labeled and unsupported claims remain in automatic verification or excluded from investor-facing drafts.
         </p>
         <p class="report-summary">{{ reportPreparationSummary }}</p>
       </div>
@@ -883,7 +896,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         >
           <div>
             <h4>{{ draft.title }}</h4>
-            <span>{{ draft.status }}</span>
+            <span>{{ displayFeasibilityText(draft.status) }}</span>
           </div>
           <p>{{ draft.description }}</p>
           <small>{{ draft.actionLabel }}</small>

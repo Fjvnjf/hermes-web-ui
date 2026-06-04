@@ -9,6 +9,7 @@ import {
   EXECUTIVE_REFRESH_SCHEDULE,
   defaultExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
+import { displayAutomaticVerificationText, displayUnresolvedValue } from '@/utils/investorIntelligence'
 
 const intelligence = useFeasibilityIntelligence()
 const frontendRole = computed(() => getFrontendAccessRole())
@@ -25,14 +26,14 @@ const commandCards = computed(() => [
   },
   {
     label: 'Market Intelligence',
-    value: String(intelligence.state.value.marketClaims.length || 'To Verify'),
-    detail: 'Source-backed claims only; missing values stay To Verify.',
+    value: displayUnresolvedValue(String(intelligence.state.value.marketClaims.length || 'To Verify')),
+    detail: 'Source-backed claims only; missing values stay in automatic verification.',
     routeName: 'hermes.marketIntelligence',
     tone: 'cyan',
   },
   {
     label: 'Investment Analysis',
-    value: intelligence.latestFinancialModel.value?.scenarioName || 'To Verify',
+    value: displayUnresolvedValue(intelligence.latestFinancialModel.value?.scenarioName || 'To Verify'),
     detail: 'Financial outputs remain derived from assumptions until approved.',
     routeName: 'hermes.investmentAnalysis',
     tone: 'green',
@@ -63,7 +64,7 @@ const actionLinks = computed(() => [
         <h2>Hermes Executive Intelligence</h2>
         <p>
           Command-center view for economics, market intelligence, competitor tracking, daily brief, and action review.
-          It uses existing Hermes workspace data only; missing or unsourced values stay To Verify.
+          It uses existing Hermes workspace data only; missing or unsourced values stay in Hermes twice-daily verification.
         </p>
       </div>
       <div class="refresh-card">
@@ -85,7 +86,7 @@ const actionLinks = computed(() => [
       >
         <span>{{ card.label }}</span>
         <strong>{{ card.value }}</strong>
-        <small>{{ card.detail }}</small>
+        <small>{{ displayAutomaticVerificationText(card.detail) }}</small>
       </RouterLink>
     </section>
 

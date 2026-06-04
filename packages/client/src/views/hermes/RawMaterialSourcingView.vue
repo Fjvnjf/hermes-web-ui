@@ -20,7 +20,12 @@ import {
   type RawMaterialRecord,
   type RawMaterialSourceType,
 } from '@/utils/intelligenceWorkflow'
-import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  displayUnresolvedValue,
+  type IntelligenceEvidenceStatus,
+} from '@/utils/investorIntelligence'
 import { accessControlWarning, shouldRedactForEmployee } from '@/utils/accessControl'
 
 interface SupplierScorecardRow {
@@ -52,6 +57,18 @@ const savingKey = ref('')
 const supplierAutopilotStatus = ref('Hermes is checking the supplier scorecard schedule automatically')
 const supplierAutopilotJobId = ref('')
 const employeeRedaction = computed(() => shouldRedactForEmployee())
+
+function displaySupplierValue(value?: string | number | null): string {
+  return displayUnresolvedValue(value)
+}
+
+function displaySupplierStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displaySupplierText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
+}
 
 const sourceTypes: RawMaterialSourceType[] = [
   'SunSirs',
@@ -275,7 +292,7 @@ const summaryCards = computed(() => {
   return [
     { label: 'Tracked materials', value: materials.value.length, note: 'No live prices are hardcoded' },
     { label: 'Source-backed', value: sourced, note: 'Requires source/date and value' },
-    { label: 'To Verify', value: toVerify, note: 'Missing or weak evidence' },
+    { label: 'Hermes verifying', value: toVerify, note: 'Missing or weak evidence checked twice daily' },
     { label: '5% alerts', value: alerts, note: 'Based on saved price history' },
   ]
 })
@@ -291,7 +308,7 @@ const supplierAutopilotCards = computed(() => [
     icon: '📥',
     label: 'Stage',
     value: `${autopilotSupplierScorecardRows.value.length} candidates`,
-    note: 'Imported supplier/source records appear here as To Verify candidates.',
+    note: 'Imported supplier/source records appear here as automatic verification candidates.',
   },
   {
     icon: '✅',
@@ -303,7 +320,7 @@ const supplierAutopilotCards = computed(() => [
 
 function priceDisplay(value: number | null | undefined, currency: string): string {
   if (employeeRedaction.value) return 'Restricted in Employee View'
-  if (!value) return 'Missing / To Verify'
+  if (!value) return displaySupplierStatus('To Verify')
   return `${currency} ${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
@@ -367,7 +384,7 @@ function addPriceEntry() {
   ].filter(Boolean).join(' ')
   persist()
   if (evidenceStatus === 'To Verify' || evidenceStatus === 'Reference Only') {
-    message.warning('Price saved, but it remains To Verify / Reference Only until stronger evidence is attached')
+    message.warning('Price saved, but Hermes will keep verifying it twice daily until stronger evidence is attached')
   } else {
     message.success('Raw material price entry saved in this browser workspace')
   }
@@ -611,7 +628,7 @@ onMounted(() => {
           Track TEA, DMS, ethoxylates, acids, silicone inputs, stearic acid, and packaging without inventing prices.
           Every saved value stays labeled by evidence status and source type.
         </p>
-        <p class="section-help-text">Track source-backed prices. Unsourced values stay To Verify and high-risk inputs should become tasks before they influence feasibility outputs.</p>
+        <p class="section-help-text">Track source-backed prices. Unsourced values stay in Hermes twice-daily verification and high-risk inputs should become tasks before they influence feasibility outputs.</p>
       </div>
       <div class="header-actions">
         <RouterLink class="shell-link" :to="{ name: 'hermes.files' }">Documents</RouterLink>
@@ -639,11 +656,11 @@ onMounted(() => {
           <p>
             Screenshot-style supplier board for stearic acid, TEA, PDMS silicone oil, DMS, and acetic acid.
             Supplier names and product targets are source/candidate-backed; prices, quality scores, reliability,
-            payment terms, and total scores remain To Verify until quote/TDS/SDS/COA evidence is attached.
+            payment terms, and total scores remain in automatic verification until quote/TDS/SDS/COA evidence is attached.
           </p>
           <p v-if="autopilotSupplierScorecardRows.length" class="autopilot-note">
             Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier/raw-material candidates from trusted-source research.
-            They are visible here as To Verify candidates and still require source review before costing or investor use.
+            They are visible here as automatic-verification candidates and still require source review before costing or investor use.
           </p>
           <p class="autopilot-note">
             {{ supplierAutopilotStatus }}<span v-if="supplierAutopilotJobId"> · Job {{ supplierAutopilotJobId }}</span>
@@ -653,8 +670,8 @@ onMounted(() => {
               <span aria-hidden="true">{{ card.icon }}</span>
               <div>
                 <small>{{ card.label }}</small>
-                <strong>{{ card.value }}</strong>
-                <em>{{ card.note }}</em>
+                <strong>{{ displaySupplierValue(card.value) }}</strong>
+                <em>{{ displaySupplierText(card.note) }}</em>
               </div>
             </article>
           </div>
@@ -698,16 +715,16 @@ onMounted(() => {
               <small>{{ row.region }}</small>
             </div>
             <span>{{ row.material }}</span>
-            <span class="verify-value">{{ sensitiveSupplierDisplay(row.pricePerTon) }}</span>
-            <span>{{ row.quality }}</span>
-            <span>{{ row.reliability }}</span>
-            <span>{{ sensitiveSupplierDisplay(row.payment) }}</span>
-            <span class="score-pill">{{ row.score }}</span>
+            <span class="verify-value">{{ sensitiveSupplierDisplay(displaySupplierValue(row.pricePerTon)) }}</span>
+            <span>{{ displaySupplierValue(row.quality) }}</span>
+            <span>{{ displaySupplierValue(row.reliability) }}</span>
+            <span>{{ sensitiveSupplierDisplay(displaySupplierValue(row.payment)) }}</span>
+            <span class="score-pill">{{ displaySupplierValue(row.score) }}</span>
             <div>
               <a v-if="row.sourceUrl" class="supplier-source-link" :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">
-                {{ row.evidenceStatus }}
+                {{ displaySupplierStatus(row.evidenceStatus) }}
               </a>
-              <span v-else class="verify-value">{{ row.evidenceStatus }}</span>
+              <span v-else class="verify-value">{{ displaySupplierStatus(row.evidenceStatus) }}</span>
               <small>{{ row.sourceTitle }}</small>
             </div>
             <NButton
@@ -738,7 +755,7 @@ onMounted(() => {
           @click="selectedMaterialId = material.id"
         >
           <strong>{{ material.name }}</strong>
-          <span class="status-badge" :class="material.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ material.evidenceStatus }}</span>
+          <span class="status-badge" :class="material.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ displaySupplierStatus(material.evidenceStatus) }}</span>
           <small v-if="material.highRisk">High regulatory/safety risk</small>
           <small v-else>{{ material.sourceType }}</small>
         </button>
@@ -751,7 +768,7 @@ onMounted(() => {
             <h3>{{ selectedMaterial.name }}</h3>
             <p>{{ selectedMaterial.highRisk ? 'High regulatory/safety risk. Verify DMS handling and legal status before use.' : 'No price is treated as fact until sourced.' }}</p>
           </div>
-          <span class="status-pill">{{ selectedMaterial.evidenceStatus }}</span>
+          <span class="status-pill">{{ displaySupplierStatus(selectedMaterial.evidenceStatus) }}</span>
         </header>
 
         <section v-if="selectedMaterial.highRisk" class="risk-banner">
@@ -786,8 +803,8 @@ onMounted(() => {
         <section class="form-panel">
           <h3>Add manual price/source entry</h3>
           <div class="form-grid">
-            <label>RMB price <input v-model.number="priceForm.rmbPrice" type="number" min="0" placeholder="Missing / To Verify" /></label>
-            <label>USD price <input v-model.number="priceForm.usdPrice" type="number" min="0" placeholder="Missing / To Verify" /></label>
+            <label>RMB price <input v-model.number="priceForm.rmbPrice" type="number" min="0" placeholder="Hermes verifies if blank" /></label>
+            <label>USD price <input v-model.number="priceForm.usdPrice" type="number" min="0" placeholder="Hermes verifies if blank" /></label>
             <label>Unit <input v-model="priceForm.unit" /></label>
             <label>
               Source type
@@ -817,7 +834,7 @@ onMounted(() => {
             <span>{{ entry.sourceDate || entry.createdAt.slice(0, 10) }}</span>
             <div class="bar-track"><div class="bar" :style="{ width: graphWidth(entry, selectedMaterial.priceHistory) }" /></div>
             <strong>{{ priceDisplay(entry.rmbPrice || entry.usdPrice, entry.rmbPrice ? 'RMB' : 'USD') }}</strong>
-            <small>{{ entry.evidenceStatus }} / {{ entry.sourceType }}</small>
+            <small>{{ displaySupplierStatus(entry.evidenceStatus) }} / {{ entry.sourceType }}</small>
           </div>
         </section>
 

@@ -11,6 +11,7 @@ import {
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
 import {
+  displayEvidenceStatus,
   presentationSectionForEvidence,
   type IntelligenceEvidenceStatus,
   type SourceReference,
@@ -31,6 +32,10 @@ interface DataRoomItem {
   sourceRecord: DataRoomSourceRecord | null
   updatedAt: string
   routeName: string
+}
+
+function displayReadinessStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
 }
 
 interface AssumptionRegisterItem {
@@ -807,7 +812,7 @@ defineExpose({
         <p class="eyebrow">Investor readiness center</p>
         <h2 class="header-title">Investor-Ready Feasibility Intelligence</h2>
         <p class="page-copy">
-          Preparation workspace for Chemicon China feasibility. Missing data is shown as Missing / To Verify; no
+          Preparation workspace for Chemicon China feasibility. Missing data is shown as Missing / {{ displayReadinessStatus('To Verify') }}; no
           market numbers or investor claims are invented here.
         </p>
       </div>
@@ -837,7 +842,7 @@ defineExpose({
       <span>Verified: {{ statusCounts.Verified || 0 }}</span>
       <span>User Approved: {{ statusCounts['User Approved'] || 0 }}</span>
       <span>Assumptions: {{ statusCounts.Assumption || 0 }}</span>
-      <span>To Verify: {{ statusCounts['To Verify'] || 0 }}</span>
+      <span>{{ displayReadinessStatus('To Verify') }}: {{ statusCounts['To Verify'] || 0 }}</span>
       <span>Missing: {{ statusCounts.Missing || 0 }}</span>
     </section>
 
@@ -847,7 +852,7 @@ defineExpose({
         <h3>Save source-backed readiness evidence</h3>
         <p>
           Use this when you have a source document, user-approved assumption, or reviewed evidence. Verified status
-          requires a source title plus URL or date; otherwise it stays To Verify.
+          requires a source title plus URL or date; otherwise Hermes keeps it in twice-daily verification.
         </p>
       </div>
       <label>
@@ -883,7 +888,7 @@ defineExpose({
         <h3>Attach a source to a specific checklist item</h3>
         <p>
           Save documents, quotes, interviews, or reviewed notes against the investor data-room checklist. Verified
-          sources require a source title plus URL or date; otherwise they remain To Verify.
+          sources require a source title plus URL or date; otherwise Hermes keeps them in twice-daily verification.
         </p>
       </div>
       <label>
@@ -929,7 +934,7 @@ defineExpose({
             <span v-if="item.evidenceStatus === 'Missing' || item.evidenceStatus === 'To Verify'" class="priority-star" aria-label="Investor-critical evidence gap"></span>
             {{ item.label }}
           </h3>
-          <span class="status-pill">{{ item.evidenceStatus }}</span>
+          <span class="status-pill">{{ displayReadinessStatus(item.evidenceStatus) }}</span>
         </div>
         <p>{{ item.description }}</p>
         <div class="source-row" :class="sourceClass({ status: item.evidenceStatus })">
@@ -991,7 +996,7 @@ defineExpose({
           </div>
           <div class="data-room-actions">
             <span :class="sourceClass({ status: item.evidenceStatus === 'Pending Review' || item.evidenceStatus === 'Unsupported' ? 'To Verify' : item.evidenceStatus })">
-              {{ item.evidenceStatus }}
+              {{ displayReadinessStatus(item.evidenceStatus) }}
             </span>
             <NButton
               size="tiny"
@@ -1038,7 +1043,7 @@ defineExpose({
             <small class="source-note">Source: {{ item.source ? formatSource(item.source) : 'Source missing' }}</small>
           </div>
           <div class="data-room-actions">
-            <span :class="sourceClass({ status: item.evidenceStatus })">{{ item.evidenceStatus }}</span>
+            <span :class="sourceClass({ status: item.evidenceStatus })">{{ displayReadinessStatus(item.evidenceStatus) }}</span>
             <NButton
               size="tiny"
               secondary
@@ -1083,7 +1088,7 @@ defineExpose({
             <small v-if="item.updatedAt" class="source-note">Updated {{ new Date(item.updatedAt).toLocaleString() }}</small>
           </div>
           <div class="data-room-actions">
-            <span :class="sourceClass(item)">{{ item.status }}</span>
+            <span :class="sourceClass(item)">{{ displayReadinessStatus(item.status) }}</span>
             <NButton
               size="tiny"
               secondary
@@ -1114,7 +1119,7 @@ defineExpose({
             <small v-if="record.notes" class="source-note">{{ record.notes }}</small>
           </div>
           <div class="data-room-actions">
-            <span :class="sourceClass({ status: record.evidenceStatus })">{{ record.evidenceStatus }}</span>
+            <span :class="sourceClass({ status: record.evidenceStatus })">{{ displayReadinessStatus(record.evidenceStatus) }}</span>
             <NButton
               size="tiny"
               secondary

@@ -155,7 +155,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).not.toContain('No daily brief generated yet')
   })
 
-  it('keeps Investment Analysis values To Verify until an IRR Calculator snapshot exists', () => {
+  it('keeps Investment Analysis values in automatic verification until an IRR Calculator snapshot exists', () => {
     useFeasibilityIntelligence().addDataRoomSource({
       checklistLabel: 'Process equipment quote benchmark',
       area: 'financial',
@@ -202,8 +202,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Vendor quotes needed')
     expect(wrapper.text()).toContain('Scenario Selector')
     expect(wrapper.text()).toContain('Scenario not filled yet')
-    expect(wrapper.text()).toContain('Missing / To Verify')
-    expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('Hermes verifying twice daily')
     expect(wrapper.text()).toContain('User PDF Project Analysis Reference - 60,000 MT/YR Esterquat Plant')
     expect(wrapper.text()).toContain('$16M')
     expect(wrapper.text()).toContain('$49.8M')
@@ -238,7 +238,7 @@ describe('screenshot-matched executive business tabs', () => {
 
     await wrapper.findAll('button').find(button => button.text() === 'Lean')!.trigger('click')
     expect(wrapper.text()).toContain('Scenario not filled yet')
-    expect(wrapper.text()).toContain('Missing / To Verify')
+    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
   })
 
   it('labels saved financial outputs as Derived from Assumptions for investor safety', () => {
@@ -265,7 +265,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(buildInvestorEconomicsKpis(useFeasibilityIntelligence().latestFinancialModel.value, 'Tonight')[1].evidenceStatus).toBe('Derived from Assumptions')
   })
 
-  it('shows Market Intelligence values and competitor market share as To Verify when unsourced', () => {
+  it('shows Market Intelligence values and competitor market share as automatic verification when unsourced', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addMarketClaim({
       label: 'China market size',
@@ -301,7 +301,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Executive Market Panel')
     expect(wrapper.text()).toContain('Owner research permission active')
     expect(wrapper.text()).toContain('Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.')
-    expect(wrapper.text()).toContain('Unknown or conflicting data remains To Verify')
+    expect(wrapper.text()).toContain('Unknown or conflicting data stays in automatic verification')
     expect(wrapper.text()).toContain('Automatic market research')
     expect(wrapper.text()).toContain('Hermes researches the market and fills only source-backed evidence')
     expect(wrapper.text()).toContain('Market data')
@@ -350,9 +350,9 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Cationic / Ester Quat')
     expect(wrapper.text()).toContain('Target Countries / Provinces')
     expect(wrapper.text()).toContain('Research HS Codes')
-    expect(wrapper.text()).toContain('Missing / To Verify')
+    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
     expect(wrapper.text()).toContain('Example supplier')
-    expect(wrapper.text()).toContain('To Verify')
+    expect(wrapper.text()).toContain('Hermes verifying twice daily')
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
   })
 

@@ -10,7 +10,12 @@ import {
   nextTwiceDailyRefresh,
 } from '@/utils/executiveIntelligence'
 import type { AutopilotScreen, TrustedSourceSnapshotClaim } from '@/utils/trustedSources'
-import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  displayUnresolvedValue,
+  type IntelligenceEvidenceStatus,
+} from '@/utils/investorIntelligence'
 
 const props = defineProps<{
   screen: AutopilotScreen
@@ -88,7 +93,7 @@ const screenActionSummary = computed(() => {
       icon: '🔎',
       eyebrow: 'No manual web searching',
       title: 'Hermes is watching trusted sources',
-      detail: 'Official-first sources are connected. Missing values stay Missing or To Verify until Hermes imports source-backed output or stages a review item.',
+      detail: 'Official-first sources are connected. Missing values stay Missing or Hermes verifying twice daily until Hermes imports source-backed output or stages a review item.',
       primary: 'Run source check',
       secondary: 'Trusted Sources',
       primaryRoute: null,
@@ -204,7 +209,7 @@ function metricsForScreen(): DurableMetric[] {
 
   if (props.screen === 'competitor') {
     return [
-      metric('Competitor records', intelligence.state.value.competitors.length, 'Company, product-equivalent, source, and To Verify market-share records.'),
+      metric('Competitor records', intelligence.state.value.competitors.length, 'Company, product-equivalent, source, and Hermes twice-daily market-share verification records.'),
       metric('Needs review', pendingReviewFindings.value.length, 'Competitor price/share/product claims waiting for approval.', pendingReviewFindings.value.length ? 'review' : 'empty'),
     ]
   }
@@ -237,6 +242,18 @@ function tagType(status: IntelligenceEvidenceStatus): 'default' | 'success' | 'w
   if (status === 'Conflict Detected' || status === 'Missing') return 'error'
   if (status === 'To Verify' || status === 'Candidate Source' || status === 'Reference Only') return 'warning'
   return 'info'
+}
+
+function displayAutopilotValue(value?: string | number | null): string {
+  return displayUnresolvedValue(value)
+}
+
+function displayAutopilotStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displayAutopilotText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
 }
 
 function openDrawer(claim?: TrustedSourceSnapshotClaim) {
@@ -312,7 +329,7 @@ async function syncNow() {
       <div class="screen-action-copy">
         <small>{{ screenActionSummary.eyebrow }}</small>
         <strong>{{ screenActionSummary.title }}</strong>
-        <p>{{ screenActionSummary.detail }}</p>
+        <p>{{ displayAutopilotText(screenActionSummary.detail) }}</p>
       </div>
       <div class="screen-action-buttons">
         <NButton
@@ -347,7 +364,7 @@ async function syncNow() {
         <div>
           <small>{{ card.label }}</small>
           <strong>{{ card.value }}</strong>
-          <em>{{ card.note }}</em>
+          <em>{{ displayAutopilotText(card.note) }}</em>
         </div>
       </article>
     </div>
@@ -428,7 +445,7 @@ async function syncNow() {
         >
           <span>{{ metric.label }}</span>
           <strong>{{ metric.count }}</strong>
-          <small>{{ metric.note }}</small>
+          <small>{{ displayAutopilotText(metric.note) }}</small>
         </div>
       </div>
     </div>
@@ -437,8 +454,8 @@ async function syncNow() {
       <p class="claim-strip-title">Tracked fields</p>
       <button v-for="claim in latestSnapshot.claims" :key="claim.id" type="button" @click="openDrawer(claim)">
         <span>{{ claim.label }}</span>
-        <strong>{{ claim.value }}</strong>
-        <NTag size="small" :type="tagType(claim.evidenceStatus)">{{ claim.evidenceStatus }}</NTag>
+        <strong>{{ displayAutopilotValue(claim.value) }}</strong>
+        <NTag size="small" :type="tagType(claim.evidenceStatus)">{{ displayAutopilotStatus(claim.evidenceStatus) }}</NTag>
       </button>
     </div>
 
@@ -446,14 +463,14 @@ async function syncNow() {
       <NDrawerContent title="Trusted Source Details">
         <div v-if="selectedClaim" class="source-detail">
           <h4>{{ selectedClaim.label }}</h4>
-          <strong>{{ selectedClaim.value }}</strong>
-          <NTag :type="tagType(selectedClaim.evidenceStatus)">{{ selectedClaim.evidenceStatus }}</NTag>
+          <strong>{{ displayAutopilotValue(selectedClaim.value) }}</strong>
+          <NTag :type="tagType(selectedClaim.evidenceStatus)">{{ displayAutopilotStatus(selectedClaim.evidenceStatus) }}</NTag>
           <dl>
             <dt>Source</dt><dd>{{ selectedClaim.source.title }}</dd>
             <dt>URL / file</dt><dd>{{ selectedClaim.source.url || 'Not provided' }}</dd>
-            <dt>Source tier</dt><dd>{{ selectedClaim.sourceTierLabel || selectedClaim.sourceTier || 'To Verify' }}</dd>
+            <dt>Source tier</dt><dd>{{ displayAutopilotValue(selectedClaim.sourceTierLabel || selectedClaim.sourceTier) }}</dd>
             <dt>Dashboard field</dt><dd>{{ selectedClaim.fieldKey || selectedClaim.label }}</dd>
-            <dt>Source date</dt><dd>{{ selectedClaim.source.date || 'To Verify' }}</dd>
+            <dt>Source date</dt><dd>{{ displayAutopilotValue(selectedClaim.source.date) }}</dd>
             <dt>Last checked</dt><dd>{{ formatDateTime(selectedClaim.lastChecked || latestSnapshot?.generated_at) }}</dd>
             <dt>Extraction time</dt><dd>{{ formatDateTime(latestSnapshot?.generated_at) }}</dd>
             <dt>Confidence</dt><dd>{{ selectedClaim.confidence }}</dd>
