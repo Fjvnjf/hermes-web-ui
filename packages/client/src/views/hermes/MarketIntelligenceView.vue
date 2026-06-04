@@ -749,7 +749,7 @@ function syncMarketNow() {
       `Last updated: ${formatDateTime(refreshState.value.lastRun)}`,
       `Claims available: ${claims.value.length}`,
       `Competitor records: ${competitorClaimCount.value}`,
-      'Every unsourced market value remains To Verify.',
+      'Every unsourced market value remains in Hermes twice-daily verification.',
     ].join('\n'),
     keyClaim: 'Market intelligence requires source review',
     area: 'market',
@@ -780,7 +780,7 @@ function isSensitiveMarketClaim(claim: MarketClaim): boolean {
 
 function visibleClaimValue(claim: MarketClaim): string {
   if (isSensitiveMarketClaim(claim)) return 'Restricted'
-  return claim.value || 'To Verify'
+  return displayMarketValue(claim.value)
 }
 
 function ensureEmployeeSafeMarketText(...parts: Array<string | null | undefined>): boolean {
@@ -817,7 +817,7 @@ async function createResearchTask(label: string) {
         `Research this market question: ${label}`,
         'Source requirements: cite source title, URL/date where possible, confidence, last checked date, and evidence status.',
         'Do not add unsourced market size, CAGR, country ranking, or demand figures.',
-        'Tags: Market Intelligence, Research Job, To Verify',
+        'Tags: Market Intelligence, Research Job, Automatic Verification',
       ].join('\n'),
       priority: 2,
       tenant: 'Chemicon China Feasibility',
@@ -825,7 +825,7 @@ async function createResearchTask(label: string) {
     intelligence.addResearchJob({
       title: `Market research: ${label}`,
       question: label,
-      scope: 'Market question, product demand evidence, customer segments, pricing evidence, source library, and To Verify claims.',
+      scope: 'Market question, product demand evidence, customer segments, pricing evidence, source library, and automatic-verification claims.',
       expectedOutput: 'Source-backed market research note with evidence status, confidence, source title, URL/date, and recommended follow-up tasks.',
       sourceRequirements: 'Do not use unsourced market size, growth, country ranking, or demand figures. Include source title plus URL or date.',
       priority: 'medium',
@@ -847,7 +847,7 @@ function marketClaimTaskBody(claim: MarketClaim): string {
   const status = normalizedMarketClaimStatus(claim)
   return [
     `Market claim evidence gap: ${claim.label}`,
-    `Current value/note: ${claim.value?.trim() || 'To Verify'}`,
+    `Current value/note: ${claim.value?.trim() || displayMarketStatus('To Verify')}`,
     `Evidence status: ${status}`,
     `Confidence: ${claim.confidence || 'low'}`,
     `Source trace: ${claim.source?.title || 'Source missing'}`,
@@ -857,7 +857,7 @@ function marketClaimTaskBody(claim: MarketClaim): string {
     status === 'Verified'
       ? 'Recommended action: review whether the source supports the exact investor claim before approving downstream use.'
       : 'Recommended action: collect a usable source title plus URL/date, then stage this claim through Research Result Review before investor use.',
-    'Source page: Market Intelligence / Verified-To Verify Claims',
+    'Source page: Market Intelligence / Verified / Automatic Verification Claims',
     'Tags: Market Intelligence, Evidence Gap, Chemicon China Feasibility',
     '',
     'Do not use market size, CAGR, demand, pricing, country ranking, or customer claims in investor material until the evidence status and source are reviewed.',
@@ -929,7 +929,7 @@ function addClaim() {
     return
   }
   if (claimForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Claim saved as To Verify because verified claims need a value and usable source')
+    message.warning('Claim saved for automatic verification because verified claims need a value and usable source')
   } else {
     message.success(editingClaimId.value ? 'Market claim updated' : 'Market claim saved in this browser workspace')
   }
@@ -974,7 +974,7 @@ function stageClaimForReview(claim: MarketClaim) {
     return
   }
   const status = normalizedMarketClaimStatus(claim)
-  const value = claim.value?.trim() || 'To Verify'
+  const value = claim.value?.trim() || displayMarketStatus('To Verify')
   const canSuggestInvestorMaterial = Boolean(claim.value?.trim()) &&
     (status === 'Verified' || status === 'User Approved' || status === 'Assumption')
   const saved = intelligence.addResearchFinding({
@@ -1003,7 +1003,7 @@ function stageClaimForReview(claim: MarketClaim) {
   })
 
   if (claim.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Staged as To Verify because verified claims need value plus usable source evidence')
+    message.warning('Staged for automatic verification because verified claims need value plus usable source evidence')
   } else {
     message.success('Market claim staged for research review')
   }
@@ -1159,7 +1159,7 @@ onMounted(loadRefreshState)
             <h4>{{ row.signal }}</h4>
             <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
           </div>
-          <p>{{ row.finding }}</p>
+          <p>{{ displayMarketText(row.finding) }}</p>
           <small>Source: {{ row.source }}</small>
           <strong>Business meaning</strong>
           <span>{{ displayMarketText(row.businessMeaning) }}</span>
@@ -1183,9 +1183,9 @@ onMounted(loadRefreshState)
           </div>
           <div v-for="region in globalOpportunityRegions" :key="region.region" class="global-opportunity-row">
             <strong>{{ region.region }}</strong>
-            <span>{{ region.demandSignal }}</span>
-            <span>{{ region.verifiedEvidence }}</span>
-            <span>{{ region.missingEvidence }}</span>
+            <span>{{ displayMarketText(region.demandSignal) }}</span>
+            <span>{{ displayMarketText(region.verifiedEvidence) }}</span>
+            <span>{{ displayMarketText(region.missingEvidence) }}</span>
             <NTag size="small" :type="statusType(region.status)">{{ displayMarketStatus(region.status) }}</NTag>
           </div>
         </div>
@@ -1211,9 +1211,9 @@ onMounted(loadRefreshState)
           </div>
           <div v-for="row in displayCountryConsumptionGrowthRows" :key="`${row.country}-${row.source}`" class="country-growth-row">
             <strong>{{ row.country }}<small v-if="row.autoImported">Auto-imported</small></strong>
-            <span>{{ row.growthSignal }}</span>
+            <span>{{ displayMarketText(row.growthSignal) }}</span>
             <span>{{ row.proxyMetric }}</span>
-            <span>{{ row.sourceBackedEvidence }} <small>Source: {{ row.source }}</small></span>
+            <span>{{ displayMarketText(row.sourceBackedEvidence) }} <small>Source: {{ row.source }}</small></span>
             <strong class="verify-text">{{ displayMarketValue(row.directSoftenerConsumption) }}</strong>
             <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
             <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">{{ row.nextAction }}</NButton>
@@ -1231,8 +1231,8 @@ onMounted(loadRefreshState)
         <div class="research-question-grid">
           <article v-for="item in marketResearchQuestions" :key="item.question">
             <h4>{{ item.question }}</h4>
-            <p>{{ item.why }}</p>
-            <small>Evidence needed: {{ item.evidenceNeeded }}</small>
+            <p>{{ displayMarketText(item.why) }}</p>
+            <small>Evidence needed: {{ displayMarketText(item.evidenceNeeded) }}</small>
             <NButton size="tiny" secondary @click="createResearchTask(item.question)">Research this</NButton>
           </article>
         </div>
@@ -1314,8 +1314,8 @@ onMounted(loadRefreshState)
             </div>
             <div v-for="row in pdfMarketSegmentRows" :key="row.segment" class="pdf-small-row four">
               <strong>{{ row.segment }}</strong>
-              <span>{{ row.size }}</span>
-              <span>{{ row.growth }}</span>
+              <span>{{ displayMarketValue(row.size) }}</span>
+              <span>{{ displayMarketValue(row.growth) }}</span>
               <NTag size="small" type="warning">User Provided</NTag>
             </div>
           </div>

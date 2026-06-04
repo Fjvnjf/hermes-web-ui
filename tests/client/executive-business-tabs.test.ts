@@ -353,6 +353,16 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
     expect(wrapper.text()).toContain('Example supplier')
     expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    for (const selector of [
+      '.market-map-brief',
+      '.global-market-intelligence',
+      '.pdf-reference-pack',
+      '.screenshot-market-template',
+      '.market-command-panel',
+      '.claims-panel',
+    ]) {
+      expect(wrapper.get(selector).text()).not.toContain('To Verify')
+    }
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
   })
 
