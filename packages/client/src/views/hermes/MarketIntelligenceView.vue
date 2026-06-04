@@ -488,6 +488,51 @@ const displayCountryConsumptionGrowthRows = computed<CountryConsumptionGrowthRow
     ...countryConsumptionGrowthRows.filter(row => !importedCountries.has(row.country.toLowerCase())),
   ]
 })
+const countryGrowthSummaryCards = computed(() => {
+  const rows = displayCountryConsumptionGrowthRows.value
+  const autoImported = rows.filter(row => row.autoImported).length
+  const directDemandMissing = rows.filter(row => /to verify|missing/i.test(row.directSoftenerConsumption)).length
+  const sourceBackedOrReference = rows.filter(row =>
+    row.status === 'Source-backed' ||
+    row.status === 'Trusted Source Auto-Updated' ||
+    row.status === 'Official Data' ||
+    row.status === 'Trade Proxy' ||
+    row.status === 'Reference Only',
+  ).length
+  return [
+    {
+      icon: '🌍',
+      label: 'Countries tracked',
+      value: String(rows.length),
+      detail: 'Global textile and trade-proxy signals Hermes is watching.',
+    },
+    {
+      icon: '📥',
+      label: 'Auto-imported',
+      value: autoImported ? String(autoImported) : 'Waiting',
+      detail: autoImported ? 'Official trade-proxy rows imported from trusted sources.' : 'Hermes will fill this when source runs return structured rows.',
+    },
+    {
+      icon: '🧾',
+      label: 'Source-backed signals',
+      value: String(sourceBackedOrReference),
+      detail: 'Rows with a source label, still not direct softener consumption unless stated.',
+    },
+    {
+      icon: '🔍',
+      label: 'Need direct proof',
+      value: String(directDemandMissing),
+      detail: 'Country-level textile-softener consumption remains To Verify until direct evidence is found.',
+    },
+  ]
+})
+const countryMarketMapRows = computed(() =>
+  displayCountryConsumptionGrowthRows.value.slice(0, 10).map(row => ({
+    ...row,
+    flag: countryFlag(row.country),
+    directDemandMissing: /to verify|missing/i.test(row.directSoftenerConsumption),
+  })),
+)
 const marketResearchQuestions = [
   {
     question: 'What is the actual China textile-softener demand by cationic, esterquat, silicone, and non-ionic category?',
@@ -617,6 +662,21 @@ function opportunityRow(label: string, keywords: string[]) {
     source: marketClaimSourceLabel(claim),
     evidenceStatus: claimStatusOrToVerify(claim),
   }
+}
+
+function countryFlag(country: string): string {
+  const normalized = country.toLowerCase()
+  if (normalized.includes('china')) return '🇨🇳'
+  if (normalized.includes('india')) return '🇮🇳'
+  if (normalized.includes('vietnam')) return '🇻🇳'
+  if (normalized.includes('bangladesh')) return '🇧🇩'
+  if (normalized.includes('turkey')) return '🇹🇷'
+  if (normalized.includes('pakistan')) return '🇵🇰'
+  if (normalized.includes('indonesia')) return '🇮🇩'
+  if (normalized.includes('united states')) return '🇺🇸'
+  if (normalized.includes('germany')) return '🇩🇪'
+  if (normalized === 'eu') return '🇪🇺'
+  return '🌐'
 }
 
 function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowthRow[] {
@@ -1003,6 +1063,61 @@ onMounted(loadRefreshState)
     </section>
 
     <TrustedSourceAutopilotPanel screen="market" title="Market Auto Source Status" />
+
+    <section class="market-map-brief" aria-label="Simple global market map">
+      <div class="market-map-header">
+        <div>
+          <p class="eyebrow">Simple global market map</p>
+          <h3>Where Hermes Should Focus Market Research Next</h3>
+          <p>
+            This is the easy view: country signals first, direct textile-softener proof clearly separated from proxy
+            evidence. Hermes can research these automatically, but unsupported consumption stays To Verify.
+          </p>
+        </div>
+        <RouterLink class="template-link" :to="{ name: 'hermes.trustedSources' }">Autopilot coverage</RouterLink>
+      </div>
+
+      <div class="market-map-summary">
+        <article v-for="card in countryGrowthSummaryCards" :key="card.label">
+          <span aria-hidden="true">{{ card.icon }}</span>
+          <div>
+            <small>{{ card.label }}</small>
+            <strong>{{ card.value }}</strong>
+            <em>{{ card.detail }}</em>
+          </div>
+        </article>
+      </div>
+
+      <div class="country-map-grid">
+        <article v-for="row in countryMarketMapRows" :key="`${row.country}-${row.source}`" class="country-map-card">
+          <div class="country-map-title">
+            <span aria-hidden="true">{{ row.flag }}</span>
+            <div>
+              <h4>{{ row.country }}</h4>
+              <small v-if="row.autoImported">Auto-imported trusted-source row</small>
+              <small v-else>Source-guided research target</small>
+            </div>
+            <NTag size="small" :type="statusType(row.status)">{{ row.status }}</NTag>
+          </div>
+          <p>{{ row.growthSignal }}</p>
+          <dl>
+            <div>
+              <dt>Proxy</dt>
+              <dd>{{ row.proxyMetric }}</dd>
+            </div>
+            <div>
+              <dt>Direct demand</dt>
+              <dd :class="{ warning: row.directDemandMissing }">{{ row.directSoftenerConsumption }}</dd>
+            </div>
+            <div>
+              <dt>Source</dt>
+              <dd>{{ row.source }}</dd>
+            </div>
+          </dl>
+          <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">Create research task</NButton>
+        </article>
+      </div>
+    </section>
 
     <section class="global-market-intelligence" aria-label="Global market intelligence">
       <div class="template-header">
@@ -1725,6 +1840,175 @@ onMounted(loadRefreshState)
   display: grid;
   gap: 14px;
   margin: 14px 0;
+}
+
+.market-map-brief {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.34);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-info-rgb), 0.08), rgba(var(--accent-primary-rgb), 0.045)),
+    $bg-card;
+}
+
+.market-map-header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+
+  h3 {
+    margin: 0;
+    color: $warning;
+  }
+
+  p {
+    max-width: 860px;
+    margin: 6px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.market-map-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 10px;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-secondary;
+  }
+
+  span {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.28);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    font-size: 18px;
+  }
+
+  div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-primary;
+    font-size: 18px;
+  }
+
+  em {
+    color: $text-secondary;
+    font-size: 12px;
+    font-style: normal;
+    line-height: 1.4;
+  }
+}
+
+.country-map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.country-map-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.26);
+  border-radius: $radius-sm;
+  background: $bg-secondary;
+
+  p,
+  dd {
+    color: $text-secondary;
+    line-height: 1.45;
+  }
+
+  p {
+    margin: 0;
+  }
+
+  dl {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+  }
+
+  dl > div {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  dt {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+
+    &.warning {
+      color: $accent-primary;
+      font-weight: 900;
+    }
+  }
+}
+
+.country-map-title {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+
+  > span {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+    border-radius: $radius-sm;
+    background: rgba(var(--accent-info-rgb), 0.08);
+    font-size: 20px;
+  }
+
+  h4 {
+    margin: 0;
+    color: $text-primary;
+  }
+
+  small {
+    display: block;
+    margin-top: 3px;
+    color: $text-muted;
+    line-height: 1.35;
+  }
 }
 
 .global-signal-grid {
