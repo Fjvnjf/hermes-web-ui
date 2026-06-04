@@ -1548,8 +1548,6 @@ onMounted(() => {
         <RouterLink v-if="todayPriority" :to="{ name: todayPriority.routeName }">Open</RouterLink>
       </section>
 
-      <PinnedExecutiveIntelligenceBoard />
-
       <section class="home-focus-panel" aria-label="Start here shortcuts">
         <div class="panel-title">
           <div>
@@ -1603,135 +1601,146 @@ onMounted(() => {
         </div>
       </section>
 
-      <section class="triage-grid" aria-label="Feasibility intelligence triage">
-        <article class="triage-panel">
-          <div class="panel-title">
-            <div>
-              <h3>Evidence Gaps</h3>
-              <p>Top missing or unverified investor-readiness areas.</p>
-            </div>
-            <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Review</RouterLink>
-          </div>
-          <div v-if="visibleTopEvidenceGaps.length" class="triage-list">
-            <RouterLink
-              v-for="gap in visibleTopEvidenceGaps"
-              :key="gap.id"
-              class="triage-row"
-              :to="{ name: evidenceGapRouteName(gap.id) }"
-            >
-              <span>{{ gap.label }}</span>
-              <small>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</small>
-            </RouterLink>
-          </div>
-          <div v-else class="triage-empty">No missing readiness areas in the current local intelligence state.</div>
-        </article>
+      <details class="home-evidence-details">
+        <summary>
+          <span>Evidence, readiness, and capture details</span>
+          <small>Open for evidence gaps, investor risks, research review, captures, and financial/deck status.</small>
+        </summary>
 
-        <article class="triage-panel">
-          <div class="panel-title">
-            <div>
-              <h3>Investor Risk Register</h3>
-              <p>Highest-priority risks from evidence gaps, research review, warnings, and unsupported deck material.</p>
-            </div>
-            <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Risk register</RouterLink>
-          </div>
-          <div v-if="visibleTopInvestorRisks.length" class="triage-list">
-            <RouterLink
-              v-for="risk in visibleTopInvestorRisks"
-              :key="risk.id"
-              class="triage-row"
-              :to="{ name: risk.routeName }"
-            >
-              <span>{{ risk.title }}</span>
-              <small>{{ risk.origin }} / {{ risk.evidenceStatus }} / {{ risk.detail }}</small>
-            </RouterLink>
-          </div>
-          <div v-else class="triage-empty">No current investor risks in the local intelligence state.</div>
-        </article>
+        <div class="home-evidence-details-body">
+          <PinnedExecutiveIntelligenceBoard />
 
-        <article v-if="canUseResearchReview" class="triage-panel">
-          <div class="panel-title">
-            <div>
-              <h3>Research Review Queue</h3>
-              <p>Items waiting for approval before they affect readiness or investor material.</p>
-            </div>
-            <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
-          </div>
-          <div v-if="pendingReviewItems.length || openResearchJobs.length" class="triage-list">
-            <RouterLink
-              v-for="finding in pendingReviewItems"
-              :key="finding.id"
-              class="triage-row"
-              :to="{ name: 'hermes.researchResultReview' }"
-            >
-              <span>{{ finding.keyClaim || finding.summary }}</span>
-              <small>{{ finding.status }} / {{ finding.evidenceStatus }}</small>
-            </RouterLink>
-            <RouterLink
-              v-for="job in openResearchJobs"
-              :key="job.id"
-              class="triage-row"
-              :to="{ name: 'hermes.researchResultReview' }"
-            >
-              <span>{{ job.title }}</span>
-              <small>{{ job.status }} / {{ job.context }}<template v-if="job.schedulePreference"> / {{ job.schedulePreference }}</template></small>
-            </RouterLink>
-          </div>
-          <div v-else class="triage-empty">No pending research findings or manual research jobs.</div>
-        </article>
+          <section class="triage-grid" aria-label="Feasibility intelligence triage">
+            <article class="triage-panel">
+              <div class="panel-title">
+                <div>
+                  <h3>Evidence Gaps</h3>
+                  <p>Top missing or unverified investor-readiness areas.</p>
+                </div>
+                <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Review</RouterLink>
+              </div>
+              <div v-if="visibleTopEvidenceGaps.length" class="triage-list">
+                <RouterLink
+                  v-for="gap in visibleTopEvidenceGaps"
+                  :key="gap.id"
+                  class="triage-row"
+                  :to="{ name: evidenceGapRouteName(gap.id) }"
+                >
+                  <span>{{ gap.label }}</span>
+                  <small>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</small>
+                </RouterLink>
+              </div>
+              <div v-else class="triage-empty">No missing readiness areas in the current local intelligence state.</div>
+            </article>
 
-        <article v-if="showFinancialDeckPanel" class="triage-panel">
-          <div class="panel-title">
-            <div>
-              <h3>Recent Session Captures</h3>
-              <p>Approved capture activity from Chat. Raw conversations stay in History.</p>
-            </div>
-            <RouterLink :to="{ name: 'hermes.chat' }">Review & Capture</RouterLink>
-          </div>
-          <div v-if="recentCaptureActivities.length" class="triage-list">
-            <RouterLink
-              v-for="activity in recentCaptureActivities"
-              :key="activity.sessionId"
-              class="triage-row"
-              :to="{ name: 'hermes.session', params: { sessionId: activity.sessionId } }"
-            >
-              <span>{{ activity.sessionTitle || activity.sessionId }}</span>
-              <small>{{ formatCaptureActivityMeta(activity) }}</small>
-            </RouterLink>
-          </div>
-          <div v-else class="triage-empty">
-            No captured sessions yet. Use Review & Capture in Chat after a useful Hermes conversation.
-          </div>
-        </article>
+            <article class="triage-panel">
+              <div class="panel-title">
+                <div>
+                  <h3>Investor Risk Register</h3>
+                  <p>Highest-priority risks from evidence gaps, research review, warnings, and unsupported deck material.</p>
+                </div>
+                <RouterLink v-if="canUseInvestorReadiness" :to="{ name: 'hermes.investorReadiness' }">Risk register</RouterLink>
+              </div>
+              <div v-if="visibleTopInvestorRisks.length" class="triage-list">
+                <RouterLink
+                  v-for="risk in visibleTopInvestorRisks"
+                  :key="risk.id"
+                  class="triage-row"
+                  :to="{ name: risk.routeName }"
+                >
+                  <span>{{ risk.title }}</span>
+                  <small>{{ risk.origin }} / {{ risk.evidenceStatus }} / {{ risk.detail }}</small>
+                </RouterLink>
+              </div>
+              <div v-else class="triage-empty">No current investor risks in the local intelligence state.</div>
+            </article>
 
-        <article class="triage-panel">
-          <div class="panel-title">
-            <div>
-              <h3>Financial & Deck Status</h3>
-              <p>Latest model snapshot and investor material that still needs evidence.</p>
-            </div>
-            <RouterLink v-if="canUseInvestorPresentation" :to="{ name: 'hermes.investorPresentation' }">Deck</RouterLink>
-          </div>
-          <div class="triage-list">
-            <RouterLink v-if="canUseInvestmentCalculator" class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
-              <span>{{ latestFinancialSnapshot?.scenarioName || 'No saved financial snapshot' }}</span>
-              <small>
-                {{ latestFinancialSnapshot ? `${latestFinancialSnapshot.evidenceStatus} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
-              </small>
-            </RouterLink>
-            <template v-if="canUseInvestorPresentation">
-              <RouterLink
-                v-for="material in deckMaterialsNeedingEvidence"
-                :key="material.id || `${material.section}-${material.content}`"
-                class="triage-row"
-                :to="{ name: 'hermes.investorPresentation' }"
-              >
-                <span>{{ material.section }}</span>
-                <small>{{ materialStatusLabel(material) }} / {{ material.content }}</small>
-              </RouterLink>
-            </template>
-          </div>
-        </article>
-      </section>
+            <article v-if="canUseResearchReview" class="triage-panel">
+              <div class="panel-title">
+                <div>
+                  <h3>Research Review Queue</h3>
+                  <p>Items waiting for approval before they affect readiness or investor material.</p>
+                </div>
+                <RouterLink :to="{ name: 'hermes.researchResultReview' }">Review</RouterLink>
+              </div>
+              <div v-if="pendingReviewItems.length || openResearchJobs.length" class="triage-list">
+                <RouterLink
+                  v-for="finding in pendingReviewItems"
+                  :key="finding.id"
+                  class="triage-row"
+                  :to="{ name: 'hermes.researchResultReview' }"
+                >
+                  <span>{{ finding.keyClaim || finding.summary }}</span>
+                  <small>{{ finding.status }} / {{ finding.evidenceStatus }}</small>
+                </RouterLink>
+                <RouterLink
+                  v-for="job in openResearchJobs"
+                  :key="job.id"
+                  class="triage-row"
+                  :to="{ name: 'hermes.researchResultReview' }"
+                >
+                  <span>{{ job.title }}</span>
+                  <small>{{ job.status }} / {{ job.context }}<template v-if="job.schedulePreference"> / {{ job.schedulePreference }}</template></small>
+                </RouterLink>
+              </div>
+              <div v-else class="triage-empty">No pending research findings or manual research jobs.</div>
+            </article>
+
+            <article v-if="showFinancialDeckPanel" class="triage-panel">
+              <div class="panel-title">
+                <div>
+                  <h3>Recent Session Captures</h3>
+                  <p>Approved capture activity from Chat. Raw conversations stay in History.</p>
+                </div>
+                <RouterLink :to="{ name: 'hermes.chat' }">Review & Capture</RouterLink>
+              </div>
+              <div v-if="recentCaptureActivities.length" class="triage-list">
+                <RouterLink
+                  v-for="activity in recentCaptureActivities"
+                  :key="activity.sessionId"
+                  class="triage-row"
+                  :to="{ name: 'hermes.session', params: { sessionId: activity.sessionId } }"
+                >
+                  <span>{{ activity.sessionTitle || activity.sessionId }}</span>
+                  <small>{{ formatCaptureActivityMeta(activity) }}</small>
+                </RouterLink>
+              </div>
+              <div v-else class="triage-empty">
+                No captured sessions yet. Use Review & Capture in Chat after a useful Hermes conversation.
+              </div>
+            </article>
+
+            <article class="triage-panel">
+              <div class="panel-title">
+                <div>
+                  <h3>Financial & Deck Status</h3>
+                  <p>Latest model snapshot and investor material that still needs evidence.</p>
+                </div>
+                <RouterLink v-if="canUseInvestorPresentation" :to="{ name: 'hermes.investorPresentation' }">Deck</RouterLink>
+              </div>
+              <div class="triage-list">
+                <RouterLink v-if="canUseInvestmentCalculator" class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
+                  <span>{{ latestFinancialSnapshot?.scenarioName || 'No saved financial snapshot' }}</span>
+                  <small>
+                    {{ latestFinancialSnapshot ? `${latestFinancialSnapshot.evidenceStatus} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
+                  </small>
+                </RouterLink>
+                <template v-if="canUseInvestorPresentation">
+                  <RouterLink
+                    v-for="material in deckMaterialsNeedingEvidence"
+                    :key="material.id || `${material.section}-${material.content}`"
+                    class="triage-row"
+                    :to="{ name: 'hermes.investorPresentation' }"
+                  >
+                    <span>{{ material.section }}</span>
+                    <small>{{ materialStatusLabel(material) }} / {{ material.content }}</small>
+                  </RouterLink>
+                </template>
+              </div>
+            </article>
+          </section>
+        </div>
+      </details>
 
       <details class="home-advanced-section">
         <summary>
@@ -3384,7 +3393,8 @@ onMounted(() => {
     $bg-card;
 }
 
-.home-advanced-section {
+.home-advanced-section,
+.home-evidence-details {
   display: grid;
   gap: 14px;
   margin-bottom: 12px;
@@ -3445,6 +3455,12 @@ onMounted(() => {
   &[open] > summary::after {
     content: '-';
   }
+}
+
+.home-evidence-details-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .workspace-action {
@@ -4017,7 +4033,8 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .home-advanced-section {
+  .home-advanced-section,
+  .home-evidence-details {
     &[open] {
       padding: 0 10px 10px;
     }
