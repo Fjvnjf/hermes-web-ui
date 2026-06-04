@@ -264,6 +264,7 @@ describe('Trusted Source Autopilot', () => {
   it('defines source mappings for all full-dashboard research screens', () => {
     expect(SCREEN_FIELD_MAPPINGS.executive.map(item => item.field)).toContain('Revenue Target')
     expect(SCREEN_FIELD_MAPPINGS.market.map(item => item.field)).toContain('Market Size / Scope')
+    expect(SCREEN_FIELD_MAPPINGS.market.map(item => item.field)).toContain('Country-wise Consumption Growth')
     expect(SCREEN_FIELD_MAPPINGS.investment.map(item => item.field)).toContain('Project IRR')
     expect(SCREEN_FIELD_MAPPINGS.competitor.map(item => item.field)).toContain('Market Share Chart')
     expect(SCREEN_FIELD_MAPPINGS.rawMaterials.map(item => item.field)).toContain('Supplier Scorecards')
@@ -710,6 +711,10 @@ describe('Trusted Source Autopilot', () => {
     const preferred = preferredSourceForField('market', 'Market Size / Scope', DEFAULT_TRUSTED_SOURCES)
     expect(preferred?.source_id).toMatch(/comtrade|world-bank/)
 
+    const countryGrowthPreferred = preferredSourceForField('market', 'Country-wise Consumption Growth', DEFAULT_TRUSTED_SOURCES)
+    expect(countryGrowthPreferred?.connector_type).toBe('API')
+    expect(countryGrowthPreferred?.data_types_supported).toContain('trade_data')
+
     const missing = createMissingFieldClaim('competitor', 'Market Share Chart')
     expect(missing.value).toBe('Missing / To Verify')
     expect(missing.review_required).toBe(true)
@@ -826,6 +831,11 @@ describe('Trusted Source Autopilot', () => {
 
     expect(result.snapshot.claims.length).toBeGreaterThanOrEqual(SCREEN_FIELD_MAPPINGS.market.length)
     expect(result.snapshot.claims.some(claim => claim.label === 'Market Size / Scope')).toBe(true)
+    expect(result.snapshot.claims.some(claim => claim.label === 'Country-wise Consumption Growth')).toBe(true)
+    const countryGrowthClaim = result.snapshot.claims.find(claim => claim.label === 'Country-wise Consumption Growth')
+    expect(countryGrowthClaim?.reviewRequired).toBe(true)
+    expect(countryGrowthClaim?.value).not.toMatch(/verified demand|direct textile-softener consumption/i)
+    expect(countryGrowthClaim?.riskReason).toContain('proxy')
     expect(result.snapshot.claims.every(claim => !claim.value.includes('$3.2B'))).toBe(true)
     expect(result.snapshot.review_required).toBe(true)
   })

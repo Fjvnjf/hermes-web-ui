@@ -86,6 +86,7 @@ export const SCREEN_FIELD_MAPPINGS: Record<AutopilotScreen, Array<{
     { field: 'Opportunity Score', preferredDataTypes: ['market_size', 'trade_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: false },
     { field: 'Market Segmentation', preferredDataTypes: ['market_size'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
     { field: 'Target Countries / Provinces', preferredDataTypes: ['trade_data', 'company_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'To Verify', autoUpdateAllowed: true },
+    { field: 'Country-wise Consumption Growth', preferredDataTypes: ['trade_data', 'market_size'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'Trade Proxy', autoUpdateAllowed: true },
   ],
   investment: [
     { field: 'Total Investment', preferredDataTypes: ['financial_data'], fallbackDataTypes: ['document_evidence'], unavailableStatus: 'Derived from Assumptions', autoUpdateAllowed: false, sensitive: true },
@@ -1324,7 +1325,19 @@ export function preferredSourceForField(
     (mapping.preferredDataTypes.some(type => source.data_types_supported.includes(type)) ||
       mapping.fallbackDataTypes.some(type => source.data_types_supported.includes(type))),
   )
-  return sortSourcesByDashboardPolicy(allowed, mapping.preferredDataTypes, mapping.fallbackDataTypes)[0] || null
+  const ranked = sortSourcesByDashboardPolicy(allowed, mapping.preferredDataTypes, mapping.fallbackDataTypes)
+  const fieldNeedsDirectTradeApi = /country-wise|consumption|import dependence|target countries/i.test(field)
+  if (mapping.autoUpdateAllowed && fieldNeedsDirectTradeApi) {
+    const preferredTypeIndex = (source: TrustedSourceRecord) => {
+      const index = mapping.preferredDataTypes.findIndex(type => source.data_types_supported.includes(type))
+      return index === -1 ? Number.MAX_SAFE_INTEGER : index
+    }
+    const apiSource = ranked
+      .filter(source => source.connector_type === 'API' && source.auto_update_allowed)
+      .sort((a, b) => preferredTypeIndex(a) - preferredTypeIndex(b) || ranked.indexOf(a) - ranked.indexOf(b))[0]
+    if (apiSource) return apiSource
+  }
+  return ranked[0] || null
 }
 
 export function createMissingFieldClaim(screen: AutopilotScreen, field: string): NormalizedTrustedSourceClaim {
