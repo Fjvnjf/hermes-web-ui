@@ -375,10 +375,10 @@ describe('screenshot-matched executive business tabs', () => {
       countryRegion: 'China',
       productEquivalent: 'CWAS equivalent',
       activeContent: '90% active',
-      pricingEvidence: 'Distributor quote under review',
+      pricingEvidence: '$24/kg source-backed',
       certifications: 'Company product certificate',
       distributionPresence: 'Official distributor page',
-      marketShare: '',
+      marketShare: '7% source-backed',
       revenue: '$42M source-backed',
       yearlyGrowth: '+8% source-backed',
       evidenceStatus: 'Source-backed',
@@ -392,9 +392,22 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Product Context Panel')
     expect(wrapper.text()).toContain('Cationic Softeners / CHEMISOFT')
     expect(wrapper.text()).toContain('CHEMISIL HS 200')
+    expect(wrapper.text()).toContain('Single Competitor Intelligence Table')
+    expect(wrapper.text()).toContain('Product category')
+    expect(wrapper.text()).toContain('Evidence state')
+    expect(wrapper.text()).toContain('Traffic')
+    expect(wrapper.text()).toContain('Rating')
+    expect(wrapper.text()).toContain('Last Updated')
+    expect(wrapper.text()).toContain('Confidence')
+    expect(wrapper.text()).toContain('🥇 Market Leader')
+    expect(wrapper.text()).toContain('📈 Fastest Growth')
+    expect(wrapper.text()).toContain('💰 Highest Revenue')
+    expect(wrapper.text()).toContain('🔥 Most Competitive Pricing')
+    expect(wrapper.text()).toContain('No source-backed leader badge')
+    expect(wrapper.text()).toContain('Reference templates, charts, and manual evidence tools')
     expect(wrapper.text()).toContain('Competitor Landscape Table')
     expect(wrapper.text()).toContain('Competitor Market Share Chart')
-    expect(wrapper.text()).toContain('No source-backed competitor share data yet.')
+    expect(wrapper.text()).toContain('Source Backed Softener Co')
     expect(wrapper.text()).toContain('Competitors Tab Template')
     expect(wrapper.text()).toContain('Transfar Chemicals')
     expect(wrapper.text()).toContain('WACKER')
@@ -411,6 +424,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Revenue')
     expect(wrapper.text()).toContain('Yearly growth')
     expect(wrapper.text()).toContain('Source Backed Softener Co')
+    expect(wrapper.text()).toContain('$24/kg source-backed')
+    expect(wrapper.text()).toContain('7% source-backed')
     expect(wrapper.text()).toContain('$42M source-backed')
     expect(wrapper.text()).toContain('+8% source-backed')
     expect(wrapper.text()).toContain('Hermes verifying twice daily')
@@ -433,6 +448,71 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).not.toContain('12%')
     expect(wrapper.text()).toContain('Research Competitor')
     expect(wrapper.text()).toContain('Schedule Deeper Research')
+  })
+
+  it('sorts and filters the primary competitor comparison table without promoting unsupported values', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'Alpha Source Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: '90% active',
+      pricingEvidence: '$24/kg source-backed',
+      certifications: 'Official certificate',
+      distributionPresence: 'Official distributor page',
+      marketShare: '7% source-backed',
+      revenue: '$42M source-backed',
+      yearlyGrowth: '+8% source-backed',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Official annual profile', url: 'https://example.com/alpha' },
+      notes: 'Source-backed competitor record.',
+    })
+    intelligence.addCompetitor({
+      companyName: 'Beta Source Co',
+      countryRegion: 'Germany',
+      productEquivalent: 'Silicone Softener',
+      activeContent: 'Hermes verifying twice daily',
+      pricingEvidence: '$36/kg source-backed',
+      certifications: 'Official product page',
+      distributionPresence: 'Official distributor page',
+      marketShare: '4% source-backed',
+      revenue: '$12M source-backed',
+      yearlyGrowth: '+3% source-backed',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Official company profile', url: 'https://example.com/beta' },
+      notes: 'Source-backed silicone competitor record.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    const panel = () => wrapper.get('.comparison-command-panel')
+
+    expect(panel().text()).toContain('Competitor')
+    expect(panel().text()).toContain('Product')
+    expect(panel().text()).toContain('Market Share')
+    expect(panel().text()).toContain('Revenue')
+    expect(panel().text()).toContain('YoY Growth')
+    expect(panel().text()).toContain('Hermes verifying twice daily')
+
+    const revenueSort = wrapper.findAll('.comparison-sort-button').find(button => button.text().includes('Revenue'))
+    expect(revenueSort).toBeTruthy()
+    await revenueSort!.trigger('click')
+    const firstSortedRow = wrapper.findAll('.comparison-grid-row').filter(row => !row.classes().includes('head'))[0]
+    expect(firstSortedRow.text()).toContain('Alpha Source Co')
+    expect(firstSortedRow.text()).toContain('$42M source-backed')
+
+    const categorySelect = wrapper.findAll('.comparison-filter-bar select')[0]
+    await categorySelect.setValue('Silicone Softener')
+    await flushPromises()
+    expect(panel().text()).toContain('Beta Source Co')
+    expect(panel().text()).not.toContain('Alpha Source Co')
+
+    const evidenceSelect = wrapper.findAll('.comparison-filter-bar select')[1]
+    await evidenceSelect.setValue('Auto-checking')
+    await flushPromises()
+    expect(panel().text()).toContain('WACKER')
+    expect(panel().text()).toContain('Hermes verifying twice daily')
+    expect(panel().text()).not.toContain('$18-22')
+    expect(panel().text()).not.toContain('20-25%')
   })
 
   it('renders supplier scorecards as source-gated raw material verification targets and auto-schedules supplier research', async () => {

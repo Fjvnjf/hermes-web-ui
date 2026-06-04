@@ -234,6 +234,66 @@ const competitorResearchQueue = [
   'Transfar CWAS/CWMS equivalent products',
 ]
 const autoVerifyingText = 'Hermes verifying twice daily'
+type CompetitorSortKey =
+  | 'competitor'
+  | 'product'
+  | 'price'
+  | 'marketShare'
+  | 'revenue'
+  | 'yoyGrowth'
+  | 'traffic'
+  | 'rating'
+  | 'lastUpdated'
+  | 'confidence'
+type CompetitorEvidenceFilter = 'All' | 'Verified' | 'Auto-checking' | 'Review needed' | 'Restricted'
+
+interface CompetitorComparisonRow {
+  id: string
+  competitor: string
+  product: string
+  category: string
+  price: string
+  marketShare: string
+  revenue: string
+  yoyGrowth: string
+  traffic: string
+  rating: string
+  lastUpdated: string
+  source: string
+  sourceUrl?: string
+  confidence: string
+  evidenceState: CompetitorEvidenceFilter
+  evidenceStatus: IntelligenceEvidenceStatus
+  nextAction: string
+  comparable: Partial<Record<'price' | 'marketShare' | 'revenue' | 'yoyGrowth' | 'traffic' | 'rating' | 'confidence', number>>
+  badges: string[]
+}
+
+const competitorCategoryOptions = [
+  'All',
+  'Cationic / Ester Quat',
+  'Silicone Softener',
+  'Textile Auxiliary',
+  'China Local',
+  'Global Reference',
+]
+const competitorEvidenceOptions: CompetitorEvidenceFilter[] = ['All', 'Verified', 'Auto-checking', 'Review needed', 'Restricted']
+const competitorTableColumns: Array<{ key: CompetitorSortKey; label: string }> = [
+  { key: 'competitor', label: 'Competitor' },
+  { key: 'product', label: 'Product' },
+  { key: 'price', label: 'Price' },
+  { key: 'marketShare', label: 'Market Share' },
+  { key: 'revenue', label: 'Revenue' },
+  { key: 'yoyGrowth', label: 'YoY Growth' },
+  { key: 'traffic', label: 'Traffic' },
+  { key: 'rating', label: 'Rating' },
+  { key: 'lastUpdated', label: 'Last Updated' },
+  { key: 'confidence', label: 'Confidence' },
+]
+const competitorCategoryFilter = ref('All')
+const competitorEvidenceFilter = ref<CompetitorEvidenceFilter>('All')
+const competitorSortKey = ref<CompetitorSortKey>('competitor')
+const competitorSortDirection = ref<'asc' | 'desc'>('asc')
 const competitorSourcePack = [
   {
     title: 'Transfar Chemicals official site',
@@ -444,6 +504,173 @@ const competitorMetricsRows = computed(() => {
 
   return [...savedRows, ...templateRows]
 })
+const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
+  const rows = competitorMetricsRows.value.map(row => {
+    const hasSource = sourceIsUsable({ title: row.source, url: row.sourceUrl })
+    const hasComparableData = hasSource && [
+      row.priceKg,
+      row.marketShare,
+      row.revenue,
+      row.yearlyGrowth,
+    ].some(value => comparableNumber(value) !== null)
+    const sourceMissing = !hasSource
+    const comparable = hasSource
+      ? {
+          price: comparableNumber(row.priceKg) ?? undefined,
+          marketShare: comparableNumber(row.marketShare) ?? undefined,
+          revenue: comparableNumber(row.revenue) ?? undefined,
+          yoyGrowth: comparableNumber(row.yearlyGrowth) ?? undefined,
+          traffic: comparableNumber(autoVerifyingText) ?? undefined,
+          rating: comparableNumber(autoVerifyingText) ?? undefined,
+          confidence: confidenceScoreForRow(row.evidenceStatus, hasSource, hasComparableData),
+        }
+      : {}
+
+    return {
+      id: row.id,
+      competitor: row.competitor,
+      product: row.productFocus,
+      category: competitorCategoryFor(row.competitor, row.productFocus, row.hq),
+      price: row.priceKg,
+      marketShare: row.marketShare,
+      revenue: row.revenue,
+      yoyGrowth: row.yearlyGrowth,
+      traffic: autoVerifyingText,
+      rating: autoVerifyingText,
+      lastUpdated: hasSource ? 'Source attached' : autoVerifyingText,
+      source: sourceMissing ? 'Hermes source search running' : row.source,
+      sourceUrl: row.sourceUrl,
+      confidence: confidenceLabelForRow(row.evidenceStatus, hasSource, hasComparableData),
+      evidenceState: evidenceStateForRow(row.evidenceStatus, hasSource, hasComparableData, row.priceKg),
+      evidenceStatus: row.evidenceStatus,
+      nextAction: autoVerifyText(row.nextAction),
+      comparable,
+      badges: [],
+    }
+  })
+
+  const leaders = {
+    marketShare: leaderId(rows, 'marketShare', 'max'),
+    yoyGrowth: leaderId(rows, 'yoyGrowth', 'max'),
+    revenue: leaderId(rows, 'revenue', 'max'),
+    price: leaderId(rows, 'price', 'min'),
+  }
+
+  const filtered = rows
+    .map(row => ({
+      ...row,
+      badges: [
+        leaders.marketShare === row.id ? '🥇 Market Leader' : '',
+        leaders.yoyGrowth === row.id ? '📈 Fastest Growth' : '',
+        leaders.revenue === row.id ? '💰 Highest Revenue' : '',
+        leaders.price === row.id ? '🔥 Most Competitive Pricing' : '',
+      ].filter(Boolean),
+    }))
+    .filter(row => competitorCategoryFilter.value === 'All' || row.category === competitorCategoryFilter.value)
+    .filter(row => competitorEvidenceFilter.value === 'All' || row.evidenceState === competitorEvidenceFilter.value)
+
+  return filtered.sort((a, b) => compareCompetitorRows(a, b))
+})
+
+function competitorCategoryFor(competitor: string, product: string, hq: string): string {
+  const text = `${competitor} ${product} ${hq}`.toLowerCase()
+  if (/transfar|zhejiang|dymatic|huangma|liansheng|shanghai|dongguan|china/.test(text)) return 'China Local'
+  if (/wacker|silicone|chemisil|pdms|hydrophilic|amino/.test(text)) return 'Silicone Softener'
+  if (/evonik|stepan|kao|basf|syensqo|solvay|esterquat|ester quat|cationic|cwas|cwms|chemisoft/.test(text)) return 'Cationic / Ester Quat'
+  if (/archroma|rudolf|cht|zschimmer|pulcra|textile|auxiliar|finishing|softener/.test(text)) return 'Textile Auxiliary'
+  return 'Global Reference'
+}
+
+function evidenceStateForRow(
+  status: IntelligenceEvidenceStatus,
+  hasSource: boolean,
+  hasComparableData: boolean,
+  priceText: string,
+): CompetitorEvidenceFilter {
+  if (/restricted/i.test(priceText)) return 'Restricted'
+  if (!hasSource) return 'Auto-checking'
+  if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return 'Review needed'
+  if (
+    hasComparableData &&
+    ['Verified', 'User Approved', 'Investor Approved', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated'].includes(status)
+  ) return 'Verified'
+  return 'Auto-checking'
+}
+
+function confidenceLabelForRow(status: IntelligenceEvidenceStatus, hasSource: boolean, hasComparableData: boolean): string {
+  if (!hasSource) return 'Auto-checking'
+  if (hasComparableData && ['Verified', 'User Approved', 'Investor Approved', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated'].includes(status)) return 'High'
+  if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return 'Review'
+  return 'Source found'
+}
+
+function confidenceScoreForRow(status: IntelligenceEvidenceStatus, hasSource: boolean, hasComparableData: boolean): number | undefined {
+  if (!hasSource) return undefined
+  if (hasComparableData && ['Verified', 'User Approved', 'Investor Approved', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated'].includes(status)) return 3
+  if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return 1
+  return 2
+}
+
+function comparableNumber(value: string): number | null {
+  const normalized = String(value || '').trim()
+  if (!normalized || /verify|missing|restricted|source search/i.test(normalized)) return null
+  const range = normalized.match(/([\d,.]+)\s*[-–]\s*([\d,.]+)/)
+  if (range) {
+    const left = Number.parseFloat(range[1].replace(/,/g, ''))
+    const right = Number.parseFloat(range[2].replace(/,/g, ''))
+    if (Number.isFinite(left) && Number.isFinite(right)) return (left + right) / 2
+  }
+  const match = normalized.match(/([\d,.]+)\s*([kmb])?/i)
+  if (!match) return null
+  const base = Number.parseFloat(match[1].replace(/,/g, ''))
+  if (!Number.isFinite(base)) return null
+  const suffix = match[2]?.toLowerCase()
+  if (suffix === 'b') return base * 1000
+  if (suffix === 'm') return base
+  if (suffix === 'k') return base / 1000
+  return base
+}
+
+function leaderId(rows: CompetitorComparisonRow[], key: keyof CompetitorComparisonRow['comparable'], mode: 'max' | 'min'): string {
+  const sourceBackedRows = rows.filter(row =>
+    row.evidenceState === 'Verified' &&
+    typeof row.comparable[key] === 'number' &&
+    Number.isFinite(row.comparable[key])
+  )
+  if (!sourceBackedRows.length) return ''
+  return sourceBackedRows.reduce((best, row) => {
+    const current = row.comparable[key] ?? 0
+    const bestValue = best.comparable[key] ?? 0
+    return mode === 'max'
+      ? current > bestValue ? row : best
+      : current < bestValue ? row : best
+  }).id
+}
+
+function compareCompetitorRows(a: CompetitorComparisonRow, b: CompetitorComparisonRow): number {
+  const direction = competitorSortDirection.value === 'asc' ? 1 : -1
+  const key = competitorSortKey.value
+  const numericA = a.comparable[key as keyof CompetitorComparisonRow['comparable']]
+  const numericB = b.comparable[key as keyof CompetitorComparisonRow['comparable']]
+  if (typeof numericA === 'number' || typeof numericB === 'number') {
+    return (((numericA ?? Number.NEGATIVE_INFINITY) - (numericB ?? Number.NEGATIVE_INFINITY)) || a.competitor.localeCompare(b.competitor)) * direction
+  }
+  return String(a[key] || '').localeCompare(String(b[key] || '')) * direction
+}
+
+function toggleCompetitorSort(key: CompetitorSortKey) {
+  if (competitorSortKey.value === key) {
+    competitorSortDirection.value = competitorSortDirection.value === 'asc' ? 'desc' : 'asc'
+    return
+  }
+  competitorSortKey.value = key
+  competitorSortDirection.value = ['price', 'competitor', 'product', 'lastUpdated'].includes(key) ? 'asc' : 'desc'
+}
+
+function sortIndicator(key: CompetitorSortKey): string {
+  if (competitorSortKey.value !== key) return ''
+  return competitorSortDirection.value === 'asc' ? ' ↑' : ' ↓'
+}
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
   return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
@@ -451,12 +678,17 @@ function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): s
 
 function autoVerifyText(value: string | null | undefined): string {
   const normalized = String(value || '').trim()
-  if (!normalized || normalized === 'Missing' || normalized === 'To Verify') return autoVerifyingText
+  if (!normalized || normalized === 'To Verify') return autoVerifyingText
+  if (normalized === 'Missing') return `Missing / ${autoVerifyingText}`
   return normalized
+    .replace(/Missing\s*\/\s*To Verify/g, `Missing / ${autoVerifyingText}`)
+    .replace(/Trade Proxy\s*\/\s*To Verify/g, `Trade Proxy / ${autoVerifyingText}`)
+    .replace(/\bTo Verify\b/g, autoVerifyingText)
 }
 
 function displayEvidenceStatus(status: IntelligenceEvidenceStatus): string {
-  if (status === 'To Verify' || status === 'Missing') return autoVerifyingText
+  if (status === 'To Verify') return autoVerifyingText
+  if (status === 'Missing') return `Missing / ${autoVerifyingText}`
   return status
 }
 
@@ -724,6 +956,97 @@ function addCompetitor() {
     </header>
 
     <TrustedSourceAutopilotPanel screen="competitor" title="Competitor Auto Source Status" />
+
+    <section class="comparison-command-panel" aria-label="Single competitor intelligence comparison table">
+      <div class="comparison-hero">
+        <div>
+          <p class="eyebrow">Primary view</p>
+          <h3>Single Competitor Intelligence Table</h3>
+          <p>
+            Hermes fills this table from trusted-source research and keeps unsupported values in automatic checking.
+            Price, market share, revenue, growth, traffic, and rating are not treated as facts unless a usable source
+            and confidence state exist.
+          </p>
+        </div>
+        <div class="comparison-actions">
+          <NButton size="small" type="primary" @click="syncCompetitorsNow">Sync Now</NButton>
+          <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
+          <RouterLink class="template-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
+        </div>
+      </div>
+
+      <div class="comparison-filter-bar" aria-label="Competitor table controls">
+        <label>
+          Product category
+          <select v-model="competitorCategoryFilter">
+            <option v-for="option in competitorCategoryOptions" :key="option" :value="option">{{ option }}</option>
+          </select>
+        </label>
+        <label>
+          Evidence state
+          <select v-model="competitorEvidenceFilter">
+            <option v-for="option in competitorEvidenceOptions" :key="option" :value="option">{{ option }}</option>
+          </select>
+        </label>
+        <span class="comparison-filter-note">
+          Sort active: {{ competitorTableColumns.find(column => column.key === competitorSortKey)?.label }}{{ sortIndicator(competitorSortKey) }}
+        </span>
+      </div>
+
+      <div class="comparison-table-wrap">
+        <div class="comparison-grid-row head">
+          <button
+            v-for="column in competitorTableColumns"
+            :key="column.key"
+            type="button"
+            class="comparison-sort-button"
+            @click="toggleCompetitorSort(column.key)"
+          >
+            {{ column.label }}{{ sortIndicator(column.key) }}
+          </button>
+          <span>Source</span>
+          <span>Leader</span>
+          <span>Next Action</span>
+        </div>
+        <div v-if="competitorComparisonRows.length === 0" class="comparison-empty">
+          No competitor records match this filter. Hermes will keep researching twice daily and stage source-backed
+          findings for review.
+        </div>
+        <div
+          v-for="row in competitorComparisonRows"
+          :key="row.id"
+          class="comparison-grid-row"
+          :class="row.evidenceState.toLowerCase().replace(/[^a-z0-9]+/g, '-')"
+        >
+          <strong>{{ row.competitor }}</strong>
+          <span>{{ row.product }}</span>
+          <span class="verify-pill">{{ row.price }}</span>
+          <span class="verify-pill">{{ row.marketShare }}</span>
+          <span class="verify-pill">{{ row.revenue }}</span>
+          <span class="verify-pill">{{ row.yoyGrowth }}</span>
+          <span class="verify-pill">{{ row.traffic }}</span>
+          <span class="verify-pill">{{ row.rating }}</span>
+          <span>{{ row.lastUpdated }}</span>
+          <span class="confidence-pill" :class="row.evidenceState.toLowerCase().replace(/[^a-z0-9]+/g, '-')">{{ row.confidence }}</span>
+          <span class="comparison-source-cell">
+            <a v-if="row.sourceUrl" :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">{{ row.source }}</a>
+            <span v-else>{{ row.source }}</span>
+            <small>{{ row.evidenceState }}</small>
+          </span>
+          <span class="leader-badge-stack">
+            <small v-for="badge in row.badges" :key="badge">{{ badge }}</small>
+            <em v-if="row.badges.length === 0">No source-backed leader badge</em>
+          </span>
+          <span class="weakness-label">{{ row.nextAction }}</span>
+        </div>
+      </div>
+    </section>
+
+    <details class="reference-details">
+      <summary>
+        <span>Reference templates, charts, and manual evidence tools</span>
+        <small>Open only when you need the screenshot templates, PDF reference rows, source pack, or manual competitor record form.</small>
+      </summary>
 
     <section class="screenshot-competitor-template" aria-label="Source-backed competitor dashboard template">
       <div class="template-hero">
@@ -1095,6 +1418,7 @@ function addCompetitor() {
         <p>Use Kanban tasks for competitor research until scheduled research jobs are safely integrated.</p>
       </article>
     </section>
+    </details>
   </div>
 </template>
 
@@ -1217,6 +1541,282 @@ function addCompetitor() {
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
+  }
+}
+
+.comparison-command-panel,
+.reference-details {
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.34);
+  border-radius: $radius-sm;
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), transparent 38%),
+    $bg-card;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
+}
+
+.comparison-command-panel {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.comparison-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+
+  h3 {
+    margin: 0;
+    color: $text-primary;
+    font-size: 24px;
+    letter-spacing: 0.02em;
+  }
+
+  p {
+    max-width: 920px;
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.comparison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.comparison-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  border-top: 1px solid $border-color;
+  padding-top: 12px;
+
+  label {
+    display: grid;
+    gap: 6px;
+    min-width: min(260px, 100%);
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  select {
+    min-height: 34px;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    background: $bg-input;
+    color: $text-primary;
+    padding: 7px 10px;
+  }
+}
+
+.comparison-filter-note {
+  margin-left: auto;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.32);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: $accent-info;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.comparison-table-wrap {
+  overflow-x: auto;
+  border: 1px solid $border-color;
+  border-radius: $radius-sm;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.comparison-grid-row {
+  display: grid;
+  grid-template-columns:
+    minmax(170px, 0.95fr)
+    minmax(220px, 1.15fr)
+    minmax(130px, 0.62fr)
+    minmax(140px, 0.68fr)
+    minmax(140px, 0.68fr)
+    minmax(140px, 0.68fr)
+    minmax(130px, 0.62fr)
+    minmax(120px, 0.58fr)
+    minmax(130px, 0.64fr)
+    minmax(130px, 0.64fr)
+    minmax(190px, 0.95fr)
+    minmax(180px, 0.95fr)
+    minmax(280px, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 1900px;
+  padding: 11px 14px;
+  border-top: 1px solid $border-color;
+  color: $text-secondary;
+
+  &:first-child {
+    border-top: 0;
+  }
+
+  &.head {
+    color: $accent-primary;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  &.verified {
+    background: rgba(var(--success-rgb), 0.04);
+  }
+
+  &.review-needed {
+    background: rgba(var(--warning-rgb), 0.04);
+  }
+
+  &.restricted {
+    background: rgba(var(--error-rgb), 0.04);
+  }
+
+  > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.comparison-sort-button {
+  width: fit-content;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+
+  &:hover {
+    color: $accent-info;
+  }
+}
+
+.comparison-empty {
+  min-width: 760px;
+  padding: 16px;
+  color: $text-secondary;
+}
+
+.confidence-pill {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.34);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: $accent-info;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+
+  &.verified {
+    border-color: rgba(var(--success-rgb), 0.4);
+    color: $success;
+  }
+
+  &.review-needed {
+    border-color: rgba(var(--warning-rgb), 0.4);
+    color: $warning;
+  }
+
+  &.restricted {
+    border-color: rgba(var(--error-rgb), 0.4);
+    color: $error;
+  }
+}
+
+.comparison-source-cell {
+  display: grid;
+  gap: 4px;
+
+  a {
+    color: $accent-info;
+    font-weight: 850;
+    text-decoration: none;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.leader-badge-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+
+  small {
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.38);
+    border-radius: 999px;
+    padding: 3px 7px;
+    color: $accent-primary;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  em {
+    color: $text-muted;
+    font-size: 11px;
+    font-style: normal;
+  }
+}
+
+.reference-details {
+  margin: 14px 0;
+
+  > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+    cursor: pointer;
+    padding: 15px 16px;
+    color: $text-primary;
+    list-style: none;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+
+    span {
+      color: $accent-primary;
+      font-size: 14px;
+      font-weight: 950;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    small {
+      color: $text-muted;
+      line-height: 1.4;
+    }
+  }
+
+  &[open] {
+    padding: 0 14px 14px;
+
+    > summary {
+      margin: 0 -14px 12px;
+      border-bottom: 1px solid $border-color;
+    }
   }
 }
 
@@ -1829,11 +2429,20 @@ function addCompetitor() {
 @media (max-width: 940px) {
   .page-header,
   .template-hero,
+  .comparison-hero,
   .template-product-grid,
   .product-context-row,
   .competitor-row {
     grid-template-columns: 1fr;
     min-width: 0;
+  }
+
+  .comparison-actions {
+    justify-content: flex-start;
+  }
+
+  .comparison-filter-note {
+    margin-left: 0;
   }
 
   .template-kpi-strip {
@@ -1856,6 +2465,10 @@ function addCompetitor() {
 
 @media (max-width: 560px) {
   .competitor-view {
+    padding: 12px;
+  }
+
+  .comparison-command-panel {
     padding: 12px;
   }
 
