@@ -1907,6 +1907,10 @@ function fieldLabel(item: DashboardResearchUpdateItem, group: DashboardResearchU
   )
 }
 
+function dashboardFieldKey(item: DashboardResearchUpdateItem, group: DashboardResearchUpdateGroup, field: string): string {
+  return firstString(item.fieldKey) || stableId('field', GROUP_SCREEN[group], field).replace(/^field-/, '')
+}
+
 function itemValueText(item: DashboardResearchUpdateItem): string {
   return firstString(
     item.value,
@@ -1995,6 +1999,9 @@ function appendMarketClaim(
     evidenceStatus: string
     lastChecked: string
     runKey: string
+    tier: SourceTier
+    dataType: string
+    reasons?: string[]
   },
 ): boolean {
   const label = firstString(input.item.label, input.item.field, input.item.title, input.field)
@@ -2009,9 +2016,19 @@ function appendMarketClaim(
     id: stableId('autopilot-market', input.runKey, label, input.value),
     label,
     value: input.value,
+    fieldKey: dashboardFieldKey(input.item, input.group, input.field),
+    dashboardGroup: input.group,
+    group: input.group,
+    proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.field, input.item.label, label, input.item.fieldKey),
     source: input.source,
+    sourceTier: input.tier,
+    reportedSourceTier: firstString(input.item.sourceTier) || undefined,
+    dataType: input.dataType,
     confidence: input.confidence,
     evidenceStatus: input.evidenceStatus,
+    reviewRequired: Boolean(input.reasons?.length || input.item.reviewRequired === true),
+    reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
+    riskReason: firstString(input.item.riskReason) || (input.reasons?.join('; ') || undefined),
     lastChecked: input.lastChecked,
   })
   return true
@@ -2026,6 +2043,10 @@ function appendCompetitorRecord(
     evidenceStatus: string
     lastChecked: string
     runKey: string
+    tier: SourceTier
+    dataType: string
+    field: string
+    reasons?: string[]
   },
 ): boolean {
   const companyName = firstString(input.item.companyName, input.item.title, input.item.label)
@@ -2038,6 +2059,10 @@ function appendCompetitorRecord(
   state.competitors.push({
     id: stableId('autopilot-competitor', input.runKey, companyName),
     companyName,
+    fieldKey: dashboardFieldKey(input.item, 'competitorRecords', input.field),
+    dashboardGroup: 'competitorRecords',
+    group: 'competitorRecords',
+    proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.field, input.item.label, companyName, input.item.fieldKey),
     countryRegion: firstString(input.item.countryRegion) || 'To Verify',
     productEquivalent: firstString(input.item.productEquivalent) || 'To Verify',
     activeContent: firstString(input.item.activeContent) || 'To Verify',
@@ -2049,6 +2074,13 @@ function appendCompetitorRecord(
     yearlyGrowth: firstString(input.item.yearlyGrowth) || '',
     evidenceStatus: input.evidenceStatus,
     source: input.source,
+    sourceTier: input.tier,
+    reportedSourceTier: firstString(input.item.sourceTier) || undefined,
+    dataType: input.dataType,
+    confidence: coerceConfidence(input.item.confidence),
+    reviewRequired: Boolean(input.reasons?.length || input.item.reviewRequired === true),
+    reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
+    riskReason: firstString(input.item.riskReason) || (input.reasons?.join('; ') || undefined),
     notes: firstString(input.item.notes, input.value) || 'Imported by Full Dashboard Autopilot from a source-backed non-sensitive company record.',
     updatedAt: input.lastChecked,
   })
@@ -2115,7 +2147,7 @@ function appendDataRoomCandidate(
     reasons: string[]
   },
 ): boolean {
-  const checklistLabel = firstString(input.item.proposedDashboardField, input.item.fieldKey, input.field)
+  const checklistLabel = firstString(input.item.proposedDashboardField, input.item.field, input.item.label, input.item.title, input.item.fieldKey)
   if (!checklistLabel) return false
   if (includesExisting(state.dataRoomSources, record =>
     stringValue(record.checklistLabel).toLowerCase() === checklistLabel.toLowerCase() &&
@@ -2125,15 +2157,22 @@ function appendDataRoomCandidate(
   state.dataRoomSources.push({
     id: stableId('autopilot-source', input.runKey, checklistLabel),
     checklistLabel,
+    fieldKey: dashboardFieldKey(input.item, input.group, input.field),
     area: areaForGroup(input.group),
     dashboardGroup: input.group,
+    group: input.group,
+    proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.field, input.item.label, checklistLabel, input.item.fieldKey),
     supplier: firstString(input.item.supplier),
     material: firstString(input.item.material),
     proposedValue: input.value,
     sourceTier: input.tier,
+    reportedSourceTier: firstString(input.item.sourceTier) || undefined,
     dataType: input.dataType,
     confidence: input.item.confidence,
     evidenceStatus: safeCandidateStatus(input.evidenceStatus),
+    reviewRequired: Boolean(input.reasons.length || input.item.reviewRequired === true),
+    reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
+    riskReason: firstString(input.item.riskReason) || (input.reasons.join('; ') || undefined),
     source: input.source,
     notes: [
       `Autopilot candidate from ${input.group}.`,
@@ -2176,6 +2215,9 @@ function appendVisibleDashboardCandidate(
       evidenceStatus: safeCandidateStatus(input.evidenceStatus),
       lastChecked: input.lastChecked,
       runKey: input.runKey,
+      tier: input.tier,
+      dataType: input.dataType,
+      reasons: input.reasons,
     })
   }
 
@@ -2187,6 +2229,10 @@ function appendVisibleDashboardCandidate(
       evidenceStatus: safeCandidateStatus(input.evidenceStatus),
       lastChecked: input.lastChecked,
       runKey: input.runKey,
+      tier: input.tier,
+      dataType: input.dataType,
+      field: input.field,
+      reasons: input.reasons,
     })
   }
 
@@ -2215,6 +2261,8 @@ function appendReviewFinding(
     confidence: Confidence
     lastChecked: string
     runKey: string
+    tier: SourceTier
+    dataType: string
     reasons: string[]
   },
 ): boolean {
@@ -2238,15 +2286,22 @@ function appendReviewFinding(
     suggestedInvestorMaterial: input.group === 'investorMaterialCandidates'
       ? firstString(input.item.content, input.item.value)
       : undefined,
+    dashboardGroup: input.group,
+    sourceTier: input.tier,
+    dataType: input.dataType,
+    reviewRequired: true,
+    riskReason: firstString(input.item.riskReason) || (input.reasons.join('; ') || undefined),
     riskNote: firstString(input.item.riskReason) || input.reasons.join('; ') || 'Review required by dashboard autopilot policy',
     status: 'Pending Review' satisfies ResearchReviewStatus,
     createdAt: input.lastChecked,
     dashboardTarget: {
       group: input.group,
+      dashboardGroup: input.group,
       screen: GROUP_SCREEN[input.group],
+      fieldKey: dashboardFieldKey(input.item, input.group, title),
       field: title,
       value,
-      proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.fieldKey, input.item.field, input.item.label, title),
+      proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.field, input.item.label, title, input.item.fieldKey),
       companyName: firstString(input.item.companyName, input.item.title, input.item.label),
       countryRegion: firstString(input.item.countryRegion),
       productEquivalent: firstString(input.item.productEquivalent),
@@ -2259,8 +2314,12 @@ function appendReviewFinding(
       material: firstString(input.item.material),
       section: firstString(input.item.section),
       content: firstString(input.item.content, input.item.value),
-      sourceTier: normalizeSourceTierForItem(input.item),
-      dataType: coerceDataType(input.item.dataType, GROUP_DEFAULT_DATA_TYPE[input.group]),
+      sourceTier: input.tier,
+      reportedSourceTier: firstString(input.item.sourceTier) || undefined,
+      dataType: input.dataType,
+      reviewRequired: true,
+      reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
+      riskReason: firstString(input.item.riskReason) || (input.reasons.join('; ') || undefined),
       sensitive: input.item.sensitive === true,
       runKey: input.runKey,
     },
@@ -2315,14 +2374,16 @@ function applyDashboardUpdates(
           confidence,
           lastChecked,
           runKey,
+          tier,
+          dataType,
           reasons,
         })) stagedReviewCount += 1
         continue
       }
 
       const added = group === 'competitorRecords'
-        ? appendCompetitorRecord(state, { item, value, source, evidenceStatus, lastChecked, runKey })
-        : appendMarketClaim(state, { item, group, field, value, source, confidence, evidenceStatus, lastChecked, runKey })
+        ? appendCompetitorRecord(state, { item, value, source, evidenceStatus, lastChecked, runKey, tier, dataType, field, reasons })
+        : appendMarketClaim(state, { item, group, field, value, source, confidence, evidenceStatus, lastChecked, runKey, tier, dataType, reasons })
       if (added) autoFilledCount += 1
     }
   }

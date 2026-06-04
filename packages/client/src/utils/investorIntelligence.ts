@@ -30,9 +30,16 @@ export interface MarketClaim {
   id?: string
   label: string
   value?: string
+  fieldKey?: string
+  dashboardGroup?: string
+  proposedDashboardField?: string
   source?: SourceReference | null
+  sourceTier?: string
+  dataType?: string
   confidence?: 'low' | 'medium' | 'high'
   evidenceStatus: IntelligenceEvidenceStatus
+  reviewRequired?: boolean
+  riskReason?: string
   lastChecked?: string
 }
 

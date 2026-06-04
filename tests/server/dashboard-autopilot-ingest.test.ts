@@ -397,6 +397,7 @@ describe('dashboard autopilot output ingestion', () => {
       dashboard_updates: {
         marketClaims: [
           {
+            fieldKey: 'market.officialTextileSectorReference',
             field: 'Official textile sector reference',
             label: 'Official textile sector reference',
             value: 'China textile sector policy page identified',
@@ -408,6 +409,7 @@ describe('dashboard autopilot output ingestion', () => {
             dataType: 'company_data',
           },
           {
+            fieldKey: 'market.marketSizeScope',
             field: 'Market Size / Scope',
             label: 'China market size',
             value: '$3.2B',
@@ -421,6 +423,7 @@ describe('dashboard autopilot output ingestion', () => {
         ],
         financialEvidence: [
           {
+            fieldKey: 'investment.projectIrr',
             field: 'Project IRR',
             value: '60%',
             sourceTitle: 'Unsourced screenshot template',
@@ -432,6 +435,7 @@ describe('dashboard autopilot output ingestion', () => {
         ],
         supplierScorecards: [
           {
+            fieldKey: 'rawMaterial.supplierScorecardWilmar',
             field: 'Supplier scorecard - Wilmar',
             supplier: 'Wilmar',
             material: 'Stearic Acid TP',
@@ -447,6 +451,7 @@ describe('dashboard autopilot output ingestion', () => {
         ],
         competitorRecords: [
           {
+            fieldKey: 'competitor.transfarMarketShare',
             companyName: 'Transfar',
             countryRegion: 'China',
             productEquivalent: 'Cationic softener',
@@ -476,7 +481,13 @@ describe('dashboard autopilot output ingestion', () => {
       expect.objectContaining({
         label: 'Official textile sector reference',
         value: 'China textile sector policy page identified',
+        fieldKey: 'market.officialTextileSectorReference',
+        dashboardGroup: 'marketClaims',
+        proposedDashboardField: 'Official textile sector reference',
+        sourceTier: 'tier1-official',
+        dataType: 'company_data',
         evidenceStatus: 'Official Data',
+        reviewRequired: false,
         source: expect.objectContaining({
           title: 'Ministry textile policy page',
           url: 'https://example.gov.cn/textile-policy',
@@ -492,9 +503,11 @@ describe('dashboard autopilot output ingestion', () => {
         dashboardTarget: expect.objectContaining({
           group: 'marketClaims',
           screen: 'market',
+          fieldKey: 'market.marketSizeScope',
           proposedDashboardField: 'Market Size / Scope',
           value: '$3.2B',
           sourceTier: 'tier5-public-listing',
+          dataType: 'market_size',
         }),
       }),
       expect.objectContaining({
@@ -503,6 +516,7 @@ describe('dashboard autopilot output ingestion', () => {
         dashboardTarget: expect.objectContaining({
           group: 'financialEvidence',
           screen: 'investment',
+          fieldKey: 'investment.projectIrr',
           proposedDashboardField: 'Project IRR',
           value: '60%',
           dataType: 'financial_data',
@@ -514,6 +528,7 @@ describe('dashboard autopilot output ingestion', () => {
         dashboardTarget: expect.objectContaining({
           group: 'supplierScorecards',
           screen: 'raw-material-sourcing',
+          fieldKey: 'rawMaterial.supplierScorecardWilmar',
           supplier: 'Wilmar',
           material: 'Stearic Acid TP',
           value: '$1,180/t',
@@ -525,6 +540,7 @@ describe('dashboard autopilot output ingestion', () => {
         dashboardTarget: expect.objectContaining({
           group: 'competitorRecords',
           screen: 'competitor',
+          fieldKey: 'competitor.transfarMarketShare',
           companyName: 'Transfar',
           marketShare: '12%',
         }),
@@ -533,13 +549,17 @@ describe('dashboard autopilot output ingestion', () => {
     expect(envelope?.state.dataRoomSources).toEqual([
       expect.objectContaining({
         checklistLabel: 'Supplier scorecard - Wilmar',
+        fieldKey: 'rawMaterial.supplierScorecardWilmar',
         dashboardGroup: 'supplierScorecards',
+        proposedDashboardField: 'Supplier scorecard - Wilmar',
         supplier: 'Wilmar',
         material: 'Stearic Acid TP',
         proposedValue: '$1,180/t',
         sourceTier: 'tier3-supplier-evidence',
         dataType: 'supplier_quote',
         evidenceStatus: 'To Verify',
+        reviewRequired: true,
+        riskReason: expect.stringContaining('Hermes marked this finding review-required'),
         source: expect.objectContaining({
           title: 'Supplier quote needed',
           url: 'https://example.com/wilmar-stearic-acid-quote',
@@ -640,6 +660,7 @@ describe('dashboard autopilot output ingestion', () => {
     writeRunOutput(hermesHome, 'job-missing-coverage-1', '2026-06-03T08-00-00.md', {
       dashboard_updates: {
         competitorRecords: [{
+          fieldKey: 'competitor.stepanOfficialProductPortfolio',
           companyName: 'Stepan Company',
           countryRegion: 'United States',
           value: 'Official product portfolio source identified',
@@ -671,9 +692,16 @@ describe('dashboard autopilot output ingestion', () => {
     expect(envelope?.state.competitors).toEqual([
       expect.objectContaining({
         companyName: 'Stepan Company',
+        fieldKey: 'competitor.stepanOfficialProductPortfolio',
+        dashboardGroup: 'competitorRecords',
+        proposedDashboardField: 'Stepan Company',
         countryRegion: 'United States',
         productEquivalent: 'Official esterquat / fabric softener product reference',
         marketShare: '',
+        sourceTier: 'tier2-company-official',
+        dataType: 'competitor_data',
+        confidence: 'high',
+        reviewRequired: false,
         source: expect.objectContaining({
           title: 'Stepan official product reference',
           url: 'https://www.stepan.com/',
@@ -930,6 +958,132 @@ describe('dashboard autopilot output ingestion', () => {
           screen: 'investment',
           sourceTier: 'tier3-supplier-evidence',
           dataType: 'financial_data',
+        }),
+      }),
+    ])
+  })
+
+  it('preserves dashboard field identity metadata in durable records and review targets', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-02T09-15-00.000000+00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          fieldKey: 'market.officialTextilePolicy',
+          proposedDashboardField: 'Official textile sector reference',
+          field: 'Official textile sector reference',
+          label: 'Official textile sector reference',
+          value: 'China textile sector policy page identified',
+          sourceTitle: 'Ministry textile policy page',
+          sourceUrl: 'https://example.gov.cn/textile-policy',
+          sourceTier: 'Tier 1 - Official / regulator / trade source',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'company_data',
+          reviewRequired: false,
+        }],
+        competitorRecords: [{
+          fieldKey: 'competitors.stepan.productEquivalent',
+          proposedDashboardField: 'Competitor product equivalent - Stepan',
+          companyName: 'Stepan Company',
+          countryRegion: 'United States',
+          productEquivalent: 'Official esterquat product reference',
+          activeContent: 'Official source identified',
+          pricingEvidence: 'Official source does not publish pricing',
+          certifications: 'Product documentation available',
+          distributionPresence: 'Global distribution page identified',
+          sourceTitle: 'Stepan official product reference',
+          sourceUrl: 'https://www.stepan.com/',
+          sourceTier: 'Tier 2 - Official company / product source',
+          confidence: 'high',
+          evidenceStatus: 'Source-backed',
+          dataType: 'competitor_data',
+          reviewRequired: false,
+        }],
+        supplierScorecards: [{
+          fieldKey: 'supplier.wilmar.stearicPrice',
+          proposedDashboardField: 'Supplier scorecard - Wilmar price benchmark',
+          field: 'Supplier scorecard - Wilmar price benchmark',
+          supplier: 'Wilmar',
+          material: 'Stearic Acid TP',
+          value: 'USD 1,180/t dated supplier quote',
+          sourceTitle: 'Uploaded Wilmar quote',
+          sourceUrl: 'file://documents/wilmar-stearic-quote.pdf',
+          sourceTier: 'Tier 3 - Uploaded supplier evidence',
+          confidence: 'medium',
+          evidenceStatus: 'Supplier Evidence',
+          dataType: 'supplier_quote',
+          reviewRequired: true,
+          riskReason: 'Supplier quote needs owner price validation.',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 2,
+      stagedReviewCount: 1,
+    })
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({
+        fieldKey: 'market.officialTextilePolicy',
+        dashboardGroup: 'marketClaims',
+        group: 'marketClaims',
+        proposedDashboardField: 'Official textile sector reference',
+        sourceTier: 'tier1-official',
+        reportedSourceTier: 'Tier 1 - Official / regulator / trade source',
+        dataType: 'company_data',
+        reviewRequired: false,
+        reportedReviewRequired: false,
+      }),
+    ])
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        fieldKey: 'competitors.stepan.productEquivalent',
+        dashboardGroup: 'competitorRecords',
+        group: 'competitorRecords',
+        proposedDashboardField: 'Competitor product equivalent - Stepan',
+        sourceTier: 'tier2-company-official',
+        reportedSourceTier: 'Tier 2 - Official company / product source',
+        dataType: 'competitor_data',
+        reviewRequired: false,
+        reportedReviewRequired: false,
+      }),
+    ])
+    expect(envelope?.state.dataRoomSources).toEqual([
+      expect.objectContaining({
+        fieldKey: 'supplier.wilmar.stearicPrice',
+        dashboardGroup: 'supplierScorecards',
+        group: 'supplierScorecards',
+        proposedDashboardField: 'Supplier scorecard - Wilmar price benchmark',
+        sourceTier: 'tier3-supplier-evidence',
+        reportedSourceTier: 'Tier 3 - Uploaded supplier evidence',
+        dataType: 'supplier_quote',
+        reviewRequired: true,
+        reportedReviewRequired: true,
+        riskReason: 'Supplier quote needs owner price validation.',
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        dashboardGroup: 'supplierScorecards',
+        sourceTier: 'tier3-supplier-evidence',
+        dataType: 'supplier_quote',
+        reviewRequired: true,
+        riskReason: 'Supplier quote needs owner price validation.',
+        dashboardTarget: expect.objectContaining({
+          fieldKey: 'supplier.wilmar.stearicPrice',
+          dashboardGroup: 'supplierScorecards',
+          group: 'supplierScorecards',
+          proposedDashboardField: 'Supplier scorecard - Wilmar price benchmark',
+          sourceTier: 'tier3-supplier-evidence',
+          reportedSourceTier: 'Tier 3 - Uploaded supplier evidence',
+          dataType: 'supplier_quote',
+          reviewRequired: true,
+          reportedReviewRequired: true,
+          riskReason: 'Supplier quote needs owner price validation.',
         }),
       }),
     ])

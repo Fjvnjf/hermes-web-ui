@@ -23,7 +23,6 @@ import {
   displayAutomaticVerificationText,
   displayEvidenceStatus,
   isPresentationMaterialAllowed,
-  normalizedMarketClaimStatus,
   sourceIsUsable,
   type InvestorNextAction,
   type PresentationMaterial,
@@ -33,6 +32,10 @@ import {
   buildDashboardCoverageRows,
   missingDashboardCoverageTargetCount,
 } from '@/utils/dashboardCoverage'
+import {
+  firstSourceBackedDashboardRecord,
+  resolveSourceBackedDashboardRecords,
+} from '@/utils/dashboardSourceResolver'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -56,17 +59,6 @@ const isDeveloperHome = computed(() => frontendRole.value === 'developer_admin')
 const isLimitedBusinessHome = computed(() =>
   ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'].includes(frontendRole.value)
 )
-const dashboardSourceBackedStatuses = new Set([
-  'Verified',
-  'Source-backed',
-  'Official Data',
-  'Trusted Source Auto-Updated',
-  'Supplier Evidence',
-  'User Provided',
-  'User Approved',
-  'Investor Approved',
-])
-
 const enabledJobs = computed(() => jobs.value.filter(job => job.enabled).length)
 const activeSessions = computed(() => runtime.value?.sessions.active ?? sessions.value.length)
 const runningSessions = computed(() => runtime.value?.sessions.running ?? 0)
@@ -219,24 +211,33 @@ const deckMaterialsNeedingEvidence = computed(() =>
     .slice(0, 4),
 )
 const sourceBackedGrowthClaim = computed(() =>
-  intelligence.state.value.marketClaims.find(claim =>
-    sourceIsUsable(claim.source) &&
-    dashboardSourceBackedStatuses.has(normalizedMarketClaimStatus(claim)) &&
-    /growth|cagr|demand|consumption/i.test(`${claim.label} ${claim.value}`)
-  ) || null
+  firstSourceBackedDashboardRecord(intelligence.state.value, [{
+    group: 'marketClaims',
+    fields: ['Growth Rate', 'Country-wise Consumption Growth'],
+  }])
 )
 const sourceBackedProductSignal = computed(() =>
-  intelligence.state.value.marketClaims.find(claim =>
-    sourceIsUsable(claim.source) &&
-    dashboardSourceBackedStatuses.has(normalizedMarketClaimStatus(claim)) &&
-    /product|cwas|cwms|softener|ester|quat|silicone/i.test(`${claim.label} ${claim.value}`)
-  ) || null
+  firstSourceBackedDashboardRecord(intelligence.state.value, [
+    {
+      group: 'marketClaims',
+      fields: ['Market Segmentation'],
+    },
+    {
+      group: 'rawMaterialSignals',
+      fields: ['SDS / TDS / COA Evidence'],
+    },
+  ])
+)
+const sourceBackedCompetitorRecords = computed(() =>
+  resolveSourceBackedDashboardRecords(intelligence.state.value, [{
+    group: 'competitorRecords',
+    fields: ['Competitors Profiled'],
+  }])
 )
 const sourceBackedCompetitorCount = computed(() =>
   new Set(
-    intelligence.state.value.competitors
-      .filter(competitor => sourceIsUsable(competitor.source))
-      .map(competitor => normalizedDashboardCompetitorKey(competitor.companyName)),
+    sourceBackedCompetitorRecords.value
+      .map(record => normalizedDashboardCompetitorKey(record.label)),
   ).size
 )
 const executiveSnapshotCards = computed(() => {
@@ -616,18 +617,20 @@ const revenueTrendRows = computed(() => {
 })
 
 const marketShareVisualRows = computed(() => {
-  const rows = intelligence.state.value.competitors
-    .map(competitor => {
-      const numericShare = parseDashboardNumber(competitor.marketShare)
-      const usableSource = sourceIsUsable(competitor.source)
-      if (!usableSource || numericShare === null) return null
+  const rows = resolveSourceBackedDashboardRecords(intelligence.state.value, [{
+    group: 'competitorRecords',
+    fields: ['Market Share Chart'],
+  }])
+    .map(record => {
+      const numericShare = parseDashboardNumber(record.value)
+      if (numericShare === null) return null
       return {
-        id: competitor.id,
-        label: competitor.companyName,
+        id: record.id,
+        label: record.label,
         value: numericShare,
         displayValue: `${numericShare.toFixed(numericShare >= 10 ? 0 : 1)}%`,
-        status: displayEvidenceStatus(competitor.evidenceStatus),
-        source: competitor.source?.title || 'Source attached',
+        status: displayEvidenceStatus(record.evidenceStatus),
+        source: record.source.title || 'Source attached',
       }
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row))
@@ -658,20 +661,20 @@ const marketSharePieStyle = computed(() => {
 })
 
 const growthTrendVisualRows = computed(() => {
-  const acceptedStatuses = new Set(['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated', 'User Approved', 'Investor Approved'])
-  const rows = intelligence.state.value.marketClaims
-    .map(claim => {
-      const status = normalizedMarketClaimStatus(claim)
-      const numericGrowth = parseDashboardNumber(claim.value)
-      if (!sourceIsUsable(claim.source) || numericGrowth === null || !acceptedStatuses.has(status)) return null
-      if (!/growth|cagr|demand|consumption|market/i.test(`${claim.label} ${claim.value}`)) return null
+  const rows = resolveSourceBackedDashboardRecords(intelligence.state.value, [{
+    group: 'marketClaims',
+    fields: ['Growth Rate', 'Country-wise Consumption Growth'],
+  }])
+    .map(record => {
+      const numericGrowth = parseDashboardNumber(record.value)
+      if (numericGrowth === null) return null
       return {
-        id: claim.id || claim.label,
-        label: claim.label,
+        id: record.id,
+        label: record.label,
         value: numericGrowth,
-        displayValue: claim.value || `${numericGrowth}%`,
-        status: displayEvidenceStatus(status),
-        source: claim.source?.title || 'Source attached',
+        displayValue: record.value || `${numericGrowth}%`,
+        status: displayEvidenceStatus(record.evidenceStatus),
+        source: record.source.title || 'Source attached',
       }
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row))

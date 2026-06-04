@@ -36,6 +36,9 @@ export interface FeasibilityEvidenceItem extends ReadinessItem {
 export interface CompetitorIntelligenceRecord {
   id: string
   companyName: string
+  fieldKey?: string
+  dashboardGroup?: string
+  proposedDashboardField?: string
   countryRegion: string
   productEquivalent: string
   activeContent: string
@@ -47,6 +50,11 @@ export interface CompetitorIntelligenceRecord {
   yearlyGrowth?: string
   evidenceStatus: IntelligenceEvidenceStatus
   source?: SourceReference | null
+  sourceTier?: string
+  dataType?: string
+  confidence?: 'low' | 'medium' | 'high' | string
+  reviewRequired?: boolean
+  riskReason?: string
   notes: string
   updatedAt: string
 }
@@ -79,6 +87,11 @@ export interface ResearchReviewFinding {
   source?: SourceReference | null
   suggestedTask?: string
   suggestedInvestorMaterial?: string
+  dashboardGroup?: ResearchReviewDashboardTargetGroup
+  sourceTier?: string
+  dataType?: string
+  reviewRequired?: boolean
+  riskReason?: string
   riskNote?: string
   status: ResearchReviewStatus
   createdAt: string
@@ -100,7 +113,9 @@ export type ResearchReviewDashboardTargetGroup =
 
 export interface ResearchReviewDashboardTarget {
   group: ResearchReviewDashboardTargetGroup
+  dashboardGroup?: ResearchReviewDashboardTargetGroup
   screen?: string
+  fieldKey?: string
   field?: string
   value?: string
   proposedDashboardField?: string
@@ -119,7 +134,11 @@ export interface ResearchReviewDashboardTarget {
   section?: string
   content?: string
   sourceTier?: string
+  reportedSourceTier?: string
   dataType?: string
+  reviewRequired?: boolean
+  reportedReviewRequired?: boolean
+  riskReason?: string
   sensitive?: boolean
   runKey?: string
 }
@@ -162,18 +181,22 @@ export interface FinancialModelSnapshot {
 export interface DataRoomSourceRecord {
   id: string
   checklistLabel: string
+  fieldKey?: string
   area: EvidenceArea
   evidenceStatus: IntelligenceEvidenceStatus
   source: SourceReference | null
   notes: string
   updatedAt: string
   dashboardGroup?: string
+  proposedDashboardField?: string
   supplier?: string
   material?: string
   proposedValue?: string
   sourceTier?: string
   dataType?: string
   confidence?: 'low' | 'medium' | 'high' | string
+  reviewRequired?: boolean
+  riskReason?: string
 }
 
 export interface FeasibilityIntelligenceState {
@@ -876,16 +899,26 @@ export function useFeasibilityIntelligence() {
 
     if (target.group === 'marketClaims') {
       addMarketClaim({
+        fieldKey: nonEmpty(target.fieldKey),
+        dashboardGroup: target.group,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
         label: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
         value: nonEmpty(target.value) || current.summary,
         evidenceStatus: current.evidenceStatus,
         confidence: current.confidence,
         source: current.source || null,
+        sourceTier: target.sourceTier,
+        dataType: target.dataType,
+        reviewRequired: target.reviewRequired,
+        riskReason: target.riskReason || current.riskNote,
         lastChecked: current.reviewedAt || nowIso(),
       })
       applied = true
     } else if (target.group === 'competitorRecords') {
       addCompetitor({
+        fieldKey: nonEmpty(target.fieldKey),
+        dashboardGroup: target.group,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
         companyName: nonEmpty(target.companyName) || current.keyClaim.replace(/^Competitor(?: evidence| research)?:\s*/i, '') || 'Competitor to verify',
         countryRegion: nonEmpty(target.countryRegion) || 'To Verify',
         productEquivalent: nonEmpty(target.productEquivalent) || 'To Verify',
@@ -898,6 +931,11 @@ export function useFeasibilityIntelligence() {
         yearlyGrowth: nonEmpty(target.yearlyGrowth),
         evidenceStatus: current.evidenceStatus,
         source: current.source || null,
+        sourceTier: target.sourceTier,
+        dataType: target.dataType,
+        confidence: current.confidence,
+        reviewRequired: target.reviewRequired,
+        riskReason: target.riskReason || current.riskNote,
         notes: [
           nonEmpty(target.value) || current.summary,
           `Approved from Research Result Review: ${current.keyClaim}`,
@@ -925,7 +963,18 @@ export function useFeasibilityIntelligence() {
     ) {
       addDataRoomSource({
         checklistLabel: dataRoomLabelForTarget(current),
+        fieldKey: nonEmpty(target.fieldKey),
         area: current.area,
+        dashboardGroup: target.group,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || dataRoomLabelForTarget(current),
+        supplier: nonEmpty(target.supplier),
+        material: nonEmpty(target.material),
+        proposedValue: nonEmpty(target.value),
+        sourceTier: target.sourceTier,
+        dataType: target.dataType,
+        confidence: current.confidence,
+        reviewRequired: target.reviewRequired,
+        riskReason: target.riskReason || current.riskNote,
         evidenceStatus: current.evidenceStatus,
         source: current.source || null,
         notes: dataRoomNotesForTarget(current),

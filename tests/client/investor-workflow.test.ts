@@ -1814,11 +1814,14 @@ describe('investor readiness pages', () => {
       dashboardTarget: {
         group: 'marketClaims',
         screen: 'market',
+        fieldKey: 'market.marketSizeScope',
         field: 'Market Size / Scope',
         proposedDashboardField: 'Market Size / Scope',
         value: 'Official textile-sector source located',
         sourceTier: 'tier1-official',
         dataType: 'company_data',
+        reviewRequired: true,
+        riskReason: 'Market scope needs owner review before dashboard use.',
       },
     })
     const wrapper = mount(ResearchResultReviewView, {
@@ -1835,9 +1838,16 @@ describe('investor readiness pages', () => {
     expect(finding.status).toBe('Approved')
     expect(finding.dashboardAppliedAt).toBeTruthy()
     expect(claim.label).toBe('Market Size / Scope')
+    expect(claim.fieldKey).toBe('market.marketSizeScope')
+    expect(claim.dashboardGroup).toBe('marketClaims')
+    expect(claim.proposedDashboardField).toBe('Market Size / Scope')
     expect(claim.value).toBe('Official textile-sector source located')
     expect(claim.evidenceStatus).toBe('Source-backed')
     expect(claim.source?.title).toBe('Official textile source')
+    expect(claim.sourceTier).toBe('tier1-official')
+    expect(claim.dataType).toBe('company_data')
+    expect(claim.reviewRequired).toBe(true)
+    expect(claim.riskReason).toBe('Market scope needs owner review before dashboard use.')
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Source-backed')
   })
 
@@ -1853,7 +1863,9 @@ describe('investor readiness pages', () => {
       dashboardTarget: {
         group: 'competitorRecords',
         screen: 'competitor',
+        fieldKey: 'competitor.exampleSoftenerCo.productPortfolio',
         field: 'Example Softener Co',
+        proposedDashboardField: 'Competitor product equivalent - Example Softener Co',
         companyName: 'Example Softener Co',
         countryRegion: 'China',
         productEquivalent: 'Cationic softener',
@@ -1866,6 +1878,8 @@ describe('investor readiness pages', () => {
         yearlyGrowth: '+6% source-backed',
         sourceTier: 'tier2-company-official',
         dataType: 'competitor_data',
+        reviewRequired: true,
+        riskReason: 'Competitor growth requires review before business use.',
       },
     })
     const wrapper = mount(ResearchResultReviewView, {
@@ -1878,11 +1892,19 @@ describe('investor readiness pages', () => {
     const competitor = intelligence.state.value.competitors[0]
     expect(intelligence.state.value.researchFindings[0].dashboardAppliedAt).toBeTruthy()
     expect(competitor.companyName).toBe('Example Softener Co')
+    expect(competitor.fieldKey).toBe('competitor.exampleSoftenerCo.productPortfolio')
+    expect(competitor.dashboardGroup).toBe('competitorRecords')
+    expect(competitor.proposedDashboardField).toBe('Competitor product equivalent - Example Softener Co')
     expect(competitor.productEquivalent).toBe('Cationic softener')
     expect(competitor.distributionPresence).toBe('Official product page and distributor mention')
     expect(competitor.revenue).toBe('$80M source-backed')
     expect(competitor.yearlyGrowth).toBe('+6% source-backed')
     expect(competitor.evidenceStatus).toBe('Source-backed')
+    expect(competitor.sourceTier).toBe('tier2-company-official')
+    expect(competitor.dataType).toBe('competitor_data')
+    expect(competitor.confidence).toBe('high')
+    expect(competitor.reviewRequired).toBe(true)
+    expect(competitor.riskReason).toBe('Competitor growth requires review before business use.')
     expect(formatMarketShare(competitor.marketShare)).toBe('To Verify')
   })
 
