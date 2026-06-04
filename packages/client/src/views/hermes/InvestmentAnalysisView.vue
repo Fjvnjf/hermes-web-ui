@@ -515,7 +515,7 @@ onMounted(loadRefreshState)
             <span>{{ row.keyItems }}</span>
             <span>{{ displayInvestmentValue(row.amount) }}</span>
             <span>{{ displayInvestmentValue(row.percent) }}</span>
-            <span class="template-placeholder-bar" aria-label="Hermes verifying twice daily bar"></span>
+            <span class="template-placeholder-bar" aria-label="Source-backed value needed bar"></span>
             <span>{{ row.source }}</span>
             <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
           </div>

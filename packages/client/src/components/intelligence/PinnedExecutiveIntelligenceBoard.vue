@@ -420,7 +420,7 @@ async function enableTwiceDailyRefresh() {
       question: 'What changed in executive feasibility intelligence since the previous refresh?',
       scope: 'Last 24 Hours, raw materials, market, competitors, investor readiness, IRR status, evidence gaps, and presentation improvements.',
       expectedOutput: 'A review-ready result for Research Result Review, not investor-approved facts.',
-      sourceRequirements: 'Every value or claim needs source title plus URL/date, or it stays in Hermes automatic verification.',
+      sourceRequirements: 'Every value or claim needs source title plus URL/date, or it stays in source review.',
       priority: 'high',
       schedulePreference: 'Custom',
       scheduledJobId: job.job_id || job.id,

@@ -365,7 +365,7 @@ function addToInvestorReview(record: ExportMarketRecord) {
           </select>
         </label>
         <label>HS code <input v-model="form.hsCode" placeholder="Hermes verifies automatically" /></label>
-        <label>Data method <input v-model="form.dataMethod" placeholder="Trade proxy / Hermes verifying twice daily" /></label>
+        <label>Data method <input v-model="form.dataMethod" placeholder="Trade proxy / source review needed" /></label>
         <label>Import value/volume <input v-model="form.valueVolume" placeholder="Hermes verifies automatically" /></label>
         <label>Growth/CAGR <input v-model="form.growth" placeholder="Hermes verifies automatically" /></label>
         <label>Opportunity score <input v-model="form.opportunityScore" placeholder="Hermes verifies automatically" /></label>

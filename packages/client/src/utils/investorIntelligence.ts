@@ -148,7 +148,7 @@ export function formatSourceReference(source?: SourceReference | null): string {
   return details ? `${title} (${details})` : title
 }
 
-export const AUTOMATIC_VERIFICATION_LABEL = 'Hermes verifying twice daily'
+export const AUTOMATIC_VERIFICATION_LABEL = 'No source-backed value yet'
 
 export function displayEvidenceStatus(status?: string | null): string {
   const normalized = String(status || '').trim()

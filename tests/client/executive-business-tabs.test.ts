@@ -203,7 +203,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Scenario Selector')
     expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('No approved source-backed value')
-    expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
     expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
     expect(wrapper.text()).toContain('User PDF Project Analysis Reference - 60,000 MT/YR Esterquat Plant')
     expect(wrapper.text()).toContain('$16M')
@@ -355,7 +356,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Mainland China accounts for nearly half of global textile chemicals value')
     expect(wrapper.text()).toContain('Keqiao 8,000+ textile businesses')
     expect(wrapper.text()).toContain('Example supplier')
-    expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
     expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
     for (const selector of [
       '.market-map-brief',
@@ -429,7 +431,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('CHT Group')
     expect(wrapper.text()).toContain('Archroma')
     expect(wrapper.text()).toContain('Zschimmer & Schwarz')
-    expect(wrapper.text()).toContain('price/kg, revenue, yearly growth, product equivalence, and local supplier claims remain in Hermes automatic')
+    expect(wrapper.text()).toContain('price/kg, revenue, yearly growth, product equivalence, and local supplier claims remain in source review')
     expect(wrapper.text()).toContain('Competitor Product / Price / Share / Revenue / Growth')
     expect(wrapper.text()).toContain('One table for the numbers you asked for')
     expect(wrapper.text()).toContain('Product focus')
@@ -442,7 +444,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('7% source-backed')
     expect(wrapper.text()).toContain('$42M source-backed')
     expect(wrapper.text()).toContain('+8% source-backed')
-    expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
     expect(competitorTextLower).toContain('global competitor analysis')
     expect(wrapper.text()).toContain('Supplier Types, Strategic Threats, and Evidence Gaps')
     expect(wrapper.text()).toContain('Global formulation houses')
@@ -500,7 +503,7 @@ describe('screenshot-matched executive business tabs', () => {
       companyName: 'Beta Source Co',
       countryRegion: 'Germany',
       productEquivalent: 'Silicone Softener',
-      activeContent: 'Hermes verifying twice daily',
+      activeContent: 'No source-backed value yet',
       pricingEvidence: '$36/kg source-backed',
       certifications: 'Official product page',
       distributionPresence: 'Official distributor page',
@@ -520,7 +523,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).toContain('Market Share')
     expect(panel().text()).toContain('Revenue')
     expect(panel().text()).toContain('YoY Growth')
-    expect(panel().text()).toContain('Hermes verifying twice daily')
+    expect(panel().text()).toContain('No source-backed value yet')
+    expect(panel().text()).not.toContain('Hermes verifying twice daily')
     const alphaRows = wrapper.findAll('.comparison-grid-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(alphaRows).toHaveLength(1)
@@ -543,7 +547,8 @@ describe('screenshot-matched executive business tabs', () => {
     await evidenceSelect.setValue('Auto-checking')
     await flushPromises()
     expect(panel().text()).toContain('WACKER')
-    expect(panel().text()).toContain('Hermes verifying twice daily')
+    expect(panel().text()).toContain('No source-backed value yet')
+    expect(panel().text()).not.toContain('Hermes verifying twice daily')
     expect(panel().text()).not.toContain('$18-22')
     expect(panel().text()).not.toContain('20-25%')
   })
@@ -661,7 +666,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Hermes Autopilot has filled 1 country-wise trade-proxy records')
     expect(text).toContain('China')
     expect(text).toContain('Textile auxiliary / softener trade proxy')
-    expect(text).toContain('HS 380991 trade proxy / Hermes verifying twice daily')
+    expect(text).toContain('HS 380991 trade proxy / No source-backed value yet')
     expect(text).toContain('2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg')
     expect(text).toContain('+21.23%')
     expect(text).toContain('WITS / World Bank Comtrade - China imports of HS 380991')
