@@ -224,7 +224,7 @@ const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
         evidenceStatus: status,
         sourceTitle,
         sourceUrl,
-        nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score in Hermes verification until quote/TDS/SDS/COA evidence is approved.`,
+        nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score in source review until quote/TDS/SDS/COA evidence is approved.`,
         highRisk: isDmsMaterial(`${supplier} ${material}`),
       }
     }),
@@ -308,7 +308,7 @@ const supplierAutopilotCards = computed(() => [
     icon: '📥',
     label: 'Stage',
     value: `${autopilotSupplierScorecardRows.value.length} candidates`,
-    note: 'Imported supplier/source records appear here as automatic verification candidates.',
+    note: 'Imported supplier/source records appear here as source-review candidates.',
   },
   {
     icon: '✅',
@@ -597,7 +597,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
       question: `What source-backed price and supplier evidence exists for ${material.name}?`,
       scope: 'Price references, source dates, supplier confirmation, risk notes, and evidence gaps.',
       expectedOutput: 'Research result for review before dashboard updates.',
-      sourceRequirements: 'Every price or claim needs source title plus URL/date. Unknown values stay in Hermes twice-daily verification until source evidence is approved.',
+      sourceRequirements: 'Every price or claim needs source title plus URL/date. Unknown values stay in source review until source evidence is approved.',
       priority: material.highRisk ? 'high' : 'medium',
       schedulePreference: 'Tonight',
       scheduledJobId: job.job_id || job.id,
@@ -628,7 +628,7 @@ onMounted(() => {
           Track TEA, DMS, ethoxylates, acids, silicone inputs, stearic acid, and packaging without inventing prices.
           Every saved value stays labeled by evidence status and source type.
         </p>
-        <p class="section-help-text">Track source-backed prices. Unsourced values stay in Hermes twice-daily verification and high-risk inputs should become tasks before they influence feasibility outputs.</p>
+        <p class="section-help-text">Track source-backed prices. Unsourced values stay in source review and high-risk inputs should become tasks before they influence feasibility outputs.</p>
       </div>
       <div class="header-actions">
         <RouterLink class="shell-link" :to="{ name: 'hermes.files' }">Documents</RouterLink>
@@ -656,11 +656,11 @@ onMounted(() => {
           <p>
             Screenshot-style supplier board for stearic acid, TEA, PDMS silicone oil, DMS, and acetic acid.
             Supplier names and product targets are source/candidate-backed; prices, quality scores, reliability,
-            payment terms, and total scores remain in automatic verification until quote/TDS/SDS/COA evidence is attached.
+            payment terms, and total scores remain in source review until quote/TDS/SDS/COA evidence is attached.
           </p>
           <p v-if="autopilotSupplierScorecardRows.length" class="autopilot-note">
             Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier/raw-material candidates from trusted-source research.
-            They are visible here as automatic-verification candidates and still require source review before costing or investor use.
+            They are visible here as source-review candidates and still require source review before costing or investor use.
           </p>
           <p class="autopilot-note">
             {{ supplierAutopilotStatus }}<span v-if="supplierAutopilotJobId"> · Job {{ supplierAutopilotJobId }}</span>

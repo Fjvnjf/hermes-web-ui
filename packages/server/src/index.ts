@@ -134,7 +134,12 @@ export async function bootstrap() {
   console.log('[bootstrap] all stores initialized')
 
   app.use(cors({ origin: config.corsOrigins }))
-  app.use(bodyParser())
+  app.use(bodyParser({
+    encoding: 'utf-8',
+    jsonLimit: '10mb',
+    formLimit: '10mb',
+    textLimit: '10mb',
+  }))
   console.log('[bootstrap] cors + bodyParser registered')
 
   // Register all routes (handles auth internally)

@@ -39,6 +39,7 @@ const competitorForm = ref({
 })
 
 const competitors = computed(() => intelligence.state.value.competitors)
+const collapsedCompetitors = computed(() => collapseCompetitorRecords(competitors.value))
 const competitorSubmitLabel = computed(() => editingCompetitorId.value ? 'Update competitor' : 'Save competitor')
 const productContextRows = [
   'Cationic Softeners / CHEMISOFT',
@@ -284,6 +285,12 @@ interface CompetitorMetricRow {
   nextAction: string
 }
 
+interface CollapsedCompetitorRecord extends CompetitorIntelligenceRecord {
+  records: CompetitorIntelligenceRecord[]
+  productVariations: string
+  sourceCount: number
+}
+
 const competitorCategoryOptions = [
   'All',
   'Cationic / Ester Quat',
@@ -475,7 +482,7 @@ const pdfGlobalManufacturerShareRows = [
   { rank: '4', manufacturer: 'Solvay / Syensqo', hq: 'Belgium', capacity: '155 KT/YR', share: '10.7%' },
 ]
 const marketShareChartRows = computed(() =>
-  competitors.value
+  collapsedCompetitors.value
     .map(competitor => ({
       competitor,
       label: competitor.companyName,
@@ -502,11 +509,11 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
     nextAction: row.weakness,
   }))
 
-  const savedRows: CompetitorMetricRow[] = competitors.value.map(competitor => ({
+  const savedRows: CompetitorMetricRow[] = collapsedCompetitors.value.map(competitor => ({
     id: `saved-${competitor.id}`,
     competitor: competitor.companyName,
     hq: competitor.countryRegion || autoVerifyingText,
-    productFocus: competitor.productEquivalent || autoVerifyingText,
+    productFocus: competitor.productVariations || competitor.productEquivalent || autoVerifyingText,
     priceKg: visibleSensitiveValue(competitor.pricingEvidence),
     marketShare: autoVerifyText(competitorMarketShareLabel(competitor)),
     revenue: autoVerifyText(competitor.revenue),
@@ -519,6 +526,51 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
 
   return collapseCompetitorMetricRows([...savedRows, ...templateRows])
 })
+
+function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): CollapsedCompetitorRecord[] {
+  const groups = new Map<string, CompetitorIntelligenceRecord[]>()
+  for (const record of records) {
+    const key = normalizedCompetitorKey(record.companyName)
+    groups.set(key, [...(groups.get(key) || []), record])
+  }
+
+  return Array.from(groups.values()).map(group => {
+    const sourceBacked = group.filter(record => sourceIsUsable(record.source))
+    const primary = sourceBacked[0] || group[0]
+    const productVariations = uniqueValues(group.map(record => record.productEquivalent)).sort((a, b) => a.localeCompare(b))
+    const sourceRecords = sourceBacked.length ? sourceBacked : group.filter(record => record.source?.title)
+    const sourceTitles = uniqueValues(sourceRecords.map(record => record.source?.title))
+    const notes = uniqueValues(group.map(record => record.notes).filter(Boolean))
+
+    return {
+      ...primary,
+      id: group.map(record => record.id).join('__'),
+      companyName: primary.companyName,
+      countryRegion: firstUsefulValue(group.map(record => record.countryRegion), primary.countryRegion),
+      productEquivalent: productVariations.length > 1
+        ? productVariations.join(' / ')
+        : productVariations[0] || primary.productEquivalent,
+      productVariations: productVariations.join(' / ') || primary.productEquivalent,
+      activeContent: firstUsefulValue(group.map(record => record.activeContent), primary.activeContent),
+      pricingEvidence: bestMetricValue(group.map(record => record.pricingEvidence), primary.pricingEvidence || autoVerifyingText, 'min'),
+      certifications: firstUsefulValue(group.map(record => record.certifications), primary.certifications),
+      distributionPresence: firstUsefulValue(group.map(record => record.distributionPresence), primary.distributionPresence),
+      marketShare: bestMetricValue(group.map(record => record.marketShare || ''), primary.marketShare || '', 'max'),
+      revenue: bestMetricValue(group.map(record => record.revenue || ''), primary.revenue || '', 'max'),
+      yearlyGrowth: bestMetricValue(group.map(record => record.yearlyGrowth || ''), primary.yearlyGrowth || '', 'max'),
+      evidenceStatus: strongestEvidenceStatus(group.map(record => record.evidenceStatus)),
+      source: sourceRecords[0]?.source || primary.source || null,
+      notes: notes.length > 1 ? notes.join(' / ') : notes[0] || primary.notes,
+      updatedAt: group
+        .map(record => record.updatedAt)
+        .filter(Boolean)
+        .sort()
+        .at(-1) || primary.updatedAt,
+      records: group,
+      sourceCount: sourceTitles.length,
+    }
+  })
+}
 const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
   const rows = competitorMetricsRows.value.map(row => {
     const hasSource = sourceIsUsable({ title: row.source, url: row.sourceUrl })
@@ -651,7 +703,7 @@ function uniqueValues(values: Array<string | undefined>): string[] {
 }
 
 function firstUsefulValue(values: string[], fallback: string): string {
-  return values.find(value => value && !/hermes verifying twice daily|not published by cited source|source search running/i.test(value)) || fallback
+  return values.find(value => value && !/no source-backed value yet|source review needed|not published by cited source|source search running/i.test(value)) || fallback
 }
 
 function bestMetricValue(values: string[], fallback: string, mode: 'max' | 'min'): string {
@@ -780,6 +832,11 @@ function sortIndicator(key: CompetitorSortKey): string {
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
   return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
+}
+
+function primaryCompetitorRecord(competitor: CompetitorIntelligenceRecord): CompetitorIntelligenceRecord {
+  const collapsed = competitor as CollapsedCompetitorRecord
+  return collapsed.records?.[0] || competitor
 }
 
 function autoVerifyText(value: string | null | undefined): string {
@@ -968,7 +1025,10 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
 
 function removeCompetitor(competitor: CompetitorIntelligenceRecord) {
   if (!window.confirm(`Remove competitor record "${competitor.companyName}" from this browser workspace?`)) return
-  const removed = intelligence.removeCompetitor(competitor.id)
+  const records = (competitor as CollapsedCompetitorRecord).records || [competitor]
+  const removed = records
+    .map(record => intelligence.removeCompetitor(record.id))
+    .some(Boolean)
   if (removed) message.success('Competitor record removed from this browser workspace')
   else message.error('Competitor record was not found')
 }
@@ -1412,11 +1472,11 @@ function addCompetitor() {
       <label>Active content<input v-model="competitorForm.activeContent" type="text" placeholder="Active content" /></label>
       <label v-if="!redactSensitiveFields">Pricing evidence<input v-model="competitorForm.pricingEvidence" type="text" placeholder="Quote, source, or Missing" /></label>
       <label v-else>Pricing evidence<input type="text" value="Restricted" disabled /></label>
-      <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="Hermes verifies automatically" /></label>
-      <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="Hermes verifies automatically" /></label>
+      <label>Certifications<input v-model="competitorForm.certifications" type="text" placeholder="Source review needed" /></label>
+      <label>Distribution<input v-model="competitorForm.distributionPresence" type="text" placeholder="Source review needed" /></label>
       <label>Market share<input v-model="competitorForm.marketShare" type="text" placeholder="Leave blank unless sourced" /></label>
-      <label>Revenue<input v-model="competitorForm.revenue" type="text" placeholder="Hermes verifies automatically" /></label>
-      <label>Yearly growth<input v-model="competitorForm.yearlyGrowth" type="text" placeholder="Hermes verifies automatically" /></label>
+      <label>Revenue<input v-model="competitorForm.revenue" type="text" placeholder="Source review needed" /></label>
+      <label>Yearly growth<input v-model="competitorForm.yearlyGrowth" type="text" placeholder="Source review needed" /></label>
       <label>
         Evidence status
         <select v-model="competitorForm.evidenceStatus">
@@ -1442,25 +1502,28 @@ function addCompetitor() {
       <div class="competitor-row head">
         <span>Competitor</span><span>HQ / Country</span><span>Market Share</span><span>Price/kg</span><span>Strength</span><span>Weakness</span><span>Source</span><span>Evidence Status</span><span>Action</span>
       </div>
-      <p v-if="competitors.length === 0" class="empty-state">
+      <p v-if="collapsedCompetitors.length === 0" class="empty-state">
         No competitor records saved yet. Add sourced records above, or create research tasks for unknown competitors.
       </p>
       <div
-        v-for="competitor in competitors"
+        v-for="competitor in collapsedCompetitors"
         :key="competitor.id"
         class="competitor-row"
-        :class="{ sourced: sourceIsUsable(competitor.source), verify: competitorMarketShareLabel(competitor).includes('To Verify') }"
+        :class="{ sourced: sourceIsUsable(competitor.source), verify: autoVerifyText(competitorMarketShareLabel(competitor)) === autoVerifyingText }"
       >
         <span>{{ competitor.companyName }}</span>
         <span>{{ competitor.countryRegion }}</span>
         <span class="market-share-label">{{ autoVerifyText(competitorMarketShareLabel(competitor)) }}</span>
         <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
-        <span>{{ autoVerifyText(competitor.productEquivalent) }}</span>
+        <span>{{ autoVerifyText(competitor.productVariations || competitor.productEquivalent) }}</span>
         <span class="weakness-label">{{ autoVerifyText(competitor.notes) }}</span>
-        <span>{{ competitor.source?.title || 'Source search running' }}</span>
+        <span>
+          {{ competitor.source?.title || 'Source search running' }}
+          <small v-if="competitor.sourceCount > 1">+{{ competitor.sourceCount - 1 }} more</small>
+        </span>
         <span class="status-badge" :class="competitor.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ displayEvidenceStatus(competitor.evidenceStatus) }}</span>
         <span class="row-actions">
-          <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">
+          <NButton size="tiny" secondary @click="startEditCompetitor(primaryCompetitorRecord(competitor))">
             Edit
           </NButton>
           <NButton size="tiny" secondary @click="stageCompetitorForReview(competitor)">

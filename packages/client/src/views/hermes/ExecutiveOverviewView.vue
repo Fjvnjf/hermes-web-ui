@@ -27,7 +27,7 @@ const commandCards = computed(() => [
   {
     label: 'Market Intelligence',
     value: displayUnresolvedValue(String(intelligence.state.value.marketClaims.length || 'To Verify')),
-    detail: 'Source-backed claims only; missing values stay in automatic verification.',
+    detail: 'Source-backed claims only; missing values stay in source review.',
     routeName: 'hermes.marketIntelligence',
     tone: 'cyan',
   },
@@ -64,7 +64,7 @@ const actionLinks = computed(() => [
         <h2>Hermes Executive Intelligence</h2>
         <p>
           Command-center view for economics, market intelligence, competitor tracking, daily brief, and action review.
-          It uses existing Hermes workspace data only; missing or unsourced values stay in Hermes twice-daily verification.
+          It uses existing Hermes workspace data only; missing or unsourced values stay in source review.
         </p>
       </div>
       <div class="refresh-card">

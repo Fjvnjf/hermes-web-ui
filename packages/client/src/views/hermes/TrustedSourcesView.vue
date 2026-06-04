@@ -681,7 +681,7 @@ async function bootstrapTrustedSourcesView() {
         <ul class="permission-rule-list">
           <li>Important numbers require source title, URL or source date, confidence, evidence status, and review trail.</li>
           <li>Weak, conflicting, sensitive, or candidate-source findings go to Research Result Review instead of becoming facts.</li>
-          <li>Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in Hermes twice-daily verification or Missing until approved evidence arrives.</li>
+          <li>Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in source review until approved evidence arrives.</li>
         </ul>
         <div class="policy-tier-strip" aria-label="Official-first source ranking policy">
           <span>Tier 1: official / regulator / trade</span>
@@ -868,7 +868,7 @@ async function bootstrapTrustedSourcesView() {
         <ul class="autopilot-rule-list">
           <li>Researches official, company, regulatory, trade, supplier, price-reference, and uploaded evidence sources.</li>
           <li>Runs on the existing Hermes Jobs scheduler at 07:00 and 19:00; no separate database or backend migration is required.</li>
-          <li>Fills only source-backed/API/internal-safe fields automatically; unsupported values stay Missing or in Hermes twice-daily verification.</li>
+          <li>Fills only source-backed/API/internal-safe fields automatically; unsupported values stay in source review.</li>
           <li>Supplier prices, quality, reliability, payment terms, IRR, market size, growth, market share, regulatory status, and investor claims are auto-staged for review unless source policy allows safe filling.</li>
         </ul>
         <div class="coverage-map" aria-label="Full dashboard autopilot coverage map">

@@ -866,7 +866,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <h3 id="investor-title">Feasibility Intelligence Next Steps</h3>
         <p>
           Use these connected workspaces to move from feasibility checklist gaps into source-backed investor preparation.
-          Missing items stay in Hermes twice-daily verification until you approve evidence.
+          Missing items stay in source review until you approve evidence.
         </p>
       </div>
       <div class="investor-link-grid">
@@ -883,7 +883,7 @@ async function copyTaskText(group: ChecklistGroup, item: ChecklistItem) {
         <h3 id="report-title">Report Preparation</h3>
         <p>
           Reports Hub and Presentation Builder now use the real local feasibility intelligence state. Outputs stay
-          evidence-labeled and unsupported claims remain in automatic verification or excluded from investor-facing drafts.
+          evidence-labeled and unsupported claims remain in source review or excluded from investor-facing drafts.
         </p>
         <p class="report-summary">{{ reportPreparationSummary }}</p>
       </div>

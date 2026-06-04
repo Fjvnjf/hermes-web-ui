@@ -1804,7 +1804,7 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('Health repair, one-off snapshots, and import controls stay here for troubleshooting only.')
     expect(wrapper.text()).toContain('Repair Autopilot Schedule')
     expect(wrapper.text()).toContain('Create Source Snapshot')
-    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in Hermes twice-daily verification or Missing until approved evidence arrives.')
+    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in source review until approved evidence arrives.')
     expect(wrapper.text()).toContain('Tier 1: official / regulator / trade')
     expect(wrapper.text()).toContain('Tier 2: official company / product')
     expect(wrapper.text()).toContain('Tier 5: public listing / weak reference')

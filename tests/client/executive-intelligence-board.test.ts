@@ -67,7 +67,7 @@ describe('Pinned Executive Intelligence Board', () => {
     setSelectedBoardMock.mockReset()
   })
 
-  it('renders missing economics as automatic verification instead of hardcoded old dashboard numbers', () => {
+  it('renders missing economics as source review instead of hardcoded old dashboard numbers', () => {
     const wrapper = mount(PinnedExecutiveIntelligenceBoard)
 
     expect(wrapper.text()).toContain('Executive Intelligence Board')
@@ -75,7 +75,7 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).toContain('No saved IRR scenario')
-    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toContain('fake CAGR')
     expect(wrapper.text()).not.toContain('fake market share')
   })
@@ -105,7 +105,7 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(wrapper.text()).toContain('IRR Calculator local scenario')
   })
 
-  it('keeps market and competitor values source-gated with automatic verification defaults', () => {
+  it('keeps market and competitor values source-gated with source-review defaults', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addMarketClaim({
       label: 'Market size',
@@ -146,8 +146,8 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(wrapper.text()).toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).toContain('Unknown supplier')
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
-    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
+    expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).toContain('Powerful Assumption: 12%')
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
     expect(competitorMarketShare('12%', null, 'Powerful Assumption')).toBe('Powerful Assumption: 12%')

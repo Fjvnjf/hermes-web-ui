@@ -1405,7 +1405,7 @@ describe('investor readiness pages', () => {
     expect(job.context).toBe('Chemicon China Feasibility')
     expect(job.scope).toContain('Current evidence status: Missing')
     expect(job.scope).toContain('Do not invent market data')
-    expect(job.sourceRequirements).toContain('Every claim needs source evidence or stays in Hermes verification')
+    expect(job.sourceRequirements).toContain('Every claim needs source evidence or stays in source review')
     expect(intelligence.readinessScore.value).toBe(beforeScore)
   })
 
@@ -1640,7 +1640,7 @@ describe('investor readiness pages', () => {
 
     expect(wrapper.text()).toContain('Evidence-Backed Competitor Tracking')
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
   })
 
   it('hides unsourced competitor market share values behind To Verify in the workspace UI', () => {
@@ -1665,7 +1665,7 @@ describe('investor readiness pages', () => {
 
     expect(wrapper.text()).toContain('Unsourced share competitor')
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toContain('12%')
   })
 
@@ -2169,7 +2169,7 @@ describe('investor readiness pages', () => {
     expect(content).toContain('Factory evidence')
     expect(content).toContain('DMS source needed')
     expect(content).toContain('Do not use DMS regulatory claims until sourced.')
-    expect(content).toContain('Unknown competitor market share must stay unapproved and in Hermes verification until source-backed evidence is approved.')
+    expect(content).toContain('Unknown competitor market share must stay unapproved and in source review until source-backed evidence is approved.')
     expect(content).not.toContain('Unsupported investor text should not appear as approved material.')
     expect(wrapper.text()).toContain(path)
     expect(intelligence.readinessScore.value).toBe(beforeScore)
@@ -2777,7 +2777,7 @@ describe('investor readiness pages', () => {
     expect(job.question).toContain('Verify, source, improve, or reject')
     expect(job.scope).toContain('Unsupported market evidence captured from a session')
     expect(job.scope).toContain('Why it is not investor-ready')
-    expect(job.sourceRequirements).toContain('Unknown market share, market size, pricing, and investor return claims stay in Hermes verification unless sourced')
+    expect(job.sourceRequirements).toContain('Unknown market share, market size, pricing, and investor return claims stay in source review unless sourced')
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
   })
 
@@ -2936,15 +2936,15 @@ describe('investor readiness pages', () => {
     expect(wrapper.findAll('.visual-panel')).toHaveLength(5)
     expect(wrapper.find('.market-share-donut').exists()).toBe(false)
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).toContain('Hermes Automation Center')
     expect(wrapper.text()).toContain('Hermes found source-backed items for review')
     expect(wrapper.text()).toContain('Autopilot Status')
     expect(wrapper.text()).toContain('Review Queue')
     expect(wrapper.text()).toContain('Research Job Log')
     expect(wrapper.text()).toContain('Last Scan')
-    expect(wrapper.text()).toContain('Last Verification')
-    expect(wrapper.text()).toContain('Next Scheduled Verification')
+    expect(wrapper.text()).toContain('Last Source Import')
+    expect(wrapper.text()).toContain('Next Source Refresh')
     expect(wrapper.text()).toContain('Source Confidence Score')
     expect(wrapper.text()).toContain('dashboard evidence targets covered')
     expect(wrapper.find('.autopilot-simple-strip').exists()).toBe(true)

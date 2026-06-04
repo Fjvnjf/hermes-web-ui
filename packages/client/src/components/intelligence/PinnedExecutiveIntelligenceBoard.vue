@@ -586,7 +586,7 @@ onMounted(() => {
           <div class="panel-heading">
             <div>
               <h4>Market & Competitor Intelligence Panel</h4>
-              <p>Unknown market share stays in Hermes twice-daily verification. Assumptions stay visibly labeled.</p>
+              <p>Unknown market share stays in source review. Assumptions stay visibly labeled.</p>
             </div>
             <RouterLink :to="{ name: 'hermes.marketIntelligence' }">Open Market Intelligence</RouterLink>
           </div>

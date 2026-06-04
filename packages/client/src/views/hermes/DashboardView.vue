@@ -33,7 +33,6 @@ import {
   buildDashboardCoverageRows,
   missingDashboardCoverageTargetCount,
 } from '@/utils/dashboardCoverage'
-import { nextTwiceDailyRefresh } from '@/utils/executiveIntelligence'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -57,6 +56,16 @@ const isDeveloperHome = computed(() => frontendRole.value === 'developer_admin')
 const isLimitedBusinessHome = computed(() =>
   ['employee', 'research_assistant', 'financial_analyst', 'regulatory_consultant'].includes(frontendRole.value)
 )
+const dashboardSourceBackedStatuses = new Set([
+  'Verified',
+  'Source-backed',
+  'Official Data',
+  'Trusted Source Auto-Updated',
+  'Supplier Evidence',
+  'User Provided',
+  'User Approved',
+  'Investor Approved',
+])
 
 const enabledJobs = computed(() => jobs.value.filter(job => job.enabled).length)
 const activeSessions = computed(() => runtime.value?.sessions.active ?? sessions.value.length)
@@ -118,6 +127,14 @@ function canUseRouteName(routeName: string): boolean {
 
 function canUseRouteTarget(to: DashboardRouteTarget): boolean {
   return canUseRouteName(to.name)
+}
+
+function normalizedDashboardCompetitorKey(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(group|company|chemicals?|chemical|industries|industry|co|corp|corporation|limited|ltd|inc|gmbh|ag|plc)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
 }
 
 const investorSnapshot = computed(() => [
@@ -203,20 +220,24 @@ const deckMaterialsNeedingEvidence = computed(() =>
 )
 const sourceBackedGrowthClaim = computed(() =>
   intelligence.state.value.marketClaims.find(claim =>
-    claim.source?.title &&
-    ['Verified', 'User Provided', 'Investor Approved'].includes(claim.evidenceStatus) &&
+    sourceIsUsable(claim.source) &&
+    dashboardSourceBackedStatuses.has(normalizedMarketClaimStatus(claim)) &&
     /growth|cagr|demand|consumption/i.test(`${claim.label} ${claim.value}`)
   ) || null
 )
 const sourceBackedProductSignal = computed(() =>
   intelligence.state.value.marketClaims.find(claim =>
-    claim.source?.title &&
-    ['Verified', 'User Provided', 'Investor Approved'].includes(claim.evidenceStatus) &&
+    sourceIsUsable(claim.source) &&
+    dashboardSourceBackedStatuses.has(normalizedMarketClaimStatus(claim)) &&
     /product|cwas|cwms|softener|ester|quat|silicone/i.test(`${claim.label} ${claim.value}`)
   ) || null
 )
 const sourceBackedCompetitorCount = computed(() =>
-  intelligence.state.value.competitors.filter(competitor => competitor.source?.title).length
+  new Set(
+    intelligence.state.value.competitors
+      .filter(competitor => sourceIsUsable(competitor.source))
+      .map(competitor => normalizedDashboardCompetitorKey(competitor.companyName)),
+  ).size
 )
 const executiveSnapshotCards = computed(() => {
   const financial = latestFinancialSnapshot.value
@@ -239,7 +260,7 @@ const executiveSnapshotCards = computed(() => {
       icon: '📈',
       label: 'Growth Rate',
       value: growthClaim?.value || displayAutomaticVerificationText('To Verify'),
-      note: growthClaim?.source?.title || 'Hermes checks country and market sources twice daily',
+      note: growthClaim?.source?.title || 'Scheduled source research checks country and market sources twice daily',
       tone: growthClaim ? 'ok' : 'checking',
       to: { name: 'hermes.marketIntelligence' },
     },
@@ -279,7 +300,7 @@ const executiveSnapshotCards = computed(() => {
       icon: '🤖',
       label: 'Hermes Status',
       value: automaticResearchState.value.label,
-      note: `Next verification: ${nextRun}`,
+      note: `Next source refresh: ${nextRun}`,
       tone: automaticResearchState.value.tone,
       to: { name: 'hermes.trustedSources' },
     },
@@ -397,9 +418,9 @@ const automaticResearchCards = computed(() => [
     note: autopilotImportStatus.value?.jobCount ? 'Twice-daily trusted-source job is connected' : 'Hermes is setting up the automatic scan job',
   },
   {
-    label: '✅ Last Verification',
+    label: '✅ Last Source Import',
     value: autopilotImportStatus.value?.latestOutputImported
-      ? 'Verified import'
+      ? 'Source import completed'
       : autopilotImportStatus.value?.latestOutputParseStatus === 'ready'
         ? 'Ready for review'
         : 'Auto-checking',
@@ -410,13 +431,15 @@ const automaticResearchCards = computed(() => [
         : 'No source-backed import yet',
   },
   {
-    label: '🔄 Next Scheduled Verification',
-    value: formatAutopilotTimestamp(nextTwiceDailyRefresh()),
+    label: '🔄 Next Source Refresh',
+    value: autopilotImportStatus.value?.latestDueSlotAt
+      ? formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)
+      : '07:00 / 19:00 local time',
     note: autopilotImportStatus.value?.latestDueSlotSatisfied
       ? 'Latest due slot satisfied'
       : autopilotImportStatus.value?.latestDueSlotAt
         ? `Current due slot ${formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)}`
-        : 'Runs at 09:00 and 21:00 local time',
+        : 'Full-dashboard source autopilot runs at 07:00 and 19:00 local time',
   },
   {
     label: 'Source Confidence Score',
@@ -448,7 +471,7 @@ const automaticSourceConnectorCards = [
     icon: '🌍',
     title: 'Trade and country data',
     sources: 'UN Comtrade, World Bank',
-    detail: 'Imports and country-growth proxies. Product demand stays in Hermes twice-daily verification until matched to textile-softener evidence.',
+    detail: 'Imports and country-growth proxies. Product demand stays in source review until matched to textile-softener evidence.',
   },
   {
     icon: '🧪',
@@ -531,7 +554,7 @@ const automaticFillDestinations = computed(() => [
     icon: '🌍',
     title: 'Market Intelligence',
     fill: 'Country growth, demand signals, market-source records',
-    gate: 'Market size, growth-rate claims, pricing, and unsupported values stay in Hermes twice-daily verification',
+    gate: 'Market size, growth-rate claims, pricing, and unsupported values stay in source review',
     to: { name: 'hermes.marketIntelligence' },
   },
   {
@@ -900,7 +923,7 @@ const workspaceActions = [
   {
     label: 'Investment Analysis',
     icon: '📊',
-    detail: 'Review investor economics with Hermes verification and Derived from Assumptions labels.',
+    detail: 'Review investor economics with source-review and Derived from Assumptions labels.',
     to: { name: 'hermes.investmentAnalysis' },
   },
   {
@@ -1275,7 +1298,7 @@ onMounted(() => {
           <div>
             <p class="executive-eyebrow">📊 Visual Intelligence Snapshot</p>
             <h3>Business picture from source-backed dashboard state</h3>
-            <small>Charts only use saved models, verified/source-backed claims, or review-gated workspace state. Unknowns stay in Hermes twice-daily verification.</small>
+            <small>Charts only use saved models, verified/source-backed claims, or review-gated workspace state. Unknowns stay in source review.</small>
           </div>
           <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Source Status</RouterLink>
         </div>

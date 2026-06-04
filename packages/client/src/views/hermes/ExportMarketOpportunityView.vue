@@ -364,11 +364,11 @@ function addToInvestorReview(record: ExportMarketRecord) {
             <option v-for="scope in productScopes" :key="scope" :value="scope">{{ scope }}</option>
           </select>
         </label>
-        <label>HS code <input v-model="form.hsCode" placeholder="Hermes verifies automatically" /></label>
+        <label>HS code <input v-model="form.hsCode" placeholder="Source review needed" /></label>
         <label>Data method <input v-model="form.dataMethod" placeholder="Trade proxy / source review needed" /></label>
-        <label>Import value/volume <input v-model="form.valueVolume" placeholder="Hermes verifies automatically" /></label>
-        <label>Growth/CAGR <input v-model="form.growth" placeholder="Hermes verifies automatically" /></label>
-        <label>Opportunity score <input v-model="form.opportunityScore" placeholder="Hermes verifies automatically" /></label>
+        <label>Import value/volume <input v-model="form.valueVolume" placeholder="Source review needed" /></label>
+        <label>Growth/CAGR <input v-model="form.growth" placeholder="Source review needed" /></label>
+        <label>Opportunity score <input v-model="form.opportunityScore" placeholder="Source review needed" /></label>
         <label>Source <input v-model="form.source" placeholder="UN Comtrade / ITC / uploaded report / link" /></label>
         <label>Source date <input v-model="form.sourceDate" type="date" /></label>
         <label>

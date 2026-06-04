@@ -481,7 +481,7 @@ onMounted(loadRefreshState)
           <h3>{{ projectAnalysisTemplateTitle }}</h3>
           <p>
             Screenshot-style investment analysis board. Saved IRR Calculator scenarios can feed the KPI cards, while
-            plant line items stay in automatic verification until quotes, source files, and user-approved assumptions are attached.
+            plant line items stay in source review until quotes, source files, and user-approved assumptions are attached.
           </p>
         </div>
         <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
@@ -521,7 +521,7 @@ onMounted(loadRefreshState)
           </div>
           <div class="template-breakdown-row total">
             <strong>Total</strong>
-            <span>{{ selectedFinancialModel?.projectName || 'Project scope and location under Hermes verification' }}</span>
+            <span>{{ selectedFinancialModel?.projectName || 'Project scope and location need source-backed assumptions' }}</span>
             <span>{{ selectedFinancialModel && !redactsFinancials ? displayInvestmentValue(projectAnalysisTemplateKpis[0]?.value) : redactsFinancials ? 'Restricted' : displayInvestmentStatus('To Verify') }}</span>
             <span>{{ selectedFinancialModel && !redactsFinancials ? 'Derived' : redactsFinancials ? 'Restricted' : displayInvestmentStatus('To Verify') }}</span>
             <span class="template-placeholder-bar"></span>
@@ -597,7 +597,7 @@ onMounted(loadRefreshState)
         <div class="panel-title">
           <div>
             <h3>Investment Breakdown</h3>
-            <p>Line items remain in Hermes twice-daily verification until source-backed storage exists.</p>
+            <p>Line items remain in source review until source-backed storage exists.</p>
           </div>
         </div>
         <div class="table-grid">
@@ -665,7 +665,7 @@ onMounted(loadRefreshState)
         <div class="panel-title">
           <div>
             <h3>Utilities & Buildings Detail</h3>
-            <p>Utility, building, and compliance scope must stay in Hermes twice-daily verification until quoted.</p>
+            <p>Utility, building, and compliance scope stays in source review until quoted.</p>
           </div>
         </div>
         <div class="detail-row head"><span>Item</span><span>Spec</span><span>Cost</span><span>Source</span><span>Status</span></div>

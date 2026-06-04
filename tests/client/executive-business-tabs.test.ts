@@ -155,7 +155,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).not.toContain('No daily brief generated yet')
   })
 
-  it('keeps Investment Analysis values in automatic verification until an IRR Calculator snapshot exists', () => {
+  it('keeps Investment Analysis values in source review until an IRR Calculator snapshot exists', () => {
     useFeasibilityIntelligence().addDataRoomSource({
       checklistLabel: 'Process equipment quote benchmark',
       area: 'financial',
@@ -204,8 +204,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
-    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
+    expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).toContain('User PDF Project Analysis Reference - 60,000 MT/YR Esterquat Plant')
     expect(wrapper.text()).toContain('$16M')
     expect(wrapper.text()).toContain('$49.8M')
@@ -241,7 +241,7 @@ describe('screenshot-matched executive business tabs', () => {
     await wrapper.findAll('button').find(button => button.text() === 'Lean')!.trigger('click')
     expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('No approved source-backed value')
-    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
   })
 
   it('labels saved financial outputs as Derived from Assumptions for investor safety', () => {
@@ -268,7 +268,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(buildInvestorEconomicsKpis(useFeasibilityIntelligence().latestFinancialModel.value, 'Tonight')[1].evidenceStatus).toBe('Derived from Assumptions')
   })
 
-  it('shows Market Intelligence values and competitor market share as automatic verification when unsourced', () => {
+  it('shows Market Intelligence values and competitor market share as source review when unsourced', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addMarketClaim({
       label: 'China market size',
@@ -304,7 +304,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Executive Market Panel')
     expect(wrapper.text()).toContain('Owner research permission active')
     expect(wrapper.text()).toContain('Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.')
-    expect(wrapper.text()).toContain('Unknown or conflicting data stays in automatic verification')
+    expect(wrapper.text()).toContain('Unknown or conflicting data stays in source review')
     expect(wrapper.text()).toContain('Automatic market research')
     expect(wrapper.text()).toContain('Hermes researches the market and fills only source-backed evidence')
     expect(wrapper.text()).toContain('Market data')
@@ -357,8 +357,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Keqiao 8,000+ textile businesses')
     expect(wrapper.text()).toContain('Example supplier')
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
-    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
+    expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     for (const selector of [
       '.market-map-brief',
       '.global-market-intelligence',
@@ -382,7 +382,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Attach evidence label')
     expect(wrapper.text()).toContain('Auto-stage critical items')
     expect(wrapper.text()).toContain('Fill only safe source-backed fields')
-    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in Hermes twice-daily verification or Missing until approved evidence arrives.')
+    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in source review until approved evidence arrives.')
   })
 
   it('renders Competitor Intelligence product context, landscape, and source-gated market share chart', () => {
@@ -445,7 +445,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('$42M source-backed')
     expect(wrapper.text()).toContain('+8% source-backed')
     expect(wrapper.text()).toContain('No source-backed value yet')
-    expect(wrapper.text()).not.toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(competitorTextLower).toContain('global competitor analysis')
     expect(wrapper.text()).toContain('Supplier Types, Strategic Threats, and Evidence Gaps')
     expect(wrapper.text()).toContain('Global formulation houses')
@@ -524,11 +524,18 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).toContain('Revenue')
     expect(panel().text()).toContain('YoY Growth')
     expect(panel().text()).toContain('No source-backed value yet')
-    expect(panel().text()).not.toContain('Hermes verifying twice daily')
+    expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     const alphaRows = wrapper.findAll('.comparison-grid-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(alphaRows).toHaveLength(1)
     expect(alphaRows[0].text()).toContain('CWAS equivalent / CWMS variation')
+    const rawAlphaRows = wrapper.findAll('.competitor-table .competitor-row')
+      .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
+    expect(rawAlphaRows).toHaveLength(1)
+    expect(rawAlphaRows[0].text()).toContain('CWAS equivalent / CWMS variation')
+    const alphaShareRows = wrapper.findAll('.market-share-panel .share-row')
+      .filter(row => row.text().includes('Alpha Source Co'))
+    expect(alphaShareRows).toHaveLength(1)
 
     const revenueSort = wrapper.findAll('.comparison-sort-button').find(button => button.text().includes('Revenue'))
     expect(revenueSort).toBeTruthy()
@@ -548,7 +555,7 @@ describe('screenshot-matched executive business tabs', () => {
     await flushPromises()
     expect(panel().text()).toContain('WACKER')
     expect(panel().text()).toContain('No source-backed value yet')
-    expect(panel().text()).not.toContain('Hermes verifying twice daily')
+    expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(panel().text()).not.toContain('$18-22')
     expect(panel().text()).not.toContain('20-25%')
   })

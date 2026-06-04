@@ -635,7 +635,7 @@ function createRiskResearchJob(item: InvestorRiskRegisterItem) {
         'Focus on Chemicon China feasibility. Do not invent market data, pricing, competitor share, IRR, regulatory status, or investor claims.',
       ].join('\n'),
       expectedOutput: 'A review-ready research finding with summary, key claims, source title plus URL/date, confidence, risk note, suggested tasks, and investor-safe wording only when supported.',
-      sourceRequirements: 'Every claim needs source evidence or stays in Hermes verification. Missing evidence should become a task, not an investor claim.',
+      sourceRequirements: 'Every claim needs source evidence or stays in source review. Missing evidence should become a task, not an investor claim.',
       priority: riskResearchPriority(item),
       schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',
@@ -852,7 +852,7 @@ defineExpose({
         <h3>Save source-backed readiness evidence</h3>
         <p>
           Use this when you have a source document, user-approved assumption, or reviewed evidence. Verified status
-          requires a source title plus URL or date; otherwise Hermes keeps it in twice-daily verification.
+          requires a source title plus URL or date; otherwise Hermes keeps it in source review.
         </p>
       </div>
       <label>
@@ -888,7 +888,7 @@ defineExpose({
         <h3>Attach a source to a specific checklist item</h3>
         <p>
           Save documents, quotes, interviews, or reviewed notes against the investor data-room checklist. Verified
-          sources require a source title plus URL or date; otherwise Hermes keeps them in twice-daily verification.
+          sources require a source title plus URL or date; otherwise Hermes keeps them in source review.
         </p>
       </div>
       <label>

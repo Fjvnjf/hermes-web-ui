@@ -195,7 +195,7 @@ const sourceBackedTemplateKpis = [
     value: '15,000 MT Year 1',
     status: 'User Provided' as IntelligenceEvidenceStatus,
     source: 'Chemicon feasibility planning assumption',
-    note: 'Volume target only; revenue target stays in Hermes twice-daily verification until ASP and source-backed model are approved.',
+    note: 'Volume target only; revenue target stays in source review until ASP and source-backed model are approved.',
   },
 ]
 const sourceBackedSegments = [
@@ -353,7 +353,7 @@ const globalMarketIntelligenceRows = [
     finding: 'Mainland China is the largest textile-chemicals consumer and accounts for nearly half of global textile-chemicals value.',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
     source: 'S&P Global Textile Chemicals abstract, June 2025',
-    businessMeaning: 'China is the right first validation market, but textile-softener-only demand stays in Hermes twice-daily verification as a separate question.',
+    businessMeaning: 'China is the right first validation market, but textile-softener-only demand stays in source review as a separate question.',
     nextAction: 'Validate China textile-softener demand by product family and province.',
   },
   {
@@ -529,7 +529,7 @@ const countryGrowthSummaryCards = computed(() => {
       icon: '🔍',
       label: 'Need direct proof',
       value: String(directDemandNeedingProof),
-      detail: 'Country-level textile-softener consumption stays in Hermes twice-daily verification until direct evidence is found.',
+      detail: 'Country-level textile-softener consumption stays in source review until direct evidence is found.',
     },
   ]
 })
@@ -869,7 +869,7 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
   if (!country || !/trade proxy|growth/i.test(text)) return []
   return [{
     country,
-    growthSignal: claim.value || 'Trade-proxy growth in Hermes twice-daily verification',
+    growthSignal: claim.value || 'Trade-proxy growth in source review',
     proxyMetric: 'Trusted-source market claim',
     sourceBackedEvidence: `Auto-imported market signal from ${source}. Direct softener consumption is still not proven.`,
     directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
@@ -888,7 +888,7 @@ function syncMarketNow() {
       `Last updated: ${formatDateTime(refreshState.value.lastRun)}`,
       `Claims available: ${claims.value.length}`,
       `Competitor records: ${competitorClaimCount.value}`,
-      'Every unsourced market value remains in Hermes twice-daily verification.',
+      'Every unsourced market value remains in source review.',
     ].join('\n'),
     keyClaim: 'Market intelligence requires source review',
     area: 'market',
@@ -964,7 +964,7 @@ async function createResearchTask(label: string) {
     intelligence.addResearchJob({
       title: `Market research: ${label}`,
       question: label,
-      scope: 'Market question, product demand evidence, customer segments, pricing evidence, source library, and automatic-verification claims.',
+      scope: 'Market question, product demand evidence, customer segments, pricing evidence, source library, and source-review claims.',
       expectedOutput: 'Source-backed market research note with evidence status, confidence, source title, URL/date, and recommended follow-up tasks.',
       sourceRequirements: 'Do not use unsourced market size, growth, country ranking, or demand figures. Include source title plus URL or date.',
       priority: 'medium',
@@ -1068,7 +1068,7 @@ function addClaim() {
     return
   }
   if (claimForm.value.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Claim saved for automatic verification because verified claims need a value and usable source')
+    message.warning('Claim saved for source review because verified claims need a value and usable source')
   } else {
     message.success(editingClaimId.value ? 'Market claim updated' : 'Market claim saved in this browser workspace')
   }
@@ -1104,7 +1104,7 @@ function addClaimToInvestorReview(claim: MarketClaim) {
   const status = normalizedMarketClaimStatus(claim)
   intelligence.updateEvidenceStatus('market', status, claim.source || null)
   if (status === 'Verified') message.success('Market evidence marked verified for investor readiness')
-  else message.info('Market evidence stays in Hermes twice-daily verification until value and source are complete')
+  else message.info('Market evidence stays in source review until value and source are complete')
 }
 
 function stageClaimForReview(claim: MarketClaim) {
@@ -1138,11 +1138,11 @@ function stageClaimForReview(claim: MarketClaim) {
       : '',
     riskNote: status === 'Verified'
       ? 'Review source quality before approving this market evidence for investor use.'
-      : 'Market claim stays in Hermes twice-daily verification until value and usable source evidence are attached.',
+      : 'Market claim stays in source review until value and usable source evidence are attached.',
   })
 
   if (claim.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
-    message.warning('Staged for automatic verification because verified claims need value plus usable source evidence')
+    message.warning('Staged for source review because verified claims need value plus usable source evidence')
   } else {
     message.success('Market claim staged for research review')
   }
@@ -1174,13 +1174,13 @@ onMounted(loadRefreshState)
         <h2 class="header-title">Source-Backed Market Research Workspace</h2>
         <p class="page-copy">
           Track market questions without fake market size, growth, CAGR, country ranking, or demand numbers. Hermes
-          keeps verifying unresolved claims twice daily until they have source evidence.
+          refreshes trusted-source research twice daily and shows only source-backed evidence as dashboard truth.
         </p>
         <p class="section-help-text">Market claims need source title, date, and review before investor use. Use the cards below to create research tasks, not unsupported claims.</p>
         <div class="research-permission-strip" aria-label="Owner research permission">
           <strong>Owner research permission active</strong>
           <span>Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.</span>
-          <small>Important data needs source title, URL/date, confidence, evidence status, and review. Unknown or conflicting data stays in automatic verification.</small>
+          <small>Important data needs source title, URL/date, confidence, evidence status, and review. Unknown or conflicting data stays in source review.</small>
         </div>
       </div>
       <div class="summary-card">
@@ -1200,7 +1200,7 @@ onMounted(loadRefreshState)
         <h3>Hermes researches the market and fills only source-backed evidence</h3>
         <p>
           Use this page as your global market command view. Hermes keeps looking for trusted sources, fills safe
-          records, and leaves weak or investor-impacting values in automatic verification until you approve the evidence.
+          records, and leaves weak or investor-impacting values in source review until you approve the evidence.
         </p>
       </div>
       <div class="market-autopilot-grid">
@@ -1229,7 +1229,7 @@ onMounted(loadRefreshState)
           <h3>Where Hermes Should Focus Market Research Next</h3>
           <p>
             This is the easy view: country signals first, direct textile-softener proof clearly separated from proxy
-            evidence. Hermes can research these automatically, but unsupported consumption stays in twice-daily verification.
+            evidence. Hermes can research these automatically, but unsupported consumption stays in source review.
           </p>
         </div>
         <RouterLink class="template-link" :to="{ name: 'hermes.trustedSources' }">Autopilot coverage</RouterLink>
@@ -1473,7 +1473,7 @@ onMounted(loadRefreshState)
           <h3>Market Intelligence Template</h3>
           <p>
             Screenshot-style market board populated only with source-backed public facts, user-provided assumptions,
-            or automatic-verification gaps. Unsupported market size, share, CAGR, province split, and capacity values are not shown
+            or source-review gaps. Unsupported market size, share, CAGR, province split, and capacity values are not shown
             as facts.
           </p>
         </div>
@@ -1530,7 +1530,7 @@ onMounted(loadRefreshState)
         <div class="template-panel-title">
           <div>
             <h3>Ester Quat Manufacturers & Market Share</h3>
-            <p>Company presence is source-backed; capacity and market share remain in automatic verification until source evidence is attached.</p>
+            <p>Company presence is source-backed; capacity and market share remain in source review until source evidence is attached.</p>
           </div>
           <RouterLink class="template-link" :to="{ name: 'hermes.competitorIntelligence' }">Open Competitors</RouterLink>
         </div>
@@ -1577,7 +1577,7 @@ onMounted(loadRefreshState)
           <h3>Market Size, Growth, Pricing, Competitors</h3>
           <p>
             This panel mirrors the executive dashboard style, but it refuses to invent market size, CAGR, pricing, or
-            market-share values. Unsourced values stay in automatic verification.
+            market-share values. Unsourced values stay in source review.
           </p>
         </div>
         <div class="refresh-card">
@@ -1602,7 +1602,7 @@ onMounted(loadRefreshState)
         <div class="panel-heading-inline">
           <div>
             <h3>Market Segmentation Table</h3>
-            <p>Segment values remain in automatic verification until a source title, source date, and review status are attached.</p>
+            <p>Segment values remain in source review until a source title, source date, and review status are attached.</p>
           </div>
         </div>
         <div class="segmentation-row head">
