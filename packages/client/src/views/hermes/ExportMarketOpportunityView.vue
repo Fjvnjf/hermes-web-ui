@@ -14,7 +14,12 @@ import {
   sourceBackedOrToVerify,
   type ExportMarketRecord,
 } from '@/utils/intelligenceWorkflow'
-import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  displayUnresolvedValue,
+  type IntelligenceEvidenceStatus,
+} from '@/utils/investorIntelligence'
 
 const message = useMessage()
 const kanbanStore = useKanbanStore()
@@ -144,8 +149,20 @@ const summaryCards = computed(() => [
   { label: 'Country records', value: displayRecords.value.length, note: autopilotRecords.value.length ? `${autopilotRecords.value.length} auto-filled by Hermes` : 'User/source-entered only' },
   { label: 'Source-backed', value: sourceBackedCount.value, note: 'Source/date required' },
   { label: 'Trade proxy', value: tradeProxyCount.value, note: 'Not actual consumption' },
-  { label: 'To Verify', value: toVerifyCount.value, note: 'Incomplete evidence' },
+  { label: 'Hermes verifying', value: toVerifyCount.value, note: 'Twice-daily evidence search' },
 ])
+
+function autoVerifyText(value?: string | number | null): string {
+  return displayUnresolvedValue(value)
+}
+
+function autoVerifySentence(value?: string | null): string {
+  return displayAutomaticVerificationText(value)
+}
+
+function statusLabel(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
 
 function saveRecord() {
   const country = form.value.country.trim()
@@ -347,17 +364,17 @@ function addToInvestorReview(record: ExportMarketRecord) {
             <option v-for="scope in productScopes" :key="scope" :value="scope">{{ scope }}</option>
           </select>
         </label>
-        <label>HS code <input v-model="form.hsCode" placeholder="To Verify" /></label>
-        <label>Data method <input v-model="form.dataMethod" placeholder="Trade proxy / To Verify" /></label>
-        <label>Import value/volume <input v-model="form.valueVolume" placeholder="To Verify" /></label>
-        <label>Growth/CAGR <input v-model="form.growth" placeholder="To Verify" /></label>
-        <label>Opportunity score <input v-model="form.opportunityScore" placeholder="To Verify" /></label>
+        <label>HS code <input v-model="form.hsCode" placeholder="Hermes verifies automatically" /></label>
+        <label>Data method <input v-model="form.dataMethod" placeholder="Trade proxy / Hermes verifying twice daily" /></label>
+        <label>Import value/volume <input v-model="form.valueVolume" placeholder="Hermes verifies automatically" /></label>
+        <label>Growth/CAGR <input v-model="form.growth" placeholder="Hermes verifies automatically" /></label>
+        <label>Opportunity score <input v-model="form.opportunityScore" placeholder="Hermes verifies automatically" /></label>
         <label>Source <input v-model="form.source" placeholder="UN Comtrade / ITC / uploaded report / link" /></label>
         <label>Source date <input v-model="form.sourceDate" type="date" /></label>
         <label>
           Evidence status
           <select v-model="form.evidenceStatus">
-            <option v-for="status in evidenceStatuses" :key="status" :value="status">{{ status }}</option>
+            <option v-for="status in evidenceStatuses" :key="status" :value="status">{{ statusLabel(status) }}</option>
           </select>
         </label>
         <label>
@@ -378,7 +395,7 @@ function addToInvestorReview(record: ExportMarketRecord) {
         <h3>Country records</h3>
         <p v-if="autopilotRecords.length" class="autopilot-note">
           Hermes Autopilot has filled {{ autopilotRecords.length }} country-wise trade-proxy records from sourced market claims.
-          They remain To Verify / Trade Proxy until HS-code methodology and product-specific demand are reviewed.
+          They stay in {{ autoVerifySentence('Trade Proxy / To Verify') }} until HS-code methodology and product-specific demand are reviewed.
         </p>
         <p v-if="!displayRecords.length">No country rankings yet. Add source-backed records or create a research task.</p>
       </header>
@@ -390,13 +407,13 @@ function addToInvestorReview(record: ExportMarketRecord) {
           <p>{{ record.notes || exportMarketStatusLabel(record.hsCode) }}</p>
         </div>
         <dl>
-          <div><dt>HS code</dt><dd>{{ record.hsCode || 'To Verify' }}</dd></div>
-          <div><dt>Method</dt><dd>{{ record.dataMethod }}</dd></div>
-          <div><dt>Value/volume</dt><dd>{{ record.valueVolume }}</dd></div>
-          <div><dt>Growth</dt><dd>{{ record.growth }}</dd></div>
-          <div><dt>Opportunity</dt><dd>{{ record.opportunityScore }}</dd></div>
+          <div><dt>HS code</dt><dd>{{ autoVerifyText(record.hsCode) }}</dd></div>
+          <div><dt>Method</dt><dd>{{ autoVerifySentence(record.dataMethod) }}</dd></div>
+          <div><dt>Value/volume</dt><dd>{{ autoVerifyText(record.valueVolume) }}</dd></div>
+          <div><dt>Growth</dt><dd>{{ autoVerifyText(record.growth) }}</dd></div>
+          <div><dt>Opportunity</dt><dd>{{ autoVerifyText(record.opportunityScore) }}</dd></div>
           <div><dt>Source</dt><dd>{{ record.source || 'Missing' }} {{ record.sourceDate ? `/ ${record.sourceDate}` : '' }}</dd></div>
-          <div><dt>Status</dt><dd>{{ record.evidenceStatus }}</dd></div>
+          <div><dt>Status</dt><dd>{{ statusLabel(record.evidenceStatus) }}</dd></div>
         </dl>
         <div class="action-row">
           <NButton size="small" :loading="savingKey === `${record.id}-task`" @click="createTask(record)">Create task</NButton>

@@ -635,7 +635,7 @@ function createRiskResearchJob(item: InvestorRiskRegisterItem) {
         'Focus on Chemicon China feasibility. Do not invent market data, pricing, competitor share, IRR, regulatory status, or investor claims.',
       ].join('\n'),
       expectedOutput: 'A review-ready research finding with summary, key claims, source title plus URL/date, confidence, risk note, suggested tasks, and investor-safe wording only when supported.',
-      sourceRequirements: 'Every claim needs source evidence or must remain To Verify. Missing evidence should become a task, not an investor claim.',
+      sourceRequirements: 'Every claim needs source evidence or stays in Hermes verification. Missing evidence should become a task, not an investor claim.',
       priority: riskResearchPriority(item),
       schedulePreference: 'Tonight',
       context: 'Chemicon China Feasibility',

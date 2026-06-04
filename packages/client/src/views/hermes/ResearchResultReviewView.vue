@@ -228,7 +228,7 @@ async function importLatestJobOutput(job: ResearchJobRecord) {
       sourceDate: detail.runTime || latest.runTime,
       suggestedTask: `Review sources and follow-up tasks from scheduled research: ${job.title}`,
       suggestedInvestorMaterial: '',
-      riskNote: 'Imported from scheduled Hermes job output. Keep To Verify until source evidence is checked and the user approves any dashboard updates.',
+      riskNote: 'Imported from scheduled Hermes job output. Keep it unapproved and in Hermes verification until source evidence is checked and the user approves any dashboard updates.',
     }
     jobOutputStatus.value = {
       ...jobOutputStatus.value,
@@ -645,7 +645,7 @@ async function createTask(item: ResearchReviewFinding) {
           Research outputs do not directly update dashboard facts, investor material, or verified claims. Stage a
           finding, check its source, then approve only the updates you want to keep.
         </p>
-        <p class="section-help-text">Approve, reject, create tasks, or save notes from reviewed research only. Missing sources remain To Verify.</p>
+        <p class="section-help-text">Approve, reject, create tasks, or save notes from reviewed research only. Missing sources stay in Hermes verification until evidence arrives.</p>
       </div>
       <RouterLink class="header-link" :to="{ name: 'hermes.research' }">Research Library</RouterLink>
     </header>
@@ -795,7 +795,7 @@ async function createTask(item: ResearchReviewFinding) {
       <div class="panel-head">
         <div>
           <h3>Review queue</h3>
-          <p>Approve selected updates, create tasks, or reject. Unsourced verified claims remain To Verify.</p>
+          <p>Approve selected updates, create tasks, or reject. Unsourced verified claims stay unapproved and in Hermes verification.</p>
         </div>
         <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>
       </div>

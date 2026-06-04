@@ -1405,7 +1405,7 @@ describe('investor readiness pages', () => {
     expect(job.context).toBe('Chemicon China Feasibility')
     expect(job.scope).toContain('Current evidence status: Missing')
     expect(job.scope).toContain('Do not invent market data')
-    expect(job.sourceRequirements).toContain('Every claim needs source evidence or must remain To Verify')
+    expect(job.sourceRequirements).toContain('Every claim needs source evidence or stays in Hermes verification')
     expect(intelligence.readinessScore.value).toBe(beforeScore)
   })
 
@@ -2167,7 +2167,7 @@ describe('investor readiness pages', () => {
     expect(content).toContain('Factory evidence')
     expect(content).toContain('DMS source needed')
     expect(content).toContain('Do not use DMS regulatory claims until sourced.')
-    expect(content).toContain('Unknown competitor market share must remain To Verify.')
+    expect(content).toContain('Unknown competitor market share must stay unapproved and in Hermes verification until source-backed evidence is approved.')
     expect(content).not.toContain('Unsupported investor text should not appear as approved material.')
     expect(wrapper.text()).toContain(path)
     expect(intelligence.readinessScore.value).toBe(beforeScore)
@@ -2775,7 +2775,7 @@ describe('investor readiness pages', () => {
     expect(job.question).toContain('Verify, source, improve, or reject')
     expect(job.scope).toContain('Unsupported market evidence captured from a session')
     expect(job.scope).toContain('Why it is not investor-ready')
-    expect(job.sourceRequirements).toContain('Unknown market share, market size, pricing, and investor return claims must stay To Verify')
+    expect(job.sourceRequirements).toContain('Unknown market share, market size, pricing, and investor return claims stay in Hermes verification unless sourced')
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
   })
 

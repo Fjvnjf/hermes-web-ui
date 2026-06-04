@@ -6,7 +6,12 @@ import {
   getFrontendAccessRole,
   shouldRedactForEmployee,
 } from '@/utils/accessControl'
-import { formatSourcedMarketShare, formatSourceReference, normalizedMarketClaimStatus } from '@/utils/investorIntelligence'
+import {
+  displayEvidenceStatus,
+  formatSourcedMarketShare,
+  formatSourceReference,
+  normalizedMarketClaimStatus,
+} from '@/utils/investorIntelligence'
 
 const intelligence = useFeasibilityIntelligence()
 const frontendRole = computed(() => getFrontendAccessRole())
@@ -226,10 +231,10 @@ function visibleText(value: string): string {
               <p>{{ visibleText(item.detail) }}</p>
               <small>{{ visibleText(item.source) }}</small>
             </div>
-            <span>{{ item.status }}</span>
+            <span>{{ displayEvidenceStatus(item.status) }}</span>
           </RouterLink>
         </div>
-        <p v-else class="empty-state">No saved market or competitor records yet. Unknown claims stay To Verify until sourced.</p>
+        <p v-else class="empty-state">No saved market or competitor records yet. Hermes keeps checking unknown claims twice daily until source-backed evidence arrives.</p>
       </article>
     </section>
 

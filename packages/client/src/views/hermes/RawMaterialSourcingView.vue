@@ -224,7 +224,7 @@ const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
         evidenceStatus: status,
         sourceTitle,
         sourceUrl,
-        nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score To Verify until quote/TDS/SDS/COA evidence is approved.`,
+        nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score in Hermes verification until quote/TDS/SDS/COA evidence is approved.`,
         highRisk: isDmsMaterial(`${supplier} ${material}`),
       }
     }),
@@ -597,7 +597,7 @@ async function scheduleResearch(material: RawMaterialRecord) {
       question: `What source-backed price and supplier evidence exists for ${material.name}?`,
       scope: 'Price references, source dates, supplier confirmation, risk notes, and evidence gaps.',
       expectedOutput: 'Research result for review before dashboard updates.',
-      sourceRequirements: 'Every price or claim needs source title plus URL/date. Unknown values stay To Verify.',
+      sourceRequirements: 'Every price or claim needs source title plus URL/date. Unknown values stay in Hermes twice-daily verification until source evidence is approved.',
       priority: material.highRisk ? 'high' : 'medium',
       schedulePreference: 'Tonight',
       scheduledJobId: job.job_id || job.id,

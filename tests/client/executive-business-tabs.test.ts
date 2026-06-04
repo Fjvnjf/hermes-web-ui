@@ -366,7 +366,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Attach evidence label')
     expect(wrapper.text()).toContain('Auto-stage critical items')
     expect(wrapper.text()).toContain('Fill only safe source-backed fields')
-    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values remain To Verify or Missing.')
+    expect(wrapper.text()).toContain('Unsupported market size, CAGR, market share, pricing, cost, IRR, or NPV values stay in Hermes twice-daily verification or Missing until approved evidence arrives.')
   })
 
   it('renders Competitor Intelligence product context, landscape, and source-gated market share chart', () => {
@@ -548,7 +548,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Hermes Autopilot has filled 1 country-wise trade-proxy records')
     expect(text).toContain('China')
     expect(text).toContain('Textile auxiliary / softener trade proxy')
-    expect(text).toContain('HS 380991 trade proxy / To Verify')
+    expect(text).toContain('HS 380991 trade proxy / Hermes verifying twice daily')
     expect(text).toContain('2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg')
     expect(text).toContain('+21.23%')
     expect(text).toContain('WITS / World Bank Comtrade - China imports of HS 380991')

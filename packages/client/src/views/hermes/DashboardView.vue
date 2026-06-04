@@ -20,6 +20,7 @@ import {
 } from '@/composables/useSessionCapture'
 import {
   buildInvestorNextActions,
+  displayAutomaticVerificationText,
   isPresentationMaterialAllowed,
   type InvestorNextAction,
   type PresentationMaterial,
@@ -126,7 +127,7 @@ const investorSnapshot = computed(() => [
   {
     label: 'Evidence Gaps',
     value: String(intelligence.evidenceGaps.value.length),
-    note: 'Missing / To Verify',
+    note: displayAutomaticVerificationText('Missing / To Verify'),
     tone: intelligence.evidenceGaps.value.length > 0 ? 'warn' : 'ok',
     to: { name: 'hermes.investorReadiness' },
   },
@@ -337,7 +338,7 @@ const automaticSourceConnectorCards = [
     icon: '🌍',
     title: 'Trade and country data',
     sources: 'UN Comtrade, World Bank',
-    detail: 'Imports and country-growth proxies. Product demand still stays To Verify until matched to textile-softener evidence.',
+    detail: 'Imports and country-growth proxies. Product demand stays in Hermes twice-daily verification until matched to textile-softener evidence.',
   },
   {
     icon: '🧪',
@@ -403,7 +404,7 @@ const automaticResearchFlow = computed(() => {
       title: 'Fill safe fields',
       detail: hasDashboardRecords
         ? `${importedDashboardRecordCount.value} source-backed dashboard record${importedDashboardRecordCount.value === 1 ? '' : 's'} are available now.`
-        : 'Low-risk official facts can auto-fill; unknowns remain Missing or To Verify.',
+        : `Low-risk official facts can auto-fill; unknowns remain ${displayAutomaticVerificationText('Missing or To Verify')}.`,
       state: state(hasDashboardRecords, hasImportedOutput && !hasDashboardRecords),
     },
     {
@@ -420,7 +421,7 @@ const automaticFillDestinations = computed(() => [
     icon: '🌍',
     title: 'Market Intelligence',
     fill: 'Country growth, demand signals, market-source records',
-    gate: 'Market size, growth-rate claims, pricing, and unsupported values stay To Verify',
+    gate: 'Market size, growth-rate claims, pricing, and unsupported values stay in Hermes twice-daily verification',
     to: { name: 'hermes.marketIntelligence' },
   },
   {
@@ -601,7 +602,7 @@ const workspaceActions = [
   {
     label: 'Investment Analysis',
     icon: '📊',
-    detail: 'Review investor economics with To Verify and Derived from Assumptions labels.',
+    detail: 'Review investor economics with Hermes verification and Derived from Assumptions labels.',
     to: { name: 'hermes.investmentAnalysis' },
   },
   {
@@ -1053,7 +1054,7 @@ onMounted(() => {
                 {{ missingDashboardCoverageCount ? `${missingDashboardCoverageCount} trusted-source targets still need coverage` : 'Trusted-source coverage looks complete' }}
               </h4>
               <p>
-                Hermes uses this map to keep researching the dashboard automatically. Missing values stay Missing or To Verify until source-backed evidence is imported.
+                Hermes uses this map to keep researching the dashboard automatically. Missing values stay {{ displayAutomaticVerificationText('Missing or To Verify') }} until source-backed evidence is imported.
               </p>
             </div>
             <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Coverage Status</RouterLink>

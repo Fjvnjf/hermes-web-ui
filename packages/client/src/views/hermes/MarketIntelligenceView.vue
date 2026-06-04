@@ -195,7 +195,7 @@ const sourceBackedTemplateKpis = [
     value: '15,000 MT Year 1',
     status: 'User Provided' as IntelligenceEvidenceStatus,
     source: 'Chemicon feasibility planning assumption',
-    note: 'Volume target only; revenue target remains To Verify until ASP and source-backed model are approved.',
+    note: 'Volume target only; revenue target stays in Hermes twice-daily verification until ASP and source-backed model are approved.',
   },
 ]
 const sourceBackedSegments = [
@@ -353,7 +353,7 @@ const globalMarketIntelligenceRows = [
     finding: 'Mainland China is the largest textile-chemicals consumer and accounts for nearly half of global textile-chemicals value.',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
     source: 'S&P Global Textile Chemicals abstract, June 2025',
-    businessMeaning: 'China is the right first validation market, but textile-softener-only demand remains a separate To Verify question.',
+    businessMeaning: 'China is the right first validation market, but textile-softener-only demand stays in Hermes twice-daily verification as a separate question.',
     nextAction: 'Validate China textile-softener demand by product family and province.',
   },
   {
@@ -529,7 +529,7 @@ const countryGrowthSummaryCards = computed(() => {
       icon: '🔍',
       label: 'Need direct proof',
       value: String(directDemandMissing),
-      detail: 'Country-level textile-softener consumption remains To Verify until direct evidence is found.',
+      detail: 'Country-level textile-softener consumption stays in Hermes twice-daily verification until direct evidence is found.',
     },
   ]
 })
@@ -730,7 +730,7 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
   if (!country || !/trade proxy|growth/i.test(text)) return []
   return [{
     country,
-    growthSignal: claim.value || 'Trade-proxy growth To Verify',
+    growthSignal: claim.value || 'Trade-proxy growth in Hermes twice-daily verification',
     proxyMetric: 'Trusted-source market claim',
     sourceBackedEvidence: `Auto-imported market signal from ${source}. Direct softener consumption is still not proven.`,
     directSoftenerConsumption: 'To Verify',
@@ -965,7 +965,7 @@ function addClaimToInvestorReview(claim: MarketClaim) {
   const status = normalizedMarketClaimStatus(claim)
   intelligence.updateEvidenceStatus('market', status, claim.source || null)
   if (status === 'Verified') message.success('Market evidence marked verified for investor readiness')
-  else message.info('Market evidence remains To Verify until value and source are complete')
+  else message.info('Market evidence stays in Hermes twice-daily verification until value and source are complete')
 }
 
 function stageClaimForReview(claim: MarketClaim) {
@@ -999,7 +999,7 @@ function stageClaimForReview(claim: MarketClaim) {
       : '',
     riskNote: status === 'Verified'
       ? 'Review source quality before approving this market evidence for investor use.'
-      : 'Market claim remains To Verify until value and usable source evidence are attached.',
+      : 'Market claim stays in Hermes twice-daily verification until value and usable source evidence are attached.',
   })
 
   if (claim.evidenceStatus === 'Verified' && saved.evidenceStatus !== 'Verified') {
@@ -1118,7 +1118,7 @@ onMounted(loadRefreshState)
             </div>
             <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
           </div>
-          <p>{{ row.growthSignal }}</p>
+          <p>{{ displayMarketText(row.growthSignal) }}</p>
           <dl>
             <div>
               <dt>Proxy</dt>

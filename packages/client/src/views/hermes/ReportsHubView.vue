@@ -363,7 +363,7 @@ function buildFeasibilityBriefMarkdown(): string {
     '- Do not convert this brief into final investor material without reviewing each source.',
     '- Do not use Missing, To Verify, Hypothesis, or Reference Only items as investor claims.',
     '- Keep assumptions visibly labeled unless source evidence upgrades them.',
-    '- Unknown competitor market share must remain To Verify.',
+    '- Unknown competitor market share must stay unapproved and in Hermes verification until source-backed evidence is approved.',
     '- Generated IRR, NPV, payback, revenue, and return outputs are derived model outputs.',
   ].join('\n')
 }
