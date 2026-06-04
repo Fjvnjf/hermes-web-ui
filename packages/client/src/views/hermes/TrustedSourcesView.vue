@@ -162,6 +162,38 @@ const easyWorkflowCards = computed(() => [
     detail: automaticMissingCoverageStatus.value,
   },
 ])
+const autopilotCommandCards = computed(() => [
+  {
+    icon: '🛰️',
+    title: 'Auto research is working for you',
+    value: serverAutopilotStatus.value?.scheduled || fullAutopilotStatus.value.enabled ? 'On' : 'Checking',
+    detail: 'Hermes keeps the twice-daily trusted-source job connected and imports readable source-backed output.',
+    tone: serverAutopilotStatus.value?.scheduled || fullAutopilotStatus.value.enabled ? 'active' : 'setup',
+  },
+  {
+    icon: '📥',
+    title: 'Dashboard records ready',
+    value: String(importedIntelligenceTotal.value),
+    detail: 'These are source-labeled market, competitor, supplier, finance, and evidence records already available to dashboard pages.',
+    tone: importedIntelligenceTotal.value > 0 ? 'active' : 'setup',
+  },
+  {
+    icon: '✅',
+    title: 'Your review queue',
+    value: String(serverAutopilotStatus.value?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length),
+    detail: 'Review only staged risky items. Hermes will not silently approve market size, prices, IRR, regulatory, or investor claims.',
+    tone: (serverAutopilotStatus.value?.pendingReviewCount ?? intelligence.pendingResearchFindings.value.length) > 0 ? 'review' : 'active',
+  },
+  {
+    icon: '🧭',
+    title: 'Missing coverage',
+    value: missingCoverageTargetCount.value ? String(missingCoverageTargetCount.value) : 'Covered',
+    detail: missingCoverageTargetCount.value
+      ? 'Hermes watches missing targets and can create a source-backed follow-up job automatically.'
+      : 'Required dashboard target groups currently have imported evidence or review items.',
+    tone: missingCoverageTargetCount.value ? 'review' : 'active',
+  },
+])
 const coverageRows = computed(() => buildDashboardCoverageRows(intelligence.state.value))
 const missingCoverageRows = computed(() => coverageRows.value.filter(row => row.missingTargets.length > 0))
 const missingCoverageTargetCount = computed(() => missingDashboardCoverageTargetCount(missingCoverageRows.value))
@@ -597,6 +629,34 @@ async function bootstrapTrustedSourcesView() {
       </div>
     </section>
 
+    <section class="autopilot-command-strip" aria-label="Simple automatic research control center">
+      <div class="command-strip-header">
+        <div>
+          <p class="eyebrow">Start here</p>
+          <h3>Automatic Dashboard Research</h3>
+          <p>
+            Hermes searches trusted sources, fills safe source-backed records, and keeps risky claims waiting for approval.
+            You should not need to search the web or copy data manually.
+          </p>
+        </div>
+        <div class="command-strip-actions">
+          <RouterLink class="autopilot-link primary" :to="{ name: 'hermes.researchResultReview' }">✅ Review staged findings</RouterLink>
+          <RouterLink class="autopilot-link" :to="{ name: 'hermes.dashboard' }">📊 Open filled dashboard</RouterLink>
+          <NButton tertiary :loading="fullAutopilotSaving" @click="enableFullDashboardAutopilot">🛟 Repair auto research</NButton>
+        </div>
+      </div>
+      <div class="command-strip-grid">
+        <article v-for="card in autopilotCommandCards" :key="card.title" :class="card.tone">
+          <span class="command-card-icon" aria-hidden="true">{{ card.icon }}</span>
+          <div>
+            <small>{{ card.title }}</small>
+            <strong>{{ card.value }}</strong>
+            <em>{{ card.detail }}</em>
+          </div>
+        </article>
+      </div>
+    </section>
+
     <details class="advanced-disclosure">
       <summary>
         <span>Evidence rules and source-ranking policy</span>
@@ -918,6 +978,7 @@ async function bootstrapTrustedSourcesView() {
 .source-form,
 .source-group,
 .easy-autopilot-panel,
+.autopilot-command-strip,
 .advanced-disclosure {
   border: 1px solid $border-color;
   border-radius: 8px;
@@ -1087,6 +1148,111 @@ async function bootstrapTrustedSourcesView() {
     color: $text-secondary;
     line-height: 1.45;
   }
+}
+
+.autopilot-command-strip {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 16px;
+  border-color: rgba(var(--accent-primary-rgb), 0.42);
+  background:
+    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.13), rgba(var(--accent-info-rgb), 0.07) 42%, transparent),
+    $bg-card;
+}
+
+.command-strip-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h3 {
+    color: $warning;
+    font-size: 20px;
+  }
+
+  p {
+    margin-top: 7px;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+}
+
+.command-strip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.command-strip-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+
+  article {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    min-height: 126px;
+    padding: 12px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.2);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.14);
+
+    &.active {
+      border-color: rgba(var(--success-rgb), 0.34);
+    }
+
+    &.review {
+      border-color: rgba(var(--warning-rgb), 0.42);
+      background: rgba(var(--warning-rgb), 0.06);
+    }
+
+    &.setup {
+      border-color: rgba(var(--accent-info-rgb), 0.3);
+    }
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    display: block;
+    margin-top: 4px;
+    color: $accent-info;
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  em {
+    display: block;
+    margin-top: 6px;
+    color: $text-secondary;
+    font-style: normal;
+    line-height: 1.42;
+  }
+}
+
+.command-card-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(var(--accent-primary-rgb), 0.08);
+  font-size: 18px;
 }
 
 .advanced-disclosure {
@@ -1817,6 +1983,7 @@ async function bootstrapTrustedSourcesView() {
 
   .sources-header,
   .easy-autopilot-panel,
+  .command-strip-header,
   .source-permission-panel,
   .source-form {
     grid-template-columns: 1fr;
@@ -1830,6 +1997,18 @@ async function bootstrapTrustedSourcesView() {
 
   .advanced-disclosure > summary small {
     text-align: left;
+  }
+
+  .command-strip-actions {
+    justify-content: flex-start;
+  }
+
+  .command-strip-grid {
+    grid-template-columns: 1fr;
+
+    article {
+      min-height: 0;
+    }
   }
 
   .easy-workflow-grid {
