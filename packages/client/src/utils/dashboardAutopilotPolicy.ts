@@ -437,7 +437,9 @@ function markdownRowToDashboardItem(
   const notes = getCell(row, 'notes', 'note', 'strength', 'weakness', 'summary')
   const marketShare = getCell(row, 'market share', 'share')
   const pricingEvidence = getCell(row, 'pricing evidence', 'price', 'price/kg', 'price/t', 'cost')
-  const fallbackValue = value || marketShare || pricingEvidence || notes
+  const revenue = getCell(row, 'revenue', 'annual revenue', 'sales', 'turnover')
+  const yearlyGrowth = getCell(row, 'yearly growth', 'annual growth', 'growth yoy', 'yoy growth', 'growth rate')
+  const fallbackValue = value || marketShare || pricingEvidence || revenue || yearlyGrowth || notes
   const rowTitle = title || label || field || getCell(row, 'company', 'competitor', 'manufacturer', 'supplier', 'material')
   if (!rowTitle && !fallbackValue) return null
 
@@ -451,6 +453,8 @@ function markdownRowToDashboardItem(
     productEquivalent: getCell(row, 'product equivalent', 'product', 'equivalent'),
     activeContent: getCell(row, 'active content', 'active', 'content'),
     pricingEvidence,
+    revenue,
+    yearlyGrowth,
     certifications: getCell(row, 'certifications', 'certification'),
     distributionPresence: getCell(row, 'distribution', 'distribution presence', 'presence'),
     marketShare,
@@ -491,7 +495,7 @@ function extractMarkdownDashboardTables(content: string): DashboardResearchUpdat
       ['field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item', 'company', 'competitor', 'manufacturer', 'supplier', 'material'].includes(header),
     )
     const hasValueishColumn = normalizedHeaders.some(header =>
-      ['value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'marketshare', 'share', 'pricingevidence', 'price', 'cost', 'notes', 'summary'].includes(header),
+      ['value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'marketshare', 'share', 'pricingevidence', 'price', 'cost', 'revenue', 'annualrevenue', 'yearlygrowth', 'annualgrowth', 'growthyoy', 'yoygrowth', 'notes', 'summary'].includes(header),
     )
     const hasSourceColumn = normalizedHeaders.some(header =>
       ['sourcetitle', 'sourcename', 'source', 'sourceurl', 'url', 'link', 'sourcedate', 'date', 'lastchecked', 'checked'].includes(header),
@@ -538,7 +542,7 @@ function parseDelimitedBulletRow(line: string): Record<string, string> | null {
   }
 
   const hasFieldish = Boolean(getCell(row, 'field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item', 'company', 'competitor', 'manufacturer', 'supplier', 'material'))
-  const hasValueish = Boolean(getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'market share', 'share', 'pricing evidence', 'price', 'cost', 'notes', 'summary'))
+  const hasValueish = Boolean(getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'market share', 'share', 'pricing evidence', 'price', 'cost', 'revenue', 'annual revenue', 'yearly growth', 'annual growth', 'growth yoy', 'yoy growth', 'notes', 'summary'))
   const sourceFields = markdownSourceFields(row)
   const hasSource = Boolean(sourceFields.sourceTitle || sourceFields.sourceUrl || sourceFields.sourceDate)
 

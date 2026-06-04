@@ -202,9 +202,9 @@ describe('dashboard autopilot output ingestion', () => {
       '| Country-wise consumption growth - China | Trade proxy signal found | [1] | Tier 1 - Official / regulator / trade source | Official Data | high | yes |',
       '',
       '## Competitor Intelligence',
-      '| Company | Product Equivalent | Market Share | Link | Source Tier | Evidence Status | Confidence | Review Required |',
-      '| --- | --- | --- | --- | --- | --- | --- |',
-      '| Evonik Industries | VARISOFT official esterquat product family | To Verify | [2] | Tier 2 - Official company / product source | To Verify | medium | yes |',
+      '| Company | Product Equivalent | Market Share | Revenue | Yearly Growth | Link | Source Tier | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Evonik Industries | VARISOFT official esterquat product family | To Verify | FY2024 revenue source-backed | +5% YoY source-backed | [2] | Tier 2 - Official company / product source | To Verify | medium | yes |',
       '',
       '## Sources',
       '- [1] [WITS / World Bank Comtrade](https://wits.worldbank.org/) accessed 2026-06-03',
@@ -225,6 +225,8 @@ describe('dashboard autopilot output ingestion', () => {
       expect.objectContaining({
         companyName: 'Evonik Industries',
         productEquivalent: 'VARISOFT official esterquat product family',
+        revenue: 'FY2024 revenue source-backed',
+        yearlyGrowth: '+5% YoY source-backed',
         sourceTitle: 'Evonik official product page',
         sourceUrl: 'https://www.evonik.com/',
       }),
@@ -302,7 +304,7 @@ describe('dashboard autopilot output ingestion', () => {
       '# Full Dashboard Trusted Source Autopilot',
       '',
       '## Competitor Intelligence',
-      '- Company: Evonik Industries | Product Equivalent: VARISOFT official esterquat product family | Market Share: To Verify | Source: [Evonik official product page](https://www.evonik.com/) | Source Tier: Tier 2 - Official company / product source | Evidence Status: To Verify | Confidence: medium | Review Required: yes',
+      '- Company: Evonik Industries | Product Equivalent: VARISOFT official esterquat product family | Market Share: To Verify | Revenue: FY2024 revenue source-backed | Yearly Growth: +5% YoY source-backed | Source: [Evonik official product page](https://www.evonik.com/) | Source Tier: Tier 2 - Official company / product source | Evidence Status: To Verify | Confidence: medium | Review Required: yes',
       '',
       '## Market Intelligence',
       '1. Field: Country-wise consumption growth - Bangladesh | Value: Trade proxy signal found | Source Title: WITS / World Bank Comtrade | Source URL: https://wits.worldbank.org/ | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Data Type: trade_data | Review Required: yes',
@@ -313,6 +315,8 @@ describe('dashboard autopilot output ingestion', () => {
         companyName: 'Evonik Industries',
         productEquivalent: 'VARISOFT official esterquat product family',
         marketShare: 'To Verify',
+        revenue: 'FY2024 revenue source-backed',
+        yearlyGrowth: '+5% YoY source-backed',
         sourceTitle: 'Evonik official product page',
         sourceUrl: 'https://www.evonik.com/',
         reviewRequired: true,
@@ -1114,6 +1118,7 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('source-backed delimited bullets')
     expect(prompt).toContain('unstructured or unsourced output will be ignored')
     expect(prompt).toContain('Do not invent market size')
+    expect(prompt).toContain('revenue, yearlyGrowth')
   })
 
   it('sets a configured profile model before starting a newly created full dashboard run', async () => {

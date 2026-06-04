@@ -869,6 +869,7 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('source-backed delimited bullets')
     expect(prompt).toContain('unstructured or unsourced output will be ignored')
     expect(prompt).toContain('Do not invent market size')
+    expect(prompt).toContain('revenue, yearlyGrowth')
     expect(prompt).toContain('competitor market share as To Verify')
   })
 
@@ -900,9 +901,9 @@ describe('Trusted Source Autopilot', () => {
       '# Full Dashboard Trusted Source Autopilot',
       '',
       '## Competitor Intelligence',
-      '| Company | Product Equivalent | Market Share | Source Title | Source URL | Source Tier | Evidence Status | Confidence | Review Required |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-      '| Stepan | STEPANTEX SP-90 official product page | To Verify | Stepan official product page | https://www.stepan.com/ | Tier 2 - Official company / product source | To Verify | medium | yes |',
+      '| Company | Product Equivalent | Market Share | Revenue | Yearly Growth | Source Title | Source URL | Source Tier | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Stepan | STEPANTEX SP-90 official product page | To Verify | FY2024 revenue source-backed | +4% YoY source-backed | Stepan official product page | https://www.stepan.com/ | Tier 2 - Official company / product source | To Verify | medium | yes |',
     ].join('\n'))
 
     expect(payload?.competitorRecords).toEqual([
@@ -910,6 +911,8 @@ describe('Trusted Source Autopilot', () => {
         companyName: 'Stepan',
         productEquivalent: 'STEPANTEX SP-90 official product page',
         marketShare: 'To Verify',
+        revenue: 'FY2024 revenue source-backed',
+        yearlyGrowth: '+4% YoY source-backed',
         sourceTitle: 'Stepan official product page',
         sourceUrl: 'https://www.stepan.com/',
         reviewRequired: true,
@@ -1022,6 +1025,8 @@ describe('Trusted Source Autopilot', () => {
             countryRegion: 'Germany',
             productEquivalent: 'Textile softener portfolio',
             activeContent: 'To Verify',
+            revenue: 'FY2024 revenue source-backed',
+            yearlyGrowth: '+3% YoY source-backed',
             certifications: 'Official company/product source',
             distributionPresence: 'Global',
             sourceTitle: 'BASF official',
@@ -1042,6 +1047,8 @@ describe('Trusted Source Autopilot', () => {
     expect(result.autoFilledCount).toBe(1)
     expect(result.runKey).toBe('job-full-dashboard/2026-06-02T07-00-00.md')
     expect(useFeasibilityIntelligence().state.value.competitors[0].companyName).toBe('BASF')
+    expect(useFeasibilityIntelligence().state.value.competitors[0].revenue).toBe('FY2024 revenue source-backed')
+    expect(useFeasibilityIntelligence().state.value.competitors[0].yearlyGrowth).toBe('+3% YoY source-backed')
   })
 
   it('does not import the same scheduled Hermes output twice', async () => {

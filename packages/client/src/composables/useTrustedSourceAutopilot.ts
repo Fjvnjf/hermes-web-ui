@@ -1063,7 +1063,7 @@ function fullDashboardAutopilotPrompt(): string {
     '- Use these arrays only: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep the value To Verify when the source is only a proxy.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
-    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, marketShare, revenue, yearlyGrowth, certifications, distributionPresence, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
     '- If the JSON appendix fails, still include source-backed Markdown tables with Field/Value/Source Title/Source URL/Source Tier/Confidence/Evidence Status/Review Required columns.',
     '- If tables are not possible, use source-backed delimited bullets such as: Field: Country-wise consumption growth - China | Value: Trade proxy found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes.',
     '- Do not output unsupported plain numbers without source metadata; unstructured or unsourced output will be ignored by the dashboard importer.',
@@ -1513,6 +1513,8 @@ function dashboardItemValue(group: DashboardResearchUpdateGroup, item: Dashboard
       item.productEquivalent ? `Product equivalent: ${asText(item.productEquivalent)}` : '',
       item.marketShare ? `Market share: ${asText(item.marketShare)}` : '',
       item.pricingEvidence ? `Pricing: ${asText(item.pricingEvidence)}` : '',
+      item.revenue ? `Revenue: ${asText(item.revenue)}` : '',
+      item.yearlyGrowth ? `Yearly growth: ${asText(item.yearlyGrowth)}` : '',
     ].filter(Boolean).join('; ') || 'To Verify'
   }
   if (group === 'supplierScorecards') {

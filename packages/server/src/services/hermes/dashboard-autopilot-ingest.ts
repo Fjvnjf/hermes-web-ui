@@ -657,7 +657,7 @@ function fullDashboardAutopilotPrompt(): string {
     'Dashboard areas to cover:',
     '- Executive Overview: revenue target, EQ capacity MT/YR, projected IRR, payback period, blended ASP/MT, NPV @ 12%, daily brief, priorities, top risk.',
     '- Market Intelligence: market size/scope, growth rate, import dependence, target countries/provinces, country-wise consumption/growth, segmentation, opportunity score.',
-    '- Competitor Intelligence: cationic softeners/CHEMISOFT, silicone softeners/CHEMISIL, competitor landscape, product equivalents, pricing evidence, certifications, distribution, market share only when source-backed.',
+    '- Competitor Intelligence: cationic softeners/CHEMISOFT, silicone softeners/CHEMISIL, competitor landscape, product equivalents, pricing evidence, revenue, yearly growth, certifications, distribution, and market share only when source-backed.',
     '- Investment Analysis: total investment, IRR, NPV, payback, profitability index, 5-year ROI, investment breakdown, working capital, scenarios.',
     '- Raw Material Sourcing and Supplier Scorecards: TEA, DMS/dimethyl sulfate, stearic acid, PDMS silicone oil, acetic acid, ethoxylates, packaging, supplier quotes/evidence.',
     '- Export Market Opportunity: country-wise textile/chemical trade proxies, HS-code candidates, growth indicators, import/export signals.',
@@ -699,7 +699,7 @@ function fullDashboardAutopilotPrompt(): string {
     '- For missing checklist targets, include proposedDashboardField and recommendedAction so Research Result Review and Kanban can show exactly what still needs evidence.',
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep proxy values To Verify.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
-    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, certifications, distributionPresence, marketShare, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, marketShare, revenue, yearlyGrowth, certifications, distributionPresence, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
     '- If the JSON appendix fails, still include source-backed Markdown tables with Field/Value/Source Title/Source URL/Source Tier/Confidence/Evidence Status/Review Required columns.',
     '- If tables are not possible, use source-backed delimited bullets such as: Field: Country-wise consumption growth - China | Value: Trade proxy found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes.',
     '- Do not output unsupported plain numbers without source metadata; unstructured or unsourced output will be ignored by the dashboard importer.',
@@ -1555,7 +1555,9 @@ function markdownRowToDashboardItem(
   const notes = getCell(row, 'notes', 'note', 'strength', 'weakness', 'summary')
   const marketShare = getCell(row, 'market share', 'share')
   const pricingEvidence = getCell(row, 'pricing evidence', 'price', 'price/kg', 'price/t', 'cost')
-  const fallbackValue = value || marketShare || pricingEvidence || notes
+  const revenue = getCell(row, 'revenue', 'annual revenue', 'sales', 'turnover')
+  const yearlyGrowth = getCell(row, 'yearly growth', 'annual growth', 'growth yoy', 'yoy growth', 'growth rate')
+  const fallbackValue = value || marketShare || pricingEvidence || revenue || yearlyGrowth || notes
   const rowTitle = title || label || field || getCell(row, 'company', 'competitor', 'manufacturer', 'supplier', 'material')
   if (!rowTitle && !fallbackValue) return null
 
@@ -1569,6 +1571,8 @@ function markdownRowToDashboardItem(
     productEquivalent: getCell(row, 'product equivalent', 'product', 'equivalent'),
     activeContent: getCell(row, 'active content', 'active', 'content'),
     pricingEvidence,
+    revenue,
+    yearlyGrowth,
     certifications: getCell(row, 'certifications', 'certification'),
     distributionPresence: getCell(row, 'distribution', 'distribution presence', 'presence'),
     marketShare,
@@ -1689,7 +1693,7 @@ function parseDelimitedBulletRow(
   }
 
   const hasFieldish = Boolean(getCell(row, 'field', 'metric', 'kpi', 'claim', 'indicator', 'segment', 'category', 'section', 'item', 'company', 'competitor', 'manufacturer', 'supplier', 'material'))
-  const hasValueish = Boolean(getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'market share', 'share', 'pricing evidence', 'price', 'cost', 'notes', 'summary'))
+  const hasValueish = Boolean(getCell(row, 'value', 'amount', 'size', 'growth', 'rate', 'status', 'target', 'scope', 'score', 'market share', 'share', 'pricing evidence', 'price', 'cost', 'revenue', 'annual revenue', 'yearly growth', 'annual growth', 'growth yoy', 'yoy growth', 'notes', 'summary'))
   const sourceFields = markdownSourceFields(row, references)
   const hasSource = Boolean(sourceFields.sourceTitle || sourceFields.sourceUrl || sourceFields.sourceDate)
 
