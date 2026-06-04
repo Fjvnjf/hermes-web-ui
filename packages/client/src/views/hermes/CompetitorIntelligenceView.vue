@@ -50,10 +50,10 @@ const productContextRows = [
   'CHEMISIL 1800 CON',
 ].map(product => ({
   product,
-  formType: 'To Verify',
-  dosing: 'To Verify',
-  ph: 'To Verify',
-  application: 'To Verify',
+  formType: 'TDS/SDS source required',
+  dosing: 'Application guide required',
+  ph: 'TDS/SDS source required',
+  application: 'Product evidence required',
   evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
 }))
 const screenshotCompetitorKpis = [
@@ -65,19 +65,19 @@ const screenshotCompetitorKpis = [
   },
   {
     label: 'EU Avg Price',
-    value: 'To Verify',
+    value: 'No public source-backed benchmark',
     status: 'To Verify' as IntelligenceEvidenceStatus,
     note: 'Do not show a $/kg benchmark until source-backed distributor or quote evidence is attached.',
   },
   {
     label: 'Chemicon Target',
-    value: 'To Verify',
+    value: 'No approved ASP/costing evidence',
     status: 'To Verify' as IntelligenceEvidenceStatus,
     note: 'Target price needs approved ASP/costing evidence before it appears as a number.',
   },
   {
     label: 'Price Edge',
-    value: 'To Verify',
+    value: 'Requires verified competitor price and Chemicon target',
     status: 'To Verify' as IntelligenceEvidenceStatus,
     note: 'No edge percentage is shown until competitor price and Chemicon target are both verified.',
   },
@@ -89,25 +89,25 @@ const screenshotProductFamilies = [
     rows: [
       {
         product: 'CWAS',
-        form: 'To Verify',
-        dosing: 'To Verify',
-        ph: 'To Verify',
+        form: 'TDS/SDS source required',
+        dosing: 'Application guide required',
+        ph: 'TDS/SDS source required',
         application: 'Textile finishing softener context',
         status: 'To Verify' as IntelligenceEvidenceStatus,
       },
       {
         product: 'CWMS',
-        form: 'To Verify',
-        dosing: 'To Verify',
-        ph: 'To Verify',
+        form: 'TDS/SDS source required',
+        dosing: 'Application guide required',
+        ph: 'TDS/SDS source required',
         application: 'Textile softener comparison item',
         status: 'To Verify' as IntelligenceEvidenceStatus,
       },
       {
         product: 'CSLC',
-        form: 'To Verify',
-        dosing: 'To Verify',
-        ph: 'To Verify',
+        form: 'TDS/SDS source required',
+        dosing: 'Application guide required',
+        ph: 'TDS/SDS source required',
         application: 'Textile softener comparison item',
         status: 'To Verify' as IntelligenceEvidenceStatus,
       },
@@ -119,17 +119,17 @@ const screenshotProductFamilies = [
     rows: [
       {
         product: 'CHEMISIL HS 200',
-        form: 'To Verify',
-        dosing: 'To Verify',
-        ph: 'To Verify',
+        form: 'TDS/SDS source required',
+        dosing: 'Application guide required',
+        ph: 'TDS/SDS source required',
         application: 'Hydrophilic silicone softener benchmark',
         status: 'To Verify' as IntelligenceEvidenceStatus,
       },
       {
         product: 'CHEMISIL 1800 CON',
-        form: 'To Verify',
-        dosing: 'To Verify',
-        ph: 'To Verify',
+        form: 'TDS/SDS source required',
+        dosing: 'Application guide required',
+        ph: 'TDS/SDS source required',
         application: 'Amino-modified silicone benchmark',
         status: 'To Verify' as IntelligenceEvidenceStatus,
       },
@@ -140,8 +140,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'Transfar Chemicals',
     hq: 'China',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'China textile chemicals / auxiliaries presence',
     weakness: 'Product equivalents, price, and share need source evidence',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -151,8 +151,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'WACKER',
     hq: 'Germany',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'Silicone textile softener portfolio',
     weakness: 'China softener share and price need verification',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -162,8 +162,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'RUDOLF Group',
     hq: 'Germany',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'High-performance silicone softeners for textile applications',
     weakness: 'China share, channel pricing, and equivalent grade need verification',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -173,8 +173,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'CHT Group',
     hq: 'Germany',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'Textile solutions and auxiliaries supplier',
     weakness: 'Equivalent products, price, and China distribution need verification',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -184,8 +184,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'Archroma',
     hq: 'Switzerland',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'Finishing portfolio includes silicone and non-yellowing softeners',
     weakness: 'Market share and local price need verification',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -195,8 +195,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'Zschimmer & Schwarz',
     hq: 'Germany',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'Textile auxiliaries including softeners and finishing products',
     weakness: 'China share, product equivalent, and pricing need verification',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -206,8 +206,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'Pulcra Chemicals',
     hq: 'Germany / global',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'Specialty chemicals for fiber, textile, and leather industries',
     weakness: 'Softener equivalent, China pricing, and share need verification',
     status: 'Source-backed' as IntelligenceEvidenceStatus,
@@ -217,8 +217,8 @@ const sourceBackedCompetitorTemplateRows = [
   {
     competitor: 'Kao Chemicals Europe',
     hq: 'Japan / Europe',
-    share: 'To Verify',
-    price: 'To Verify',
+    share: 'Not published by cited source',
+    price: 'Not published by cited source',
     strength: 'Listed public esterquats company reference',
     weakness: 'Textile-softener relevance, China share, and price need verification',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
@@ -267,6 +267,21 @@ interface CompetitorComparisonRow {
   nextAction: string
   comparable: Partial<Record<'price' | 'marketShare' | 'revenue' | 'yoyGrowth' | 'traffic' | 'rating' | 'confidence', number>>
   badges: string[]
+}
+
+interface CompetitorMetricRow {
+  id: string
+  competitor: string
+  hq: string
+  productFocus: string
+  priceKg: string
+  marketShare: string
+  revenue: string
+  yearlyGrowth: string
+  source: string
+  sourceUrl?: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  nextAction: string
 }
 
 const competitorCategoryOptions = [
@@ -471,8 +486,8 @@ const marketShareChartRows = computed(() =>
     }))
     .filter(row => Number.isFinite(row.numericShare) && row.numericShare > 0 && (row.isAssumption || row.isSourceBacked)),
 )
-const competitorMetricsRows = computed(() => {
-  const templateRows = sourceBackedCompetitorTemplateRows.map(row => ({
+const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
+  const templateRows: CompetitorMetricRow[] = sourceBackedCompetitorTemplateRows.map(row => ({
     id: `template-${row.competitor}`,
     competitor: row.competitor,
     hq: row.hq,
@@ -487,7 +502,7 @@ const competitorMetricsRows = computed(() => {
     nextAction: row.weakness,
   }))
 
-  const savedRows = competitors.value.map(competitor => ({
+  const savedRows: CompetitorMetricRow[] = competitors.value.map(competitor => ({
     id: `saved-${competitor.id}`,
     competitor: competitor.companyName,
     hq: competitor.countryRegion || autoVerifyingText,
@@ -502,7 +517,7 @@ const competitorMetricsRows = computed(() => {
     nextAction: competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
   }))
 
-  return [...savedRows, ...templateRows]
+  return collapseCompetitorMetricRows([...savedRows, ...templateRows])
 })
 const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
   const rows = competitorMetricsRows.value.map(row => {
@@ -579,6 +594,97 @@ function competitorCategoryFor(competitor: string, product: string, hq: string):
   if (/evonik|stepan|kao|basf|syensqo|solvay|esterquat|ester quat|cationic|cwas|cwms|chemisoft/.test(text)) return 'Cationic / Ester Quat'
   if (/archroma|rudolf|cht|zschimmer|pulcra|textile|auxiliar|finishing|softener/.test(text)) return 'Textile Auxiliary'
   return 'Global Reference'
+}
+
+function collapseCompetitorMetricRows(rows: CompetitorMetricRow[]): CompetitorMetricRow[] {
+  const groups = new Map<string, CompetitorMetricRow[]>()
+  for (const row of rows) {
+    const key = normalizedCompetitorKey(row.competitor)
+    groups.set(key, [...(groups.get(key) || []), row])
+  }
+
+  return Array.from(groups.values()).map(group => {
+    if (group.length === 1) return group[0]
+    const primary = group.find(row => row.id.startsWith('saved-')) || group[0]
+    const productVariations = uniqueValues(group.map(row => row.productFocus)).sort((a, b) => a.localeCompare(b))
+    const sources = uniqueValues(group.map(row => row.source).filter(source => source && !/source search running/i.test(source)))
+    const nextActions = uniqueValues(group.map(row => row.nextAction).filter(Boolean))
+    return {
+      ...primary,
+      id: group.map(row => row.id).join('__'),
+      productFocus: productVariations.length > 1
+        ? productVariations.join(' / ')
+        : productVariations[0] || primary.productFocus,
+      hq: firstUsefulValue(group.map(row => row.hq), primary.hq),
+      priceKg: bestMetricValue(group.map(row => row.priceKg), autoVerifyingText, 'min'),
+      marketShare: bestMetricValue(group.map(row => row.marketShare), autoVerifyingText, 'max'),
+      revenue: bestMetricValue(group.map(row => row.revenue), autoVerifyingText, 'max'),
+      yearlyGrowth: bestMetricValue(group.map(row => row.yearlyGrowth), autoVerifyingText, 'max'),
+      source: sources.length > 1 ? `${sources.length} sources` : sources[0] || primary.source,
+      sourceUrl: group.find(row => row.sourceUrl)?.sourceUrl,
+      evidenceStatus: strongestEvidenceStatus(group.map(row => row.evidenceStatus)),
+      nextAction: nextActions.length > 1 ? nextActions.join(' / ') : nextActions[0] || primary.nextAction,
+    }
+  })
+}
+
+function normalizedCompetitorKey(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(group|company|chemicals?|chemical|industries|industry|co|corp|corporation|limited|ltd|inc|gmbh|ag|plc)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function uniqueValues(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const normalized = String(value || '').trim()
+    if (!normalized) continue
+    const key = normalized.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+  return result
+}
+
+function firstUsefulValue(values: string[], fallback: string): string {
+  return values.find(value => value && !/hermes verifying twice daily|not published by cited source|source search running/i.test(value)) || fallback
+}
+
+function bestMetricValue(values: string[], fallback: string, mode: 'max' | 'min'): string {
+  const candidates = values
+    .map(value => ({ value, numeric: comparableNumber(value || '') }))
+    .filter(candidate => candidate.numeric !== null) as Array<{ value: string; numeric: number }>
+  if (!candidates.length) return firstUsefulValue(values, fallback)
+  return candidates.reduce((best, candidate) => {
+    return mode === 'max'
+      ? candidate.numeric > best.numeric ? candidate : best
+      : candidate.numeric < best.numeric ? candidate : best
+  }).value
+}
+
+function strongestEvidenceStatus(statuses: IntelligenceEvidenceStatus[]): IntelligenceEvidenceStatus {
+  const order: IntelligenceEvidenceStatus[] = [
+    'Verified',
+    'User Approved',
+    'Investor Approved',
+    'Trusted Source Auto-Updated',
+    'Official Data',
+    'Source-backed',
+    'User Provided',
+    'Reference Only',
+    'Candidate Source',
+    'Assumption',
+    'Powerful Assumption',
+    'Hypothesis',
+    'Conflict Detected',
+    'To Verify',
+    'Missing',
+  ]
+  return order.find(status => statuses.includes(status)) || statuses[0] || 'To Verify'
 }
 
 function evidenceStateForRow(
@@ -679,16 +785,16 @@ function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): s
 function autoVerifyText(value: string | null | undefined): string {
   const normalized = String(value || '').trim()
   if (!normalized || normalized === 'To Verify') return autoVerifyingText
-  if (normalized === 'Missing') return `Missing / ${autoVerifyingText}`
+  if (normalized === 'Missing') return autoVerifyingText
   return normalized
-    .replace(/Missing\s*\/\s*To Verify/g, `Missing / ${autoVerifyingText}`)
+    .replace(/Missing\s*\/\s*To Verify/g, autoVerifyingText)
     .replace(/Trade Proxy\s*\/\s*To Verify/g, `Trade Proxy / ${autoVerifyingText}`)
     .replace(/\bTo Verify\b/g, autoVerifyingText)
 }
 
 function displayEvidenceStatus(status: IntelligenceEvidenceStatus): string {
   if (status === 'To Verify') return autoVerifyingText
-  if (status === 'Missing') return `Missing / ${autoVerifyingText}`
+  if (status === 'Missing') return autoVerifyingText
   return status
 }
 
@@ -1351,7 +1457,7 @@ function addCompetitor() {
         <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
         <span>{{ autoVerifyText(competitor.productEquivalent) }}</span>
         <span class="weakness-label">{{ autoVerifyText(competitor.notes) }}</span>
-        <span>{{ competitor.source?.title || 'Source missing' }}</span>
+        <span>{{ competitor.source?.title || 'Source search running' }}</span>
         <span class="status-badge" :class="competitor.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ displayEvidenceStatus(competitor.evidenceStatus) }}</span>
         <span class="row-actions">
           <NButton size="tiny" secondary @click="startEditCompetitor(competitor)">

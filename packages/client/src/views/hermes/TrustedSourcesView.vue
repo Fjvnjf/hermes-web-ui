@@ -308,7 +308,7 @@ function missingCoveragePrompt(): string {
     '',
     'Safety rules:',
     '- No fake values and no unsupported claims.',
-    '- Missing values stay Missing or To Verify.',
+    '- Unsupported values stay out of dashboard truth until source-backed or staged for review.',
     '- Market size, CAGR, consumption growth, competitor share, supplier prices, financial outputs, regulatory status, and investor claims must be staged for owner review unless evidence is strong and official.',
     '- Formula, cost-sensitive, product-development, supplier-price, and investor-sensitive details must remain protected.',
     '- Financial outputs remain Derived from Assumptions unless tied to approved inputs.',

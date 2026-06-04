@@ -202,8 +202,9 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Vendor quotes needed')
     expect(wrapper.text()).toContain('Scenario Selector')
     expect(wrapper.text()).toContain('Scenario not filled yet')
-    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
     expect(wrapper.text()).toContain('User PDF Project Analysis Reference - 60,000 MT/YR Esterquat Plant')
     expect(wrapper.text()).toContain('$16M')
     expect(wrapper.text()).toContain('$49.8M')
@@ -238,7 +239,8 @@ describe('screenshot-matched executive business tabs', () => {
 
     await wrapper.findAll('button').find(button => button.text() === 'Lean')!.trigger('click')
     expect(wrapper.text()).toContain('Scenario not filled yet')
-    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('No approved source-backed value')
+    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
   })
 
   it('labels saved financial outputs as Derived from Assumptions for investor safety', () => {
@@ -350,9 +352,11 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Cationic / Ester Quat')
     expect(wrapper.text()).toContain('Target Countries / Provinces')
     expect(wrapper.text()).toContain('Research HS Codes')
-    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('Mainland China accounts for nearly half of global textile chemicals value')
+    expect(wrapper.text()).toContain('Keqiao 8,000+ textile businesses')
     expect(wrapper.text()).toContain('Example supplier')
     expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
     for (const selector of [
       '.market-map-brief',
       '.global-market-intelligence',
@@ -478,6 +482,21 @@ describe('screenshot-matched executive business tabs', () => {
       notes: 'Source-backed competitor record.',
     })
     intelligence.addCompetitor({
+      companyName: 'Alpha Source Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWMS variation',
+      activeContent: '70% active',
+      pricingEvidence: '$22/kg source-backed',
+      certifications: 'Official certificate',
+      distributionPresence: 'Official distributor page',
+      marketShare: '6% source-backed',
+      revenue: '$18M source-backed',
+      yearlyGrowth: '+5% source-backed',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Official product variation page', url: 'https://example.com/alpha-cwms' },
+      notes: 'Second product variation should not duplicate the company row.',
+    })
+    intelligence.addCompetitor({
       companyName: 'Beta Source Co',
       countryRegion: 'Germany',
       productEquivalent: 'Silicone Softener',
@@ -502,6 +521,10 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).toContain('Revenue')
     expect(panel().text()).toContain('YoY Growth')
     expect(panel().text()).toContain('Hermes verifying twice daily')
+    const alphaRows = wrapper.findAll('.comparison-grid-row')
+      .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
+    expect(alphaRows).toHaveLength(1)
+    expect(alphaRows[0].text()).toContain('CWAS equivalent / CWMS variation')
 
     const revenueSort = wrapper.findAll('.comparison-sort-button').find(button => button.text().includes('Revenue'))
     expect(revenueSort).toBeTruthy()

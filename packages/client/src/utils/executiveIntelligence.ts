@@ -85,7 +85,7 @@ export function financialOutputStatus(snapshot: FinancialModelSnapshot | null): 
 }
 
 export function formatExecutiveCurrency(value: number | null | undefined, currency = 'USD'): string {
-  if (value == null || !Number.isFinite(value) || value <= 0) return 'Missing / To Verify'
+  if (value == null || !Number.isFinite(value) || value <= 0) return 'No approved source-backed value'
   return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency,
@@ -94,7 +94,7 @@ export function formatExecutiveCurrency(value: number | null | undefined, curren
 }
 
 export function formatExecutivePercent(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return 'Missing / To Verify'
+  if (value == null || !Number.isFinite(value)) return 'No approved source-backed value'
   return `${(value * 100).toFixed(1)}%`
 }
 
@@ -131,7 +131,7 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'npv',
       label: 'NPV @ 12%',
-      value: snapshot ? formatExecutiveCurrency(snapshot.npv, currency) : 'Missing / To Verify',
+      value: snapshot ? formatExecutiveCurrency(snapshot.npv, currency) : 'No approved source-backed scenario',
       evidenceStatus: outputStatus,
       sourceLabel,
       lastUpdated,
@@ -141,7 +141,7 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'payback',
       label: 'Payback Period',
-      value: snapshot?.paybackYear ? `Year ${snapshot.paybackYear}` : 'Missing / To Verify',
+      value: snapshot?.paybackYear ? `Year ${snapshot.paybackYear}` : 'No approved source-backed scenario',
       evidenceStatus: outputStatus,
       sourceLabel,
       lastUpdated,
@@ -151,7 +151,7 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'profitabilityIndex',
       label: 'Profitability Index',
-      value: 'Missing / To Verify',
+      value: 'No approved source-backed scenario',
       evidenceStatus: 'To Verify',
       sourceLabel: 'Not calculated yet',
       lastUpdated: 'Not available',
@@ -171,7 +171,7 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'capacity',
       label: 'EQ Capacity MT/YR',
-      value: 'Missing / To Verify',
+      value: 'No approved capacity evidence',
       evidenceStatus: 'To Verify',
       sourceLabel: 'No source-backed capacity record',
       lastUpdated: 'Not available',
@@ -181,7 +181,7 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'blendedAsp',
       label: 'Blended ASP/MT',
-      value: 'Missing / To Verify',
+      value: 'No approved ASP evidence',
       evidenceStatus: 'To Verify',
       sourceLabel: 'No source-backed ASP record',
       lastUpdated: 'Not available',
@@ -193,7 +193,7 @@ export function buildInvestorEconomicsKpis(
       label: '5-Year ROI',
       value: snapshot?.investorMoic && Number.isFinite(snapshot.investorMoic)
         ? `${snapshot.investorMoic.toFixed(2)}x MOIC`
-        : 'Missing / To Verify',
+        : 'No approved source-backed scenario',
       evidenceStatus: snapshot?.investorMoic ? outputStatus : 'To Verify',
       sourceLabel: snapshot?.investorMoic ? sourceLabel : 'Not calculated yet',
       lastUpdated: snapshot?.investorMoic ? lastUpdated : 'Not available',
@@ -215,19 +215,19 @@ export function buildInvestmentBreakdownRows(): ExecutiveBreakdownRow[] {
     'Other Costs',
   ].map(label => ({
     label,
-    value: 'To Verify',
+    value: 'Source-backed quote required',
     evidenceStatus: 'To Verify',
     sourceLabel: 'No source-backed line-item record',
   }))
 }
 
 export function marketClaimValue(claim: MarketClaim | null | undefined): string {
-  if (!claim?.value?.trim()) return 'Missing / To Verify'
+  if (!claim?.value?.trim()) return 'No source-backed claim captured yet'
   return claim.value.trim()
 }
 
 export function marketClaimSourceLabel(claim: MarketClaim | null | undefined): string {
-  if (!claim?.source?.title?.trim()) return 'Source missing'
+  if (!claim?.source?.title?.trim()) return 'Source search running'
   return [claim.source.title, claim.source.date, claim.source.url].filter(Boolean).join(' / ')
 }
 

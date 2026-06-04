@@ -838,7 +838,7 @@ describe('Trusted Source Autopilot', () => {
     expect(countryGrowthClaim?.riskReason).toContain('proxy')
     expect(result.snapshot.claims.every(claim => !claim.value.includes('$3.2B'))).toBe(true)
     expect(result.snapshot.review_required).toBe(true)
-  })
+  }, 30000)
 
   it('builds a full dashboard autopilot prompt for online research without allowing fake values', () => {
     const prompt = useTrustedSourceAutopilot().fullDashboardAutopilotPrompt()

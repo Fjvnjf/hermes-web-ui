@@ -143,7 +143,7 @@ export function sourceIsUsable(source?: SourceReference | null): boolean {
 
 export function formatSourceReference(source?: SourceReference | null): string {
   const title = source?.title?.trim()
-  if (!title) return 'Source missing'
+  if (!title) return 'Source search running'
   const details = [source?.url?.trim(), source?.date?.trim()].filter(Boolean).join(' / ')
   return details ? `${title} (${details})` : title
 }
@@ -153,7 +153,7 @@ export const AUTOMATIC_VERIFICATION_LABEL = 'Hermes verifying twice daily'
 export function displayEvidenceStatus(status?: string | null): string {
   const normalized = String(status || '').trim()
   if (!normalized || normalized === 'To Verify') return AUTOMATIC_VERIFICATION_LABEL
-  if (normalized === 'Missing / To Verify') return `Missing / ${AUTOMATIC_VERIFICATION_LABEL}`
+  if (normalized === 'Missing' || normalized === 'Missing / To Verify') return AUTOMATIC_VERIFICATION_LABEL
   if (normalized === 'Trade Proxy / To Verify') return `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`
   return normalized
 }
@@ -161,14 +161,14 @@ export function displayEvidenceStatus(status?: string | null): string {
 export function displayUnresolvedValue(value?: string | number | null): string {
   const normalized = String(value ?? '').trim()
   if (!normalized || normalized === 'To Verify') return AUTOMATIC_VERIFICATION_LABEL
-  if (normalized === 'Missing / To Verify') return `Missing / ${AUTOMATIC_VERIFICATION_LABEL}`
+  if (normalized === 'Missing' || normalized === 'Missing / To Verify') return AUTOMATIC_VERIFICATION_LABEL
   if (normalized === 'Trade Proxy / To Verify') return `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`
   return normalized
 }
 
 export function displayAutomaticVerificationText(text?: string | null): string {
   return String(text || '')
-    .replace(/Missing \/ To Verify/g, `Missing / ${AUTOMATIC_VERIFICATION_LABEL}`)
+    .replace(/Missing \/ To Verify/g, AUTOMATIC_VERIFICATION_LABEL)
     .replace(/Trade Proxy \/ To Verify/g, `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`)
     .replace(/\bTo Verify\b/g, AUTOMATIC_VERIFICATION_LABEL)
 }

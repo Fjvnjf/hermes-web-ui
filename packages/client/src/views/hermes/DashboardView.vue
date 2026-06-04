@@ -131,7 +131,7 @@ const investorSnapshot = computed(() => [
   {
     label: 'Evidence Gaps',
     value: String(intelligence.evidenceGaps.value.length),
-    note: displayAutomaticVerificationText('Missing / To Verify'),
+    note: 'Review-gated evidence queue',
     tone: intelligence.evidenceGaps.value.length > 0 ? 'warn' : 'ok',
     to: { name: 'hermes.investorReadiness' },
   },
@@ -514,7 +514,7 @@ const automaticResearchFlow = computed(() => {
       title: 'Fill safe fields',
       detail: hasDashboardRecords
         ? `${importedDashboardRecordCount.value} source-backed dashboard record${importedDashboardRecordCount.value === 1 ? '' : 's'} are available now.`
-        : `Low-risk official facts can auto-fill; unknowns remain ${displayAutomaticVerificationText('Missing or To Verify')}.`,
+        : 'Low-risk official facts can auto-fill; unsupported claims stay in the review queue.',
       state: state(hasDashboardRecords, hasImportedOutput && !hasDashboardRecords),
     },
     {
@@ -1492,7 +1492,7 @@ onMounted(() => {
                 {{ missingDashboardCoverageCount ? `${missingDashboardCoverageCount} trusted-source targets still need coverage` : 'Trusted-source coverage looks complete' }}
               </h4>
               <p>
-                Hermes uses this map to keep researching the dashboard automatically. Missing values stay {{ displayAutomaticVerificationText('Missing or To Verify') }} until source-backed evidence is imported.
+                Hermes uses this map to keep researching the dashboard automatically. Unsupported values stay out of business truth until source-backed evidence is imported.
               </p>
             </div>
             <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Coverage Status</RouterLink>

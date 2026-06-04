@@ -97,9 +97,9 @@ const executiveMarketMetrics = computed(() => [
   marketMetric('Opportunity Score', findMarketClaim(['opportunity score', 'market opportunity'])),
   {
     label: 'Competitor Records',
-    value: competitorClaimCount.value ? String(competitorClaimCount.value) : 'To Verify',
-    evidenceStatus: competitorClaimCount.value ? 'Reference Only' as IntelligenceEvidenceStatus : 'To Verify' as IntelligenceEvidenceStatus,
-    sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'No competitor records',
+    value: competitorClaimCount.value ? String(competitorClaimCount.value) : `${sourceBackedCompetitorReferences.length} reference companies`,
+    evidenceStatus: 'Reference Only' as IntelligenceEvidenceStatus,
+    sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'Grand View Research plus official company pages',
   },
 ])
 const marketSegments = computed(() => [
@@ -120,21 +120,21 @@ const targetOpportunityRows = computed(() => [
 const topCompetitorRows = computed(() => {
   const records = intelligence.state.value.competitors.slice(0, 5)
   if (!records.length) {
-    return [{
-      company: 'Competitor list missing',
-      region: 'To Verify',
-      product: 'To Verify',
-      share: 'To Verify',
-      source: 'Source missing',
-      status: 'To Verify' as IntelligenceEvidenceStatus,
-    }]
+    return sourceBackedCompetitorReferences.slice(0, 5).map(record => ({
+      company: record.manufacturer,
+      region: record.role,
+      product: 'Esterquat / textile softener reference',
+      share: 'Not published by cited source',
+      source: record.source,
+      status: record.status,
+    }))
   }
   return records.map(record => ({
-    company: record.companyName || 'To Verify',
-    region: record.countryRegion || 'To Verify',
-    product: record.productEquivalent || 'To Verify',
-    share: record.marketShare?.trim() && record.source?.title ? record.marketShare : 'To Verify',
-    source: record.source?.title || 'Source missing',
+    company: record.companyName || 'Hermes source search running',
+    region: record.countryRegion || 'Hermes source search running',
+    product: record.productEquivalent || 'Hermes source search running',
+    share: record.marketShare?.trim() && record.source?.title ? record.marketShare : 'Not published by cited source',
+    source: record.source?.title || 'Source search running',
     status: record.evidenceStatus,
   }))
 })
@@ -178,17 +178,17 @@ const sourceBackedTemplateKpis = [
   },
   {
     label: 'Growth Rate',
-    value: 'To Verify',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
-    source: 'Exact China textile-softener CAGR not source-backed yet',
-    note: 'Use paid/source-backed market report or approved research result before showing a percentage.',
+    value: '10.3% CAGR 2024-2030',
+    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research esterquats report page',
+    note: 'Global esterquats growth only; China textile-softener CAGR still requires product-specific evidence.',
   },
   {
     label: 'Import Dependence',
-    value: 'To Verify',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
-    source: 'UN Comtrade / China Customs HS mapping needed',
-    note: 'No direct textile-softener HS code has been approved for this dashboard yet.',
+    value: 'Trade-proxy source connected',
+    status: 'Trade Proxy' as IntelligenceEvidenceStatus,
+    source: 'WTO / World Bank WITS trade data',
+    note: 'Use WITS/UN Comtrade for import/export research; no direct textile-softener HS code is approved yet.',
   },
   {
     label: 'Chemicon Target',
@@ -229,17 +229,17 @@ const sourceBackedSegments = [
   },
   {
     segment: 'Cationic / Ester Quat Textile Softeners',
-    size: 'To Verify',
-    growth: 'To Verify',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
-    source: 'China textile-finishing segment source needed',
+    size: 'Global esterquats USD 2.441B in 2023',
+    growth: '10.3% CAGR 2024-2030',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
+    source: 'Grand View Research esterquats report page',
   },
   {
     segment: 'Silicone / Non-ionic Textile Softeners',
-    size: 'To Verify',
-    growth: 'To Verify',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
-    source: 'Source-backed segment split needed',
+    size: 'Official competitor product pages confirm active segment',
+    growth: 'No cited public CAGR for this exact segment',
+    status: 'Candidate Source' as IntelligenceEvidenceStatus,
+    source: 'WACKER / RUDOLF / Archroma official product pages',
   },
 ]
 const sourceBackedTargetRegions = [
@@ -263,9 +263,9 @@ const sourceBackedTargetRegions = [
   },
   {
     region: 'Guangdong / Fujian / Shandong',
-    value: 'To Verify',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
-    source: 'Province-level textile-finishing demand evidence needed',
+    value: 'Research target; no cited province split published',
+    status: 'Candidate Source' as IntelligenceEvidenceStatus,
+    source: 'WITS/UN Comtrade plus province cluster research required',
   },
 ]
 const sourceBackedCompetitorReferences = [
@@ -273,8 +273,8 @@ const sourceBackedCompetitorReferences = [
     rank: '1',
     manufacturer: 'Stepan Company',
     role: 'Listed key esterquats company',
-    capacity: 'To Verify',
-    share: 'To Verify',
+    capacity: 'Not published by cited source',
+    share: 'Not published by cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research',
   },
@@ -282,8 +282,8 @@ const sourceBackedCompetitorReferences = [
     rank: '2',
     manufacturer: 'Kao Chemicals Europe',
     role: 'Listed key esterquats company',
-    capacity: 'To Verify',
-    share: 'To Verify',
+    capacity: 'Not published by cited source',
+    share: 'Not published by cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research',
   },
@@ -291,8 +291,8 @@ const sourceBackedCompetitorReferences = [
     rank: '3',
     manufacturer: 'Evonik Industries',
     role: 'Listed key esterquats company',
-    capacity: 'To Verify',
-    share: 'To Verify',
+    capacity: 'Not published by cited source',
+    share: 'Not published by cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research',
   },
@@ -300,8 +300,8 @@ const sourceBackedCompetitorReferences = [
     rank: '4',
     manufacturer: 'BASF SE',
     role: 'Listed key esterquats company',
-    capacity: 'To Verify',
-    share: 'To Verify',
+    capacity: 'Not published by cited source',
+    share: 'Not published by cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research',
   },
@@ -309,8 +309,8 @@ const sourceBackedCompetitorReferences = [
     rank: '5',
     manufacturer: 'Solvay S.A.',
     role: 'Listed key esterquats company',
-    capacity: 'To Verify',
-    share: 'To Verify',
+    capacity: 'Not published by cited source',
+    share: 'Not published by cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research',
   },
@@ -406,9 +406,9 @@ const globalOpportunityRegions = [
   {
     region: 'India / Turkey / Pakistan',
     demandSignal: 'Textile/apparel manufacturing countries for later export-market research.',
-    verifiedEvidence: 'WTO/WITS trade context only.',
+    verifiedEvidence: 'WTO/WITS trade context plus OECD-FAO cotton mill-use outlook signals.',
     missingEvidence: 'Product registration needs, textile-softener buyer segments, price benchmarks, distributor proof.',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
   },
 ]
 const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
@@ -417,7 +417,7 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Largest base; cotton mill use projected near 2023/24 level',
     proxyMetric: 'Cotton mill-use proxy / textile-chemicals anchor',
     sourceBackedEvidence: 'Largest cotton-spinning country; mill use nearly one third of global consumption. Mainland China is also the largest textile-chemicals consumer.',
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO Agricultural Outlook 2025-2034; S&P Global Textile Chemicals abstract',
     nextAction: 'Verify China textile-softener consumption by province, application, and product family.',
@@ -427,7 +427,7 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Positive textile-mill demand signal; higher cotton use forecast in 2024/25',
     proxyMetric: 'Cotton mill-use proxy',
     sourceBackedEvidence: 'OECD-FAO expects higher cotton use in India to help drive the 2024/25 global recovery.',
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO Agricultural Outlook 2025-2034',
     nextAction: 'Research India textile-finishing clusters, softener suppliers, and import/local supply route.',
@@ -437,7 +437,7 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Fastest listed cotton mill-use growth signal: 2.7% p.a.',
     proxyMetric: 'Cotton mill-use proxy',
     sourceBackedEvidence: 'OECD-FAO says Vietnam will lead annual growth of cotton mill use at 2.7% p.a.',
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO Agricultural Outlook 2025-2034',
     nextAction: 'Validate Vietnam textile-finishing chemical demand, buyer segments, and distributor routes.',
@@ -447,7 +447,7 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Strong cotton mill-use growth signal: 2.1% p.a.',
     proxyMetric: 'Cotton mill-use proxy / apparel export hub',
     sourceBackedEvidence: 'OECD-FAO projects Bangladesh cotton mill-use growth at 2.1% p.a.; Bangladesh is a major apparel manufacturing base.',
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO Agricultural Outlook 2025-2034; WTO/WITS trade context',
     nextAction: 'Research Bangladesh wet-processing clusters, softener importers, and mill interviews.',
@@ -457,7 +457,7 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Short-term cotton-use/import signal; exact softener demand not confirmed',
     proxyMetric: 'Cotton mill-use and textile/apparel trade proxy',
     sourceBackedEvidence: 'OECD-FAO notes higher cotton use and import purchases in Turkey in the 2024/25 outlook context.',
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO Agricultural Outlook 2025-2034; WTO/WITS trade context',
     nextAction: 'Verify Turkey textile-finishing demand, local competitors, regulatory route, and price evidence.',
@@ -467,7 +467,7 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Near-term negative cotton-use signal from output decline; textile-softener demand still unknown',
     proxyMetric: 'Cotton mill-use proxy',
     sourceBackedEvidence: 'OECD-FAO says 2024/25 global cotton-use gains are partly offset by a significant Pakistan decline driven by output decline.',
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO Agricultural Outlook 2025-2034',
     nextAction: 'Check Pakistan textile output recovery, wet-processing demand, and chemical importer evidence.',
@@ -477,8 +477,8 @@ const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
     growthSignal: 'Potential Southeast Asia textile-demand proxy; current exact growth needs update',
     proxyMetric: 'Older cotton mill-use proxy / textile manufacturing proxy',
     sourceBackedEvidence: 'Older OECD-FAO outlooks highlighted Indonesia mill-use growth, but a current country-specific update is needed before using a figure.',
-    directSoftenerConsumption: 'To Verify',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
+    directSoftenerConsumption: 'No current direct public textile-softener consumption value in cited source',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'OECD-FAO historical cotton outlook; current verification needed',
     nextAction: 'Research latest Indonesia cotton mill-use, textile output, and finishing chemical demand.',
   },
@@ -498,7 +498,7 @@ const displayCountryConsumptionGrowthRows = computed<CountryConsumptionGrowthRow
 const countryGrowthSummaryCards = computed(() => {
   const rows = displayCountryConsumptionGrowthRows.value
   const autoImported = rows.filter(row => row.autoImported).length
-  const directDemandMissing = rows.filter(row => /to verify|missing/i.test(row.directSoftenerConsumption)).length
+  const directDemandNeedingProof = rows.filter(row => /no direct/i.test(row.directSoftenerConsumption)).length
   const sourceBackedOrReference = rows.filter(row =>
     row.status === 'Source-backed' ||
     row.status === 'Trusted Source Auto-Updated' ||
@@ -528,7 +528,7 @@ const countryGrowthSummaryCards = computed(() => {
     {
       icon: '🔍',
       label: 'Need direct proof',
-      value: String(directDemandMissing),
+      value: String(directDemandNeedingProof),
       detail: 'Country-level textile-softener consumption stays in Hermes twice-daily verification until direct evidence is found.',
     },
   ]
@@ -537,7 +537,7 @@ const countryMarketMapRows = computed(() =>
   displayCountryConsumptionGrowthRows.value.slice(0, 10).map(row => ({
     ...row,
     flag: countryFlag(row.country),
-    directDemandMissing: /to verify|missing/i.test(row.directSoftenerConsumption),
+    directDemandMissing: /no direct/i.test(row.directSoftenerConsumption),
   })),
 )
 const marketResearchQuestions = [
@@ -589,7 +589,7 @@ const pdfMarketSegmentRows = [
   { segment: 'Cationic / Ester Quat', size: '$1.4B', growth: '+8.1%' },
   { segment: 'Silicone Softeners', size: '$1.1B', growth: '+9.5%' },
   { segment: 'Non-ionic', size: '$0.5B', growth: '+4.2%' },
-  { segment: 'SOM (4.8%)', size: '$120M', growth: 'To Verify' },
+  { segment: 'SOM (4.8%)', size: '$120M', growth: 'User-provided target scenario' },
 ]
 
 function canUseRoute(routeName: string): boolean {
@@ -653,33 +653,172 @@ function findMarketClaim(keywords: string[]): MarketClaim | null {
 }
 
 function marketMetric(label: string, claim: MarketClaim | null) {
+  const fallback = sourceBackedMarketMetric(label)
+  const useClaim = Boolean(claim?.value?.trim())
+  const sensitivityClaim = claim || { label, value: fallback?.value || '', evidenceStatus: fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus }
   return {
     label,
-    value: isSensitiveMarketClaim(claim || { label, value: '', evidenceStatus: 'To Verify' }) ? 'Restricted' : marketClaimValue(claim),
-    evidenceStatus: claim ? normalizedMarketClaimStatus(claim) : 'To Verify' as IntelligenceEvidenceStatus,
-    sourceLabel: claim ? marketClaimSourceLabel(claim) : 'Source missing',
+    value: isSensitiveMarketClaim(sensitivityClaim) ? 'Restricted' : useClaim ? marketClaimValue(claim!) : fallback?.value || 'Source search running',
+    evidenceStatus: useClaim ? normalizedMarketClaimStatus(claim!) : fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus,
+    sourceLabel: useClaim ? marketClaimSourceLabel(claim!) : fallback?.sourceLabel || 'Trusted source autopilot',
   }
 }
 
 function marketSegment(label: string, keywords: string[]) {
   const claim = findMarketClaim(keywords)
+  const fallback = sourceBackedMarketSegment(label)
+  const useClaim = Boolean(claim?.value?.trim())
   return {
     label,
-    value: marketClaimValue(claim),
-    growth: claim?.value?.toLowerCase().includes('growth') ? claim.value : 'To Verify',
-    source: marketClaimSourceLabel(claim),
-    evidenceStatus: claimStatusOrToVerify(claim),
+    value: useClaim ? marketClaimValue(claim!) : fallback.value,
+    growth: useClaim && claim?.value?.toLowerCase().includes('growth') ? claim.value : fallback.growth,
+    source: useClaim ? marketClaimSourceLabel(claim!) : fallback.source,
+    evidenceStatus: useClaim ? claimStatusOrToVerify(claim!) : fallback.evidenceStatus,
   }
 }
 
 function opportunityRow(label: string, keywords: string[]) {
   const claim = findMarketClaim(keywords)
+  const fallback = sourceBackedOpportunityRow(label)
+  const useClaim = Boolean(claim?.value?.trim())
   return {
     label,
-    score: claim?.value?.trim() || 'To Verify',
+    score: useClaim ? claim?.value?.trim() || fallback.score : fallback.score,
     period: growthPeriod.value,
-    source: marketClaimSourceLabel(claim),
-    evidenceStatus: claimStatusOrToVerify(claim),
+    source: useClaim ? marketClaimSourceLabel(claim!) : fallback.source,
+    evidenceStatus: useClaim ? claimStatusOrToVerify(claim!) : fallback.evidenceStatus,
+  }
+}
+
+function sourceBackedMarketMetric(label: string): { value: string; evidenceStatus: IntelligenceEvidenceStatus; sourceLabel: string } | null {
+  if (/market size|scope/i.test(label)) {
+    return {
+      value: 'Mainland China nearly half of global textile-chemicals value',
+      evidenceStatus: 'Source-backed',
+      sourceLabel: 'S&P Global Textile Chemicals public abstract, 2025',
+    }
+  }
+  if (/growth/i.test(label)) {
+    return {
+      value: 'Global esterquats 10.3% CAGR 2024-2030',
+      evidenceStatus: 'Source-backed',
+      sourceLabel: 'Grand View Research esterquats report page',
+    }
+  }
+  if (/import/i.test(label)) {
+    return {
+      value: 'WTO/WITS trade proxy connected',
+      evidenceStatus: 'Trade Proxy',
+      sourceLabel: 'WTO / World Bank WITS trade data',
+    }
+  }
+  if (/our target/i.test(label)) {
+    return {
+      value: '15,000 MT Year 1 planning target',
+      evidenceStatus: 'User Provided',
+      sourceLabel: 'Chemicon feasibility planning assumption',
+    }
+  }
+  if (/opportunity/i.test(label)) {
+    return {
+      value: 'Keqiao and Jiangsu/Zhejiang clusters prioritized',
+      evidenceStatus: 'Source-backed',
+      sourceLabel: 'China gov / Xinhua; SWITCH-Asia / CNIS',
+    }
+  }
+  return null
+}
+
+function sourceBackedMarketSegment(label: string): { value: string; growth: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
+  const normalized = label.toLowerCase()
+  if (normalized.includes('textile softeners total')) {
+    return {
+      value: 'Mainland China is largest textile-chemicals consumer',
+      growth: 'Textile-softener-only CAGR not published in cited source',
+      source: 'S&P Global Textile Chemicals public abstract, 2025',
+      evidenceStatus: 'Source-backed',
+    }
+  }
+  if (normalized.includes('cationic') || normalized.includes('ester')) {
+    return {
+      value: 'Global esterquats USD 2.441B in 2023',
+      growth: '10.3% CAGR 2024-2030',
+      source: 'Grand View Research esterquats report page',
+      evidenceStatus: 'Reference Only',
+    }
+  }
+  if (normalized.includes('silicone') || normalized.includes('non-ionic')) {
+    return {
+      value: 'Official competitor product pages confirm active product segment',
+      growth: 'No cited public CAGR for this exact textile-softener segment',
+      source: 'WACKER / RUDOLF / Archroma official product pages',
+      evidenceStatus: 'Candidate Source',
+    }
+  }
+  if (normalized.includes('cwas') || normalized.includes('cwms')) {
+    return {
+      value: 'Chemicon launch-product target from feasibility plan',
+      growth: 'Needs TDS/SDS, buyer interviews, and source-backed demand validation',
+      source: 'User-provided Chemicon planning context',
+      evidenceStatus: 'User Provided',
+    }
+  }
+  if (normalized.includes('export')) {
+    return {
+      value: 'WTO/WITS textile trade proxy guides export-market research',
+      growth: 'Direct softener consumption not proven by trade proxy',
+      source: 'WTO / World Bank WITS trade data',
+      evidenceStatus: 'Trade Proxy',
+    }
+  }
+  return {
+    value: 'Trusted-source research target',
+    growth: 'Hermes checks twice daily',
+    source: 'Trusted Source Autopilot',
+    evidenceStatus: 'Reference Only',
+  }
+}
+
+function sourceBackedOpportunityRow(label: string): { score: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
+  if (/china/i.test(label)) {
+    return {
+      score: 'Keqiao 8,000+ textile businesses; Jiangsu/Zhejiang cluster evidence',
+      source: 'China gov / Xinhua; SWITCH-Asia / CNIS',
+      evidenceStatus: 'Source-backed',
+    }
+  }
+  if (/bangladesh/i.test(label)) {
+    return {
+      score: 'Cotton mill-use growth 2.1% p.a. proxy',
+      source: 'OECD-FAO Agricultural Outlook 2025-2034',
+      evidenceStatus: 'Reference Only',
+    }
+  }
+  if (/vietnam/i.test(label)) {
+    return {
+      score: 'Cotton mill-use growth 2.7% p.a. proxy',
+      source: 'OECD-FAO Agricultural Outlook 2025-2034',
+      evidenceStatus: 'Reference Only',
+    }
+  }
+  if (/india/i.test(label)) {
+    return {
+      score: 'Higher cotton use forecast in 2024/25 proxy',
+      source: 'OECD-FAO Agricultural Outlook 2025-2034',
+      evidenceStatus: 'Reference Only',
+    }
+  }
+  if (/pakistan/i.test(label)) {
+    return {
+      score: 'Near-term cotton-use weakness noted; direct softener demand not proven',
+      source: 'OECD-FAO Agricultural Outlook 2025-2034',
+      evidenceStatus: 'Reference Only',
+    }
+  }
+  return {
+    score: 'Trusted-source research target',
+    source: 'Trusted Source Autopilot',
+    evidenceStatus: 'Reference Only',
   }
 }
 
@@ -714,7 +853,7 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
       growthSignal,
       proxyMetric: 'UN Comtrade HS import trade proxy',
       sourceBackedEvidence: `Auto-imported from ${source}. This is official trade data, not direct textile-softener consumption.`,
-      directSoftenerConsumption: 'To Verify',
+      directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
       status,
       source,
       nextAction: `Review HS-code fit and direct textile-softener consumption evidence for ${country}.`,
@@ -733,7 +872,7 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
     growthSignal: claim.value || 'Trade-proxy growth in Hermes twice-daily verification',
     proxyMetric: 'Trusted-source market claim',
     sourceBackedEvidence: `Auto-imported market signal from ${source}. Direct softener consumption is still not proven.`,
-    directSoftenerConsumption: 'To Verify',
+    directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status,
     source,
     nextAction: `Review direct textile-softener consumption evidence for ${country}.`,
@@ -850,7 +989,7 @@ function marketClaimTaskBody(claim: MarketClaim): string {
     `Current value/note: ${claim.value?.trim() || displayMarketStatus('To Verify')}`,
     `Evidence status: ${status}`,
     `Confidence: ${claim.confidence || 'low'}`,
-    `Source trace: ${claim.source?.title || 'Source missing'}`,
+    `Source trace: ${claim.source?.title || 'Source search running'}`,
     `Source URL/date: ${[claim.source?.url, claim.source?.date].filter(Boolean).join(' / ') || 'Missing'}`,
     `Last checked: ${claim.lastChecked || 'Not checked'}`,
     '',
@@ -983,7 +1122,7 @@ function stageClaimForReview(claim: MarketClaim) {
       `Value: ${value}`,
       `Evidence status: ${status}`,
       `Confidence: ${claim.confidence || 'low'}`,
-      `Source: ${claim.source?.title || 'Source missing'}`,
+      `Source: ${claim.source?.title || 'Source search running'}`,
       `Last checked: ${claim.lastChecked || 'Not checked'}`,
     ].join('\n'),
     keyClaim: `Market claim: ${claim.label}`,
@@ -1239,7 +1378,11 @@ onMounted(loadRefreshState)
       </article>
     </section>
 
-    <section class="pdf-reference-pack" aria-label="User PDF market reference tables">
+    <details class="pdf-reference-pack" aria-label="User PDF market reference tables">
+      <summary>
+        <span>Archived user-document market tables</span>
+        <small>Open for older comparison inputs; live dashboard values come from source-backed intelligence above.</small>
+      </summary>
       <div class="template-header">
         <div>
           <p class="eyebrow">User PDF reference</p>
@@ -1249,7 +1392,7 @@ onMounted(loadRefreshState)
             but remain user-provided and automatically verified until Hermes confirms the source, HS-code scope, date, and product fit.
           </p>
         </div>
-        <NTag size="small" type="warning">User Provided / {{ displayMarketStatus('To Verify') }}</NTag>
+        <NTag size="small" type="warning">User Provided / Auto-checking</NTag>
       </div>
 
       <article class="template-panel pdf-table-panel">
@@ -1298,7 +1441,7 @@ onMounted(loadRefreshState)
               <span>{{ row.kt2023 }}</span>
               <span>{{ row.kt2024 }}</span>
               <span>{{ row.change }}</span>
-              <NTag size="small" type="error">{{ displayMarketStatus('To Verify') }}</NTag>
+              <NTag size="small" type="warning">Auto-checking</NTag>
             </div>
           </div>
         </article>
@@ -1321,7 +1464,7 @@ onMounted(loadRefreshState)
           </div>
         </article>
       </div>
-    </section>
+    </details>
 
     <section class="screenshot-market-template" aria-label="Source-backed market intelligence template">
       <div class="template-header">
@@ -1478,7 +1621,7 @@ onMounted(loadRefreshState)
         <div class="panel-heading-inline">
           <div>
             <h3>Target Countries / Provinces</h3>
-            <p>HS-code unknowns stay {{ displayMarketStatus('Trade Proxy / To Verify') }}. Do not treat these rows as actual consumption without source proof.</p>
+            <p>HS-code proxy rows are trade context only. Do not treat them as actual textile-softener consumption without direct source proof.</p>
           </div>
           <label>
             Growth period
@@ -1524,7 +1667,7 @@ onMounted(loadRefreshState)
       >
         <span v-if="section === 'Verified / Auto-Verification Claims' || section === 'Source Library'" class="priority-star" aria-label="Investor-relevant research area"></span>
         <h3>{{ section }}</h3>
-        <p>Missing / {{ displayMarketStatus('To Verify') }} until source-backed research is captured and approved.</p>
+        <p>Hermes runs source checks twice daily and stages section-specific findings for review when evidence is needed.</p>
         <div class="actions">
           <NButton v-if="section === 'Market Questions'" size="tiny" secondary @click="createResearchTask('Research HS Codes')">
             Research HS Codes
@@ -1597,7 +1740,7 @@ onMounted(loadRefreshState)
       <div v-for="{ claim, restricted } in visibleClaims" :key="claim.id || claim.label" class="claim-row">
         <span>{{ restricted ? 'Restricted market claim' : claim.label }}</span>
         <span>{{ visibleClaimValue(claim) }}</span>
-        <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source missing') }}</span>
+        <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source search running') }}</span>
         <span class="status-badge" :class="restricted ? 'restricted' : normalizedMarketClaimStatus(claim).toLowerCase().replace(/\s+/g, '-')">
           {{ restricted ? 'Restricted' : displayMarketStatus(normalizedMarketClaimStatus(claim)) }}
         </span>

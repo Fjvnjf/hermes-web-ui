@@ -72,8 +72,10 @@ describe('Pinned Executive Intelligence Board', () => {
 
     expect(wrapper.text()).toContain('Executive Intelligence Board')
     expect(wrapper.text()).toContain('Investor Economics Panel')
-    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('No approved source-backed value')
+    expect(wrapper.text()).toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).toContain('No saved IRR scenario')
+    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
     expect(wrapper.text()).not.toContain('fake CAGR')
     expect(wrapper.text()).not.toContain('fake market share')
   })
@@ -141,9 +143,10 @@ describe('Pinned Executive Intelligence Board', () => {
     const wrapper = mount(PinnedExecutiveIntelligenceBoard)
 
     expect(wrapper.text()).toContain('Market size')
-    expect(wrapper.text()).toContain('Missing / Hermes verifying twice daily')
+    expect(wrapper.text()).toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).toContain('Unknown supplier')
     expect(wrapper.text()).toContain('Hermes verifying twice daily')
+    expect(wrapper.text()).not.toContain('Missing / Hermes verifying twice daily')
     expect(wrapper.text()).toContain('Powerful Assumption: 12%')
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
     expect(competitorMarketShare('12%', null, 'Powerful Assumption')).toBe('Powerful Assumption: 12%')
@@ -213,14 +216,14 @@ describe('Pinned Executive Intelligence Board', () => {
 
   it('keeps investment breakdown line items as To Verify until source-backed storage exists', () => {
     expect(buildInvestmentBreakdownRows()).toEqual([
-      expect.objectContaining({ label: 'Process Equipment', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Utilities & Infrastructure', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Buildings & Civil', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Engineering & Project Management', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Installation & Commissioning', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Working Capital', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Contingency', value: 'To Verify', evidenceStatus: 'To Verify' }),
-      expect.objectContaining({ label: 'Other Costs', value: 'To Verify', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Process Equipment', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Utilities & Infrastructure', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Buildings & Civil', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Engineering & Project Management', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Installation & Commissioning', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Working Capital', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Contingency', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
+      expect.objectContaining({ label: 'Other Costs', value: 'Source-backed quote required', evidenceStatus: 'To Verify' }),
     ])
   })
 
@@ -244,6 +247,6 @@ describe('Pinned Executive Intelligence Board', () => {
     }, 'Tonight')
 
     expect(kpis.find(item => item.key === 'projectIrr')?.evidenceStatus).toBe('Source-backed')
-    expect(kpis.find(item => item.key === 'capacity')?.value).toBe('Missing / To Verify')
+    expect(kpis.find(item => item.key === 'capacity')?.value).toBe('No approved capacity evidence')
   })
 })

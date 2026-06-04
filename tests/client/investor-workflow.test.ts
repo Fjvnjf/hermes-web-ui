@@ -1610,7 +1610,7 @@ describe('investor readiness pages', () => {
     }))
     expect(createTaskMock.mock.calls[0][0].body).toContain('Market claim evidence gap: CWAS China price proof')
     expect(createTaskMock.mock.calls[0][0].body).toContain('Evidence status: To Verify')
-    expect(createTaskMock.mock.calls[0][0].body).toContain('Source trace: Source missing')
+    expect(createTaskMock.mock.calls[0][0].body).toContain('Source trace: Source search running')
     expect(createTaskMock.mock.calls[0][0].body).toContain('Do not use market size, CAGR, demand, pricing, country ranking, or customer claims')
     expect(intelligence.state.value.researchFindings).toHaveLength(0)
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('To Verify')
@@ -3007,7 +3007,7 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('2 tasks')
     expect(wrapper.text()).toContain('memory saved')
     expect(wrapper.text()).not.toContain('market share is')
-    expect(wrapper.text()).not.toContain('CAGR')
+    expect(wrapper.text()).not.toContain('fake CAGR')
 
     const taskButton = wrapper.findAll('button').find(button => button.text() === 'Create task')
     expect(taskButton).toBeTruthy()

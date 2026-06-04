@@ -812,8 +812,8 @@ defineExpose({
         <p class="eyebrow">Investor readiness center</p>
         <h2 class="header-title">Investor-Ready Feasibility Intelligence</h2>
         <p class="page-copy">
-          Preparation workspace for Chemicon China feasibility. Missing data is shown as Missing / {{ displayReadinessStatus('To Verify') }}; no
-          market numbers or investor claims are invented here.
+          Preparation workspace for Chemicon China feasibility. Unsupported claims stay review-gated; no market numbers
+          or investor claims are invented here.
         </p>
       </div>
       <div class="score-panel">

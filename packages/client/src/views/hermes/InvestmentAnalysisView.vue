@@ -397,7 +397,7 @@ onMounted(loadRefreshState)
         <h2>Investor Economics Control Panel</h2>
         <p>
           IRR, NPV, payback, investment breakdown, and return analysis use saved IRR Calculator snapshots.
-          Missing values stay in Hermes twice-daily verification, and financial outputs are labeled Derived from Assumptions until reviewed.
+          Unsupported financial values stay out of investor truth, and financial outputs are labeled Derived from Assumptions until reviewed.
         </p>
       </div>
       <div class="refresh-card">

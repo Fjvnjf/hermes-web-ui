@@ -93,7 +93,7 @@ const screenActionSummary = computed(() => {
       icon: '🔎',
       eyebrow: 'No manual web searching',
       title: 'Hermes is watching trusted sources',
-      detail: 'Official-first sources are connected. Missing values stay Missing or Hermes verifying twice daily until Hermes imports source-backed output or stages a review item.',
+      detail: 'Official-first sources are connected. Unsupported values stay out of dashboard truth until Hermes imports source-backed output or stages a review item.',
       primary: 'Run source check',
       secondary: 'Trusted Sources',
       primaryRoute: null,
