@@ -137,7 +137,7 @@ const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
 export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
-export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v2'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v3'
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = [
   'executive',
   'market',
@@ -1039,7 +1039,7 @@ function fullDashboardAutopilotPrompt(): string {
     '- Investor material targets: approved facts, approved assumptions, missing proof, risk register items, data-room gaps, and presentation snippets. Never mark investor material approved without review.',
     '',
     'Trusted source priority:',
-    '1. Official government/regulator/statistical/trade/price-index sources: UN Comtrade, ITC, World Bank, WTO, OECD, U.S. BLS PPI, China Customs/NBS/MOFCOM/MEE/MEM/MIIT, ECHA, PubChem, EPA CompTox, NITE.',
+    '1. Official government/regulator/statistical/trade/price-index/company-filing sources: UN Comtrade, ITC, World Bank, WTO, OECD, U.S. BLS PPI, SEC EDGAR Company Facts, China Customs/NBS/MOFCOM/MEE/MEM/MIIT, ECHA, PubChem, EPA CompTox, NITE.',
     '2. Official company/product pages and catalogs: BASF, Dow, WACKER, Wilmar, KLK OLEO, Evonik, Stepan, Kao, CHT, Archroma, Transfar, Zschimmer & Schwarz, Pulcra.',
     '3. Supplier evidence: uploaded quotes, PI, invoice, TDS, SDS, COA, email quote, distributor letter.',
     '4. Market references and price references: ICIS, Argus, S&P Global, SunSirs, ECHEMI, ChemAnalyst, Trade Map. Treat as market reference, not final procurement truth.',

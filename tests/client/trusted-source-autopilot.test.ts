@@ -255,6 +255,7 @@ describe('Trusted Source Autopilot', () => {
     expect(DEFAULT_TRUSTED_SOURCES.length).toBeGreaterThanOrEqual(100)
     expect(DEFAULT_TRUSTED_SOURCES.every(source => source.url && source.connector_type && source.data_types_supported.length)).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'world-bank-indicators-api' && source.connector_type === 'API')).toBe(true)
+    expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'sec-companyfacts' && source.connector_type === 'API')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'supplier-uploaded-quote' && source.connector_type === 'supplier_quote')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.tier === 'tier4-public-listing' && source.requires_review)).toBe(true)
   })
@@ -453,6 +454,61 @@ describe('Trusted Source Autopilot', () => {
     expect(claims[0].notes).toContain('not a supplier quote')
     expect(claims[0].notes).toContain('not a supplier quote, landed cost')
     expect(claims[0].notes).toContain('IRR, NPV')
+  })
+
+  it('fetches SEC official company facts without treating them as market share or product pricing', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'sec-companyfacts')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        cik: 94049,
+        entityName: 'STEPAN COMPANY',
+        facts: {
+          'us-gaap': {
+            RevenueFromContractWithCustomerExcludingAssessedTax: {
+              units: {
+                USD: [
+                  { fy: 2023, fp: 'FY', form: '10-K', filed: '2024-02-29', val: 2320000000 },
+                  { fy: 2024, fp: 'FY', form: '10-K', filed: '2025-02-28', val: 2300000000 },
+                ],
+              },
+            },
+            Assets: {
+              units: {
+                USD: [
+                  { fy: 2024, fp: 'FY', form: '10-K', filed: '2025-02-28', val: 1700000000 },
+                ],
+              },
+            },
+          },
+        },
+      }),
+    } as Response)
+    const { claims } = await runConnector({
+      screen: 'competitor',
+      field: 'Stepan Company competitor profile',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining('data.sec.gov/api/xbrl/companyfacts/CIK0000094049.json'),
+      expect.objectContaining({ headers: expect.objectContaining({ 'User-Agent': expect.stringContaining('Hermes Command Center') }) }),
+    )
+    expect(claims[0].value).toContain('STEPAN COMPANY public company facts')
+    expect(claims[0].value).toContain('FY2024 revenue US$2.30B')
+    expect(claims[0].value).toContain('FY2024 assets US$1.70B')
+    expect(claims[0].unit).toBe('official annual filing data')
+    expect(claims[0].source_url).toContain('CIK0000094049.json')
+    expect(claims[0].source_date).toBe('2025-02-28')
+    expect(claims[0].evidence_status).toBe('Official Data')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].notes).toContain('Official SEC EDGAR XBRL company facts')
+    expect(claims[0].notes).toContain('not textile softener market share')
+    expect(claims[0].notes).toContain('not product pricing evidence')
+    expect(claims[0].notes).toContain('not private cost/IRR/NPV proof')
   })
 
   it('fetches World Bank official document candidates without treating them as market proof', async () => {
@@ -707,6 +763,7 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('UN Comtrade')
     expect(prompt).toContain('PubChem')
     expect(prompt).toContain('BLS')
+    expect(prompt).toContain('SEC EDGAR')
     expect(prompt).toContain('Wilmar')
     expect(prompt).toContain('WACKER')
     expect(prompt).toContain('Do the online research yourself')

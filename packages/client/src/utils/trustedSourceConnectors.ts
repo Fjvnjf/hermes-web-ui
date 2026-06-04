@@ -250,6 +250,7 @@ export function createConnectorForSource(source: TrustedSourceRecord): TrustedSo
   if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return unComtradeApiConnector(source)
   if (source.source_id === 'pubchem') return pubChemApiConnector(source)
   if (source.source_id === 'bls-ppi') return blsPpiApiConnector(source)
+  if (source.source_id === 'sec-companyfacts') return secCompanyFactsApiConnector(source)
   if (source.source_id === 'oecd-data-api') return apiReadyConnector(source, 'OECD connector is API-ready; dataset selection must be reviewed before dashboard values are trusted.')
   if (source.source_id.includes('sunsirs')) return referenceConnector(source, 'SunSirs reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
   if (source.source_id.includes('echemi')) return referenceConnector(source, 'ECHEMI reference connector does not scrape blocked pages; it creates source-backed research tasks or review claims.')
@@ -610,6 +611,127 @@ function blsPpiApiConnector(source: TrustedSourceRecord): TrustedSourceConnector
       confidence: 'high',
       review_required: true,
       sensitive: true,
+    }]
+  }
+  return connector
+}
+
+const SEC_COMPANY_FACT_TARGETS: Array<{
+  pattern: RegExp
+  company: string
+  cik: string
+}> = [
+  { pattern: /stepan|stepantex/i, company: 'Stepan Company', cik: '0000094049' },
+  { pattern: /\bdow\b|dow\s+chemical|dow\s+inc/i, company: 'Dow Inc.', cik: '0001751788' },
+]
+
+type SecCompanyFactRow = {
+  fy?: number
+  fp?: string
+  form?: string
+  filed?: string
+  end?: string
+  val?: number
+}
+
+function secCompanyForRequest(field: string, query?: string): typeof SEC_COMPANY_FACT_TARGETS[number] {
+  const text = `${field} ${query || ''}`
+  return SEC_COMPANY_FACT_TARGETS.find(target => target.pattern.test(text)) || SEC_COMPANY_FACT_TARGETS[0]
+}
+
+function secCompanyFacts(raw: unknown): Record<string, {
+  units?: Record<string, SecCompanyFactRow[]>
+}> {
+  const facts = (raw as { facts?: { 'us-gaap'?: Record<string, { units?: Record<string, SecCompanyFactRow[]> }> } } | null)?.facts?.['us-gaap']
+  return facts && typeof facts === 'object' ? facts : {}
+}
+
+function latestAnnualSecFact(raw: unknown, factNames: string[], unit = 'USD'): SecCompanyFactRow | null {
+  const facts = secCompanyFacts(raw)
+  const rows = factNames.flatMap((factName) => {
+    const unitRows = facts[factName]?.units?.[unit]
+    return Array.isArray(unitRows) ? unitRows : []
+  })
+  return rows
+    .filter(row =>
+      typeof row.val === 'number' &&
+      row.form === '10-K' &&
+      (row.fp === 'FY' || !row.fp) &&
+      typeof row.fy === 'number'
+    )
+    .sort((a, b) =>
+      Number(b.fy || 0) - Number(a.fy || 0) ||
+      String(b.filed || '').localeCompare(String(a.filed || ''))
+    )[0] || null
+}
+
+function secCompanyFactsApiConnector(source: TrustedSourceRecord): TrustedSourceConnector {
+  const connector = baseConnector(source)
+  connector.fetch = async (request) => {
+    const fetchImpl = request.fetchImpl || fetch
+    const target = secCompanyForRequest(request.field, request.query)
+    const endpoint = `https://data.sec.gov/api/xbrl/companyfacts/CIK${target.cik}.json`
+    const response = await fetchImpl(endpoint, {
+      headers: {
+        'User-Agent': 'Hermes Command Center trusted-source research contact@example.com',
+      },
+    })
+    if (!response.ok) throw new Error(`SEC Company Facts API returned ${response.status}`)
+    const raw = await response.json()
+    return {
+      target,
+      endpoint,
+      raw,
+    }
+  }
+  connector.parse = async (raw, request) => {
+    const target = raw && typeof raw === 'object' && 'target' in raw
+      ? (raw as { target: ReturnType<typeof secCompanyForRequest> }).target
+      : secCompanyForRequest(request.field, request.query)
+    const endpoint = raw && typeof raw === 'object' && 'endpoint' in raw
+      ? String((raw as { endpoint?: string }).endpoint || `${source.url}CIK${target.cik}.json`)
+      : `${source.url}CIK${target.cik}.json`
+    const payload = raw && typeof raw === 'object' && 'raw' in raw
+      ? (raw as { raw?: unknown }).raw
+      : raw
+    const entityName = cleanText((payload as { entityName?: unknown } | null)?.entityName) || target.company
+    const revenue = latestAnnualSecFact(payload, [
+      'RevenueFromContractWithCustomerExcludingAssessedTax',
+      'Revenues',
+      'SalesRevenueNet',
+    ])
+    const assets = latestAnnualSecFact(payload, ['Assets'])
+
+    if (!revenue && !assets) {
+      return [{
+        field: request.field,
+        value: `${target.company}: SEC Company Facts reachable / To Verify`,
+        source_url: endpoint,
+        source_date: nowIso(request).slice(0, 10),
+        notes: 'SEC EDGAR company facts were reachable but no annual 10-K revenue/assets facts were extracted. Keep competitor landscape and financial context staged for review.',
+        evidence_status: 'To Verify',
+        confidence: 'medium',
+        review_required: true,
+      }]
+    }
+
+    const parts = [
+      `${entityName} public company facts`,
+      revenue ? `FY${revenue.fy} revenue ${formatUsd(revenue.val || 0)}` : 'annual revenue To Verify',
+      assets ? `FY${assets.fy} assets ${formatUsd(assets.val || 0)}` : 'assets To Verify',
+      revenue?.filed ? `latest revenue filing ${revenue.filed}` : assets?.filed ? `latest filing ${assets.filed}` : '',
+    ].filter(Boolean)
+
+    return [{
+      field: request.field,
+      value: parts.join('; '),
+      unit: 'official annual filing data',
+      source_url: endpoint,
+      source_date: revenue?.filed || assets?.filed || nowIso(request).slice(0, 10),
+      notes: 'Official SEC EDGAR XBRL company facts. Use as public competitor/company financial context only. This is not textile softener market share, not product equivalence proof, not product pricing evidence, not supplier quote evidence, and not private cost/IRR/NPV proof.',
+      evidence_status: 'Official Data',
+      confidence: 'high',
+      review_required: true,
     }]
   }
   return connector
