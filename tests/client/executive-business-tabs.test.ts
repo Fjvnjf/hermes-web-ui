@@ -273,6 +273,13 @@ describe('screenshot-matched executive business tabs', () => {
       evidenceStatus: 'Source-backed',
       source: null,
     })
+    intelligence.addMarketClaim({
+      label: 'Country-wise consumption growth - China',
+      value: 'Country-wise trade-proxy growth: China: +100.0% YoY trade proxy (US$236.6M vs US$118.3M, 2024/2023)',
+      evidenceStatus: 'Trade Proxy',
+      confidence: 'high',
+      source: { title: 'UN Comtrade Plus', url: 'https://comtradeplus.un.org', date: '2024' },
+    })
     intelligence.addCompetitor({
       companyName: 'Example supplier',
       countryRegion: 'China',
@@ -310,6 +317,10 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Global Opportunity Map')
     expect(wrapper.text()).toContain('Country-wise Consumption Growth Tracker')
     expect(wrapper.text()).toContain('Direct softener consumption')
+    expect(wrapper.text()).toContain('Auto-imported')
+    expect(wrapper.text()).toContain('China: +100.0% YoY trade proxy')
+    expect(wrapper.text()).toContain('UN Comtrade Plus')
+    expect(wrapper.text()).toContain('official trade data, not direct textile-softener consumption')
     expect(wrapper.text()).toContain('Cotton mill-use proxy')
     expect(wrapper.text()).toContain('Vietnam')
     expect(wrapper.text()).toContain('Bangladesh')

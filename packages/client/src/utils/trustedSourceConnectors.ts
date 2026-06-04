@@ -525,6 +525,12 @@ function comtradePeriodForRequest(request: TrustedSourceConnectorRequest): strin
   return String(Math.max(2020, year - 2))
 }
 
+function comtradePeriodsForRequest(request: TrustedSourceConnectorRequest): string[] {
+  const latest = Number(comtradePeriodForRequest(request))
+  if (!Number.isFinite(latest) || latest <= 2020) return [String(latest || 2020)]
+  return [String(latest), String(latest - 1)]
+}
+
 function comtradeReporterCodesForRequest(request: TrustedSourceConnectorRequest): number[] {
   if (/china/i.test(request.field) && !/country|export|target/i.test(request.field)) return [156]
   return [156, 50, 699, 704, 360, 586, 792]
@@ -564,6 +570,18 @@ function comtradeAggregateScore(row: ReturnType<typeof comtradeRows>[number]): n
   return score
 }
 
+function comtradeRowValue(row: ReturnType<typeof comtradeRows>[number]): number | null {
+  if (typeof row.primaryValue === 'number') return row.primaryValue
+  if (typeof row.cifvalue === 'number') return row.cifvalue
+  return null
+}
+
+function comtradeRowNetWeightKg(row: ReturnType<typeof comtradeRows>[number]): number | null {
+  if (typeof row.netWgt === 'number') return row.netWgt
+  if (typeof row.qty === 'number') return row.qty
+  return null
+}
+
 function latestComtradeAggregateRows(rows: ReturnType<typeof comtradeRows>) {
   const selected = new Map<number, {
     country: string
@@ -575,19 +593,11 @@ function latestComtradeAggregateRows(rows: ReturnType<typeof comtradeRows>) {
 
   for (const row of rows) {
     if (typeof row.reporterCode !== 'number') continue
-    const value = typeof row.primaryValue === 'number'
-      ? row.primaryValue
-      : typeof row.cifvalue === 'number'
-        ? row.cifvalue
-        : null
+    const value = comtradeRowValue(row)
     if (value == null) continue
 
     const period = String(row.period || '')
-    const netWeightKg = typeof row.netWgt === 'number'
-      ? row.netWgt
-      : typeof row.qty === 'number'
-        ? row.qty
-        : null
+    const netWeightKg = comtradeRowNetWeightKg(row)
     const score = comtradeAggregateScore(row)
     const existing = selected.get(row.reporterCode)
     const country = row.reporterDesc || UN_COMTRADE_REPORTER_NAMES[row.reporterCode] || `Reporter ${row.reporterCode}`
@@ -600,6 +610,56 @@ function latestComtradeAggregateRows(rows: ReturnType<typeof comtradeRows>) {
   }
 
   return Array.from(selected.values()).sort((a, b) => b.value - a.value)
+}
+
+function countryWiseComtradeGrowthRows(rows: ReturnType<typeof comtradeRows>) {
+  const selected = new Map<string, {
+    reporterCode: number
+    country: string
+    period: string
+    value: number
+    netWeightKg: number | null
+    score: number
+  }>()
+
+  for (const row of rows) {
+    if (typeof row.reporterCode !== 'number') continue
+    const value = comtradeRowValue(row)
+    if (value == null) continue
+    const period = String(row.period || '')
+    if (!period) continue
+    const score = comtradeAggregateScore(row)
+    const key = `${row.reporterCode}:${period}`
+    const existing = selected.get(key)
+    const country = row.reporterDesc || UN_COMTRADE_REPORTER_NAMES[row.reporterCode] || `Reporter ${row.reporterCode}`
+    if (!existing || score > existing.score || (score === existing.score && value > existing.value)) {
+      selected.set(key, {
+        reporterCode: row.reporterCode,
+        country,
+        period,
+        value,
+        netWeightKg: comtradeRowNetWeightKg(row),
+        score,
+      })
+    }
+  }
+
+  const byReporter = new Map<number, Array<NonNullable<ReturnType<typeof selected.get>>>>()
+  for (const row of selected.values()) {
+    const bucket = byReporter.get(row.reporterCode) || []
+    bucket.push(row)
+    byReporter.set(row.reporterCode, bucket)
+  }
+
+  return Array.from(byReporter.values())
+    .map((bucket) => {
+      const sorted = bucket.sort((a, b) => Number(b.period) - Number(a.period))
+      const latest = sorted[0]
+      const prior = sorted.find(row => Number(row.period) < Number(latest.period) && row.value > 0) || null
+      const growthPercent = prior ? ((latest.value - prior.value) / prior.value) * 100 : null
+      return { ...latest, prior, growthPercent }
+    })
+    .sort((a, b) => b.value - a.value)
 }
 
 function formatUsd(value: number): string {
@@ -855,14 +915,14 @@ function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConne
   connector.fetch = async (request) => {
     const fetchImpl = request.fetchImpl || fetch
     const cmdCode = comtradeCandidateHsCode(request.field, request.query)
-    const period = comtradePeriodForRequest(request)
+    const periods = comtradePeriodsForRequest(request)
     const reporterCodes = comtradeReporterCodesForRequest(request)
     const params = new URLSearchParams({
       cmdCode,
       flowCode: 'M',
       reporterCode: reporterCodes.join(','),
       partnerCode: '0',
-      period,
+      period: periods.join(','),
     })
     const endpoint = `https://comtradeapi.un.org/public/v1/preview/C/A/HS?${params.toString()}`
     const response = await fetchImpl(endpoint)
@@ -870,7 +930,8 @@ function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConne
     const raw = await response.json()
     return {
       cmdCode,
-      period,
+      period: periods[0],
+      periods,
       reporterCodes,
       endpoint,
       rows: comtradeRows(raw),
@@ -886,7 +947,9 @@ function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConne
     const endpoint = raw && typeof raw === 'object' && 'endpoint' in raw
       ? String((raw as { endpoint?: string }).endpoint || source.url)
       : source.url
-    const aggregates = latestComtradeAggregateRows(comtradeRows(raw))
+    const rows = comtradeRows(raw)
+    const aggregates = latestComtradeAggregateRows(rows)
+    const growthRows = countryWiseComtradeGrowthRows(rows)
 
     if (!aggregates.length) {
       return [{
@@ -904,14 +967,28 @@ function unComtradeApiConnector(source: TrustedSourceRecord): TrustedSourceConne
     const value = aggregates
       .map(row => `${row.country}: ${formatUsd(row.value)}, ${formatMetricTons(row.netWeightKg)} (${row.period})`)
       .join('; ')
+    const growthSummary = growthRows
+      .filter(row => row.prior && row.growthPercent !== null)
+      .slice(0, 7)
+      .map(row => {
+        const sign = row.growthPercent !== null && row.growthPercent >= 0 ? '+' : ''
+        return `${row.country}: ${sign}${row.growthPercent?.toFixed(1)}% YoY trade proxy (${formatUsd(row.value)} vs ${formatUsd(row.prior?.value || 0)}, ${row.period}/${row.prior?.period})`
+      })
+      .join('; ')
+    const fieldWantsGrowth = /growth|consumption|country/i.test(request.field)
+    const combinedValue = growthSummary
+      ? fieldWantsGrowth
+        ? `Country-wise trade-proxy growth: ${growthSummary}`
+        : `${value}; Growth proxy: ${growthSummary}`
+      : value
 
     return [{
       field: request.field,
-      value,
+      value: combinedValue,
       unit: 'import value / net weight',
       source_url: endpoint,
       source_date: period,
-      notes: `UN Comtrade public preview API aggregate import signal for HS ${cmdCode}. This is an official trade proxy, not product-specific consumption, market size, competitor share, or verified demand. Review HS fit, reporter coverage, and source context before dashboard/investor use.`,
+      notes: `UN Comtrade public preview API aggregate import signal for HS ${cmdCode}. When prior-period rows are available, Hermes also calculates country-wise year-over-year trade-proxy growth. This is an official trade proxy, not product-specific consumption, market size, competitor share, or verified demand. Review HS fit, reporter coverage, and source context before dashboard/investor use.`,
       evidence_status: 'Trade Proxy',
       confidence: 'high',
       review_required: true,

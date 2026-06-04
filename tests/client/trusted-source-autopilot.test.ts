@@ -313,6 +313,19 @@ describe('Trusted Source Autopilot', () => {
             isAggregate: true,
           },
           {
+            reporterCode: 156,
+            reporterDesc: null,
+            period: '2023',
+            partnerCode: 0,
+            partner2Code: 0,
+            customsCode: 'C00',
+            motCode: 0,
+            cmdCode: '380991',
+            primaryValue: 118304208.5,
+            netWgt: 51660671.263,
+            isAggregate: true,
+          },
+          {
             reporterCode: 699,
             reporterDesc: null,
             period: '2024',
@@ -338,6 +351,19 @@ describe('Trusted Source Autopilot', () => {
             netWgt: 24159689.198,
             isAggregate: true,
           },
+          {
+            reporterCode: 699,
+            reporterDesc: null,
+            period: '2023',
+            partnerCode: 0,
+            partner2Code: 0,
+            customsCode: 'C00',
+            motCode: 0,
+            cmdCode: '380991',
+            primaryValue: 35456328.437,
+            netWgt: 12079844.599,
+            isAggregate: true,
+          },
         ],
       }),
     } as Response)
@@ -353,13 +379,18 @@ describe('Trusted Source Autopilot', () => {
     expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('cmdCode=380991'))
     expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('flowCode=M'))
     expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('period=2024'))
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringContaining('2023'))
     expect(claims[0].value).toContain('China: US$236.6M, 65.4K t (2024)')
     expect(claims[0].value).toContain('India: US$70.9M, 24.2K t (2024)')
+    expect(claims[0].value).toContain('Growth proxy')
+    expect(claims[0].value).toContain('China: +100.0% YoY trade proxy')
+    expect(claims[0].value).toContain('India: +100.0% YoY trade proxy')
     expect(claims[0].value).not.toContain('US$36.6K')
     expect(claims[0].evidence_status).toBe('Trade Proxy')
     expect(claims[0].confidence).toBe('high')
     expect(claims[0].review_required).toBe(true)
     expect(claims[0].notes).toContain('official trade proxy')
+    expect(claims[0].notes).toContain('country-wise year-over-year trade-proxy growth')
     expect(claims[0].notes).toContain('not product-specific consumption')
   })
 

@@ -34,6 +34,18 @@ const frontendRole = computed(() => getFrontendAccessRole())
 const redactSensitiveFields = computed(() => shouldRedactForEmployee(frontendRole.value))
 const sensitiveMarketTerms = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|margin|irr|npv|payback|formula|cas\s+list|raw\s+material\s+ratio|investor\s+terms|valuation|equity)\b/i
 
+interface CountryConsumptionGrowthRow {
+  country: string
+  growthSignal: string
+  proxyMetric: string
+  sourceBackedEvidence: string
+  directSoftenerConsumption: string
+  status: IntelligenceEvidenceStatus
+  source: string
+  nextAction: string
+  autoImported?: boolean
+}
+
 const claimForm = ref({
   label: '',
   value: '',
@@ -135,8 +147,12 @@ const marketAutopilotCards = computed(() => [
   {
     icon: '🌍',
     label: 'Country growth',
-    value: `${countryConsumptionGrowthRows.length} signals`,
-    note: 'Country rows use proxy evidence until direct textile-softener consumption is verified.',
+    value: autopilotCountryGrowthRows.value.length
+      ? `${autopilotCountryGrowthRows.value.length} auto`
+      : `${countryConsumptionGrowthRows.length} signals`,
+    note: autopilotCountryGrowthRows.value.length
+      ? 'Official trade-proxy growth records are filling from trusted-source imports.'
+      : 'Country rows use proxy evidence until direct textile-softener consumption is verified.',
   },
   {
     icon: '✅',
@@ -388,7 +404,7 @@ const globalOpportunityRegions = [
     status: 'To Verify' as IntelligenceEvidenceStatus,
   },
 ]
-const countryConsumptionGrowthRows = [
+const countryConsumptionGrowthRows: CountryConsumptionGrowthRow[] = [
   {
     country: 'China',
     growthSignal: 'Largest base; cotton mill use projected near 2023/24 level',
@@ -460,6 +476,18 @@ const countryConsumptionGrowthRows = [
     nextAction: 'Research latest Indonesia cotton mill-use, textile output, and finishing chemical demand.',
   },
 ]
+const autopilotCountryGrowthRows = computed<CountryConsumptionGrowthRow[]>(() =>
+  claims.value.flatMap(countryGrowthRowsFromClaim),
+)
+const displayCountryConsumptionGrowthRows = computed<CountryConsumptionGrowthRow[]>(() => {
+  const autoRows = autopilotCountryGrowthRows.value
+  if (!autoRows.length) return countryConsumptionGrowthRows
+  const importedCountries = new Set(autoRows.map(row => row.country.toLowerCase()))
+  return [
+    ...autoRows,
+    ...countryConsumptionGrowthRows.filter(row => !importedCountries.has(row.country.toLowerCase())),
+  ]
+})
 const marketResearchQuestions = [
   {
     question: 'What is the actual China textile-softener demand by cationic, esterquat, silicone, and non-ionic category?',
@@ -589,6 +617,49 @@ function opportunityRow(label: string, keywords: string[]) {
     source: marketClaimSourceLabel(claim),
     evidenceStatus: claimStatusOrToVerify(claim),
   }
+}
+
+function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowthRow[] {
+  const text = `${claim.label} ${claim.value}`.trim()
+  if (!/country|growth|consumption|trade proxy|import signal/i.test(text)) return []
+
+  const source = marketClaimSourceLabel(claim)
+  const status = normalizedMarketClaimStatus(claim)
+  const rows: CountryConsumptionGrowthRow[] = []
+  const countryGrowthPattern = /\b(China|Bangladesh|India|Vietnam|Indonesia|Pakistan|Turkiye|Turkey|United States|USA|Germany|EU)\b\s*:\s*([^;|]+?YoY trade proxy[^;|]*)/gi
+  for (const match of text.matchAll(countryGrowthPattern)) {
+    const country = match[1] === 'Turkiye' ? 'Turkey' : match[1] === 'USA' ? 'United States' : match[1]
+    const growthSignal = match[2].trim()
+    rows.push({
+      country,
+      growthSignal,
+      proxyMetric: 'UN Comtrade HS import trade proxy',
+      sourceBackedEvidence: `Auto-imported from ${source}. This is official trade data, not direct textile-softener consumption.`,
+      directSoftenerConsumption: 'To Verify',
+      status,
+      source,
+      nextAction: `Review HS-code fit and direct textile-softener consumption evidence for ${country}.`,
+      autoImported: true,
+    })
+  }
+
+  if (rows.length) return rows
+
+  const country = countryConsumptionGrowthRows.find(row =>
+    new RegExp(`\\b${row.country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text),
+  )?.country
+  if (!country || !/trade proxy|growth/i.test(text)) return []
+  return [{
+    country,
+    growthSignal: claim.value || 'Trade-proxy growth To Verify',
+    proxyMetric: 'Trusted-source market claim',
+    sourceBackedEvidence: `Auto-imported market signal from ${source}. Direct softener consumption is still not proven.`,
+    directSoftenerConsumption: 'To Verify',
+    status,
+    source,
+    nextAction: `Review direct textile-softener consumption evidence for ${country}.`,
+    autoImported: true,
+  }]
 }
 
 function syncMarketNow() {
@@ -1004,8 +1075,8 @@ onMounted(loadRefreshState)
           <div class="country-growth-row head">
             <span>Country</span><span>Growth signal</span><span>Proxy metric</span><span>Source-backed evidence</span><span>Direct softener consumption</span><span>Status</span><span>Next action</span>
           </div>
-          <div v-for="row in countryConsumptionGrowthRows" :key="row.country" class="country-growth-row">
-            <strong>{{ row.country }}</strong>
+          <div v-for="row in displayCountryConsumptionGrowthRows" :key="`${row.country}-${row.source}`" class="country-growth-row">
+            <strong>{{ row.country }}<small v-if="row.autoImported">Auto-imported</small></strong>
             <span>{{ row.growthSignal }}</span>
             <span>{{ row.proxyMetric }}</span>
             <span>{{ row.sourceBackedEvidence }} <small>Source: {{ row.source }}</small></span>
