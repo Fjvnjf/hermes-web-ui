@@ -403,7 +403,7 @@ const automaticFillDestinations = computed(() => [
     title: 'Regulatory',
     fill: 'CAS, SDS, DMS, permit, and compliance research candidates',
     gate: 'Regulatory status is not Verified without official or reviewed evidence',
-    to: { name: 'hermes.regulatoryIntelligence' },
+    to: { name: 'hermes.regulatory' },
   },
   {
     icon: '🧾',

@@ -2888,7 +2888,14 @@ describe('investor readiness pages', () => {
     )
 
     const wrapper = mount(DashboardView, {
-      global: { stubs: { RouterLink: { props: ['to'], template: '<a><slot /></a>' } } },
+      global: {
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-route="typeof to === \'object\' ? to.name : to"><slot /></a>',
+          },
+        },
+      },
     })
     await flushPromises()
 
@@ -2921,6 +2928,9 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Supplier Scorecards')
     expect(wrapper.text()).toContain('Investment Analysis')
     expect(wrapper.text()).toContain('Regulatory')
+    const automaticFillDestinations = (wrapper.vm as any).automaticFillDestinations as Array<{ title: string; to: { name: string } }>
+    expect(automaticFillDestinations.find(destination => destination.title === 'Regulatory')?.to.name).toBe('hermes.regulatory')
+    expect(automaticFillDestinations.map(destination => destination.to.name)).not.toContain('hermes.regulatoryIntelligence')
     expect(wrapper.text()).toContain('Investor Outputs')
     expect(wrapper.text()).toContain('Investor material is never silently approved by autopilot')
     expect(wrapper.text()).toContain('Missing research focus')
