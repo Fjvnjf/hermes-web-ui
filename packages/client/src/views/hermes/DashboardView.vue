@@ -926,12 +926,12 @@ onMounted(() => {
             <strong>No manual web searching</strong>
             <small>Hermes researches, fills safe records, and sends risky claims to review.</small>
           </div>
-          <details class="home-autopilot-details" open>
+          <details class="home-autopilot-details">
             <summary>
               <span aria-hidden="true">🧭</span>
               <div>
                 <strong>How automatic filling works</strong>
-                <small>Source rules, flow, and the dashboard areas Hermes can fill.</small>
+                <small>Optional details: source rules, flow, and dashboard areas Hermes can fill.</small>
               </div>
             </summary>
             <div class="home-autopilot-details-body">
