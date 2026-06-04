@@ -926,7 +926,7 @@ onMounted(() => {
             <strong>No manual web searching</strong>
             <small>Hermes researches, fills safe records, and sends risky claims to review.</small>
           </div>
-          <details class="home-autopilot-details">
+          <details class="home-autopilot-details" open>
             <summary>
               <span aria-hidden="true">🧭</span>
               <div>
