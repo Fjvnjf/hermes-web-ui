@@ -31,6 +31,7 @@ import {
   buildDashboardCoverageRows,
   missingDashboardCoverageTargetCount,
 } from '@/utils/dashboardCoverage'
+import { nextTwiceDailyRefresh } from '@/utils/executiveIntelligence'
 
 const appStore = useAppStore()
 const intelligence = useFeasibilityIntelligence()
@@ -302,6 +303,16 @@ const missingDashboardCoverageRows = computed(() =>
     .filter(row => row.missingTargets.length > 0)
     .sort((a, b) => b.missingTargets.length - a.missingTargets.length)
 )
+const dashboardCoverageTargetTotal = computed(() =>
+  dashboardCoverageRows.value.reduce((sum, row) => sum + row.totalTargets, 0)
+)
+const dashboardCoverageCoveredTotal = computed(() =>
+  dashboardCoverageRows.value.reduce((sum, row) => sum + row.coveredCount, 0)
+)
+const dashboardCoverageConfidenceScore = computed(() => {
+  if (!dashboardCoverageTargetTotal.value) return null
+  return Math.round((dashboardCoverageCoveredTotal.value / dashboardCoverageTargetTotal.value) * 100)
+})
 const missingDashboardCoverageCount = computed(() => missingDashboardCoverageTargetCount(missingDashboardCoverageRows.value))
 const topMissingDashboardCoverageRows = computed(() => missingDashboardCoverageRows.value.slice(0, 3))
 const automaticResearchQueue = computed(() =>
@@ -375,28 +386,40 @@ const automaticResearchState = computed(() => {
 })
 const automaticResearchCards = computed(() => [
   {
-    label: 'Research job',
-    value: autopilotImportStatus.value?.jobCount ? 'Scheduled' : 'Not confirmed',
-    note: autopilotImportStatus.value?.latestDueSlotAt
-      ? `Latest due slot ${formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)}`
-      : 'Server checks every few minutes',
+    label: '🤖 Last Scan',
+    value: autopilotImportStatus.value?.latestDueSlotAttemptedAt
+      ? formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAttemptedAt)
+      : autopilotImportStatus.value?.latestOutputAt
+        ? formatAutopilotTimestamp(autopilotImportStatus.value.latestOutputAt)
+        : 'Not run yet',
+    note: autopilotImportStatus.value?.jobCount ? 'Twice-daily trusted-source job is connected' : 'Hermes is setting up the automatic scan job',
   },
   {
-    label: 'Dashboard records',
-    value: String(importedDashboardRecordCount.value),
-    note: 'Imported from durable trusted-source intelligence state',
+    label: '✅ Last Verification',
+    value: autopilotImportStatus.value?.latestOutputImported
+      ? 'Verified import'
+      : autopilotImportStatus.value?.latestOutputParseStatus === 'ready'
+        ? 'Ready for review'
+        : 'Auto-checking',
+    note: autopilotImportStatus.value?.registryUpdatedAt
+      ? `Registry updated ${formatAutopilotTimestamp(autopilotImportStatus.value.registryUpdatedAt)}`
+      : autopilotImportStatus.value?.latestOutputAt
+        ? `Latest output ${formatAutopilotTimestamp(autopilotImportStatus.value.latestOutputAt)}`
+        : 'No source-backed import yet',
   },
   {
-    label: 'Review queue',
-    value: String(autopilotReviewQueueCount.value),
-    note: 'Risky or weak claims wait here instead of becoming facts',
+    label: '🔄 Next Scheduled Verification',
+    value: formatAutopilotTimestamp(nextTwiceDailyRefresh()),
+    note: autopilotImportStatus.value?.latestDueSlotSatisfied
+      ? 'Latest due slot satisfied'
+      : autopilotImportStatus.value?.latestDueSlotAt
+        ? `Current due slot ${formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)}`
+        : 'Runs at 09:00 and 21:00 local time',
   },
   {
-    label: 'Latest import',
-    value: autopilotImportStatus.value?.latestOutputImported ? 'Imported' : autopilotImportStatus.value?.latestOutputParseStatus || 'None yet',
-    note: autopilotImportStatus.value?.latestOutputAt
-      ? formatAutopilotTimestamp(autopilotImportStatus.value.latestOutputAt)
-      : 'No readable output imported yet',
+    label: 'Source Confidence Score',
+    value: dashboardCoverageConfidenceScore.value === null ? 'Calculating' : `${dashboardCoverageConfidenceScore.value}%`,
+    note: `${dashboardCoverageCoveredTotal.value}/${dashboardCoverageTargetTotal.value || 0} dashboard evidence targets covered; ${autopilotReviewQueueCount.value} waiting for review`,
   },
 ])
 
