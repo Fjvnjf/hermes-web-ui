@@ -2926,7 +2926,7 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Important claims wait for review')
     expect(wrapper.text()).toContain('Connected trusted-source families')
     expect(wrapper.text()).toContain('UN Comtrade, World Bank')
-    expect(wrapper.text()).toContain('PubChem')
+    expect(wrapper.text()).toContain('PubChem, EPA CompTox')
     expect(wrapper.text()).toContain('U.S. BLS PPI')
     expect(wrapper.text()).toContain('SEC EDGAR')
     expect(wrapper.text()).toContain('Uploaded quotes, SDS, TDS, COA')

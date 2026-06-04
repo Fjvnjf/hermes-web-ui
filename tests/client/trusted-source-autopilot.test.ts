@@ -256,6 +256,7 @@ describe('Trusted Source Autopilot', () => {
     expect(DEFAULT_TRUSTED_SOURCES.every(source => source.url && source.connector_type && source.data_types_supported.length)).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'world-bank-indicators-api' && source.connector_type === 'API')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'sec-companyfacts' && source.connector_type === 'API')).toBe(true)
+    expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'epa-comptox' && source.connector_type === 'API')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'supplier-uploaded-quote' && source.connector_type === 'supplier_quote')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.tier === 'tier4-public-listing' && source.requires_review)).toBe(true)
   })
@@ -412,6 +413,52 @@ describe('Trusted Source Autopilot', () => {
     expect(claims[0].notes).toContain('not SDS/TDS evidence')
     expect(claims[0].notes).toContain('not China regulatory approval')
     expect(claims[0].notes).toContain('not product formulation verification')
+  })
+
+  it('fetches EPA CompTox official chemical identity without treating it as regulatory approval', async () => {
+    const source = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'epa-comptox')!
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      text: async () => `
+        activeChemical:{
+          casrn:"77-78-1",
+          preferredName:io,
+          inchiKey:"VAYGXNSJCAHWJZ-UHFFFAOYSA-N",
+          molFormula:"C2H6O4S",
+          smiles:"COS(=O)(=O)OC",
+          molWeight:126.13,
+          qcLevelDesc:"Level 1: Expert curated, highest confidence in accuracy"
+        }
+      `,
+    } as Response)
+    const { claims } = await runConnector({
+      screen: 'regulatory',
+      field: 'DMS Regulatory Status',
+      source,
+      fetchImpl,
+      now: '2026-06-01T00:00:00.000Z',
+    })
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'https://comptox.epa.gov/dashboard/chemical/details/DTXSID5024055',
+      expect.objectContaining({ headers: expect.objectContaining({ 'User-Agent': expect.stringContaining('Hermes Command Center') }) }),
+    )
+    expect(claims[0].value).toContain('Dimethyl sulfate: EPA CompTox DTXSID5024055')
+    expect(claims[0].value).toContain('CAS 77-78-1')
+    expect(claims[0].value).toContain('molecular formula C2H6O4S')
+    expect(claims[0].value).toContain('MW 126.13')
+    expect(claims[0].value).toContain('InChIKey VAYGXNSJCAHWJZ-UHFFFAOYSA-N')
+    expect(claims[0].source_url).toBe('https://comptox.epa.gov/dashboard/chemical/details/DTXSID5024055')
+    expect(claims[0].unit).toBe('official chemical identity')
+    expect(claims[0].evidence_status).toBe('Official Data')
+    expect(claims[0].confidence).toBe('high')
+    expect(claims[0].review_required).toBe(true)
+    expect(claims[0].sensitive).toBe(true)
+    expect(claims[0].notes).toContain('Official EPA CompTox Chemicals Dashboard')
+    expect(claims[0].notes).toContain('not China regulatory approval')
+    expect(claims[0].notes).toContain('not SDS/TDS/COA evidence')
+    expect(claims[0].notes).toContain('not product formulation verification')
+    expect(claims[0].notes).toContain('not supplier quote evidence')
   })
 
   it('fetches BLS official chemical PPI without treating it as supplier pricing', async () => {

@@ -329,8 +329,8 @@ const automaticSourceConnectorCards = [
   {
     icon: '🧪',
     title: 'Chemical identity',
-    sources: 'PubChem',
-    detail: 'CAS and chemical identity candidates for DMS, TEA, stearic acid, PDMS, and related inputs. Not SDS/TDS or product-formula proof.',
+    sources: 'PubChem, EPA CompTox',
+    detail: 'CAS and official chemical identity candidates for DMS, TEA, stearic acid, PDMS, and related inputs. Not SDS/TDS, China approval, or product-formula proof.',
   },
   {
     icon: '📈',

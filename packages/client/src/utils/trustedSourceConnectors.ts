@@ -249,6 +249,7 @@ export function createConnectorForSource(source: TrustedSourceRecord): TrustedSo
   if (source.source_id === 'world-bank-documents-api') return worldBankDocumentsApiConnector(source)
   if (source.source_id === 'un-comtrade' || source.source_id === 'un-comtrade-plus') return unComtradeApiConnector(source)
   if (source.source_id === 'pubchem') return pubChemApiConnector(source)
+  if (source.source_id === 'epa-comptox') return epaCompToxDashboardConnector(source)
   if (source.source_id === 'bls-ppi') return blsPpiApiConnector(source)
   if (source.source_id === 'sec-companyfacts') return secCompanyFactsApiConnector(source)
   if (source.source_id === 'oecd-data-api') return apiReadyConnector(source, 'OECD connector is API-ready; dataset selection must be reviewed before dashboard values are trusted.')
@@ -385,6 +386,118 @@ function pubChemApiConnector(source: TrustedSourceRecord): TrustedSourceConnecto
       confidence: 'high',
       review_required: true,
       sensitive: /formula|product\s+development|cwas|cwms/i.test(request.field),
+    }]
+  }
+  return connector
+}
+
+const EPA_COMPTOX_TARGETS: Array<{
+  pattern: RegExp
+  name: string
+  dtxsid: string
+}> = [
+  { pattern: /\bdms\b|dimethyl\s+sulfate|dimethyl\s+sulphate/i, name: 'Dimethyl sulfate', dtxsid: 'DTXSID5024055' },
+  { pattern: /\btea\b|triethanolamine/i, name: 'Triethanolamine', dtxsid: 'DTXSID9021392' },
+  { pattern: /stearic|octadecanoic/i, name: 'Stearic acid', dtxsid: 'DTXSID8021642' },
+]
+
+function epaCompToxTargetForRequest(field: string, query?: string): typeof EPA_COMPTOX_TARGETS[number] {
+  const text = `${field} ${query || ''}`
+  return EPA_COMPTOX_TARGETS.find(target => target.pattern.test(text)) || EPA_COMPTOX_TARGETS[0]
+}
+
+function decodeJsString(value: string | undefined): string {
+  if (!value) return ''
+  try {
+    return JSON.parse(`"${value.replace(/"/g, '\\"')}"`)
+  } catch {
+    return value.replace(/\\u002F/g, '/').replace(/\\n/g, '\n')
+  }
+}
+
+function epaCompToxHtml(raw: unknown): string {
+  if (raw && typeof raw === 'object' && 'html' in raw) {
+    return String((raw as { html?: unknown }).html || '')
+  }
+  return typeof raw === 'string' ? raw : ''
+}
+
+function epaCompToxStringField(html: string, key: string): string {
+  const match = html.match(new RegExp(`${key}:"([^"]*)"`, 'i'))
+  return decodeJsString(match?.[1])
+}
+
+function epaCompToxNumberField(html: string, key: string): string {
+  return html.match(new RegExp(`${key}:([0-9]+(?:\\.[0-9]+)?)`, 'i'))?.[1] || ''
+}
+
+function epaCompToxDashboardConnector(source: TrustedSourceRecord): TrustedSourceConnector {
+  const connector = baseConnector(source)
+  connector.fetch = async (request) => {
+    const fetchImpl = request.fetchImpl || fetch
+    const target = epaCompToxTargetForRequest(request.field, request.query)
+    const endpoint = `https://comptox.epa.gov/dashboard/chemical/details/${target.dtxsid}`
+    const response = await fetchImpl(endpoint, {
+      headers: {
+        'User-Agent': 'Hermes Command Center trusted-source research',
+      },
+    })
+    if (!response.ok) throw new Error(`EPA CompTox dashboard returned ${response.status}`)
+    return {
+      target,
+      endpoint,
+      html: await response.text(),
+    }
+  }
+  connector.parse = async (raw, request) => {
+    const target = raw && typeof raw === 'object' && 'target' in raw
+      ? (raw as { target: ReturnType<typeof epaCompToxTargetForRequest> }).target
+      : epaCompToxTargetForRequest(request.field, request.query)
+    const endpoint = raw && typeof raw === 'object' && 'endpoint' in raw
+      ? String((raw as { endpoint?: unknown }).endpoint || `https://comptox.epa.gov/dashboard/chemical/details/${target.dtxsid}`)
+      : `https://comptox.epa.gov/dashboard/chemical/details/${target.dtxsid}`
+    const html = epaCompToxHtml(raw)
+    const cas = epaCompToxStringField(html, 'casrn')
+    const formula = epaCompToxStringField(html, 'molFormula')
+    const molecularWeight = epaCompToxNumberField(html, 'molWeight')
+    const inchiKey = epaCompToxStringField(html, 'inchiKey')
+    const smiles = epaCompToxStringField(html, 'smiles')
+    const qcLevel = epaCompToxStringField(html, 'qcLevelDesc')
+
+    if (!cas && !formula) {
+      return [{
+        field: request.field,
+        value: `${target.name}: EPA CompTox dashboard reachable / To Verify`,
+        source_url: endpoint,
+        source_date: nowIso(request).slice(0, 10),
+        notes: 'EPA CompTox official dashboard was reachable, but chemical identity fields were not extracted. Keep DMS/TEA/stearic acid regulatory, SDS/TDS, formula, supplier, and investor uses staged for review.',
+        evidence_status: 'To Verify',
+        confidence: 'medium',
+        review_required: true,
+        sensitive: true,
+      }]
+    }
+
+    const parts = [
+      `${target.name}: EPA CompTox ${target.dtxsid}`,
+      cas ? `CAS ${cas}` : 'CAS To Verify',
+      formula ? `molecular formula ${formula}` : 'molecular formula To Verify',
+      molecularWeight ? `MW ${molecularWeight}` : '',
+      inchiKey ? `InChIKey ${inchiKey}` : '',
+      qcLevel ? `QC ${qcLevel}` : '',
+    ].filter(Boolean)
+
+    return [{
+      field: request.field,
+      value: parts.join('; '),
+      unit: 'official chemical identity',
+      source_url: endpoint,
+      source_date: nowIso(request).slice(0, 10),
+      notes: `Official EPA CompTox Chemicals Dashboard identity record. SMILES: ${smiles || 'To Verify'}. Use as an official chemical identity/CAS candidate only. This is not China regulatory approval, not SDS/TDS/COA evidence, not product formulation verification, not supplier quote evidence, and not factory/import/storage/use permission.`,
+      evidence_status: 'Official Data',
+      confidence: 'high',
+      review_required: true,
+      sensitive: /formula|product\s+development|dms|dimethyl\s+sulfate/i.test(request.field),
     }]
   }
   return connector
