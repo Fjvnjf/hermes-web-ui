@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-nested-competitor-metrics-v5'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-flat-array-coverage-v6'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -1619,8 +1619,175 @@ function extractBalancedObjectAfter(text: string, index: number): string | null 
   return null
 }
 
+function dashboardGroupFromValue(value: unknown): DashboardResearchUpdateGroup | null {
+  const text = stringValue(value)
+  return (DASHBOARD_UPDATE_GROUPS as readonly string[]).includes(text) ? text as DashboardResearchUpdateGroup : null
+}
+
+const COMPETITOR_METRIC_FIELD_ALIASES: Record<string, CompetitorMetricField> = {
+  price: 'pricingEvidence',
+  pricing: 'pricingEvidence',
+  priceevidence: 'pricingEvidence',
+  pricingevidence: 'pricingEvidence',
+  pricekg: 'pricingEvidence',
+  priceperkg: 'pricingEvidence',
+  marketshare: 'marketShare',
+  share: 'marketShare',
+  revenue: 'revenue',
+  sales: 'revenue',
+  turnover: 'revenue',
+  yoygrowth: 'yearlyGrowth',
+  yearlygrowth: 'yearlyGrowth',
+  annualgrowth: 'yearlyGrowth',
+  growth: 'yearlyGrowth',
+  traffic: 'traffic',
+  websitetraffic: 'traffic',
+  monthlyvisits: 'traffic',
+  rating: 'rating',
+  reviewrating: 'rating',
+  lastupdated: 'lastUpdated',
+  lastchecked: 'lastUpdated',
+}
+
+const KNOWN_COMPETITOR_NAME_BY_SLUG: Record<string, string> = {
+  evonik_industries: 'Evonik Industries',
+  stepan_company: 'Stepan Company',
+  kao_corporation: 'Kao Corporation',
+  wacker: 'WACKER',
+  rudolf_group: 'Rudolf Group',
+  cht_group: 'CHT Group',
+  archroma: 'Archroma',
+  transfar: 'Transfar',
+  zschimmer_schwarz: 'Zschimmer & Schwarz',
+  pulcra_chemicals: 'Pulcra Chemicals',
+  syensqo_solvay: 'Syensqo / Solvay',
+  dow: 'Dow',
+  basf: 'BASF',
+}
+
+const COMPETITOR_METRIC_LABEL: Record<CompetitorMetricField, string> = {
+  pricingEvidence: 'Price evidence',
+  marketShare: 'Market share',
+  revenue: 'Revenue',
+  yearlyGrowth: 'YoY growth',
+  traffic: 'Traffic',
+  rating: 'Rating',
+  lastUpdated: 'Last updated',
+}
+
+function titleCaseSlug(value: string): string {
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(part => part.length <= 4 && part === part.toLowerCase()
+      ? part.toUpperCase()
+      : `${part.slice(0, 1).toUpperCase()}${part.slice(1).toLowerCase()}`)
+    .join(' ')
+}
+
+function competitorMetricFromFlatFieldKey(item: DashboardResearchUpdateItem): {
+  companyName: string
+  metricField: CompetitorMetricField
+  label: string
+} | null {
+  const fieldKey = firstString(item.fieldKey, item.proposedDashboardField, item.field, item.label, item.title)
+  if (!fieldKey) return null
+  const normalized = fieldKey
+    .toLowerCase()
+    .replace(/competitor metric columns:\s*/i, 'competitor_metrics.')
+    .replace(/\s+-\s+/g, '.')
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/(^\.|\.$)/g, '')
+  const parts = normalized.split('.').filter(Boolean)
+  const metricIndex = parts.findIndex(part => part === 'competitor' || part === 'competitors' || part === 'competitormetrics' || part === 'competitor_metrics')
+  let start = metricIndex >= 0 ? metricIndex + 1 : (parts[0] === 'competitor' || parts[0] === 'competitors' ? 1 : -1)
+  if (parts[start] === 'metrics' || parts[start] === 'metric') start += 1
+  if (start < 0 || start >= parts.length - 1) return null
+
+  const metricToken = parts[parts.length - 1]
+  const metricField = COMPETITOR_METRIC_FIELD_ALIASES[normalizeHeader(metricToken)]
+  if (!metricField) return null
+
+  const companySlug = parts.slice(start, -1).join('_')
+  if (!companySlug) return null
+  const companyName = KNOWN_COMPETITOR_NAME_BY_SLUG[companySlug] || titleCaseSlug(companySlug)
+  const label = `${companyName} - ${COMPETITOR_METRIC_LABEL[metricField]}`
+  return { companyName, metricField, label }
+}
+
+function flatDashboardGroupForItem(item: DashboardResearchUpdateItem): DashboardResearchUpdateGroup {
+  const explicit = dashboardGroupFromValue(item.dashboardGroup) || dashboardGroupFromValue(item.group)
+  if (explicit) return explicit
+  if (competitorMetricFromFlatFieldKey(item)) return 'competitorRecords'
+  const text = [
+    item.fieldKey,
+    item.proposedDashboardField,
+    item.field,
+    item.label,
+    item.title,
+    item.section,
+    item.companyName,
+    item.supplier,
+    item.material,
+    item.value,
+  ].map(stringValue).join(' ').toLowerCase()
+  if (firstString(item.companyName, item.productEquivalent, item.marketShare, item.pricingEvidence, item.revenue, item.yearlyGrowth, item.traffic, item.rating)) return 'competitorRecords'
+  if (/competitor|market share|traffic|rating|price evidence|yoy growth/.test(text)) return 'competitorRecords'
+  if (/supplier|scorecard|raw material|quote|payment|quality|reliability|price\/t|price per ton/.test(text)) return 'supplierScorecards'
+  if (/regulatory|cas|sds|tds|dms|iecs|echa|pubchem/.test(text)) return 'regulatoryFindings'
+  if (/investment|financial|irr|npv|payback|roi|capex|working capital|profitability/.test(text)) return 'financialEvidence'
+  if (/investor|presentation|slide|deck|brief/.test(text)) return 'investorMaterialCandidates'
+  if (/evidence gap|missing proof|gap/.test(text)) return 'evidenceGaps'
+  if (/task|action|next step|follow.?up/.test(text)) return 'suggestedTasks'
+  return 'marketClaims'
+}
+
+function enrichFlatDashboardItem(item: DashboardResearchUpdateItem, group: DashboardResearchUpdateGroup): DashboardResearchUpdateItem {
+  const next: DashboardResearchUpdateItem = { ...item }
+  const metric = group === 'competitorRecords' ? competitorMetricFromFlatFieldKey(next) : null
+  if (metric) {
+    next.companyName = firstString(next.companyName) || metric.companyName
+    next.field = firstString(next.field) || metric.label
+    next.label = firstString(next.label) || metric.label
+    next.title = firstString(next.title) || metric.label
+    next.proposedDashboardField = firstString(next.proposedDashboardField) || metric.label
+    if (!isPlainRecord(next[metric.metricField])) {
+      next[metric.metricField] = {
+        fieldKey: firstString(next.fieldKey, metric.label),
+        value: firstString(next.value),
+        sourceTitle: next.sourceTitle,
+        sourceUrl: next.sourceUrl,
+        sourceDate: next.sourceDate,
+        sourceTier: next.sourceTier,
+        lastChecked: next.lastChecked,
+        confidence: next.confidence,
+        evidenceStatus: next.evidenceStatus,
+        reviewRequired: next.reviewRequired,
+        riskReason: next.riskReason,
+        dataType: next.dataType,
+      }
+    }
+  }
+  return next
+}
+
+function normalizeFlatDashboardArray(items: unknown[]): DashboardResearchUpdatesPayload {
+  const payload: DashboardResearchUpdatesPayload = {}
+  for (const rawItem of items) {
+    if (!isPlainRecord(rawItem)) continue
+    const item = rawItem as DashboardResearchUpdateItem
+    const group = flatDashboardGroupForItem(item)
+    payload[group] = [...(payload[group] || []), enrichFlatDashboardItem(item, group)]
+  }
+  return payload
+}
+
 function normalizeDashboardPayload(raw: Record<string, unknown>): DashboardResearchUpdatesPayload | null {
-  const container = isPlainRecord(raw.dashboard_updates) ? raw.dashboard_updates : raw
+  const container = Array.isArray(raw.dashboard_updates)
+    ? normalizeFlatDashboardArray(raw.dashboard_updates)
+    : isPlainRecord(raw.dashboard_updates)
+      ? raw.dashboard_updates
+      : raw
   const payload: DashboardResearchUpdatesPayload = {}
 
   for (const group of DASHBOARD_UPDATE_GROUPS) {
@@ -2725,14 +2892,14 @@ function appendReviewFinding(
       countryRegion: firstString(input.item.countryRegion),
       productEquivalent: firstString(input.item.productEquivalent),
       activeContent: firstString(input.item.activeContent),
-      pricingEvidence: firstString(input.item.pricingEvidence),
+      pricingEvidence: firstString(input.item.pricingEvidence) || competitorMetricText(input.item, 'pricingEvidence'),
       certifications: firstString(input.item.certifications),
       distributionPresence: firstString(input.item.distributionPresence),
-      marketShare: firstString(input.item.marketShare),
-      revenue: firstString(input.item.revenue),
-      yearlyGrowth: firstString(input.item.yearlyGrowth),
-      traffic: firstString(input.item.traffic),
-      rating: firstString(input.item.rating),
+      marketShare: firstString(input.item.marketShare) || competitorMetricText(input.item, 'marketShare'),
+      revenue: firstString(input.item.revenue) || competitorMetricText(input.item, 'revenue'),
+      yearlyGrowth: firstString(input.item.yearlyGrowth) || competitorMetricText(input.item, 'yearlyGrowth'),
+      traffic: firstString(input.item.traffic) || competitorMetricText(input.item, 'traffic'),
+      rating: firstString(input.item.rating) || competitorMetricText(input.item, 'rating'),
       lastUpdated: firstString(input.item.lastChecked, input.item.sourceDate),
       supplier: firstString(input.item.supplier),
       material: firstString(input.item.material),

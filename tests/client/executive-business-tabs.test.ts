@@ -281,7 +281,7 @@ describe('screenshot-matched executive business tabs', () => {
     intelligence.addMarketClaim({
       label: 'Country-wise consumption growth - China',
       value: 'Country-wise trade-proxy growth: China: +100.0% YoY trade proxy (US$236.6M vs US$118.3M, 2024/2023)',
-      evidenceStatus: 'Trade Proxy',
+      evidenceStatus: 'To Verify',
       confidence: 'high',
       source: { title: 'UN Comtrade Plus', url: 'https://comtradeplus.un.org', date: '2024' },
     })
@@ -303,6 +303,8 @@ describe('screenshot-matched executive business tabs', () => {
     const marketText = wrapper.text()
     const marketTextLower = marketText.toLowerCase()
 
+    expect(wrapper.get('.summary-card').text()).toContain('1')
+    expect(wrapper.get('.summary-card').text()).toContain('source-backed claims')
     expect(wrapper.text()).toContain('Executive Market Panel')
     expect(wrapper.text()).toContain('Owner research permission active')
     expect(wrapper.text()).toContain('Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.')
@@ -332,6 +334,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Auto-imported')
     expect(wrapper.text()).toContain('China: +100.0% YoY trade proxy')
     expect(wrapper.text()).toContain('UN Comtrade Plus')
+    expect(wrapper.get('.market-map-brief').text()).toContain('Trade Proxy')
     expect(wrapper.text()).toContain('official trade data, not direct textile-softener consumption')
     expect(wrapper.text()).toContain('Cotton mill-use proxy')
     expect(wrapper.text()).toContain('Vietnam')

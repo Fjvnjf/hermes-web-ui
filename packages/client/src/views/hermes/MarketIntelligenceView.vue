@@ -15,6 +15,7 @@ import {
   displayEvidenceStatus,
   displayUnresolvedValue,
   normalizedMarketClaimStatus,
+  sourceIsUsable,
   type IntelligenceEvidenceStatus,
   type MarketClaim,
 } from '@/utils/investorIntelligence'
@@ -22,7 +23,6 @@ import {
   EXECUTIVE_INTELLIGENCE_STORAGE_KEY,
   EXECUTIVE_REFRESH_JOB_NAME,
   defaultExecutiveRefreshState,
-  claimStatusOrToVerify,
   marketClaimSourceLabel,
   marketClaimValue,
   nextTwiceDailyRefresh,
@@ -75,7 +75,7 @@ const sections = [
 ]
 
 const claims = computed(() => intelligence.state.value.marketClaims)
-const sourceReadyCount = intelligence.verifiedClaimCount
+const sourceReadyCount = computed(() => claims.value.filter(claimHasUsableSourceValue).length)
 const claimSubmitLabel = computed(() => editingClaimId.value ? 'Update claim' : 'Save claim')
 const visibleSections = computed(() =>
   sections.filter(section => !redactSensitiveFields.value || !sensitiveMarketTerms.test(section)),
@@ -633,6 +633,30 @@ function displayMarketText(text?: string | null): string {
   return displayAutomaticVerificationText(text)
 }
 
+function claimHasUsableSourceValue(claim: MarketClaim | null | undefined): boolean {
+  return Boolean(claim?.value?.trim() && sourceIsUsable(claim.source))
+}
+
+function marketClaimDisplayStatus(claim: MarketClaim | null | undefined): IntelligenceEvidenceStatus {
+  if (!claim) return 'To Verify'
+  const normalized = normalizedMarketClaimStatus(claim)
+  if (!claimHasUsableSourceValue(claim)) return normalized
+  if (normalized !== 'To Verify' && normalized !== 'Missing') return normalized
+
+  const trace = [
+    claim.label,
+    claim.value,
+    claim.dataType,
+    claim.sourceTier,
+    claim.source?.title,
+    claim.source?.url,
+  ].filter(Boolean).join(' ').toLowerCase()
+
+  if (/trade|proxy|import|export|hs\\s*\\d+|comtrade|wits/.test(trace)) return 'Trade Proxy'
+  if (/tier\\s*1|tier1|official|government|regulator|statistical|un\\s+comtrade|world bank|wto/.test(trace)) return 'Official Data'
+  return claim.reviewRequired ? 'Candidate Source' : 'Source-backed'
+}
+
 function findMarketClaim(keywords: string[]): MarketClaim | null {
   return claims.value.find(claim => {
     const haystack = `${claim.label} ${claim.value || ''}`.toLowerCase()
@@ -647,7 +671,7 @@ function marketMetric(label: string, claim: MarketClaim | null) {
   return {
     label,
     value: isSensitiveMarketClaim(sensitivityClaim) ? 'Restricted' : useClaim ? marketClaimValue(claim!) : fallback?.value || 'Source search running',
-    evidenceStatus: useClaim ? normalizedMarketClaimStatus(claim!) : fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus,
+    evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus,
     sourceLabel: useClaim ? marketClaimSourceLabel(claim!) : fallback?.sourceLabel || 'Trusted source autopilot',
   }
 }
@@ -661,7 +685,7 @@ function marketSegment(label: string, keywords: string[]) {
     value: useClaim ? marketClaimValue(claim!) : fallback.value,
     growth: useClaim && claim?.value?.toLowerCase().includes('growth') ? claim.value : fallback.growth,
     source: useClaim ? marketClaimSourceLabel(claim!) : fallback.source,
-    evidenceStatus: useClaim ? claimStatusOrToVerify(claim!) : fallback.evidenceStatus,
+    evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback.evidenceStatus,
   }
 }
 
@@ -674,7 +698,7 @@ function opportunityRow(label: string, keywords: string[]) {
     score: useClaim ? claim?.value?.trim() || fallback.score : fallback.score,
     period: growthPeriod.value,
     source: useClaim ? marketClaimSourceLabel(claim!) : fallback.source,
-    evidenceStatus: useClaim ? claimStatusOrToVerify(claim!) : fallback.evidenceStatus,
+    evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback.evidenceStatus,
   }
 }
 
@@ -765,7 +789,7 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
   if (!/country|growth|consumption|trade proxy|import signal/i.test(text)) return []
 
   const source = marketClaimSourceLabel(claim)
-  const status = normalizedMarketClaimStatus(claim)
+  const status = marketClaimDisplayStatus(claim)
   const rows: CountryConsumptionGrowthRow[] = []
   const countryGrowthPattern = /\b(China|Bangladesh|India|Vietnam|Indonesia|Pakistan|Turkiye|Turkey|United States|USA|Germany|EU)\b\s*:\s*([^;|]+?YoY trade proxy[^;|]*)/gi
   for (const match of text.matchAll(countryGrowthPattern)) {
@@ -1686,8 +1710,8 @@ onMounted(loadRefreshState)
         <span>{{ restricted ? 'Restricted market claim' : claim.label }}</span>
         <span>{{ visibleClaimValue(claim) }}</span>
         <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source search running') }}</span>
-        <span class="status-badge" :class="restricted ? 'restricted' : normalizedMarketClaimStatus(claim).toLowerCase().replace(/\s+/g, '-')">
-          {{ restricted ? 'Restricted' : displayMarketStatus(normalizedMarketClaimStatus(claim)) }}
+        <span class="status-badge" :class="restricted ? 'restricted' : marketClaimDisplayStatus(claim).toLowerCase().replace(/\s+/g, '-')">
+          {{ restricted ? 'Restricted' : displayMarketStatus(marketClaimDisplayStatus(claim)) }}
         </span>
         <span>{{ restricted ? 'Restricted' : (claim.lastChecked || 'Not checked') }}</span>
         <span class="row-actions">

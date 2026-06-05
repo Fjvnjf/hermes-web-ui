@@ -121,6 +121,37 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('extracts flat dashboard_updates arrays and classifies competitor metric candidates', () => {
+    const payload = extractDashboardResearchUpdates([
+      'Hermes result',
+      '```json',
+      JSON.stringify({
+        dashboard_updates: [{
+          fieldKey: 'competitor_metrics.stepan_company.traffic',
+          value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
+          sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
+          sourceUrl: 'https://www.siteprice.org/website-worth/stepan.com',
+          sourceTier: 'Tier 4/5 traffic analytics estimate',
+          confidence: 'Low',
+          evidenceStatus: 'Reference Only / To Verify',
+          reviewRequired: true,
+        }],
+      }),
+      '```',
+    ].join('\n'))
+
+    expect(payload?.competitorRecords).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        field: 'Stepan Company - Traffic',
+        traffic: expect.objectContaining({
+          value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
+          sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
+        }),
+      }),
+    ])
+  })
+
   it('extracts the real output JSON when the saved cron prompt contains a fenced-json instruction', () => {
     const payload = extractDashboardResearchUpdates([
       '# Cron Job: Full Dashboard Trusted Source Autopilot',
@@ -938,6 +969,70 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('imports flat competitor metric arrays by hydrating official metrics and staging weak candidates', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T01-21-23.000000+00-00.md', {
+      dashboard_updates: [
+        {
+          fieldKey: 'competitor_metrics.stepan_company.revenue',
+          value: 'FY2024 company-wide net sales: US$2,180,274,000',
+          sourceTitle: 'Stepan Company 2024 Form 10-K',
+          sourceUrl: 'https://www.sec.gov/Archives/edgar/data/94049/000095017025029079/scl-20241231.htm',
+          sourceTier: 'Tier 2 official company/filing',
+          lastChecked: '2026-06-05',
+          sourceDate: '2025-02-27',
+          confidence: 'High',
+          evidenceStatus: 'Official Company Evidence',
+          reviewRequired: false,
+          riskReason: 'Company-wide revenue from contracts; not textile-softener product-line revenue.',
+        },
+        {
+          fieldKey: 'competitor_metrics.stepan_company.traffic',
+          value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
+          sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
+          sourceUrl: 'https://www.siteprice.org/website-worth/stepan.com',
+          sourceTier: 'Tier 4/5 traffic analytics estimate',
+          lastChecked: '2026-06-05',
+          confidence: 'Low',
+          evidenceStatus: 'Reference Only / To Verify',
+          reviewRequired: true,
+          riskReason: 'Third-party website traffic estimate is not official and may be dated/inaccurate.',
+        },
+      ],
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 1,
+      stagedReviewCount: 2,
+    })
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        revenue: 'FY2024 company-wide net sales: US$2,180,274,000',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+        source: expect.objectContaining({
+          title: 'Stepan Company 2024 Form 10-K',
+          url: expect.stringContaining('sec.gov'),
+        }),
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Traffic estimate source identified'),
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          companyName: 'Stepan Company',
+          traffic: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
+        }),
+      }),
+    ]))
+  })
+
   it('infers trusted official source tier from allowlisted domains without manual tier labels', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T09-00-00.000000+00-00.md', {
@@ -1461,7 +1556,7 @@ describe('dashboard autopilot output ingestion', () => {
         reviewRequired: false,
       }),
     ])
-    expect(registry.importerVersion).toContain('nested-competitor-metrics')
+    expect(registry.importerVersion).toContain('flat-array-coverage')
     expect(registry.importedRunKeys).toContain(runKey)
     expect(second.importedRuns).toBe(0)
   })
