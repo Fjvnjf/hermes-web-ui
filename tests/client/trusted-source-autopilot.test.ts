@@ -871,6 +871,9 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Do not invent market size')
     expect(prompt).toContain('revenue, yearlyGrowth')
     expect(prompt).toContain('competitor market share as To Verify')
+    expect(prompt).toContain('Keep companyName clean')
+    expect(prompt).toContain('competitor_metrics.dow.market_share')
+    expect(prompt).toContain('companyName must be the actual company only')
   })
 
   it('extracts dashboard_updates JSON from Hermes markdown job output', () => {

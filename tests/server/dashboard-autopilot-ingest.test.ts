@@ -126,16 +126,40 @@ describe('dashboard autopilot output ingestion', () => {
       'Hermes result',
       '```json',
       JSON.stringify({
-        dashboard_updates: [{
-          fieldKey: 'competitor_metrics.stepan_company.traffic',
-          value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
-          sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
-          sourceUrl: 'https://www.siteprice.org/website-worth/stepan.com',
-          sourceTier: 'Tier 4/5 traffic analytics estimate',
-          confidence: 'Low',
-          evidenceStatus: 'Reference Only / To Verify',
-          reviewRequired: true,
-        }],
+        dashboard_updates: [
+          {
+            fieldKey: 'competitor_metrics.stepan_company.traffic',
+            value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
+            sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
+            sourceUrl: 'https://www.siteprice.org/website-worth/stepan.com',
+            sourceTier: 'Tier 4/5 traffic analytics estimate',
+            confidence: 'Low',
+            evidenceStatus: 'Reference Only / To Verify',
+            reviewRequired: true,
+          },
+          {
+            fieldKey: 'competitor_metrics.dow.market_share',
+            companyName: 'Metrics DOW Market',
+            value: 'Market-share reference identified; exact textile-softener share not approved.',
+            sourceTitle: 'Mordor Intelligence: Surfactants Market Companies',
+            sourceUrl: 'https://www.mordorintelligence.com/industry-reports/surfactants-market/companies',
+            sourceTier: 'Tier 4 - Market reference',
+            confidence: 'Low',
+            evidenceStatus: 'Reference Only / To Verify',
+            reviewRequired: true,
+          },
+          {
+            fieldKey: 'competitor_metrics.syensqo_solvay.rating',
+            companyName: 'Metrics Syensqo Solvay',
+            value: 'Rating reference identified; exact product/customer rating not approved.',
+            sourceTitle: 'Glassdoor company reviews search: Syensqo',
+            sourceUrl: 'https://www.glassdoor.com/Reviews/Syensqo-Reviews-E100000.htm',
+            sourceTier: 'Tier 5 - Public listing / review source',
+            confidence: 'Low',
+            evidenceStatus: 'Reference Only / To Verify',
+            reviewRequired: true,
+          },
+        ],
       }),
       '```',
     ].join('\n'))
@@ -147,6 +171,22 @@ describe('dashboard autopilot output ingestion', () => {
         traffic: expect.objectContaining({
           value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
           sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Dow',
+        field: 'Dow - Market share',
+        marketShare: expect.objectContaining({
+          value: 'Market-share reference identified; exact textile-softener share not approved.',
+          sourceTitle: 'Mordor Intelligence: Surfactants Market Companies',
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Syensqo / Solvay',
+        field: 'Syensqo / Solvay - Rating',
+        rating: expect.objectContaining({
+          value: 'Rating reference identified; exact product/customer rating not approved.',
+          sourceTitle: 'Glassdoor company reviews search: Syensqo',
         }),
       }),
     ])
@@ -695,6 +735,9 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('Evonik Industries - Market share')
     expect(prompt).toContain('Evonik Industries - Revenue')
     expect(prompt).toContain('official annual reports')
+    expect(prompt).toContain('Keep companyName clean')
+    expect(prompt).toContain('competitor_metrics.dow.market_share')
+    expect(prompt).toContain('companyName must be the actual company only')
     expect(prompt).toContain('Dimethyl sulfate / DMS')
     expect(prompt).toContain('dashboard_updates JSON')
     expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-1')).toBe(true)
@@ -1031,6 +1074,70 @@ describe('dashboard autopilot output ingestion', () => {
         }),
       }),
     ]))
+  })
+
+  it('keeps flat competitor metric review targets attached to clean company names', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T02-00-00.000000+00-00.md', {
+      dashboard_updates: [
+        {
+          fieldKey: 'competitor_metrics.dow.market_share',
+          companyName: 'Metrics DOW Market',
+          value: 'Market-share reference identified; exact textile-softener share not approved.',
+          sourceTitle: 'Mordor Intelligence: Surfactants Market Companies',
+          sourceUrl: 'https://www.mordorintelligence.com/industry-reports/surfactants-market/companies',
+          sourceTier: 'Tier 4 - Market reference',
+          lastChecked: '2026-06-06',
+          confidence: 'Low',
+          evidenceStatus: 'Reference Only / To Verify',
+          reviewRequired: true,
+          riskReason: 'Market-reference company list does not state Dow textile-softener market share by geography/year.',
+        },
+        {
+          fieldKey: 'competitor_metrics.basf.rating',
+          companyName: 'Metrics BASF',
+          value: 'Rating reference identified; exact product/customer rating not approved.',
+          sourceTitle: 'Glassdoor company reviews search: BASF',
+          sourceUrl: 'https://www.glassdoor.com/Reviews/BASF-Reviews-E4231.htm',
+          sourceTier: 'Tier 5 - Public listing / review source',
+          lastChecked: '2026-06-06',
+          confidence: 'Low',
+          evidenceStatus: 'Reference Only / To Verify',
+          reviewRequired: true,
+          riskReason: 'Public employer review signal is not product/customer rating evidence.',
+        },
+      ],
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 2,
+    })
+    expect(envelope?.state.competitors).toEqual([])
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          fieldKey: 'competitor_metrics.dow.market_share',
+          companyName: 'Dow',
+          marketShare: 'Market-share reference identified; exact textile-softener share not approved.',
+        }),
+      }),
+      expect.objectContaining({
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          fieldKey: 'competitor_metrics.basf.rating',
+          companyName: 'BASF',
+          rating: 'Rating reference identified; exact product/customer rating not approved.',
+        }),
+      }),
+    ]))
+    expect(envelope?.state.researchFindings.map(item => item.dashboardTarget?.companyName)).not.toContain('Metrics DOW Market')
+    expect(envelope?.state.researchFindings.map(item => item.dashboardTarget?.companyName)).not.toContain('Metrics BASF')
   })
 
   it('infers trusted official source tier from allowlisted domains without manual tier labels', async () => {

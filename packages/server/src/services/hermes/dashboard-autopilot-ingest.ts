@@ -1119,6 +1119,9 @@ function missingCoveragePrompt(rows: Array<CoverageRequirement & { missingTarget
     '- For each "Company - Rating" target, use a cited review/rating source for the exact company/product only when available and keep it reviewRequired if weak.',
     '- For each "Company - Last updated / source date" target, include lastChecked and sourceDate from the evidence source or access date.',
     '- Use one competitorRecords item per company when possible; put product-wise variations in productEquivalent and metric fields rather than duplicating the same company name.',
+    '- Keep companyName clean. Never put words such as Metrics, Market, Share, Price, Traffic, Rating, Revenue, Growth, or Last Updated inside companyName.',
+    '- Prefer flat metric fieldKey values exactly like competitor_metrics.dow.market_share, competitor_metrics.basf.revenue, competitor_metrics.stepan_company.traffic, and competitor_metrics.syensqo_solvay.rating.',
+    '- If you use a flat metric fieldKey, the metric word belongs in fieldKey/proposedDashboardField only; companyName must remain the real company name.',
     '- If a metric cannot be sourced, return evidenceGaps and suggestedTasks with proposedDashboardField like "Archroma - Market share" instead of leaving the field vague.',
     '',
     'Dashboard areas to update when evidence exists:',
@@ -1149,6 +1152,7 @@ function missingCoveragePrompt(rows: Array<CoverageRequirement & { missingTarget
     'Return only structured dashboard_updates JSON compatible with the Full Dashboard Autopilot importer.',
     'Each candidate must include fieldKey, value, sourceTitle, sourceUrl, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, and riskReason.',
     'Competitor records must include companyName, productEquivalent, pricingEvidence, marketShare, revenue, yearlyGrowth, traffic, rating, lastChecked, sourceTitle, sourceUrl, confidence, evidenceStatus, reviewRequired, and recommendedAction where available.',
+    'For competitor metrics, companyName must be the actual company only; do not return companyName values such as "Metrics Dow Market" or "Evonik Market Share".',
   ].join('\n')
 }
 
@@ -1650,19 +1654,38 @@ const COMPETITOR_METRIC_FIELD_ALIASES: Record<string, CompetitorMetricField> = {
 }
 
 const KNOWN_COMPETITOR_NAME_BY_SLUG: Record<string, string> = {
+  evonik: 'Evonik Industries',
   evonik_industries: 'Evonik Industries',
+  stepan: 'Stepan Company',
   stepan_company: 'Stepan Company',
+  kao: 'Kao Corporation',
   kao_corporation: 'Kao Corporation',
+  kao_chemicals: 'Kao Corporation',
   wacker: 'WACKER',
+  wacker_chemie: 'WACKER',
+  rudolf: 'Rudolf Group',
   rudolf_group: 'Rudolf Group',
+  cht: 'CHT Group',
   cht_group: 'CHT Group',
   archroma: 'Archroma',
   transfar: 'Transfar',
+  transfar_group: 'Transfar',
+  transfar_chemicals: 'Transfar',
+  zschimmer: 'Zschimmer & Schwarz',
   zschimmer_schwarz: 'Zschimmer & Schwarz',
+  zschimmer_and_schwarz: 'Zschimmer & Schwarz',
+  pulcra: 'Pulcra Chemicals',
   pulcra_chemicals: 'Pulcra Chemicals',
+  syensqo: 'Syensqo / Solvay',
+  solvay: 'Syensqo / Solvay',
   syensqo_solvay: 'Syensqo / Solvay',
+  solvay_syensqo: 'Syensqo / Solvay',
   dow: 'Dow',
+  dow_inc: 'Dow',
+  dow_chemical: 'Dow',
+  dow_chemical_company: 'Dow',
   basf: 'BASF',
+  basf_se: 'BASF',
 }
 
 const COMPETITOR_METRIC_LABEL: Record<CompetitorMetricField, string> = {
@@ -1685,6 +1708,48 @@ function titleCaseSlug(value: string): string {
     .join(' ')
 }
 
+const COMPANY_NAME_NOISE_TOKENS = new Set([
+  'competitor',
+  'competitors',
+  'competitormetrics',
+  'metric',
+  'metrics',
+])
+
+function competitorMetricSuffix(parts: string[], start: number): {
+  metricStart: number
+  metricField: CompetitorMetricField
+} | null {
+  for (let index = start + 1; index < parts.length; index += 1) {
+    const suffix = normalizeHeader(parts.slice(index).join(' '))
+    const metricField = COMPETITOR_METRIC_FIELD_ALIASES[suffix]
+    if (metricField) return { metricStart: index, metricField }
+  }
+  return null
+}
+
+function normalizeCompetitorCompanySlug(parts: string[]): string {
+  const clean = [...parts]
+  while (clean.length && COMPANY_NAME_NOISE_TOKENS.has(clean[0])) clean.shift()
+  while (clean.length && COMPANY_NAME_NOISE_TOKENS.has(clean[clean.length - 1])) clean.pop()
+  return clean.join('_')
+}
+
+function competitorCompanyNameFromSlug(slugValue: string): string {
+  const normalized = normalizeHeader(slugValue).replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+  return KNOWN_COMPETITOR_NAME_BY_SLUG[slugValue] ||
+    KNOWN_COMPETITOR_NAME_BY_SLUG[normalized] ||
+    KNOWN_COMPETITOR_NAME_BY_SLUG[slugValue.replace(/(^metrics_|_metrics$)/g, '')] ||
+    titleCaseSlug(slugValue)
+}
+
+function isNoisyCompetitorCompanyName(value: unknown): boolean {
+  const text = firstString(value).toLowerCase()
+  if (!text) return false
+  return /^metrics?\b/.test(text) ||
+    /\b(market share|price evidence|pricing evidence|yoy growth|yearly growth|website traffic|review rating|last updated|source date)\b/.test(text)
+}
+
 function competitorMetricFromFlatFieldKey(item: DashboardResearchUpdateItem): {
   companyName: string
   metricField: CompetitorMetricField
@@ -1701,18 +1766,18 @@ function competitorMetricFromFlatFieldKey(item: DashboardResearchUpdateItem): {
   const parts = normalized.split('.').filter(Boolean)
   const metricIndex = parts.findIndex(part => part === 'competitor' || part === 'competitors' || part === 'competitormetrics' || part === 'competitor_metrics')
   let start = metricIndex >= 0 ? metricIndex + 1 : (parts[0] === 'competitor' || parts[0] === 'competitors' ? 1 : -1)
+  if (start < 0 && (parts[0] === 'metrics' || parts[0] === 'metric')) start = 1
   if (parts[start] === 'metrics' || parts[start] === 'metric') start += 1
   if (start < 0 || start >= parts.length - 1) return null
 
-  const metricToken = parts[parts.length - 1]
-  const metricField = COMPETITOR_METRIC_FIELD_ALIASES[normalizeHeader(metricToken)]
-  if (!metricField) return null
+  const suffix = competitorMetricSuffix(parts, start)
+  if (!suffix) return null
 
-  const companySlug = parts.slice(start, -1).join('_')
+  const companySlug = normalizeCompetitorCompanySlug(parts.slice(start, suffix.metricStart))
   if (!companySlug) return null
-  const companyName = KNOWN_COMPETITOR_NAME_BY_SLUG[companySlug] || titleCaseSlug(companySlug)
-  const label = `${companyName} - ${COMPETITOR_METRIC_LABEL[metricField]}`
-  return { companyName, metricField, label }
+  const companyName = competitorCompanyNameFromSlug(companySlug)
+  const label = `${companyName} - ${COMPETITOR_METRIC_LABEL[suffix.metricField]}`
+  return { companyName, metricField: suffix.metricField, label }
 }
 
 function flatDashboardGroupForItem(item: DashboardResearchUpdateItem): DashboardResearchUpdateGroup {
@@ -1746,7 +1811,9 @@ function enrichFlatDashboardItem(item: DashboardResearchUpdateItem, group: Dashb
   const next: DashboardResearchUpdateItem = { ...item }
   const metric = group === 'competitorRecords' ? competitorMetricFromFlatFieldKey(next) : null
   if (metric) {
-    next.companyName = firstString(next.companyName) || metric.companyName
+    if (!firstString(next.companyName) || isNoisyCompetitorCompanyName(next.companyName)) {
+      next.companyName = metric.companyName
+    }
     next.field = firstString(next.field) || metric.label
     next.label = firstString(next.label) || metric.label
     next.title = firstString(next.title) || metric.label

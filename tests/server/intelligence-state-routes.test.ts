@@ -120,6 +120,47 @@ describe('dashboard intelligence state routes', () => {
     })
   })
 
+  it('normalizes old flat competitor metric review targets to clean company names on read', async () => {
+    const putLayer = intelligenceStateRoutes.stack.find((entry: any) =>
+      entry.path === '/api/hermes/intelligence-state' && entry.methods.includes('PUT'),
+    )
+    const putCtx = createCtx('PUT', {
+      state: {
+        researchFindings: [{
+          keyClaim: 'Metrics DOW Market: Market-share reference identified',
+          evidenceStatus: 'To Verify',
+          source: {
+            title: 'Mordor Intelligence: Surfactants Market Companies',
+            url: 'https://www.mordorintelligence.com/industry-reports/surfactants-market/companies',
+          },
+          dashboardTarget: {
+            group: 'competitorRecords',
+            fieldKey: 'competitor_metrics.dow.market_share',
+            field: 'Metrics DOW Market',
+            proposedDashboardField: 'Metrics DOW Market',
+            companyName: 'Metrics DOW Market',
+            marketShare: 'Market-share reference identified; exact textile-softener share not approved.',
+          },
+        }],
+      },
+    })
+
+    await runRouteLayer(putLayer, putCtx)
+
+    const direct = await readDashboardIntelligenceState('default')
+    expect(direct?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        dashboardTarget: expect.objectContaining({
+          fieldKey: 'competitor_metrics.dow.market_share',
+          field: 'Dow - Market share',
+          proposedDashboardField: 'Dow - Market share',
+          companyName: 'Dow',
+          marketShare: 'Market-share reference identified; exact textile-softener share not approved.',
+        }),
+      }),
+    ])
+  })
+
   it('stores a large trusted-source review backlog without rejecting legitimate dashboard state', async () => {
     const putLayer = intelligenceStateRoutes.stack.find((entry: any) =>
       entry.path === '/api/hermes/intelligence-state' && entry.methods.includes('PUT'),
