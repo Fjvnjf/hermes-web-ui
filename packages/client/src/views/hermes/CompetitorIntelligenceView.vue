@@ -60,9 +60,9 @@ const productContextRows = [
 const screenshotCompetitorKpis = [
   {
     label: 'Profiled Suppliers',
-    value: '8',
+    value: 'No approved source-backed value',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
-    note: 'Publicly visible textile-softener / textile-auxiliary competitors and research targets.',
+    note: 'Reference template count removed from primary truth. Imported competitor records drive the main table.',
   },
   {
     label: 'EU Avg Price',
@@ -467,19 +467,19 @@ const competitorAnalysisCategories = [
   },
 ]
 const pdfChineseDistributorRows = [
-  { company: 'Transfar Group / Transfar Chemicals', hq: 'Hangzhou, Zhejiang', focus: 'Textile auxiliaries, surfactants', scale: '$5B+ revenue', relevance: 'China local textile-chemical target' },
-  { company: 'Zhejiang Longsheng', hq: 'Shaoxing, Zhejiang', focus: 'Dyes, intermediates', scale: '$3B+ revenue', relevance: 'Large textile-chemical ecosystem player' },
-  { company: 'Zhejiang Runtu', hq: 'Shangyu, Zhejiang', focus: 'Dyes, textile chemicals', scale: '$1.5B+ revenue', relevance: 'Regional textile chemical player' },
-  { company: 'Dymatic Chemicals', hq: 'Foshan, Guangdong', focus: 'Textile auxiliaries', scale: '$500M+ revenue', relevance: 'China textile auxiliary competitor/research target' },
-  { company: 'Shanghai Anoky', hq: 'Shanghai', focus: 'Dyes, specialty chemicals', scale: '$200M+ revenue', relevance: 'Specialty textile chemical reference' },
-  { company: 'HT Fine Chemicals', hq: 'Dongguan, Guangdong', focus: 'Silicone, softeners', scale: 'Mid-tier', relevance: 'Possible softener-specific competitor' },
-  { company: 'NICCA Chemical (China)', hq: 'Shanghai', focus: 'Japanese JV, surfactants', scale: '$100M+ in China', relevance: 'China surfactant/textile auxiliary reference' },
+  { company: 'Transfar Group / Transfar Chemicals', hq: 'Hangzhou, Zhejiang', focus: 'Textile auxiliaries, surfactants', scale: 'Reference value archived', relevance: 'China local textile-chemical target' },
+  { company: 'Zhejiang Longsheng', hq: 'Shaoxing, Zhejiang', focus: 'Dyes, intermediates', scale: 'Reference value archived', relevance: 'Large textile-chemical ecosystem player' },
+  { company: 'Zhejiang Runtu', hq: 'Shangyu, Zhejiang', focus: 'Dyes, textile chemicals', scale: 'Reference value archived', relevance: 'Regional textile chemical player' },
+  { company: 'Dymatic Chemicals', hq: 'Foshan, Guangdong', focus: 'Textile auxiliaries', scale: 'Reference value archived', relevance: 'China textile auxiliary competitor/research target' },
+  { company: 'Shanghai Anoky', hq: 'Shanghai', focus: 'Dyes, specialty chemicals', scale: 'Reference value archived', relevance: 'Specialty textile chemical reference' },
+  { company: 'HT Fine Chemicals', hq: 'Dongguan, Guangdong', focus: 'Silicone, softeners', scale: 'Reference value archived', relevance: 'Possible softener-specific competitor' },
+  { company: 'NICCA Chemical (China)', hq: 'Shanghai', focus: 'Japanese JV, surfactants', scale: 'Reference value archived', relevance: 'China surfactant/textile auxiliary reference' },
 ]
 const pdfGlobalManufacturerShareRows = [
-  { rank: '1', manufacturer: 'Evonik Industries', hq: 'Germany', capacity: '310 KT/YR', share: '21.4%' },
-  { rank: '2', manufacturer: 'Stepan Company', hq: 'USA', capacity: '230 KT/YR', share: '15.9%' },
-  { rank: '3', manufacturer: 'Kao Corporation', hq: 'Japan', capacity: '185 KT/YR', share: '12.8%' },
-  { rank: '4', manufacturer: 'Solvay / Syensqo', hq: 'Belgium', capacity: '155 KT/YR', share: '10.7%' },
+  { rank: 'Archived', manufacturer: 'Evonik Industries', hq: 'Germany', capacity: 'Reference value archived', share: 'Reference value archived' },
+  { rank: 'Archived', manufacturer: 'Stepan Company', hq: 'USA', capacity: 'Reference value archived', share: 'Reference value archived' },
+  { rank: 'Archived', manufacturer: 'Kao Corporation', hq: 'Japan', capacity: 'Reference value archived', share: 'Reference value archived' },
+  { rank: 'Archived', manufacturer: 'Solvay / Syensqo', hq: 'Belgium', capacity: 'Reference value archived', share: 'Reference value archived' },
 ]
 const marketShareChartRows = computed(() =>
   collapsedCompetitors.value
@@ -494,21 +494,6 @@ const marketShareChartRows = computed(() =>
     .filter(row => Number.isFinite(row.numericShare) && row.numericShare > 0 && (row.isAssumption || row.isSourceBacked)),
 )
 const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
-  const templateRows: CompetitorMetricRow[] = sourceBackedCompetitorTemplateRows.map(row => ({
-    id: `template-${row.competitor}`,
-    competitor: row.competitor,
-    hq: row.hq,
-    productFocus: productFocusForCompetitor(row.competitor),
-    priceKg: autoVerifyText(row.price),
-    marketShare: autoVerifyText(row.share),
-    revenue: autoVerifyingText,
-    yearlyGrowth: autoVerifyingText,
-    source: row.sourceTitle,
-    sourceUrl: row.sourceUrl,
-    evidenceStatus: row.status,
-    nextAction: row.weakness,
-  }))
-
   const savedRows: CompetitorMetricRow[] = collapsedCompetitors.value.map(competitor => ({
     id: `saved-${competitor.id}`,
     competitor: competitor.companyName,
@@ -524,7 +509,7 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
     nextAction: competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
   }))
 
-  return collapseCompetitorMetricRows([...savedRows, ...templateRows])
+  return collapseCompetitorMetricRows(savedRows)
 })
 
 function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): CollapsedCompetitorRecord[] {
@@ -853,13 +838,6 @@ function displayEvidenceStatus(status: IntelligenceEvidenceStatus): string {
   if (status === 'To Verify') return autoVerifyingText
   if (status === 'Missing') return autoVerifyingText
   return status
-}
-
-function productFocusForCompetitor(competitor: string): string {
-  if (/wacker|silicone/i.test(competitor)) return 'Silicone softeners / CHEMISIL benchmark'
-  if (/rudolf|cht|archroma|zschimmer|pulcra|transfar/i.test(competitor)) return 'Textile softeners / CHEMISOFT and CHEMISIL benchmark'
-  if (/kao|evonik|stepan|basf|syensqo|solvay/i.test(competitor)) return 'Esterquat active / cationic softener reference'
-  return 'Textile auxiliary competitor benchmark'
 }
 
 function visibleSensitiveValue(value: string): string {
@@ -1214,15 +1192,15 @@ function addCompetitor() {
         <small>Open only when you need the screenshot templates, PDF reference rows, source pack, or manual competitor record form.</small>
       </summary>
 
-    <section class="screenshot-competitor-template" aria-label="Source-backed competitor dashboard template">
+    <section class="screenshot-competitor-template" aria-label="Reference competitor dashboard template">
       <div class="template-hero">
         <div>
-          <p class="eyebrow">Chemicon China template</p>
+          <p class="eyebrow">Reference only template</p>
           <h3>Competitors Tab Template</h3>
           <p>
-            Screenshot-style competitor board using verified public source references where available. Market share,
-            price/kg, revenue, yearly growth, product equivalence, and local supplier claims remain in source review
-            until source evidence is attached.
+            Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
+            The screenshot-style board stays secondary; the primary competitor table above uses imported intelligence,
+            approved assumptions, or safe review-gated empty states.
           </p>
         </div>
         <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review competitor evidence</RouterLink>

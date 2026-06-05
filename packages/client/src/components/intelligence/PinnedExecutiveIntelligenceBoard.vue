@@ -66,111 +66,13 @@ const visibleEconomicsKpis = computed(() =>
     : economicsKpis.value.map(displayExecutiveKpi),
 )
 const investmentBreakdown = computed(() => buildInvestmentBreakdownRows())
-const sourceBackedBoardSegments: MarketClaim[] = [
-  {
-    id: 'board-segment-china-textile-chemicals',
-    label: 'Mainland China textile chemicals',
-    value: 'Largest consumer; nearly half of 2024 global textile-chemicals value',
-    evidenceStatus: 'Source-backed',
-    confidence: 'high',
-    source: {
-      title: 'S&P Global Textile Chemicals public abstract',
-      url: 'https://www.spglobal.com/content/dam/spglobal/ci/en/documents/products/pdf/CI_0825-SCUP-Textile-Chemicals-Abstract-TOC-June-2025.pdf',
-      date: '2025-06',
-    },
-    lastChecked: '2025-06',
-  },
-  {
-    id: 'board-segment-global-esterquats',
-    label: 'Global esterquats reference',
-    value: 'USD 2.441B in 2023; 10.3% CAGR 2024-2030',
-    evidenceStatus: 'Source-backed',
-    confidence: 'medium',
-    source: {
-      title: 'Grand View Research esterquats report page',
-      url: 'https://www.grandviewresearch.com/industry-analysis/esterquats-market',
-      date: '2024-2030 forecast',
-    },
-    lastChecked: '2026-06-04',
-  },
-  {
-    id: 'board-segment-keqiao-cluster',
-    label: 'Zhejiang / Shaoxing / Keqiao cluster',
-    value: '8,000+ textile businesses; output value over RMB 100B',
-    evidenceStatus: 'Source-backed',
-    confidence: 'high',
-    source: {
-      title: 'China gov / Xinhua Keqiao textile cluster',
-      url: 'https://english.www.gov.cn/news/202403/16/content_WS65f50107c6d0868f4e8e5257.html',
-      date: '2024-03-16',
-    },
-    lastChecked: '2024-03-16',
-  },
-]
-const sourceBackedBoardCompetitors = [
-  {
-    rank: '1',
-    manufacturer: 'Archroma',
-    hq: 'Switzerland',
-    productEquivalent: 'Finishing products including softener families',
-    capacity: 'Not published by cited source',
-    marketShare: 'Not published by cited source',
-    sourceLabel: 'Archroma finishing solutions',
-    evidenceStatus: 'Source-backed' as const,
-  },
-  {
-    rank: '2',
-    manufacturer: 'WACKER',
-    hq: 'Germany',
-    productEquivalent: 'Silicone softener formulation input reference',
-    capacity: 'Not published by cited source',
-    marketShare: 'Not published by cited source',
-    sourceLabel: 'WACKER FINISH WR 1200 product page',
-    evidenceStatus: 'Source-backed' as const,
-  },
-  {
-    rank: '3',
-    manufacturer: 'RUDOLF Group',
-    hq: 'Germany',
-    productEquivalent: 'RUCOFIN silicone softeners for textiles',
-    capacity: 'Not published by cited source',
-    marketShare: 'Not published by cited source',
-    sourceLabel: 'RUDOLF RUCOFIN page',
-    evidenceStatus: 'Source-backed' as const,
-  },
-  {
-    rank: '4',
-    manufacturer: 'CHT Group',
-    hq: 'Germany',
-    productEquivalent: 'Textile auxiliary supplier reference',
-    capacity: 'Not published by cited source',
-    marketShare: 'Not published by cited source',
-    sourceLabel: 'CHT Group company page',
-    evidenceStatus: 'Source-backed' as const,
-  },
-  {
-    rank: '5',
-    manufacturer: 'Transfar Chemicals',
-    hq: 'China',
-    productEquivalent: 'China textile-chemicals competitor target',
-    capacity: 'Not published by cited source',
-    marketShare: 'Not published by cited source',
-    sourceLabel: 'Transfar Chemicals official site',
-    evidenceStatus: 'Source-backed' as const,
-  },
-]
 
 const marketSizeClaim = computed(() => findMarketClaim(['market size', 'demand', 'market value', 'consumption']))
 const growthClaim = computed(() => findMarketClaim(['growth', 'cagr']))
 const importDependenceClaim = computed(() => findMarketClaim(['import', 'dependence', 'dependency']))
-const marketSegments = computed(() => {
-  const claims = intelligence.state.value.marketClaims.slice(0, 5)
-  if (claims.length) return claims
-  return sourceBackedBoardSegments
-})
+const marketSegments = computed(() => intelligence.state.value.marketClaims.slice(0, 5))
 const competitorRows = computed(() => {
   const records = intelligence.state.value.competitors.slice(0, 5)
-  if (!records.length) return sourceBackedBoardCompetitors
   return records.map((competitor, index) => ({
     rank: String(index + 1),
     manufacturer: competitor.companyName || 'Hermes source search running',
@@ -254,20 +156,18 @@ function marketMetric(label: string, claim: MarketClaim | null) {
   const useClaim = Boolean(claim?.value?.trim())
   return {
     label,
-    value: useClaim ? marketClaimValue(claim) : fallback?.value || 'Source-backed reference available on Market Intelligence',
+    value: useClaim ? marketClaimValue(claim) : fallback?.value || 'No approved source-backed value',
     evidenceStatus: useClaim ? claimStatusOrToVerify(claim) : fallback?.evidenceStatus || 'Reference Only',
-    sourceLabel: useClaim ? marketClaimSourceLabel(claim) : fallback?.source?.title || 'Market Intelligence source pack',
+    sourceLabel: useClaim ? marketClaimSourceLabel(claim) : fallback?.source?.title || 'Trusted Sources / Research Review',
   }
 }
 
 function sourceBackedBoardMetric(label: string): MarketClaim | null {
-  if (/market size/i.test(label)) return sourceBackedBoardSegments[0]
-  if (/growth/i.test(label)) return sourceBackedBoardSegments[1]
   if (/import/i.test(label)) {
     return {
       id: 'board-import-trade-proxy',
       label: 'WTO/WITS trade proxy',
-      value: 'Official trade source connected; direct softener HS mapping still review-gated',
+      value: 'No approved source-backed value',
       evidenceStatus: 'Trade Proxy',
       confidence: 'medium',
       source: {
@@ -615,6 +515,12 @@ onMounted(() => {
                 <span>{{ marketClaimSourceLabel(claim) }}</span>
                 <NTag size="small" :type="statusType(normalizedMarketClaimStatus(claim))">{{ displayBoardStatus(normalizedMarketClaimStatus(claim)) }}</NTag>
               </div>
+              <div v-if="!marketSegments.length" class="mini-row">
+                <span>No approved source-backed market segment</span>
+                <span>No approved source-backed value</span>
+                <span>Trusted Sources / Research Review</span>
+                <NTag size="small" type="warning">Reference only</NTag>
+              </div>
             </div>
           </div>
 
@@ -638,6 +544,15 @@ onMounted(() => {
                 <span>{{ displayBoardValue(row.capacity) }}</span>
                 <span>{{ displayBoardValue(row.marketShare) }}</span>
                 <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayBoardStatus(row.evidenceStatus) }}</NTag>
+              </div>
+              <div v-if="!competitorRows.length" class="mini-row">
+                <span>-</span>
+                <span>No approved source-backed competitor record</span>
+                <span>No approved source-backed value</span>
+                <span>Trusted Sources / Research Review</span>
+                <span>No approved source-backed value</span>
+                <span>No approved source-backed value</span>
+                <NTag size="small" type="warning">Reference only</NTag>
               </div>
             </div>
           </div>

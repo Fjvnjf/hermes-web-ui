@@ -97,9 +97,9 @@ const executiveMarketMetrics = computed(() => [
   marketMetric('Opportunity Score', findMarketClaim(['opportunity score', 'market opportunity'])),
   {
     label: 'Competitor Records',
-    value: competitorClaimCount.value ? String(competitorClaimCount.value) : `${sourceBackedCompetitorReferences.length} reference companies`,
-    evidenceStatus: 'Reference Only' as IntelligenceEvidenceStatus,
-    sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'Grand View Research plus official company pages',
+    value: competitorClaimCount.value ? String(competitorClaimCount.value) : 'No approved source-backed value',
+    evidenceStatus: competitorClaimCount.value ? 'Source-backed' as IntelligenceEvidenceStatus : 'Reference Only' as IntelligenceEvidenceStatus,
+    sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'Trusted Sources / Research Review',
   },
 ])
 const marketSegments = computed(() => [
@@ -119,16 +119,6 @@ const targetOpportunityRows = computed(() => [
 ])
 const topCompetitorRows = computed(() => {
   const records = intelligence.state.value.competitors.slice(0, 5)
-  if (!records.length) {
-    return sourceBackedCompetitorReferences.slice(0, 5).map(record => ({
-      company: record.manufacturer,
-      region: record.role,
-      product: 'Esterquat / textile softener reference',
-      share: 'Not published by cited source',
-      source: record.source,
-      status: record.status,
-    }))
-  }
   return records.map(record => ({
     company: record.companyName || 'Hermes source search running',
     region: record.countryRegion || 'Hermes source search running',
@@ -156,10 +146,10 @@ const marketAutopilotCards = computed(() => [
     label: 'Country growth',
     value: autopilotCountryGrowthRows.value.length
       ? `${autopilotCountryGrowthRows.value.length} auto`
-      : `${countryConsumptionGrowthRows.length} signals`,
+      : 'Waiting',
     note: autopilotCountryGrowthRows.value.length
       ? 'Official trade-proxy growth records are filling from trusted-source imports.'
-      : 'Country rows use proxy evidence until direct textile-softener consumption is verified.',
+      : 'Country rows appear only after trusted-source imports or review approval.',
   },
   {
     icon: '✅',
@@ -171,17 +161,17 @@ const marketAutopilotCards = computed(() => [
 const sourceBackedTemplateKpis = [
   {
     label: 'China Market',
-    value: 'Largest textile-chemicals consumer',
-    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    value: 'Reference archived pending trusted-source import',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'S&P Global Textile Chemicals abstract, 2025',
-    note: 'Mainland China accounts for nearly half of global textile chemicals value in 2024; not a textile-softener-only value.',
+    note: 'Reference only. Not source-backed dashboard truth until imported by Trusted Sources / Research Review.',
   },
   {
     label: 'Growth Rate',
-    value: '10.3% CAGR 2024-2030',
-    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    value: 'Reference archived pending trusted-source import',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research esterquats report page',
-    note: 'Global esterquats growth only; China textile-softener CAGR still requires product-specific evidence.',
+    note: 'Reference only. Do not use as market CAGR until imported as approved source-backed evidence.',
   },
   {
     label: 'Import Dependence',
@@ -201,36 +191,36 @@ const sourceBackedTemplateKpis = [
 const sourceBackedSegments = [
   {
     segment: 'Textile Chemicals - Mainland China',
-    size: 'Nearly half of global value',
-    growth: 'Growth slowing',
-    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    size: 'Reference archived pending trusted-source import',
+    growth: 'Reference archived pending trusted-source import',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'S&P Global Textile Chemicals abstract, 2025',
   },
   {
     segment: 'Dyes & Pigments',
-    size: 'Close to 35% of global textile-chemicals value',
-    growth: 'Reference only',
+    size: 'Reference archived pending trusted-source import',
+    growth: 'Reference archived pending trusted-source import',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'S&P Global Textile Chemicals abstract, 2025',
   },
   {
     segment: 'Global Esterquats',
-    size: 'USD 2.69B market size value in 2024',
-    growth: '10.3% CAGR 2024-2030',
-    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    size: 'Reference archived pending trusted-source import',
+    growth: 'Reference archived pending trusted-source import',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research esterquats report page',
   },
   {
     segment: 'Fabric Care Esterquats',
-    size: '90.8% of esterquats market share in 2023',
-    growth: 'Reference only',
+    size: 'Reference archived pending trusted-source import',
+    growth: 'Reference archived pending trusted-source import',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research esterquats report page',
   },
   {
     segment: 'Cationic / Ester Quat Textile Softeners',
-    size: 'Global esterquats USD 2.441B in 2023',
-    growth: '10.3% CAGR 2024-2030',
+    size: 'Reference archived pending trusted-source import',
+    growth: 'Reference archived pending trusted-source import',
     status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research esterquats report page',
   },
@@ -358,8 +348,8 @@ const globalMarketIntelligenceRows = [
   },
   {
     signal: 'Global esterquat reference market',
-    finding: 'Grand View Research reports the global esterquats market at USD 2.441B in 2023, with 10.3% CAGR from 2024 to 2030; fabric care held 90.8% share in 2023.',
-    status: 'Source-backed' as IntelligenceEvidenceStatus,
+    finding: 'Grand View Research is a reference source for esterquat context, but its numeric values are archived until imported through Trusted Sources / Research Review.',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'Grand View Research esterquats report page',
     businessMeaning: 'Useful for esterquat context only. It does not prove the China textile-softener market size or Chemicon revenue.',
     nextAction: 'Separate home-care esterquat demand from textile-finishing cationic softener demand.',
@@ -488,11 +478,17 @@ const autopilotCountryGrowthRows = computed<CountryConsumptionGrowthRow[]>(() =>
 )
 const displayCountryConsumptionGrowthRows = computed<CountryConsumptionGrowthRow[]>(() => {
   const autoRows = autopilotCountryGrowthRows.value
-  if (!autoRows.length) return countryConsumptionGrowthRows
+  if (!autoRows.length) return []
   const importedCountries = new Set(autoRows.map(row => row.country.toLowerCase()))
   return [
     ...autoRows,
-    ...countryConsumptionGrowthRows.filter(row => !importedCountries.has(row.country.toLowerCase())),
+    ...countryConsumptionGrowthRows
+      .filter(row => !importedCountries.has(row.country.toLowerCase()))
+      .map(row => ({
+        ...row,
+        growthSignal: 'Reference archived pending trusted-source import',
+        sourceBackedEvidence: 'Reference only. Not source-backed dashboard truth until imported by Trusted Sources / Research Review.',
+      })),
   ]
 })
 const countryGrowthSummaryCards = computed(() => {
@@ -563,33 +559,25 @@ const marketResearchQuestions = [
   },
 ]
 const pdfChinaImportRows = [
-  { rank: '1', country: 'South Korea', t2022: '13,102', t2023: '13,763', t2024: '16,175', value2024: '$46.6M', usdPerKg: '$2.88' },
-  { rank: '2', country: 'India', t2022: '7,358', t2023: '10,264', t2024: '11,483', value2024: '$12.3M', usdPerKg: '$1.07' },
-  { rank: '3', country: 'Japan', t2022: '7,171', t2023: '6,800', t2024: '8,198', value2024: '$51.5M', usdPerKg: '$6.28' },
-  { rank: '4', country: 'Malaysia', t2022: '3,003', t2023: '3,199', t2024: '4,807', value2024: '$3.7M', usdPerKg: '$0.77' },
-  { rank: '5', country: 'Thailand', t2022: '941', t2023: '965', t2024: '3,985', value2024: '$9.1M', usdPerKg: '$2.29' },
-  { rank: '6', country: 'Germany', t2022: '3,312', t2023: '2,649', t2024: '3,567', value2024: '$25.8M', usdPerKg: '$7.23' },
-  { rank: '7', country: 'Taiwan', t2022: '3,860', t2023: '2,773', t2024: '3,497', value2024: '$14.2M', usdPerKg: '$4.07' },
-  { rank: '8', country: 'Vietnam', t2022: '3,805', t2023: '2,949', t2024: '2,924', value2024: '$3.5M', usdPerKg: '$1.20' },
-  { rank: '9', country: 'USA', t2022: '2,655', t2023: '2,476', t2024: '2,674', value2024: '$22.0M', usdPerKg: '$8.23' },
-  { rank: '10', country: 'Italy', t2022: '1,009', t2023: '627', t2024: '1,811', value2024: '$4.7M', usdPerKg: '$2.62' },
-  { rank: 'Total', country: 'Global total', t2022: '51,425', t2023: '51,661', t2024: '65,409', value2024: '$237M', usdPerKg: '$3.62' },
+  { rank: 'Archived', country: 'South Korea', t2022: 'Reference value archived', t2023: 'Reference value archived', t2024: 'Reference value archived', value2024: 'Reference value archived', usdPerKg: 'Reference value archived' },
+  { rank: 'Archived', country: 'India', t2022: 'Reference value archived', t2023: 'Reference value archived', t2024: 'Reference value archived', value2024: 'Reference value archived', usdPerKg: 'Reference value archived' },
+  { rank: 'Archived', country: 'Japan', t2022: 'Reference value archived', t2023: 'Reference value archived', t2024: 'Reference value archived', value2024: 'Reference value archived', usdPerKg: 'Reference value archived' },
+  { rank: 'Archived', country: 'Malaysia', t2022: 'Reference value archived', t2023: 'Reference value archived', t2024: 'Reference value archived', value2024: 'Reference value archived', usdPerKg: 'Reference value archived' },
+  { rank: 'Archived', country: 'Thailand', t2022: 'Reference value archived', t2023: 'Reference value archived', t2024: 'Reference value archived', value2024: 'Reference value archived', usdPerKg: 'Reference value archived' },
 ]
 const pdfCountryConsumptionRows = [
-  { country: 'China', kt2023: '425', kt2024: '458', change: '+7.8%' },
-  { country: 'USA', kt2023: '285', kt2024: '298', change: '+4.6%' },
-  { country: 'India', kt2023: '148', kt2024: '162', change: '+9.5%' },
-  { country: 'Germany', kt2023: '88', kt2024: '92', change: '+4.5%' },
-  { country: 'Bangladesh', kt2023: '38', kt2024: '44', change: '+15.8%' },
-  { country: 'Vietnam', kt2023: '31', kt2024: '35', change: '+12.9%' },
-  { country: 'World Total', kt2023: '1,546', kt2024: '1,655', change: '+7.0%' },
+  { country: 'China', kt2023: 'Reference value archived', kt2024: 'Reference value archived', change: 'Reference value archived' },
+  { country: 'USA', kt2023: 'Reference value archived', kt2024: 'Reference value archived', change: 'Reference value archived' },
+  { country: 'India', kt2023: 'Reference value archived', kt2024: 'Reference value archived', change: 'Reference value archived' },
+  { country: 'Bangladesh', kt2023: 'Reference value archived', kt2024: 'Reference value archived', change: 'Reference value archived' },
+  { country: 'Vietnam', kt2023: 'Reference value archived', kt2024: 'Reference value archived', change: 'Reference value archived' },
 ]
 const pdfMarketSegmentRows = [
-  { segment: 'Textile Softeners Total', size: '$3.2B', growth: '+7.2%' },
-  { segment: 'Cationic / Ester Quat', size: '$1.4B', growth: '+8.1%' },
-  { segment: 'Silicone Softeners', size: '$1.1B', growth: '+9.5%' },
-  { segment: 'Non-ionic', size: '$0.5B', growth: '+4.2%' },
-  { segment: 'SOM (4.8%)', size: '$120M', growth: 'User-provided target scenario' },
+  { segment: 'Textile Softeners Total', size: 'Reference value archived', growth: 'Reference value archived' },
+  { segment: 'Cationic / Ester Quat', size: 'Reference value archived', growth: 'Reference value archived' },
+  { segment: 'Silicone Softeners', size: 'Reference value archived', growth: 'Reference value archived' },
+  { segment: 'Non-ionic', size: 'Reference value archived', growth: 'Reference value archived' },
+  { segment: 'SOM target scenario', size: 'Reference value archived', growth: 'Reference value archived' },
 ]
 
 function canUseRoute(routeName: string): boolean {
@@ -691,25 +679,11 @@ function opportunityRow(label: string, keywords: string[]) {
 }
 
 function sourceBackedMarketMetric(label: string): { value: string; evidenceStatus: IntelligenceEvidenceStatus; sourceLabel: string } | null {
-  if (/market size|scope/i.test(label)) {
-    return {
-      value: 'Mainland China nearly half of global textile-chemicals value',
-      evidenceStatus: 'Source-backed',
-      sourceLabel: 'S&P Global Textile Chemicals public abstract, 2025',
-    }
-  }
-  if (/growth/i.test(label)) {
-    return {
-      value: 'Global esterquats 10.3% CAGR 2024-2030',
-      evidenceStatus: 'Source-backed',
-      sourceLabel: 'Grand View Research esterquats report page',
-    }
-  }
   if (/import/i.test(label)) {
     return {
-      value: 'WTO/WITS trade proxy connected',
+      value: 'No approved source-backed value',
       evidenceStatus: 'Trade Proxy',
-      sourceLabel: 'WTO / World Bank WITS trade data',
+      sourceLabel: 'Trusted Sources / Research Review',
     }
   }
   if (/our target/i.test(label)) {
@@ -721,9 +695,9 @@ function sourceBackedMarketMetric(label: string): { value: string; evidenceStatu
   }
   if (/opportunity/i.test(label)) {
     return {
-      value: 'Keqiao and Jiangsu/Zhejiang clusters prioritized',
-      evidenceStatus: 'Source-backed',
-      sourceLabel: 'China gov / Xinhua; SWITCH-Asia / CNIS',
+      value: 'No approved source-backed value',
+      evidenceStatus: 'Reference Only',
+      sourceLabel: 'Trusted Sources / Research Review',
     }
   }
   return null
@@ -731,27 +705,11 @@ function sourceBackedMarketMetric(label: string): { value: string; evidenceStatu
 
 function sourceBackedMarketSegment(label: string): { value: string; growth: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
   const normalized = label.toLowerCase()
-  if (normalized.includes('textile softeners total')) {
-    return {
-      value: 'Mainland China is largest textile-chemicals consumer',
-      growth: 'Textile-softener-only CAGR not published in cited source',
-      source: 'S&P Global Textile Chemicals public abstract, 2025',
-      evidenceStatus: 'Source-backed',
-    }
-  }
-  if (normalized.includes('cationic') || normalized.includes('ester')) {
-    return {
-      value: 'Global esterquats USD 2.441B in 2023',
-      growth: '10.3% CAGR 2024-2030',
-      source: 'Grand View Research esterquats report page',
-      evidenceStatus: 'Reference Only',
-    }
-  }
   if (normalized.includes('silicone') || normalized.includes('non-ionic')) {
     return {
-      value: 'Official competitor product pages confirm active product segment',
+      value: 'No approved source-backed value',
       growth: 'No cited public CAGR for this exact textile-softener segment',
-      source: 'WACKER / RUDOLF / Archroma official product pages',
+      source: 'Trusted Sources / Research Review',
       evidenceStatus: 'Candidate Source',
     }
   }
@@ -772,52 +730,17 @@ function sourceBackedMarketSegment(label: string): { value: string; growth: stri
     }
   }
   return {
-    value: 'Trusted-source research target',
-    growth: 'Hermes checks twice daily',
-    source: 'Trusted Source Autopilot',
+    value: 'No approved source-backed value',
+    growth: 'Review required',
+    source: 'Trusted Sources / Research Review',
     evidenceStatus: 'Reference Only',
   }
 }
 
-function sourceBackedOpportunityRow(label: string): { score: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
-  if (/china/i.test(label)) {
-    return {
-      score: 'Keqiao 8,000+ textile businesses; Jiangsu/Zhejiang cluster evidence',
-      source: 'China gov / Xinhua; SWITCH-Asia / CNIS',
-      evidenceStatus: 'Source-backed',
-    }
-  }
-  if (/bangladesh/i.test(label)) {
-    return {
-      score: 'Cotton mill-use growth 2.1% p.a. proxy',
-      source: 'OECD-FAO Agricultural Outlook 2025-2034',
-      evidenceStatus: 'Reference Only',
-    }
-  }
-  if (/vietnam/i.test(label)) {
-    return {
-      score: 'Cotton mill-use growth 2.7% p.a. proxy',
-      source: 'OECD-FAO Agricultural Outlook 2025-2034',
-      evidenceStatus: 'Reference Only',
-    }
-  }
-  if (/india/i.test(label)) {
-    return {
-      score: 'Higher cotton use forecast in 2024/25 proxy',
-      source: 'OECD-FAO Agricultural Outlook 2025-2034',
-      evidenceStatus: 'Reference Only',
-    }
-  }
-  if (/pakistan/i.test(label)) {
-    return {
-      score: 'Near-term cotton-use weakness noted; direct softener demand not proven',
-      source: 'OECD-FAO Agricultural Outlook 2025-2034',
-      evidenceStatus: 'Reference Only',
-    }
-  }
+function sourceBackedOpportunityRow(_label: string): { score: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
   return {
-    score: 'Trusted-source research target',
-    source: 'Trusted Source Autopilot',
+    score: 'No approved source-backed value',
+    source: 'Trusted Sources / Research Review',
     evidenceStatus: 'Reference Only',
   }
 }
@@ -1381,18 +1304,18 @@ onMounted(loadRefreshState)
     <details class="pdf-reference-pack" aria-label="User PDF market reference tables">
       <summary>
         <span>Archived user-document market tables</span>
-        <small>Open for older comparison inputs; live dashboard values come from source-backed intelligence above.</small>
+        <small>Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.</small>
       </summary>
       <div class="template-header">
         <div>
           <p class="eyebrow">User PDF reference</p>
           <h3>Imported Market Tables From Your Document</h3>
           <p>
-            These tables reproduce the information from the PDF you provided. They are useful for dashboard planning,
-            but remain user-provided and automatically verified until Hermes confirms the source, HS-code scope, date, and product fit.
+            Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
+            These archived rows are useful for planning, but they are not rendered as live dashboard facts.
           </p>
         </div>
-        <NTag size="small" type="warning">User Provided / Auto-checking</NTag>
+        <NTag size="small" type="warning">Reference only / not source-backed</NTag>
       </div>
 
       <article class="template-panel pdf-table-panel">
@@ -1466,15 +1389,21 @@ onMounted(loadRefreshState)
       </div>
     </details>
 
-    <section class="screenshot-market-template" aria-label="Source-backed market intelligence template">
+    <details class="reference-details market-template-archive">
+      <summary>
+        <span>Reference Template / User PDF Archive</span>
+        <small>Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.</small>
+      </summary>
+
+    <section class="screenshot-market-template" aria-label="Reference market intelligence template">
       <div class="template-header">
         <div>
-          <p class="eyebrow">Chemicon China template</p>
+          <p class="eyebrow">Reference only template</p>
           <h3>Market Intelligence Template</h3>
           <p>
-            Screenshot-style market board populated only with source-backed public facts, user-provided assumptions,
-            or source-review gaps. Unsupported market size, share, CAGR, province split, and capacity values are not shown
-            as facts.
+            Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
+            This screenshot-style board shows the desired layout, but primary market values come from imported intelligence
+            and approved assumptions only.
           </p>
         </div>
         <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review source gaps</RouterLink>
@@ -1569,6 +1498,7 @@ onMounted(loadRefreshState)
         </div>
       </article>
     </section>
+    </details>
 
     <section class="market-command-panel" aria-label="Market intelligence command panel">
       <div class="market-command-head">
@@ -1615,6 +1545,13 @@ onMounted(loadRefreshState)
           <span>{{ segment.source }}</span>
           <NTag size="small" :type="statusType(segment.evidenceStatus)">{{ displayMarketStatus(segment.evidenceStatus) }}</NTag>
         </div>
+        <div v-if="!marketSegments.length" class="segmentation-row">
+          <span>No approved source-backed segment</span>
+          <span>No approved source-backed value</span>
+          <span>Review required</span>
+          <span>Trusted Sources / Research Review</span>
+          <NTag size="small" type="warning">Reference only</NTag>
+        </div>
       </div>
 
       <div class="target-panel">
@@ -1654,6 +1591,14 @@ onMounted(loadRefreshState)
           <span>{{ displayMarketValue(row.share) }}</span>
           <span>{{ row.source }}</span>
           <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
+        </div>
+        <div v-if="!topCompetitorRows.length" class="competitor-row">
+          <span>No approved source-backed competitor</span>
+          <span>No approved source-backed value</span>
+          <span>No approved source-backed value</span>
+          <span>No approved source-backed value</span>
+          <span>Trusted Sources / Research Review</span>
+          <NTag size="small" type="warning">Reference only</NTag>
         </div>
       </div>
     </section>

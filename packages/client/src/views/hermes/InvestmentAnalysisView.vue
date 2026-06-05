@@ -154,49 +154,49 @@ const projectAnalysisDetailCards = computed(() => [
   },
 ])
 const pdfProjectAnalysisKpis = [
-  { label: 'Total Investment', value: '$16M' },
-  { label: 'Project IRR', value: '60%' },
-  { label: 'NPV @ 12%', value: '$49.8M' },
-  { label: 'Payback Period', value: '1.7 yr' },
-  { label: 'Profitability Index', value: '4.1x' },
-  { label: '5-Year ROI', value: '5.1x' },
+  { label: 'Total Investment', status: 'Reference value archived' },
+  { label: 'Project IRR', status: 'Reference value archived' },
+  { label: 'NPV @ 12%', status: 'Reference value archived' },
+  { label: 'Payback Period', status: 'Reference value archived' },
+  { label: 'Profitability Index', status: 'Reference value archived' },
+  { label: '5-Year ROI', status: 'Reference value archived' },
 ]
 const pdfInvestmentBreakdownRows = [
   {
     category: 'Process Equipment',
     keyItems: 'Reactors, columns, exchangers, tanks, pumps, packaging',
-    amount: '$7,850,000',
-    percent: '49.1%',
+    amount: 'Reference value archived',
+    percent: 'Reference value archived',
   },
   {
     category: 'Utilities & Infrastructure',
     keyItems: 'Steam, cooling, electrical, nitrogen, WWTP, fire',
-    amount: '$1,720,000',
-    percent: '10.8%',
+    amount: 'Reference value archived',
+    percent: 'Reference value archived',
   },
   {
     category: 'Buildings & Civil',
     keyItems: 'Production, warehouse, admin, tank farm, roads',
-    amount: '$1,810,000',
-    percent: '11.3%',
+    amount: 'Reference value archived',
+    percent: 'Reference value archived',
   },
   {
     category: 'Engineering & Project Mgmt',
     keyItems: 'Basic/detailed engineering, PM, EPC overhead',
-    amount: '$970,000',
-    percent: '6.0%',
+    amount: 'Reference value archived',
+    percent: 'Reference value archived',
   },
   {
     category: 'Installation & Commissioning',
     keyItems: 'Erection, piping, E&I, start-up, training',
-    amount: '$1,130,000',
-    percent: '7.1%',
+    amount: 'Reference value archived',
+    percent: 'Reference value archived',
   },
   {
     category: 'Other Costs',
     keyItems: 'Permits, raw inventory (3mo), working capital, contingency',
-    amount: '$2,520,000',
-    percent: '15.8%',
+    amount: 'Reference value archived',
+    percent: 'Reference value archived',
   },
 ]
 
@@ -550,21 +550,21 @@ onMounted(loadRefreshState)
       <article class="template-panel pdf-project-analysis-panel" aria-label="User PDF project analysis reference">
         <div class="template-panel-title">
           <div>
-            <h3>User PDF Project Analysis Reference - 60,000 MT/YR Esterquat Plant</h3>
+            <h3>Reference Template / User PDF Archive</h3>
             <p>
-              These values are copied from your PDF screenshot so the dashboard can show the table you requested.
-              They are not treated as verified model outputs; they remain User Provided / Derived from Assumptions until source-backed quotes and approved IRR inputs exist.
+              Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
+              Old screenshot numbers are archived and are not rendered as dashboard facts.
             </p>
           </div>
-          <NTag size="small" type="warning">User Provided / {{ displayInvestmentStatus('To Verify') }}</NTag>
+          <NTag size="small" type="warning">Reference only / not source-backed</NTag>
         </div>
 
         <div class="pdf-kpi-grid">
           <article v-for="kpi in pdfProjectAnalysisKpis" :key="kpi.label" class="template-kpi-card">
-            <strong>{{ redactsFinancials ? 'Restricted' : displayInvestmentValue(kpi.value) }}</strong>
+            <strong>{{ redactsFinancials ? 'Restricted' : kpi.status }}</strong>
             <span>{{ kpi.label }}</span>
-            <NTag size="small" type="warning">Derived from Assumptions</NTag>
-            <small>User PDF screenshot / source quotes needed</small>
+            <NTag size="small" type="warning">Reference only</NTag>
+            <small>Use Trusted Sources / Research Review to verify before use</small>
           </article>
         </div>
 
@@ -582,10 +582,10 @@ onMounted(loadRefreshState)
           </div>
           <div class="pdf-breakdown-row total">
             <strong>Total</strong>
-            <span>5 production lines / Guangdong, China</span>
-            <span>{{ redactsFinancials ? 'Restricted' : '$16,000,000' }}</span>
-            <span>{{ redactsFinancials ? 'Restricted' : '100%' }}</span>
-            <span>User PDF screenshot</span>
+            <span>Archived project scope reference</span>
+            <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
+            <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
+            <span>Reference only / not source-backed</span>
             <NTag size="small" type="warning">{{ displayInvestmentStatus('To Verify') }}</NTag>
           </div>
         </div>
