@@ -106,6 +106,7 @@ export interface TrustedSourceCandidate {
 }
 
 const TIER1_DOMAINS = [
+  'comtradeapi.un.org',
   'comtradeplus.un.org',
   'comtrade.un.org',
   'uncomtrade.org',

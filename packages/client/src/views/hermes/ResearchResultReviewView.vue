@@ -518,6 +518,9 @@ function saveAsCompetitorRecord(item: ResearchReviewFinding) {
       marketShare: normalizedMarketShareValue(reviewLine(item, 'Market share')),
       revenue: reviewLine(item, 'Revenue') || reviewLine(item, 'Annual revenue') || '',
       yearlyGrowth: reviewLine(item, 'Yearly growth') || reviewLine(item, 'Growth') || '',
+      traffic: item.dashboardTarget?.traffic || reviewLine(item, 'Traffic') || reviewLine(item, 'Website traffic') || '',
+      rating: item.dashboardTarget?.rating || reviewLine(item, 'Rating') || reviewLine(item, 'Review rating') || '',
+      lastUpdated: item.dashboardTarget?.lastUpdated || reviewLine(item, 'Last checked') || reviewLine(item, 'Source date') || '',
       evidenceStatus: item.evidenceStatus,
       source: item.source || null,
       notes: [

@@ -15,7 +15,7 @@ export interface DashboardIntelligenceEnvelope {
 }
 
 const STATE_VERSION = 1
-const MAX_STATE_BYTES = 2_000_000
+const MAX_STATE_BYTES = 10_000_000
 const TOP_LEVEL_ARRAY_KEYS = [
   'evidenceItems',
   'marketClaims',
@@ -105,4 +105,3 @@ export async function writeDashboardIntelligenceState(input: {
   await rename(tempPath, filePath)
   return envelope
 }
-

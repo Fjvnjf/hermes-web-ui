@@ -279,6 +279,10 @@ interface CompetitorMetricRow {
   marketShare: string
   revenue: string
   yearlyGrowth: string
+  traffic: string
+  rating: string
+  lastUpdated: string
+  confidence: string
   source: string
   sourceUrl?: string
   evidenceStatus: IntelligenceEvidenceStatus
@@ -503,6 +507,10 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
     marketShare: autoVerifyText(competitorMarketShareLabel(competitor)),
     revenue: autoVerifyText(competitor.revenue),
     yearlyGrowth: autoVerifyText(competitor.yearlyGrowth),
+    traffic: autoVerifyText(competitor.traffic),
+    rating: autoVerifyText(competitor.rating),
+    lastUpdated: competitorLastUpdatedLabel(competitor),
+    confidence: competitorConfidenceLabel(competitor),
     source: competitor.source?.title || 'Source search running',
     sourceUrl: competitor.source?.url,
     evidenceStatus: competitor.evidenceStatus,
@@ -543,6 +551,10 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
       marketShare: bestMetricValue(group.map(record => record.marketShare || ''), primary.marketShare || '', 'max'),
       revenue: bestMetricValue(group.map(record => record.revenue || ''), primary.revenue || '', 'max'),
       yearlyGrowth: bestMetricValue(group.map(record => record.yearlyGrowth || ''), primary.yearlyGrowth || '', 'max'),
+      traffic: bestMetricValue(group.map(record => record.traffic || ''), primary.traffic || '', 'max'),
+      rating: bestMetricValue(group.map(record => record.rating || ''), primary.rating || '', 'max'),
+      lastUpdated: firstUsefulValue(group.map(record => record.lastUpdated || record.updatedAt || ''), primary.lastUpdated || primary.updatedAt),
+      confidence: bestConfidenceValue(group.map(record => record.confidence || ''), primary.confidence || ''),
       evidenceStatus: strongestEvidenceStatus(group.map(record => record.evidenceStatus)),
       source: sourceRecords[0]?.source || primary.source || null,
       notes: notes.length > 1 ? notes.join(' / ') : notes[0] || primary.notes,
@@ -564,6 +576,8 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       row.marketShare,
       row.revenue,
       row.yearlyGrowth,
+      row.traffic,
+      row.rating,
     ].some(value => comparableNumber(value) !== null)
     const sourceMissing = !hasSource
     const comparable = hasSource
@@ -572,9 +586,9 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
           marketShare: comparableNumber(row.marketShare) ?? undefined,
           revenue: comparableNumber(row.revenue) ?? undefined,
           yoyGrowth: comparableNumber(row.yearlyGrowth) ?? undefined,
-          traffic: comparableNumber(autoVerifyingText) ?? undefined,
-          rating: comparableNumber(autoVerifyingText) ?? undefined,
-          confidence: confidenceScoreForRow(row.evidenceStatus, hasSource, hasComparableData),
+          traffic: comparableNumber(row.traffic) ?? undefined,
+          rating: comparableNumber(row.rating) ?? undefined,
+          confidence: comparableNumber(row.confidence) ?? confidenceScoreForRow(row.evidenceStatus, hasSource, hasComparableData),
         }
       : {}
 
@@ -587,12 +601,12 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       marketShare: row.marketShare,
       revenue: row.revenue,
       yoyGrowth: row.yearlyGrowth,
-      traffic: autoVerifyingText,
-      rating: autoVerifyingText,
-      lastUpdated: hasSource ? 'Source attached' : autoVerifyingText,
+      traffic: row.traffic,
+      rating: row.rating,
+      lastUpdated: row.lastUpdated,
       source: sourceMissing ? 'Hermes source search running' : row.source,
       sourceUrl: row.sourceUrl,
-      confidence: confidenceLabelForRow(row.evidenceStatus, hasSource, hasComparableData),
+      confidence: row.confidence || confidenceLabelForRow(row.evidenceStatus, hasSource, hasComparableData),
       evidenceState: evidenceStateForRow(row.evidenceStatus, hasSource, hasComparableData, row.priceKg),
       evidenceStatus: row.evidenceStatus,
       nextAction: autoVerifyText(row.nextAction),
@@ -657,6 +671,10 @@ function collapseCompetitorMetricRows(rows: CompetitorMetricRow[]): CompetitorMe
       marketShare: bestMetricValue(group.map(row => row.marketShare), autoVerifyingText, 'max'),
       revenue: bestMetricValue(group.map(row => row.revenue), autoVerifyingText, 'max'),
       yearlyGrowth: bestMetricValue(group.map(row => row.yearlyGrowth), autoVerifyingText, 'max'),
+      traffic: bestMetricValue(group.map(row => row.traffic), autoVerifyingText, 'max'),
+      rating: bestMetricValue(group.map(row => row.rating), autoVerifyingText, 'max'),
+      lastUpdated: firstUsefulValue(group.map(row => row.lastUpdated), primary.lastUpdated),
+      confidence: bestConfidenceValue(group.map(row => row.confidence), primary.confidence),
       source: sources.length > 1 ? `${sources.length} sources` : sources[0] || primary.source,
       sourceUrl: group.find(row => row.sourceUrl)?.sourceUrl,
       evidenceStatus: strongestEvidenceStatus(group.map(row => row.evidenceStatus)),
@@ -701,6 +719,22 @@ function bestMetricValue(values: string[], fallback: string, mode: 'max' | 'min'
       ? candidate.numeric > best.numeric ? candidate : best
       : candidate.numeric < best.numeric ? candidate : best
   }).value
+}
+
+function bestConfidenceValue(values: string[], fallback: string): string {
+  const score = (value: string): number => {
+    const normalized = String(value || '').trim().toLowerCase()
+    if (!normalized) return 0
+    if (normalized === 'high') return 90
+    if (normalized === 'medium') return 60
+    if (normalized === 'low') return 30
+    return comparableNumber(normalized) ?? 0
+  }
+  const candidates = values
+    .map(value => ({ value, score: score(value) }))
+    .filter(candidate => candidate.value && candidate.score > 0)
+  if (!candidates.length) return firstUsefulValue(values, fallback)
+  return candidates.reduce((best, candidate) => candidate.score > best.score ? candidate : best).value
 }
 
 function strongestEvidenceStatus(statuses: IntelligenceEvidenceStatus[]): IntelligenceEvidenceStatus {
@@ -755,8 +789,18 @@ function confidenceScoreForRow(status: IntelligenceEvidenceStatus, hasSource: bo
 }
 
 function comparableNumber(value: string): number | null {
-  const normalized = String(value || '').trim()
+  const normalized = String(value || '').trim().replace(/\bFY\s*20\d{2}\b/gi, '').replace(/\b20\d{2}\b(?=\s+(?:company|net|sales|revenue|turnover|yoy))/gi, '')
   if (!normalized || /verify|missing|restricted|source search/i.test(normalized)) return null
+  const money = normalized.match(/(?:US\$|USD|EUR|JPY|CNY|RMB|[$€¥])\s*([\d,.]+)\s*(billion|bn|million|mn|m|k)?/i)
+  if (money) {
+    const base = Number.parseFloat(money[1].replace(/,/g, ''))
+    if (!Number.isFinite(base)) return null
+    const unit = money[2]?.toLowerCase()
+    if (unit === 'billion' || unit === 'bn') return base * 1000
+    if (unit === 'million' || unit === 'mn' || unit === 'm') return base
+    if (unit === 'k') return base / 1000
+    return base
+  }
   const range = normalized.match(/([\d,.]+)\s*[-–]\s*([\d,.]+)/)
   if (range) {
     const left = Number.parseFloat(range[1].replace(/,/g, ''))
@@ -817,6 +861,23 @@ function sortIndicator(key: CompetitorSortKey): string {
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
   return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
+}
+
+function competitorLastUpdatedLabel(competitor: CompetitorIntelligenceRecord): string {
+  if (!sourceIsUsable(competitor.source)) return autoVerifyingText
+  const value = competitor.lastUpdated || competitor.source?.date || competitor.updatedAt
+  return value ? formatDateTime(value) : autoVerifyingText
+}
+
+function competitorConfidenceLabel(competitor: CompetitorIntelligenceRecord): string {
+  const explicit = String(competitor.confidence || '').trim()
+  if (explicit) return explicit
+  return confidenceLabelForRow(
+    competitor.evidenceStatus,
+    sourceIsUsable(competitor.source),
+    ['pricingEvidence', 'marketShare', 'revenue', 'yearlyGrowth', 'traffic', 'rating']
+      .some(key => comparableNumber(String(competitor[key as keyof CompetitorIntelligenceRecord] || '')) !== null),
+  )
 }
 
 function primaryCompetitorRecord(competitor: CompetitorIntelligenceRecord): CompetitorIntelligenceRecord {

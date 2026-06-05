@@ -80,6 +80,8 @@ export interface DashboardResearchUpdateItem {
   marketShare?: string
   revenue?: string
   yearlyGrowth?: string
+  traffic?: string
+  rating?: string
   material?: string
   supplier?: string
   section?: string
@@ -439,7 +441,9 @@ function markdownRowToDashboardItem(
   const pricingEvidence = getCell(row, 'pricing evidence', 'price', 'price/kg', 'price/t', 'cost')
   const revenue = getCell(row, 'revenue', 'annual revenue', 'sales', 'turnover')
   const yearlyGrowth = getCell(row, 'yearly growth', 'annual growth', 'growth yoy', 'yoy growth', 'growth rate')
-  const fallbackValue = value || marketShare || pricingEvidence || revenue || yearlyGrowth || notes
+  const traffic = getCell(row, 'traffic', 'website traffic', 'web traffic', 'monthly traffic', 'visits')
+  const rating = getCell(row, 'rating', 'review rating', 'customer rating', 'reviews')
+  const fallbackValue = value || marketShare || pricingEvidence || revenue || yearlyGrowth || traffic || rating || notes
   const rowTitle = title || label || field || getCell(row, 'company', 'competitor', 'manufacturer', 'supplier', 'material')
   if (!rowTitle && !fallbackValue) return null
 
@@ -455,6 +459,8 @@ function markdownRowToDashboardItem(
     pricingEvidence,
     revenue,
     yearlyGrowth,
+    traffic,
+    rating,
     certifications: getCell(row, 'certifications', 'certification'),
     distributionPresence: getCell(row, 'distribution', 'distribution presence', 'presence'),
     marketShare,
@@ -466,7 +472,7 @@ function markdownRowToDashboardItem(
     sourceUrl: source.sourceUrl,
     sourceDate: source.sourceDate,
     sourceTier: getCell(row, 'source tier', 'tier'),
-    lastChecked: getCell(row, 'last checked', 'checked'),
+    lastChecked: getCell(row, 'last checked', 'last updated', 'updated', 'checked'),
     confidence: getCell(row, 'confidence'),
     evidenceStatus: getCell(row, 'evidence status', 'status'),
     reviewRequired: /^(yes|true|required|review)$/i.test(getCell(row, 'review required', 'review')),

@@ -48,6 +48,9 @@ export interface CompetitorIntelligenceRecord {
   marketShare?: string
   revenue?: string
   yearlyGrowth?: string
+  traffic?: string
+  rating?: string
+  lastUpdated?: string
   evidenceStatus: IntelligenceEvidenceStatus
   source?: SourceReference | null
   sourceTier?: string
@@ -129,6 +132,9 @@ export interface ResearchReviewDashboardTarget {
   marketShare?: string
   revenue?: string
   yearlyGrowth?: string
+  traffic?: string
+  rating?: string
+  lastUpdated?: string
   supplier?: string
   material?: string
   section?: string
@@ -747,6 +753,9 @@ export function useFeasibilityIntelligence() {
       marketShare: record.marketShare?.trim() || '',
       revenue: record.revenue?.trim() || '',
       yearlyGrowth: record.yearlyGrowth?.trim() || '',
+      traffic: record.traffic?.trim() || '',
+      rating: record.rating?.trim() || '',
+      lastUpdated: record.lastUpdated?.trim() || '',
       evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source) ? 'To Verify' : record.evidenceStatus,
       updatedAt: nowIso(),
     }
@@ -768,6 +777,9 @@ export function useFeasibilityIntelligence() {
       marketShare: patch.marketShare?.trim() ?? state.value.competitors[index].marketShare,
       revenue: patch.revenue?.trim() ?? state.value.competitors[index].revenue,
       yearlyGrowth: patch.yearlyGrowth?.trim() ?? state.value.competitors[index].yearlyGrowth,
+      traffic: patch.traffic?.trim() ?? state.value.competitors[index].traffic,
+      rating: patch.rating?.trim() ?? state.value.competitors[index].rating,
+      lastUpdated: patch.lastUpdated?.trim() ?? state.value.competitors[index].lastUpdated,
       updatedAt: nowIso(),
     }
     const updated: CompetitorIntelligenceRecord = {
@@ -929,6 +941,9 @@ export function useFeasibilityIntelligence() {
         marketShare: nonEmpty(target.marketShare),
         revenue: nonEmpty(target.revenue),
         yearlyGrowth: nonEmpty(target.yearlyGrowth),
+        traffic: nonEmpty(target.traffic),
+        rating: nonEmpty(target.rating),
+        lastUpdated: nonEmpty(target.lastUpdated),
         evidenceStatus: current.evidenceStatus,
         source: current.source || null,
         sourceTier: target.sourceTier,

@@ -399,8 +399,12 @@ describe('screenshot-matched executive business tabs', () => {
       marketShare: '7% source-backed',
       revenue: '$42M source-backed',
       yearlyGrowth: '+8% source-backed',
+      traffic: '1.2M visits source-backed',
+      rating: '4.8 source-backed',
+      lastUpdated: '2026-06-05',
+      confidence: 'high',
       evidenceStatus: 'Source-backed',
-      source: { title: 'Official annual profile', url: 'https://example.com/annual-profile' },
+      source: { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' },
       notes: 'Revenue and growth should appear when source-backed.',
     })
     const wrapper = mount(CompetitorIntelligenceView)
@@ -445,7 +449,9 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('7% source-backed')
     expect(wrapper.text()).toContain('$42M source-backed')
     expect(wrapper.text()).toContain('+8% source-backed')
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('1.2M visits source-backed')
+    expect(wrapper.text()).toContain('4.8 source-backed')
+    expect(wrapper.text()).toContain('high')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(competitorTextLower).toContain('global competitor analysis')
     expect(wrapper.text()).toContain('Supplier Types, Strategic Threats, and Evidence Gaps')
@@ -483,8 +489,12 @@ describe('screenshot-matched executive business tabs', () => {
       marketShare: '7% source-backed',
       revenue: '$42M source-backed',
       yearlyGrowth: '+8% source-backed',
+      traffic: '1.2M visits source-backed',
+      rating: '4.8 source-backed',
+      lastUpdated: '2026-06-05',
+      confidence: 'high',
       evidenceStatus: 'Source-backed',
-      source: { title: 'Official annual profile', url: 'https://example.com/alpha' },
+      source: { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' },
       notes: 'Source-backed competitor record.',
     })
     intelligence.addCompetitor({
@@ -498,8 +508,12 @@ describe('screenshot-matched executive business tabs', () => {
       marketShare: '6% source-backed',
       revenue: '$18M source-backed',
       yearlyGrowth: '+5% source-backed',
+      traffic: '950K visits source-backed',
+      rating: '4.6 source-backed',
+      lastUpdated: '2026-06-04',
+      confidence: 'medium',
       evidenceStatus: 'Source-backed',
-      source: { title: 'Official product variation page', url: 'https://example.com/alpha-cwms' },
+      source: { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' },
       notes: 'Second product variation should not duplicate the company row.',
     })
     intelligence.addCompetitor({
@@ -532,6 +546,9 @@ describe('screenshot-matched executive business tabs', () => {
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(alphaRows).toHaveLength(1)
     expect(alphaRows[0].text()).toContain('CWAS equivalent / CWMS variation')
+    expect(alphaRows[0].text()).toContain('1.2M visits source-backed')
+    expect(alphaRows[0].text()).toContain('4.8 source-backed')
+    expect(alphaRows[0].text()).toContain('high')
     const rawAlphaRows = wrapper.findAll('.competitor-table .competitor-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(rawAlphaRows).toHaveLength(1)
@@ -591,11 +608,13 @@ describe('screenshot-matched executive business tabs', () => {
     const text = wrapper.text()
 
     expect(text).toContain('Supplier Scorecards - Key Raw Materials')
-    expect(text).toContain('Hermes Autopilot has staged 1 supplier/raw-material candidates')
+    expect(text).toContain('Hermes Autopilot has staged 1 supplier candidates')
     expect(text).toContain('Official Supplier Candidate')
     expect(text).toContain('Stearic Acid TP')
-    expect(text).toContain('Quote/TDS requested; price To Verify')
+    expect(text).toContain('Quote/TDS requested; price No source-backed value yet')
+    expect(text).toContain('No approved quote yet')
     expect(text).toContain('Official supplier product catalog')
+    expect(text).toContain('Reference-only supplier target template')
     expect(text).toContain('Stearic Acid TP / Stearic acid 1842')
     expect(text).toContain('Triethanolamine / TEA')
     expect(text).toContain('PDMS Silicone Oil / 1000 cSt target')
@@ -606,18 +625,16 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('BASF')
     expect(text).toContain('Dow')
     expect(text).toContain('WACKER')
-    expect(text).toContain('Candidate Source')
-    expect(text).toContain('Pending quote')
-    expect(text).toContain('Pending regulatory review')
+    expect(text).not.toContain('No imported supplier scorecard rows yet')
     expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
-    expect(text).toContain('Hermes is checking the supplier scorecard schedule automatically')
+    expect(text).toContain('Supplier scorecard schedule is being checked automatically')
     expect(text).toContain('Check Supplier Autopilot')
     expect(text).toContain('Search')
     expect(text).toContain('Stage')
     expect(text).toContain('Owner approval')
     expect(text).toContain('Full dashboard autopilot')
     expect(text).toContain('Verify Supplier')
-    expect(text).toContain('To Verify')
+    expect(text).toContain('No source-backed value yet')
     expect(text).not.toContain('$1,180')
     expect(text).not.toContain('$1,210')
     expect(text).not.toContain('$1,450')

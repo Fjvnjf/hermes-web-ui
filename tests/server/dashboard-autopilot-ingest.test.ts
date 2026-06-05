@@ -158,6 +158,43 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('extracts raw dashboard_updates JSON after the saved cron response heading', () => {
+    const payload = extractDashboardResearchUpdates([
+      '# Cron Job: Full Dashboard Missing Coverage Follow-up',
+      '',
+      '## Prompt',
+      'Return only structured dashboard_updates JSON compatible with the importer.',
+      '',
+      '## Response',
+      JSON.stringify({
+        dashboard_updates: {
+          competitorRecords: [{
+            companyName: 'Stepan Company',
+            productEquivalent: 'Official annual report source identified',
+            revenue: {
+              value: 'FY2024 company-wide net sales: US$2,180,274,000',
+              sourceTitle: 'Stepan Company 2024 Form 10-K',
+              sourceUrl: 'https://www.sec.gov/Archives/edgar/data/94049/000095017025029079/scl-20241231.htm',
+              confidence: 'high',
+              evidenceStatus: 'Official Company Evidence',
+              reviewRequired: false,
+            },
+          }],
+        },
+      }),
+    ].join('\n'))
+
+    expect(payload?.competitorRecords).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        productEquivalent: 'Official annual report source identified',
+        revenue: expect.objectContaining({
+          value: 'FY2024 company-wide net sales: US$2,180,274,000',
+        }),
+      }),
+    ])
+  })
+
   it('extracts conservative dashboard updates from source-backed markdown tables when JSON is missing', () => {
     const payload = extractDashboardResearchUpdates([
       '# Full Dashboard Trusted Source Autopilot',
@@ -404,7 +441,7 @@ describe('dashboard autopilot output ingestion', () => {
             sourceTitle: 'Ministry textile policy page',
             sourceUrl: 'https://example.gov.cn/textile-policy',
             sourceTier: 'Tier 1 - Official / regulator / trade source',
-            confidence: 'high',
+            confidence: 'High',
             evidenceStatus: 'Official Data',
             dataType: 'company_data',
           },
@@ -622,6 +659,11 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('Do the online research yourself')
     expect(prompt).toContain('Bangladesh')
     expect(prompt).toContain('Stepan Company')
+    expect(prompt).toContain('Competitor Metric Columns')
+    expect(prompt).toContain('Evonik Industries - Price evidence')
+    expect(prompt).toContain('Evonik Industries - Market share')
+    expect(prompt).toContain('Evonik Industries - Revenue')
+    expect(prompt).toContain('official annual reports')
     expect(prompt).toContain('Dimethyl sulfate / DMS')
     expect(prompt).toContain('dashboard_updates JSON')
     expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-1')).toBe(true)
@@ -709,6 +751,191 @@ describe('dashboard autopilot output ingestion', () => {
       }),
     ])
     expect(envelope?.state.researchFindings).toEqual([])
+  })
+
+  it('imports structured dashboard outputs even when a one-shot follow-up job record was removed', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    writeRunOutput(hermesHome, 'orphan-missing-coverage-job', '2026-06-03T08-30-00.md', {
+      dashboard_updates: {
+        competitorRecords: [{
+          fieldKey: 'competitor.stepan.revenue.officialAnnualReport',
+          companyName: 'Stepan Company',
+          countryRegion: 'United States',
+          value: 'Official annual report source identified for company revenue',
+          productEquivalent: 'Esterquat / surfactant portfolio source identified',
+          activeContent: 'Official source identified',
+          pricingEvidence: '',
+          marketShare: '',
+          revenue: 'Company revenue available from official annual report',
+          yearlyGrowth: '',
+          traffic: '',
+          rating: '',
+          certifications: 'Official company source identified',
+          distributionPresence: 'Global / To Verify',
+          sourceTitle: 'Stepan official annual report',
+          sourceUrl: 'https://www.stepan.com/investors/annual-reports',
+          sourceTier: 'Tier 2 - Official company / product source',
+          confidence: 'high',
+          evidenceStatus: 'Source-backed',
+          dataType: 'competitor_data',
+          reviewRequired: false,
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+    const status = await readFullDashboardAutopilotImportStatus('default')
+
+    expect(result).toMatchObject({
+      jobsChecked: 2,
+      filesChecked: 1,
+      importedRuns: 1,
+      autoFilledCount: 1,
+    })
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        fieldKey: 'competitor.stepan.revenue.officialAnnualReport',
+        dashboardGroup: 'competitorRecords',
+        proposedDashboardField: 'Stepan Company',
+        revenue: 'Company revenue available from official annual report',
+        sourceTier: 'tier2-company-official',
+        source: expect.objectContaining({
+          title: 'Stepan official annual report',
+          url: 'https://www.stepan.com/investors/annual-reports',
+        }),
+      }),
+    ])
+    expect(status.outputCount).toBe(1)
+    expect(status.importedRunCount).toBe(1)
+    expect(status.latestOutputRunKey).toBe('orphan-missing-coverage-job/2026-06-03T08-30-00.md')
+  })
+
+  it('hydrates safe nested competitor revenue metrics while keeping weak metric fields review-gated', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T00-01-12.000000+00-00.md', {
+      dashboard_updates: {
+        competitorRecords: [{
+          fieldKey: 'Competitor Metric Columns: Stepan Company',
+          companyName: 'Stepan Company',
+          countryRegion: 'United States',
+          productEquivalent: 'Surfactants/fabric-softener ingredient candidate; exact textile-softener product equivalence not verified.',
+          pricingEvidence: {
+            fieldKey: 'Stepan Company - Price evidence',
+            value: 'Official product page/distributor supplier lead found; no public numeric price verified.',
+            sourceTitle: 'Stepan BIO-TERGE 804 official product page',
+            sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/products-markets/product/BIOTERGE804.html',
+            sourceTier: 'Tier 2 official company + distributor lead',
+            lastChecked: '2026-06-05',
+            confidence: 'medium',
+            evidenceStatus: 'Reference Only / To Verify',
+            reviewRequired: true,
+            riskReason: 'Official page validates product presence only; price requires RFQ/quote or distributor invoice.',
+          },
+          marketShare: {
+            fieldKey: 'Stepan Company - Market share',
+            value: 'Missing / To Verify',
+            sourceTitle: 'No source found that explicitly states textile-softener market, geography, year, and share basis',
+            sourceTier: 'Not sourced',
+            lastChecked: '2026-06-05',
+            confidence: 'low',
+            evidenceStatus: 'Missing / To Verify',
+            reviewRequired: true,
+          },
+          revenue: {
+            fieldKey: 'Stepan Company - Revenue',
+            value: 'FY2024 company-wide net sales: US$2,180,274,000',
+            sourceTitle: 'Stepan Company 2024 Form 10-K',
+            sourceUrl: 'https://www.sec.gov/Archives/edgar/data/94049/000095017025029079/scl-20241231.htm',
+            sourceTier: 'Tier 2 official company/filing',
+            lastChecked: '2026-06-05',
+            sourceDate: '2025-02-27',
+            confidence: 'High',
+            evidenceStatus: 'Official Company Evidence',
+            reviewRequired: false,
+            riskReason: 'Company-wide revenue from contracts; not textile-softener product-line revenue.',
+          },
+          yearlyGrowth: {
+            fieldKey: 'Stepan Company - YoY growth',
+            value: 'FY2024 net sales YoY: -6.26% vs FY2023 US$2,325,768,000',
+            sourceTitle: 'Stepan Company 2024 Form 10-K',
+            sourceUrl: 'https://www.sec.gov/Archives/edgar/data/94049/000095017025029079/scl-20241231.htm',
+            sourceTier: 'Tier 2 official company/filing',
+            lastChecked: '2026-06-05',
+            sourceDate: '2025-02-27',
+            confidence: 'high',
+            evidenceStatus: 'Official Company Evidence',
+            reviewRequired: false,
+            riskReason: 'Calculated from SEC-reported company-wide revenue values.',
+          },
+          traffic: {
+            fieldKey: 'Stepan Company - Traffic',
+            value: 'Traffic estimate source identified; numeric traffic not imported pending owner review.',
+            sourceTitle: 'SitePrice website-worth traffic/rating estimate page',
+            sourceUrl: 'https://www.siteprice.org/website-worth/stepan.com',
+            sourceTier: 'Tier 4/5 traffic analytics estimate',
+            lastChecked: '2026-06-05',
+            confidence: 'low',
+            evidenceStatus: 'Reference Only / To Verify',
+            reviewRequired: true,
+          },
+          rating: {
+            fieldKey: 'Stepan Company - Rating',
+            value: 'Missing / To Verify',
+            sourceTitle: 'No reliable exact company/product review-rating source found during this run',
+            sourceTier: 'Not sourced',
+            lastChecked: '2026-06-05',
+            confidence: 'low',
+            evidenceStatus: 'Missing / To Verify',
+            reviewRequired: true,
+          },
+          sourceTitle: 'Stepan Company 2024 Form 10-K',
+          sourceUrl: 'https://www.sec.gov/Archives/edgar/data/94049/000095017025029079/scl-20241231.htm',
+          confidence: 'high',
+          evidenceStatus: 'Official Company Evidence',
+          reviewRequired: true,
+          recommendedAction: 'Use revenue/YoY as company-wide context only; keep pricing, market share, traffic, and rating review-gated.',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 1,
+      stagedReviewCount: 1,
+    })
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        revenue: 'FY2024 company-wide net sales: US$2,180,274,000',
+        yearlyGrowth: 'FY2024 net sales YoY: -6.26% vs FY2023 US$2,325,768,000',
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        rating: '',
+        evidenceStatus: 'Official Data',
+        sourceTier: 'tier1-official',
+        confidence: 'high',
+        reviewRequired: false,
+        source: expect.objectContaining({
+          title: 'Stepan Company 2024 Form 10-K',
+          url: expect.stringContaining('sec.gov'),
+        }),
+      }),
+    ])
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          companyName: 'Stepan Company',
+        }),
+      }),
+    ])
   })
 
   it('infers trusted official source tier from allowlisted domains without manual tier labels', async () => {
@@ -862,7 +1089,7 @@ describe('dashboard autopilot output ingestion', () => {
 
     expect(result).toMatchObject({
       importedRuns: 1,
-      autoFilledCount: 0,
+      autoFilledCount: 1,
       stagedReviewCount: 2,
     })
     expect(envelope?.state.marketClaims).toEqual([
@@ -1152,6 +1379,93 @@ describe('dashboard autopilot output ingestion', () => {
     expect(registry).toContain('job-full-dashboard/2026-06-02T09-00-00.000000+00-00.md')
   })
 
+  it('replays previously imported outputs when the importer schema changes so richer source fields can hydrate dashboards', async () => {
+    writeFullDashboardJob(hermesHome)
+    const runFile = '2026-06-05T19-00-00.000000+00-00.md'
+    const runKey = `job-full-dashboard/${runFile}`
+    writeRunOutput(hermesHome, 'job-full-dashboard', runFile, {
+      dashboard_updates: {
+        marketClaims: [{
+          fieldKey: 'market.countryGrowth.china',
+          field: 'Country-wise consumption growth - China',
+          label: 'Country-wise consumption growth - China',
+          value: '2024 HS 3402 import proxy: USD 1,538,811,127; net weight 467,139,584 kg',
+          sourceTitle: 'UN Comtrade API Preview',
+          sourceUrl: 'https://comtradeapi.un.org/public/v1/preview/C/A/HS?cmdCode=3402&flowCode=M&reporterCode=156&period=2024&partnerCode=0&max=100000',
+          sourceTier: 'Tier 1 - Official / regulator / trade source',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'trade_data',
+          reviewRequired: true,
+          riskReason: 'HS 3402 is a broad trade proxy, not approved textile-softener consumption.',
+        }],
+        competitorRecords: [{
+          fieldKey: 'competitor.stepanOfficialProductPortfolio',
+          companyName: 'Stepan Company',
+          countryRegion: 'United States / global',
+          productEquivalent: 'STEPANTEX SP-90 official product page describes a textile softening additive.',
+          activeContent: 'Solids 90% shown on official page; exact active chemistry requires TDS/SDS review.',
+          pricingEvidence: '',
+          certifications: 'Official company source identified',
+          distributionPresence: 'Global / To Verify',
+          marketShare: '',
+          revenue: 'FY2025 net sales available from official annual report',
+          yearlyGrowth: 'Year-over-year change available from official annual report',
+          traffic: '',
+          rating: '',
+          sourceTitle: 'STEPANTEX SP-90',
+          sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/products-markets/product/STEPANTEXSP90.html',
+          sourceTier: 'Tier 2 - Official company / product source',
+          confidence: 'high',
+          evidenceStatus: 'Source-backed',
+          dataType: 'competitor_data',
+          reviewRequired: false,
+        }],
+      },
+    })
+    const registryDir = join(hermesHome, 'dashboard-intelligence')
+    mkdirSync(registryDir, { recursive: true })
+    writeFileSync(join(registryDir, 'imported-runs.json'), JSON.stringify({
+      version: 1,
+      importerVersion: 'older-importer-without-company-metrics',
+      importedRunKeys: [runKey],
+      skippedRunKeys: [],
+      updatedAt: '2026-06-05T00:00:00.000Z',
+    }, null, 2))
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+    const registry = JSON.parse(readFileSync(join(registryDir, 'imported-runs.json'), 'utf-8'))
+    const second = await ingestFullDashboardAutopilotOutputs('default')
+
+    expect(result.importedRuns).toBe(1)
+    expect(result.stagedReviewCount).toBe(1)
+    expect(envelope?.state.marketClaims).toEqual([
+      expect.objectContaining({
+        fieldKey: 'market.countryGrowth.china',
+        value: expect.stringContaining('USD 1,538,811,127'),
+        source: expect.objectContaining({
+          title: 'UN Comtrade API Preview',
+          url: expect.stringContaining('comtradeapi.un.org'),
+        }),
+        reviewRequired: true,
+      }),
+    ])
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        productEquivalent: expect.stringContaining('STEPANTEX SP-90'),
+        revenue: 'FY2025 net sales available from official annual report',
+        yearlyGrowth: 'Year-over-year change available from official annual report',
+        sourceTier: 'tier2-company-official',
+        reviewRequired: false,
+      }),
+    ])
+    expect(registry.importerVersion).toContain('nested-competitor-metrics')
+    expect(registry.importedRunKeys).toContain(runKey)
+    expect(second.importedRuns).toBe(0)
+  })
+
   it('tracks skipped non-parseable outputs without marking them imported or reprocessing them', async () => {
     writeFullDashboardJob(hermesHome)
     const outputDir = join(hermesHome, 'cron', 'output', 'job-full-dashboard')
@@ -1273,6 +1587,8 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('unstructured or unsourced output will be ignored')
     expect(prompt).toContain('Do not invent market size')
     expect(prompt).toContain('revenue, yearlyGrowth')
+    expect(prompt).toContain('traffic, rating')
+    expect(prompt).toContain('lastChecked')
   })
 
   it('sets a configured profile model before starting a newly created full dashboard run', async () => {

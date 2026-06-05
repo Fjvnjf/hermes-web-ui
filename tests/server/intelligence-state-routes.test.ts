@@ -7,6 +7,7 @@ import {
   readDashboardIntelligenceState,
   sanitizeDashboardIntelligenceState,
 } from '../../packages/server/src/services/hermes/intelligence-state'
+import { DASHBOARD_AUTOPILOT_IMPORTER_VERSION } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 
 async function runRouteLayer(layer: any, ctx: any) {
   let index = -1
@@ -119,6 +120,42 @@ describe('dashboard intelligence state routes', () => {
     })
   })
 
+  it('stores a large trusted-source review backlog without rejecting legitimate dashboard state', async () => {
+    const putLayer = intelligenceStateRoutes.stack.find((entry: any) =>
+      entry.path === '/api/hermes/intelligence-state' && entry.methods.includes('PUT'),
+    )
+    const largeSummary = 'Source-backed dashboard review item. '.repeat(24)
+    const researchFindings = Array.from({ length: 3_000 }, (_, index) => ({
+      id: `finding-${index}`,
+      summary: `${largeSummary}${index}`,
+      keyClaim: `Competitor metric review item ${index}`,
+      evidenceStatus: 'To Verify',
+      source: { title: 'Trusted-source autopilot output', url: `https://example.com/source/${index}` },
+      dashboardTarget: {
+        group: 'competitorRecords',
+        companyName: 'Evonik Industries',
+        proposedDashboardField: 'Evonik Industries - Market share',
+        marketShare: 'Review required',
+      },
+    }))
+    const putCtx = createCtx('PUT', {
+      state: {
+        marketClaims: [],
+        competitors: [],
+        researchFindings,
+      },
+    })
+
+    await runRouteLayer(putLayer, putCtx)
+
+    expect(putCtx.status).toBe(200)
+    expect(putCtx.body).toMatchObject({ ok: true, profile: 'default' })
+    const savedFile = readFileSync(join(hermesHome, 'dashboard-intelligence', 'state.json'), 'utf-8')
+    expect(Buffer.byteLength(savedFile, 'utf-8')).toBeGreaterThan(2_000_000)
+    const direct = await readDashboardIntelligenceState('default')
+    expect((direct?.state.researchFindings as unknown[])).toHaveLength(3_000)
+  })
+
   it('returns sanitized full-dashboard autopilot import status from the server registry', async () => {
     const cronDir = join(hermesHome, 'cron')
     const outputDir = join(cronDir, 'output', 'job-full-dashboard')
@@ -137,6 +174,7 @@ describe('dashboard intelligence state routes', () => {
     writeFileSync(join(outputDir, '2026-06-03T19-00-00.md'), '# output')
     writeFileSync(join(registryDir, 'imported-runs.json'), JSON.stringify({
       version: 1,
+      importerVersion: DASHBOARD_AUTOPILOT_IMPORTER_VERSION,
       importedRunKeys: ['job-full-dashboard/2026-06-03T19-00-00.md'],
       updatedAt: '2026-06-03T19:02:00.000Z',
     }))

@@ -901,9 +901,9 @@ describe('Trusted Source Autopilot', () => {
       '# Full Dashboard Trusted Source Autopilot',
       '',
       '## Competitor Intelligence',
-      '| Company | Product Equivalent | Market Share | Revenue | Yearly Growth | Source Title | Source URL | Source Tier | Evidence Status | Confidence | Review Required |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-      '| Stepan | STEPANTEX SP-90 official product page | To Verify | FY2024 revenue source-backed | +4% YoY source-backed | Stepan official product page | https://www.stepan.com/ | Tier 2 - Official company / product source | To Verify | medium | yes |',
+      '| Company | Product Equivalent | Market Share | Revenue | Yearly Growth | Traffic | Rating | Last Updated | Source Title | Source URL | Source Tier | Evidence Status | Confidence | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+      '| Stepan | STEPANTEX SP-90 official product page | To Verify | FY2024 revenue source-backed | +4% YoY source-backed | 1.2M visits source-backed | 4.6 source-backed | 2026-06-05 | Stepan official product page | https://www.stepan.com/ | Tier 2 - Official company / product source | To Verify | medium | yes |',
     ].join('\n'))
 
     expect(payload?.competitorRecords).toEqual([
@@ -913,8 +913,11 @@ describe('Trusted Source Autopilot', () => {
         marketShare: 'To Verify',
         revenue: 'FY2024 revenue source-backed',
         yearlyGrowth: '+4% YoY source-backed',
+        traffic: '1.2M visits source-backed',
+        rating: '4.6 source-backed',
         sourceTitle: 'Stepan official product page',
         sourceUrl: 'https://www.stepan.com/',
+        lastChecked: '2026-06-05',
         reviewRequired: true,
       }),
     ])
@@ -1027,6 +1030,9 @@ describe('Trusted Source Autopilot', () => {
             activeContent: 'To Verify',
             revenue: 'FY2024 revenue source-backed',
             yearlyGrowth: '+3% YoY source-backed',
+            traffic: '2.1M visits source-backed',
+            rating: '4.7 source-backed',
+            lastChecked: '2026-06-05',
             certifications: 'Official company/product source',
             distributionPresence: 'Global',
             sourceTitle: 'BASF official',
@@ -1049,6 +1055,9 @@ describe('Trusted Source Autopilot', () => {
     expect(useFeasibilityIntelligence().state.value.competitors[0].companyName).toBe('BASF')
     expect(useFeasibilityIntelligence().state.value.competitors[0].revenue).toBe('FY2024 revenue source-backed')
     expect(useFeasibilityIntelligence().state.value.competitors[0].yearlyGrowth).toBe('+3% YoY source-backed')
+    expect(useFeasibilityIntelligence().state.value.competitors[0].traffic).toBe('2.1M visits source-backed')
+    expect(useFeasibilityIntelligence().state.value.competitors[0].rating).toBe('4.7 source-backed')
+    expect(useFeasibilityIntelligence().state.value.competitors[0].lastUpdated).toBe('2026-06-05')
   })
 
   it('does not import the same scheduled Hermes output twice', async () => {
@@ -1971,6 +1980,10 @@ describe('Trusted Source Autopilot', () => {
     expect(text).toContain('Missing targets: Bangladesh, India, Vietnam')
     expect(text).toContain('1/11 targets covered')
     expect(text).toContain('Missing targets: Stepan Company, Kao Corporation')
+    expect(text).toContain('Competitor Metric Columns')
+    expect(text).toContain('Evonik Industries - Price evidence')
+    expect(text).toContain('Evonik Industries - Market share')
+    expect(text).toContain('Evonik Industries - Revenue')
     expect(text).toContain('1/12 targets covered')
     expect(text).toContain('Missing targets: Triethanolamine / TEA, Dimethyl sulfate / DMS')
   })
@@ -2028,6 +2041,10 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Do the online research yourself')
     expect(prompt).toContain('Bangladesh')
     expect(prompt).toContain('Stepan Company')
+    expect(prompt).toContain('Competitor Metric Columns')
+    expect(prompt).toContain('Evonik Industries - Price evidence')
+    expect(prompt).toContain('Evonik Industries - Market share')
+    expect(prompt).toContain('Evonik Industries - Revenue')
     expect(prompt).toContain('Triethanolamine / TEA')
     expect(prompt).toContain('Dimethyl sulfate / DMS')
     expect(prompt).toContain('dashboard_updates JSON')

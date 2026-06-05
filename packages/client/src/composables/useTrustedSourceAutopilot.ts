@@ -137,7 +137,7 @@ const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
 export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
-export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v3'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = [
   'executive',
   'market',
@@ -994,7 +994,7 @@ function screenRefreshPrompt(screen: AutopilotScreen): string {
   if (screen === 'executive') return ['Refresh Executive Overview from internal Hermes activity: sessions, Kanban, Jobs, Files, Memory-safe summaries, Research Result Review, Investor Readiness, and IRR status.', ...common].join('\n')
   if (screen === 'market') return ['Refresh Market Intelligence using official trade/statistical sources first, then market references. Label uncertain HS-code data as Trade Proxy / To Verify.', ...common].join('\n')
   if (screen === 'investment') return ['Refresh Investment Analysis from saved IRR Calculator snapshots and user/source-backed files only. Never pull IRR/NPV/payback from random web sources.', ...common].join('\n')
-  if (screen === 'competitor') return ['Refresh Competitor Intelligence using official company/product pages, filings, catalogs, regulator/certification sources, and source-backed market reports. Unknown market share stays To Verify.', ...common].join('\n')
+  if (screen === 'competitor') return ['Refresh Competitor Intelligence using official company/product pages, filings, catalogs, regulator/certification sources, and source-backed market reports. Search for price, market share, revenue, YoY growth, traffic, rating/review signal, last updated/source date, confidence, source, and next action. Unknown metrics stay review-gated; do not invent market share or pricing.', ...common].join('\n')
   if (screen === 'rawMaterials') return ['Refresh Raw Material Sourcing and Supplier Scorecards from uploaded supplier evidence, official company pages, SDS/TDS/COA files, and price references. Supplier prices stay review-gated.', ...common].join('\n')
   if (screen === 'exportMarkets') return ['Refresh Export Market Opportunity using official trade datasets, HS-code candidates, country-wise import/export proxies, and growth indicators. Label proxy data clearly.', ...common].join('\n')
   if (screen === 'regulatory') return ['Refresh Regulatory Intelligence using official regulator/chemical databases first. DMS, storage, transport, use, and factory chemical approval claims stay To Verify until reviewed.', ...common].join('\n')
@@ -1033,6 +1033,16 @@ function fullDashboardAutopilotPrompt(): string {
     '- If a source-backed value cannot be found for a required target, return an evidenceGaps item and a suggestedTasks item for that target with proposedDashboardField, Missing / To Verify status, and the best trusted source to check next.',
     '- Country-wise market/consumption targets: China, Bangladesh, India, Vietnam, Pakistan, Turkey, Indonesia, EU / Germany, United States, GCC / Middle East.',
     '- Competitor targets: Evonik Industries, Stepan Company, Kao Corporation, WACKER, Rudolf Group, CHT Group, Archroma, Transfar, Zschimmer & Schwarz, Pulcra Chemicals, Syensqo / Solvay, and any source-backed China/Bangladesh/Vietnam local competitors.',
+    '- Competitor comparison fields: company, product/product variation, price, market share, revenue, YoY growth, traffic, rating/review signal, last updated/source date, confidence, source, leader signal, and next action. Do not invent any unavailable metric.',
+    '- Competitor metric instructions:',
+    '  - Price evidence: use official price lists, distributor quote evidence, uploaded supplier evidence, or reputable price references. Public marketplace listings are weak and must be reviewRequired.',
+    '  - Market share: return a value only when the source explicitly states the market, geography, year, and share basis. Otherwise return an evidenceGaps item for that exact company/field.',
+    '  - Revenue and YoY growth: use official annual reports, filings, investor relations pages, or audited statements. Label company-wide revenue separately from product-line revenue.',
+    '  - Traffic: use cited analytics/research sources only; mark reviewRequired and do not use memory estimates.',
+    '  - Rating/review signal: use cited review, catalog, or customer-rating sources only; mark reviewRequired when the source is weak.',
+    '  - Last updated/source date: include lastChecked/sourceDate for every competitor record.',
+    '  - Prefer one competitorRecords item per company where possible, with product variations summarized in productEquivalent so the dashboard can dedupe company rows.',
+    '  - If a metric cannot be sourced, return evidenceGaps and suggestedTasks with proposedDashboardField like "Archroma - Market share" instead of leaving the field vague.',
     '- Supplier/raw-material targets: stearic acid, triethanolamine / TEA, dimethyl sulfate / DMS, PDMS silicone oil, acetic acid, ethoxylates, packaging, Wilmar, KLK OLEO, BASF, Dow, WACKER, DMS candidate suppliers, and local Bangladesh suppliers.',
     '- Regulatory targets: DMS safety/regulatory status, SDS/TDS/CAS evidence, China chemical import/storage/transport/use requirements, factory chemical approvals, and IECSC/China chemical inventory references when relevant.',
     '- Financial/investment targets: Lean/Base/Conservative/Aggressive scenarios, total investment, IRR, NPV, payback, ROI, working capital, capex breakdown, and sensitivity gaps. External web sources cannot verify IRR/NPV; use only approved internal scenarios or mark Derived from Assumptions / To Verify.',
@@ -1063,7 +1073,7 @@ function fullDashboardAutopilotPrompt(): string {
     '- Use these arrays only: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep the value To Verify when the source is only a proxy.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
-    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, marketShare, revenue, yearlyGrowth, certifications, distributionPresence, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, marketShare, revenue, yearlyGrowth, traffic, rating, certifications, distributionPresence, sourceTitle, sourceUrl/sourceDate, lastChecked, confidence, evidenceStatus, reviewRequired, and recommendedAction.',
     '- If the JSON appendix fails, still include source-backed Markdown tables with Field/Value/Source Title/Source URL/Source Tier/Confidence/Evidence Status/Review Required columns.',
     '- If tables are not possible, use source-backed delimited bullets such as: Field: Country-wise consumption growth - China | Value: Trade proxy found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes.',
     '- Do not output unsupported plain numbers without source metadata; unstructured or unsourced output will be ignored by the dashboard importer.',
@@ -1515,6 +1525,8 @@ function dashboardItemValue(group: DashboardResearchUpdateGroup, item: Dashboard
       item.pricingEvidence ? `Pricing: ${asText(item.pricingEvidence)}` : '',
       item.revenue ? `Revenue: ${asText(item.revenue)}` : '',
       item.yearlyGrowth ? `Yearly growth: ${asText(item.yearlyGrowth)}` : '',
+      item.traffic ? `Traffic: ${asText(item.traffic)}` : '',
+      item.rating ? `Rating: ${asText(item.rating)}` : '',
     ].filter(Boolean).join('; ') || 'To Verify'
   }
   if (group === 'supplierScorecards') {
@@ -1667,11 +1679,20 @@ function applySafeDashboardResearchItem(group: DashboardResearchUpdateGroup, ite
       marketShare: '',
       revenue: asText(item.revenue, ''),
       yearlyGrowth: asText(item.yearlyGrowth, ''),
+      traffic: asText(item.traffic, ''),
+      rating: asText(item.rating, ''),
+      lastUpdated: asText(item.lastChecked || item.sourceDate, ''),
       evidenceStatus: claim.evidenceStatus,
       source: claim.source,
+      sourceTier: claim.sourceTier,
+      dataType: claim.dataType,
+      confidence: claim.confidence,
+      reviewRequired: claim.reviewRequired,
+      riskReason: claim.riskReason,
       notes: [
         item.notes ? asText(item.notes) : '',
-        'Imported by Full Dashboard Trusted Source Autopilot. Market share, revenue, yearly growth, and pricing remain review-gated unless separately source-backed and approved.',
+        item.recommendedAction ? `Next action: ${asText(item.recommendedAction)}` : '',
+        'Imported by Full Dashboard Trusted Source Autopilot. Market share, revenue, yearly growth, and pricing remain review-gated unless source policy allows auto-fill or the item is approved in Research Result Review.',
       ].filter(Boolean).join('\n'),
     })
     return true
@@ -1696,6 +1717,37 @@ function stageDashboardResearchItem(
     suggestedTask: asText(item.recommendedAction, `Review ${claim.label} and approve only source-backed dashboard changes.`),
     suggestedInvestorMaterial: group === 'investorMaterialCandidates' ? asText(item.content || item.value, '') : '',
     riskNote: claim.riskReason || 'Review required by trusted-source policy.',
+    dashboardTarget: {
+      group,
+      dashboardGroup: group,
+      screen: item.screen,
+      fieldKey: claim.fieldKey,
+      field: claim.label,
+      value: claim.value,
+      proposedDashboardField: asText(item.proposedDashboardField || item.field || item.label || claim.label, claim.label),
+      companyName: asText(item.companyName, ''),
+      countryRegion: asText(item.countryRegion, ''),
+      productEquivalent: asText(item.productEquivalent, ''),
+      activeContent: asText(item.activeContent, ''),
+      pricingEvidence: asText(item.pricingEvidence, ''),
+      certifications: asText(item.certifications, ''),
+      distributionPresence: asText(item.distributionPresence, ''),
+      marketShare: asText(item.marketShare, ''),
+      revenue: asText(item.revenue, ''),
+      yearlyGrowth: asText(item.yearlyGrowth, ''),
+      traffic: asText(item.traffic, ''),
+      rating: asText(item.rating, ''),
+      lastUpdated: asText(item.lastChecked || item.sourceDate, ''),
+      supplier: asText(item.supplier, ''),
+      material: asText(item.material, ''),
+      section: asText(item.section, ''),
+      content: asText(item.content || item.value, ''),
+      sourceTier: claim.sourceTier,
+      dataType: claim.dataType,
+      reviewRequired: claim.reviewRequired,
+      riskReason: claim.riskReason,
+      sensitive: claim.sensitive,
+    },
   })
 }
 

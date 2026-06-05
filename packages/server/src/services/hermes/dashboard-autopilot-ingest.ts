@@ -15,8 +15,9 @@ import {
 
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
-export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-03-coverage-v3'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-nested-competitor-metrics-v5'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -63,6 +64,7 @@ const VALID_EVIDENCE_STATUSES = new Set([
   'Investor Approved',
   'Approved Assumption',
   'Verified',
+  'Official Company Evidence',
 ])
 
 const VALID_DATA_TYPES = new Set([
@@ -129,6 +131,7 @@ type Confidence = 'low' | 'medium' | 'high'
 type ResearchReviewStatus = 'Pending Review' | 'Approved' | 'Rejected' | 'To Verify'
 
 const OFFICIAL_SOURCE_DOMAINS = [
+  'comtradeapi.un.org',
   'comtradeplus.un.org',
   'comtrade.un.org',
   'uncomtrade.org',
@@ -252,6 +255,8 @@ interface DashboardResearchUpdateItem {
   marketShare?: unknown
   revenue?: unknown
   yearlyGrowth?: unknown
+  traffic?: unknown
+  rating?: unknown
   section?: unknown
   content?: unknown
   sourceTitle?: unknown
@@ -292,6 +297,8 @@ interface DashboardIntelligenceState {
 interface CoverageTarget {
   label: string
   aliases: string[]
+  metric?: CompetitorMetricField
+  companyAliases?: string[]
 }
 
 interface CoverageRequirement {
@@ -300,8 +307,28 @@ interface CoverageRequirement {
   targets: CoverageTarget[]
 }
 
+type CompetitorMetricField =
+  | 'pricingEvidence'
+  | 'marketShare'
+  | 'revenue'
+  | 'yearlyGrowth'
+  | 'traffic'
+  | 'rating'
+  | 'lastUpdated'
+
+const COMPETITOR_SOURCE_BACKED_METRIC_FIELDS: CompetitorMetricField[] = [
+  'pricingEvidence',
+  'marketShare',
+  'revenue',
+  'yearlyGrowth',
+  'traffic',
+  'rating',
+  'lastUpdated',
+]
+
 interface ImportRegistry {
   version: 1
+  importerVersion: string
   importedRunKeys: string[]
   skippedRunKeys: string[]
   updatedAt: string
@@ -548,6 +575,34 @@ function target(label: string, ...aliases: string[]): CoverageTarget {
   }
 }
 
+const COMPETITOR_METRIC_REQUIREMENTS: Array<{
+  label: string
+  field: CompetitorMetricField
+  aliases: string[]
+}> = [
+  { label: 'Price evidence', field: 'pricingEvidence', aliases: ['price', 'pricing evidence', 'price kg', 'price per kg'] },
+  { label: 'Market share', field: 'marketShare', aliases: ['market share', 'share'] },
+  { label: 'Revenue', field: 'revenue', aliases: ['revenue', 'sales', 'turnover'] },
+  { label: 'YoY growth', field: 'yearlyGrowth', aliases: ['yoy growth', 'yearly growth', 'annual growth'] },
+  { label: 'Traffic', field: 'traffic', aliases: ['traffic', 'website traffic', 'monthly visits'] },
+  { label: 'Rating', field: 'rating', aliases: ['rating', 'review rating', 'customer rating'] },
+  { label: 'Last updated / source date', field: 'lastUpdated', aliases: ['last updated', 'source date', 'last checked'] },
+]
+
+const COMPETITOR_COMPANY_TARGETS = [
+  target('Evonik Industries', 'evonik'),
+  target('Stepan Company', 'stepan'),
+  target('Kao Corporation', 'kao'),
+  target('WACKER', 'wacker'),
+  target('Rudolf Group', 'rudolf'),
+  target('CHT Group', 'cht'),
+  target('Archroma', 'archroma'),
+  target('Transfar', 'transfar'),
+  target('Zschimmer & Schwarz', 'zschimmer', 'schwarz'),
+  target('Pulcra Chemicals', 'pulcra'),
+  target('Syensqo / Solvay', 'syensqo', 'solvay'),
+]
+
 const coverageRequirements: CoverageRequirement[] = [
   {
     area: 'Market Intelligence',
@@ -568,19 +623,7 @@ const coverageRequirements: CoverageRequirement[] = [
   {
     area: 'Competitor Intelligence',
     textScope: 'competitor',
-    targets: [
-      target('Evonik Industries', 'evonik'),
-      target('Stepan Company', 'stepan'),
-      target('Kao Corporation', 'kao'),
-      target('WACKER', 'wacker'),
-      target('Rudolf Group', 'rudolf'),
-      target('CHT Group', 'cht'),
-      target('Archroma', 'archroma'),
-      target('Transfar', 'transfar'),
-      target('Zschimmer & Schwarz', 'zschimmer', 'schwarz'),
-      target('Pulcra Chemicals', 'pulcra'),
-      target('Syensqo / Solvay', 'syensqo', 'solvay'),
-    ],
+    targets: COMPETITOR_COMPANY_TARGETS,
   },
   {
     area: 'Raw Materials / Supplier Scorecards',
@@ -699,7 +742,7 @@ function fullDashboardAutopilotPrompt(): string {
     '- For missing checklist targets, include proposedDashboardField and recommendedAction so Research Result Review and Kanban can show exactly what still needs evidence.',
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep proxy values To Verify.',
     '- For supplier scorecards, use supplierScorecards with supplier, material, value, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
-    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, marketShare, revenue, yearlyGrowth, certifications, distributionPresence, sourceTitle, sourceUrl/sourceDate, confidence, evidenceStatus, and reviewRequired.',
+    '- For competitor analysis, use competitorRecords with companyName, countryRegion, productEquivalent, activeContent, pricingEvidence, marketShare, revenue, yearlyGrowth, traffic, rating, certifications, distributionPresence, sourceTitle, sourceUrl/sourceDate, lastChecked, confidence, evidenceStatus, reviewRequired, and recommendedAction.',
     '- If the JSON appendix fails, still include source-backed Markdown tables with Field/Value/Source Title/Source URL/Source Tier/Confidence/Evidence Status/Review Required columns.',
     '- If tables are not possible, use source-backed delimited bullets such as: Field: Country-wise consumption growth - China | Value: Trade proxy found | Source: [WITS / World Bank Comtrade](https://wits.worldbank.org/) | Source Tier: Tier 1 - Official / regulator / trade source | Evidence Status: Official Data | Confidence: high | Review Required: yes.',
     '- Do not output unsupported plain numbers without source metadata; unstructured or unsourced output will be ignored by the dashboard importer.',
@@ -847,6 +890,79 @@ function coverageTextHasAlias(text: string, alias: string): boolean {
   return text.includes(alias)
 }
 
+function coverageValueIsUsable(value: unknown): boolean {
+  const text = firstString(value)
+  if (!text) return false
+  if (PLACEHOLDER_PATTERN.test(text)) return false
+  if (/no source-backed|source search running|auto-checking|review required|restricted/i.test(text)) return false
+  return true
+}
+
+function sourceFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
+  const source = record.source
+  return isPlainRecord(source) ? source : null
+}
+
+function recordMatchesCompanyTarget(record: Record<string, unknown>, target: CoverageTarget): boolean {
+  const text = normalizeCoverageAlias([
+    firstString(record.companyName),
+    firstString(record.title),
+    firstString(record.label),
+    firstString(record.productEquivalent),
+    firstString(record.notes),
+  ].join(' '))
+  const aliases = target.companyAliases?.length ? target.companyAliases : target.aliases
+  return aliases.some(alias => coverageTextHasAlias(text, alias))
+}
+
+function dashboardTargetMatchesCompanyTarget(targetRecord: Record<string, unknown>, target: CoverageTarget): boolean {
+  const text = normalizeCoverageAlias([
+    firstString(targetRecord.companyName),
+    firstString(targetRecord.title),
+    firstString(targetRecord.label),
+    firstString(targetRecord.productEquivalent),
+    firstString(targetRecord.field),
+    firstString(targetRecord.proposedDashboardField),
+  ].join(' '))
+  const aliases = target.companyAliases?.length ? target.companyAliases : target.aliases
+  return aliases.some(alias => coverageTextHasAlias(text, alias))
+}
+
+function competitorMetricValue(record: Record<string, unknown>, field: CompetitorMetricField): unknown {
+  if (field === 'lastUpdated') {
+    return firstString(record.lastUpdated, record.updatedAt, (sourceFromRecord(record) || {}).date)
+  }
+  return record[field]
+}
+
+function competitorMetricCovered(state: DashboardIntelligenceState, target: CoverageTarget): boolean {
+  if (!target.metric) return false
+  return state.competitors.some(record =>
+    recordMatchesCompanyTarget(record, target) &&
+    sourceIsUsable(sourceFromRecord(record)) &&
+    coverageValueIsUsable(competitorMetricValue(record, target.metric!)),
+  ) || state.researchFindings.some(finding => {
+    const dashboardTarget = finding.dashboardTarget
+    if (!isPlainRecord(dashboardTarget)) return false
+    if (firstString(dashboardTarget.group, dashboardTarget.dashboardGroup) !== 'competitorRecords') return false
+    return dashboardTargetMatchesCompanyTarget(dashboardTarget, target) &&
+      sourceIsUsable(sourceFromRecord(finding)) &&
+      coverageValueIsUsable(competitorMetricValue(dashboardTarget, target.metric!))
+  })
+}
+
+function coverageTargetSatisfied(
+  state: DashboardIntelligenceState,
+  row: CoverageRequirement,
+  target: CoverageTarget,
+  text: string,
+): boolean {
+  if (row.textScope === 'competitor' && target.metric) {
+    return competitorMetricCovered(state, target)
+  }
+  return target.aliases.some(alias => coverageTextHasAlias(text, alias))
+}
+
 function coverageTextForScope(state: DashboardIntelligenceState, scope: CoverageRequirement['textScope']): string {
   const marketParts = [
     ...state.marketClaims.map(item => `${firstString(item.label)} ${firstString(item.value)} ${firstString(item.evidenceStatus)} ${firstString((item.source as Record<string, unknown> | undefined)?.title)}`),
@@ -910,14 +1026,50 @@ function coverageTextForScope(state: DashboardIntelligenceState, scope: Coverage
   return normalizeCoverageAlias(byScope[scope].join(' '))
 }
 
+function competitorMetricCoverageTargetsForState(state: DashboardIntelligenceState): CoverageTarget[] {
+  const companyTargets = new Map<string, CoverageTarget>()
+  for (const target of COMPETITOR_COMPANY_TARGETS) {
+    companyTargets.set(target.label, target)
+  }
+  for (const competitor of state.competitors) {
+    const companyName = firstString(competitor.companyName)
+    if (!companyName) continue
+    const key = normalizeCoverageAlias(companyName)
+    if (!companyTargets.has(companyName)) {
+      companyTargets.set(companyName, target(companyName, key, ...key.split(' ').filter(Boolean)))
+    }
+  }
+  return Array.from(companyTargets.values()).flatMap(companyTarget =>
+    COMPETITOR_METRIC_REQUIREMENTS.map(metric => ({
+      label: `${companyTarget.label} - ${metric.label}`,
+      aliases: metric.aliases.map(normalizeCoverageAlias),
+      metric: metric.field,
+      companyAliases: companyTarget.aliases,
+    })),
+  )
+}
+
 function missingCoverageRowsForState(state: DashboardIntelligenceState): Array<CoverageRequirement & { missingTargets: CoverageTarget[] }> {
-  return coverageRequirements
+  const staticRows = coverageRequirements
     .map(row => {
       const text = coverageTextForScope(state, row.textScope)
-      const missingTargets = row.targets.filter(item => !item.aliases.some(alias => coverageTextHasAlias(text, alias)))
+      const missingTargets = row.targets.filter(item => !coverageTargetSatisfied(state, row, item, text))
       return { ...row, missingTargets }
     })
     .filter(row => row.missingTargets.length > 0)
+  const competitorMetricTargets = competitorMetricCoverageTargetsForState(state)
+  if (competitorMetricTargets.length === 0) return staticRows
+  const competitorMetricRow: CoverageRequirement & { missingTargets: CoverageTarget[] } = {
+    area: 'Competitor Metric Columns',
+    textScope: 'competitor',
+    targets: competitorMetricTargets,
+    missingTargets: competitorMetricTargets.filter(item =>
+      !coverageTargetSatisfied(state, { area: 'Competitor Metric Columns', textScope: 'competitor', targets: competitorMetricTargets }, item, ''),
+    ),
+  }
+  return competitorMetricRow.missingTargets.length > 0
+    ? [...staticRows, competitorMetricRow]
+    : staticRows
 }
 
 function dashboardHasImportedIntelligence(state: DashboardIntelligenceState): boolean {
@@ -959,6 +1111,16 @@ function missingCoveragePrompt(rows: Array<CoverageRequirement & { missingTarget
     'Missing targets:',
     missingTargets,
     '',
+    'Competitor metric instructions:',
+    '- For each "Company - Price evidence" target, search official price lists, distributor quote evidence, uploaded supplier evidence, or reputable price references. Public marketplace listings are weak and must be reviewRequired.',
+    '- For each "Company - Market share" target, return a value only when the source explicitly states the market, geography, year, and share basis. Otherwise return an evidenceGaps item for that exact company/field.',
+    '- For each "Company - Revenue" and "Company - YoY growth" target, prefer official annual reports, filings, investor-relations pages, stock-exchange filings, or audited financial statements. Label diversified company-wide revenue clearly; do not pretend it is product-line revenue.',
+    '- For each "Company - Traffic" target, use a cited traffic/analytics source only when available and keep it reviewRequired. Do not estimate traffic from memory.',
+    '- For each "Company - Rating" target, use a cited review/rating source for the exact company/product only when available and keep it reviewRequired if weak.',
+    '- For each "Company - Last updated / source date" target, include lastChecked and sourceDate from the evidence source or access date.',
+    '- Use one competitorRecords item per company when possible; put product-wise variations in productEquivalent and metric fields rather than duplicating the same company name.',
+    '- If a metric cannot be sourced, return evidenceGaps and suggestedTasks with proposedDashboardField like "Archroma - Market share" instead of leaving the field vague.',
+    '',
     'Dashboard areas to update when evidence exists:',
     '- Executive Overview',
     '- Market Intelligence',
@@ -986,6 +1148,7 @@ function missingCoveragePrompt(rows: Array<CoverageRequirement & { missingTarget
     '',
     'Return only structured dashboard_updates JSON compatible with the Full Dashboard Autopilot importer.',
     'Each candidate must include fieldKey, value, sourceTitle, sourceUrl, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, and riskReason.',
+    'Competitor records must include companyName, productEquivalent, pricingEvidence, marketShare, revenue, yearlyGrowth, traffic, rating, lastChecked, sourceTitle, sourceUrl, confidence, evidenceStatus, reviewRequired, and recommendedAction where available.',
   ].join('\n')
 }
 
@@ -1241,6 +1404,84 @@ async function listOutputFiles(profile: string, jobId: string, maxFiles: number)
   return files.sort((a, b) => b.fileName.localeCompare(a.fileName) || b.mtimeMs - a.mtimeMs).slice(0, maxFiles)
 }
 
+async function listCronOutputJobIds(profile: string): Promise<string[]> {
+  const outputRoot = join(getProfileDir(profile), 'cron', 'output')
+  if (!existsSync(outputRoot)) return []
+  try {
+    const entries = await readdir(outputRoot, { withFileTypes: true })
+    return entries
+      .filter(entry => entry.isDirectory() && !entry.name.includes('/') && !entry.name.includes('\\') && !entry.name.includes('..'))
+      .map(entry => entry.name)
+  } catch (err) {
+    logger.warn({ err }, '[dashboard-autopilot] failed to list cron output job directories')
+    return []
+  }
+}
+
+async function outputFileLooksLikeDashboardAutopilot(output: OutputFile): Promise<boolean> {
+  try {
+    const content = await readFile(output.path, 'utf-8')
+    const lower = content.slice(0, 80_000).toLowerCase()
+    if (lower.includes(FULL_DASHBOARD_AUTOPILOT_JOB_NAME.toLowerCase())) return true
+    if (lower.includes(FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME.toLowerCase())) return true
+    return lower.includes('dashboard_updates') &&
+      (lower.includes('full dashboard') || lower.includes('trusted-source') || lower.includes('missing coverage'))
+  } catch (err) {
+    logger.warn({ err, jobId: output.jobId, fileName: output.fileName }, '[dashboard-autopilot] failed to inspect cron output file')
+    return false
+  }
+}
+
+async function listDashboardAutopilotOutputFiles(
+  profile: string,
+  jobs: CronJobRecord[],
+  maxFilesPerJob: number,
+  options: Pick<IngestOptions, 'jobId'> = {},
+): Promise<{ jobsChecked: number, outputFiles: OutputFile[] }> {
+  const outputFiles: OutputFile[] = []
+  const includedJobIds = new Set<string>()
+  const seenRunKeys = new Set<string>()
+
+  const addOutputs = (outputs: OutputFile[]) => {
+    for (const output of outputs) {
+      const runKey = `${output.jobId}/${output.fileName}`
+      if (seenRunKeys.has(runKey)) continue
+      seenRunKeys.add(runKey)
+      outputFiles.push(output)
+    }
+  }
+
+  for (const job of jobs) {
+    const jobId = getJobId(job)
+    if (!jobId) continue
+    includedJobIds.add(jobId)
+    addOutputs(await listOutputFiles(profile, jobId, maxFilesPerJob))
+  }
+
+  if (options.jobId && !includedJobIds.has(options.jobId)) {
+    includedJobIds.add(options.jobId)
+    addOutputs(await listOutputFiles(profile, options.jobId, maxFilesPerJob))
+  }
+
+  if (!options.jobId) {
+    for (const jobId of await listCronOutputJobIds(profile)) {
+      if (includedJobIds.has(jobId)) continue
+      const candidateOutputs = await listOutputFiles(profile, jobId, maxFilesPerJob)
+      const dashboardOutputs: OutputFile[] = []
+      for (const output of candidateOutputs) {
+        if (await outputFileLooksLikeDashboardAutopilot(output)) dashboardOutputs.push(output)
+      }
+      if (dashboardOutputs.length > 0) {
+        includedJobIds.add(jobId)
+        addOutputs(dashboardOutputs)
+      }
+    }
+  }
+
+  outputFiles.sort((a, b) => b.fileName.localeCompare(a.fileName) || b.mtimeMs - a.mtimeMs)
+  return { jobsChecked: includedJobIds.size, outputFiles }
+}
+
 function registryPath(profile: string): string {
   return join(getProfileDir(profile), 'dashboard-intelligence', 'imported-runs.json')
 }
@@ -1256,19 +1497,21 @@ async function readImportRegistry(profile: string): Promise<ImportRegistry> {
         skippedRunKeys: Array.isArray(parsed.skippedRunKeys)
           ? parsed.skippedRunKeys.map(stringValue).filter(Boolean)
           : [],
+        importerVersion: stringValue(parsed.importerVersion),
         updatedAt: stringValue(parsed.updatedAt) || new Date().toISOString(),
       }
     }
   } catch (err: any) {
     if (err?.code !== 'ENOENT') logger.warn(err, '[dashboard-autopilot] failed to read import registry')
   }
-  return { version: 1, importedRunKeys: [], skippedRunKeys: [], updatedAt: '' }
+  return { version: 1, importerVersion: '', importedRunKeys: [], skippedRunKeys: [], updatedAt: '' }
 }
 
 async function writeImportRegistry(profile: string, registry: ImportRegistry): Promise<void> {
   const filePath = registryPath(profile)
   const next: ImportRegistry = {
     version: 1,
+    importerVersion: DASHBOARD_AUTOPILOT_IMPORTER_VERSION,
     importedRunKeys: registry.importedRunKeys.slice(-MAX_IMPORTED_RUN_KEYS),
     skippedRunKeys: registry.skippedRunKeys.slice(-MAX_IMPORTED_RUN_KEYS),
     updatedAt: new Date().toISOString(),
@@ -1557,7 +1800,9 @@ function markdownRowToDashboardItem(
   const pricingEvidence = getCell(row, 'pricing evidence', 'price', 'price/kg', 'price/t', 'cost')
   const revenue = getCell(row, 'revenue', 'annual revenue', 'sales', 'turnover')
   const yearlyGrowth = getCell(row, 'yearly growth', 'annual growth', 'growth yoy', 'yoy growth', 'growth rate')
-  const fallbackValue = value || marketShare || pricingEvidence || revenue || yearlyGrowth || notes
+  const traffic = getCell(row, 'traffic', 'website traffic', 'web traffic', 'monthly traffic', 'visits')
+  const rating = getCell(row, 'rating', 'review rating', 'customer rating', 'reviews')
+  const fallbackValue = value || marketShare || pricingEvidence || revenue || yearlyGrowth || traffic || rating || notes
   const rowTitle = title || label || field || getCell(row, 'company', 'competitor', 'manufacturer', 'supplier', 'material')
   if (!rowTitle && !fallbackValue) return null
 
@@ -1573,6 +1818,8 @@ function markdownRowToDashboardItem(
     pricingEvidence,
     revenue,
     yearlyGrowth,
+    traffic,
+    rating,
     certifications: getCell(row, 'certifications', 'certification'),
     distributionPresence: getCell(row, 'distribution', 'distribution presence', 'presence'),
     marketShare,
@@ -1584,7 +1831,7 @@ function markdownRowToDashboardItem(
     sourceUrl: source.sourceUrl,
     sourceDate: source.sourceDate,
     sourceTier: getCell(row, 'source tier', 'tier', 'source type', 'source class', 'tier label'),
-    lastChecked: getCell(row, 'last checked', 'checked', 'access date', 'accessed', 'retrieved'),
+    lastChecked: getCell(row, 'last checked', 'last updated', 'updated', 'checked', 'access date', 'accessed', 'retrieved'),
     confidence: getCell(row, 'confidence', 'confidence level', 'source confidence'),
     evidenceStatus: getCell(row, 'evidence status', 'status', 'evidence', 'verification status', 'claim status'),
     reviewRequired: /^(yes|true|required|review|needed)$/i.test(getCell(row, 'review required', 'review', 'needs review', 'review needed')),
@@ -1736,6 +1983,14 @@ export function extractDashboardResearchUpdates(content: string): DashboardResea
     if (payload) return payload
   }
 
+  const rawDashboardObjects = [...trimmed.matchAll(/\{\s*["']dashboard_updates["']\s*:/gi)]
+  for (const marker of rawDashboardObjects.reverse()) {
+    const json = extractBalancedObjectAfter(trimmed, marker.index || 0)
+    const parsed = json ? tryParseJsonObject(json) : null
+    const payload = parsed ? normalizeDashboardPayload(parsed) : null
+    if (payload) return payload
+  }
+
   const markers = [...trimmed.matchAll(/["']?dashboard_updates["']?\s*[:=]/gi)]
   for (const marker of markers.reverse()) {
     const json = extractBalancedObjectAfter(trimmed, marker.index || 0)
@@ -1859,12 +2114,22 @@ function sourceTierDowngradeReason(item: DashboardResearchUpdateItem, effectiveT
 }
 
 function coerceConfidence(value: unknown): Confidence {
-  return VALID_CONFIDENCE.has(stringValue(value)) ? stringValue(value) as Confidence : 'medium'
+  const text = stringValue(value).toLowerCase()
+  return VALID_CONFIDENCE.has(text) ? text as Confidence : 'medium'
 }
 
 function coerceEvidenceStatus(value: unknown, fallback = 'To Verify'): string {
   const text = stringValue(value)
   return VALID_EVIDENCE_STATUSES.has(text) ? text : fallback
+}
+
+function trustedEvidenceStatus(value: unknown, fallback = 'To Verify'): string {
+  const text = stringValue(value)
+  if (/official.*(company|filing|annual|data|evidence)/i.test(text)) return 'Official Data'
+  if (/source.?backed/i.test(text)) return 'Source-backed'
+  if (/trusted.*auto/i.test(text)) return 'Trusted Source Auto-Updated'
+  if (/supplier.*evidence/i.test(text)) return 'Supplier Evidence'
+  return coerceEvidenceStatus(text, fallback)
 }
 
 function coerceDataType(value: unknown, fallback: string): string {
@@ -1885,6 +2150,88 @@ function sourceFromItem(item: DashboardResearchUpdateItem): Record<string, unkno
   if (url) source.url = url
   if (date) source.date = date
   return source
+}
+
+function nestedMetricRecord(item: DashboardResearchUpdateItem, field: CompetitorMetricField): DashboardResearchUpdateItem | null {
+  const value = item[field]
+  return isPlainRecord(value) ? value as DashboardResearchUpdateItem : null
+}
+
+function competitorMetricText(item: DashboardResearchUpdateItem, field: CompetitorMetricField): string {
+  const nested = nestedMetricRecord(item, field)
+  return firstString(nested?.value, item[field])
+}
+
+function competitorMetricSource(
+  item: DashboardResearchUpdateItem,
+  field: CompetitorMetricField,
+  fallback: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const nested = nestedMetricRecord(item, field)
+  return nested ? sourceFromItem(nested) || fallback : fallback
+}
+
+function competitorMetricTier(item: DashboardResearchUpdateItem, field: CompetitorMetricField, fallback: SourceTier): SourceTier {
+  const nested = nestedMetricRecord(item, field)
+  return nested ? normalizeSourceTierForItem(nested) : fallback
+}
+
+function competitorMetricConfidence(item: DashboardResearchUpdateItem, field: CompetitorMetricField, fallback: Confidence): Confidence {
+  const nested = nestedMetricRecord(item, field)
+  return nested ? coerceConfidence(nested.confidence) : fallback
+}
+
+function competitorMetricEvidenceStatus(item: DashboardResearchUpdateItem, field: CompetitorMetricField, fallback: string): string {
+  const nested = nestedMetricRecord(item, field)
+  return nested ? trustedEvidenceStatus(nested.evidenceStatus, fallback) : trustedEvidenceStatus(fallback, fallback)
+}
+
+function competitorMetricReviewRequired(item: DashboardResearchUpdateItem, field: CompetitorMetricField, fallback: boolean): boolean {
+  const nested = nestedMetricRecord(item, field)
+  return typeof nested?.reviewRequired === 'boolean' ? nested.reviewRequired : fallback
+}
+
+function isUsefulDashboardValue(value: string): boolean {
+  return Boolean(value && !PLACEHOLDER_PATTERN.test(value) && !hasKnownFakeScreenshotValue(value))
+}
+
+function isTrustedMetricEvidence(status: string): boolean {
+  return AUTO_TRUSTED_STATUSES.has(status) || status === 'Official Company Evidence'
+}
+
+function shouldHydrateCompetitorMetric(input: {
+  field: CompetitorMetricField
+  value: string
+  source: Record<string, unknown> | null
+  tier: SourceTier
+  confidence: Confidence
+  evidenceStatus: string
+  reviewRequired: boolean
+  dataType: string
+}): boolean {
+  if (!isUsefulDashboardValue(input.value)) return false
+  if (!sourceIsUsable(input.source)) return false
+  if (!isTrustedMetricEvidence(input.evidenceStatus)) return false
+  if (input.confidence !== 'high') return false
+  if (input.tier === 'tier5-public-listing' || input.tier === 'candidate-source') return false
+
+  if (input.field === 'pricingEvidence') {
+    return input.reviewRequired === false && input.tier === 'tier3-supplier-evidence'
+  }
+
+  if (input.field === 'marketShare') {
+    return input.reviewRequired === false && (input.tier === 'tier1-official' || input.tier === 'tier2-company-official')
+  }
+
+  if (input.field === 'traffic' || input.field === 'rating') {
+    return input.reviewRequired === false && input.tier !== 'tier4-market-reference'
+  }
+
+  if (input.field === 'revenue' || input.field === 'yearlyGrowth' || input.field === 'lastUpdated') {
+    return input.reviewRequired === false || input.tier === 'tier1-official' || input.tier === 'tier2-company-official'
+  }
+
+  return false
 }
 
 function sourceIsUsable(source: Record<string, unknown> | null): boolean {
@@ -1917,6 +2264,10 @@ function itemValueText(item: DashboardResearchUpdateItem): string {
     item.content,
     item.marketShare,
     item.pricingEvidence,
+    item.revenue,
+    item.yearlyGrowth,
+    item.traffic,
+    item.rating,
     item.notes,
     item.recommendedAction,
   )
@@ -2051,13 +2402,63 @@ function appendCompetitorRecord(
 ): boolean {
   const companyName = firstString(input.item.companyName, input.item.title, input.item.label)
   if (!companyName) return false
-  if (includesExisting(state.competitors, competitor =>
-    stringValue(competitor.companyName).toLowerCase() === companyName.toLowerCase() &&
-    stringValue((competitor.source as Record<string, unknown> | undefined)?.title) === stringValue(input.source?.title),
-  )) return false
+  const topLevelReviewRequired = Boolean(input.reasons?.length || input.item.reviewRequired === true)
+  const fallbackConfidence = coerceConfidence(input.item.confidence)
+  const fallbackEvidenceStatus = trustedEvidenceStatus(input.evidenceStatus, input.evidenceStatus)
+  const metricValues: Partial<Record<CompetitorMetricField, string>> = {}
+  let primaryMetric: {
+    source: Record<string, unknown> | null
+    tier: SourceTier
+    confidence: Confidence
+    evidenceStatus: string
+  } | null = null
 
-  state.competitors.push({
-    id: stableId('autopilot-competitor', input.runKey, companyName),
+  for (const field of COMPETITOR_SOURCE_BACKED_METRIC_FIELDS) {
+    const value = competitorMetricText(input.item, field)
+    const source = competitorMetricSource(input.item, field, input.source)
+    const tier = competitorMetricTier(input.item, field, input.tier)
+    const confidence = competitorMetricConfidence(input.item, field, fallbackConfidence)
+    const evidenceStatus = competitorMetricEvidenceStatus(input.item, field, fallbackEvidenceStatus)
+    const reviewRequired = competitorMetricReviewRequired(input.item, field, topLevelReviewRequired)
+    const dataType = coerceDataType(nestedMetricRecord(input.item, field)?.dataType, input.dataType)
+    if (!shouldHydrateCompetitorMetric({
+      field,
+      value,
+      source,
+      tier,
+      confidence,
+      evidenceStatus,
+      reviewRequired,
+      dataType,
+    })) continue
+    metricValues[field] = value
+    if (!primaryMetric || field === 'revenue' || field === 'yearlyGrowth') {
+      primaryMetric = { source, tier, confidence, evidenceStatus }
+    }
+  }
+
+  const recordSource = primaryMetric?.source || input.source
+  const recordTier = primaryMetric?.tier || input.tier
+  const recordConfidence = primaryMetric?.confidence || fallbackConfidence
+  const recordEvidenceStatus = primaryMetric?.evidenceStatus || fallbackEvidenceStatus
+  const recordReviewRequired = primaryMetric ? false : topLevelReviewRequired
+  const hasUsefulProductContext = isUsefulDashboardValue(firstString(
+    input.item.productEquivalent,
+    input.item.activeContent,
+    input.item.distributionPresence,
+    input.item.certifications,
+  ))
+  const canImportProductContext = sourceIsUsable(input.source) &&
+    hasUsefulProductContext &&
+    recordTier !== 'tier5-public-listing' &&
+    recordTier !== 'candidate-source'
+  if (!primaryMetric && topLevelReviewRequired && !canImportProductContext) return false
+  const existingIndex = state.competitors.findIndex(competitor =>
+    stringValue(competitor.companyName).toLowerCase() === companyName.toLowerCase() &&
+    stringValue((competitor.source as Record<string, unknown> | undefined)?.title) === stringValue(recordSource?.title),
+  )
+  const importedRecord = {
+    id: stableId('autopilot-competitor', input.runKey, companyName, stringValue(recordSource?.title)),
     companyName,
     fieldKey: dashboardFieldKey(input.item, 'competitorRecords', input.field),
     dashboardGroup: 'competitorRecords',
@@ -2066,24 +2467,42 @@ function appendCompetitorRecord(
     countryRegion: firstString(input.item.countryRegion) || 'To Verify',
     productEquivalent: firstString(input.item.productEquivalent) || 'To Verify',
     activeContent: firstString(input.item.activeContent) || 'To Verify',
-    pricingEvidence: firstString(input.item.pricingEvidence) || 'To Verify',
+    pricingEvidence: metricValues.pricingEvidence || '',
     certifications: firstString(input.item.certifications) || 'To Verify',
     distributionPresence: firstString(input.item.distributionPresence) || 'To Verify',
-    marketShare: '',
-    revenue: firstString(input.item.revenue) || '',
-    yearlyGrowth: firstString(input.item.yearlyGrowth) || '',
-    evidenceStatus: input.evidenceStatus,
-    source: input.source,
-    sourceTier: input.tier,
+    marketShare: metricValues.marketShare || '',
+    revenue: metricValues.revenue || '',
+    yearlyGrowth: metricValues.yearlyGrowth || '',
+    traffic: metricValues.traffic || '',
+    rating: metricValues.rating || '',
+    lastUpdated: metricValues.lastUpdated || firstString(input.item.lastChecked, input.item.sourceDate) || '',
+    evidenceStatus: recordEvidenceStatus,
+    source: recordSource,
+    sourceTier: recordTier,
     reportedSourceTier: firstString(input.item.sourceTier) || undefined,
     dataType: input.dataType,
-    confidence: coerceConfidence(input.item.confidence),
-    reviewRequired: Boolean(input.reasons?.length || input.item.reviewRequired === true),
+    confidence: recordConfidence,
+    reviewRequired: recordReviewRequired,
     reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
     riskReason: firstString(input.item.riskReason) || (input.reasons?.join('; ') || undefined),
-    notes: firstString(input.item.notes, input.value) || 'Imported by Full Dashboard Autopilot from a source-backed non-sensitive company record.',
+    notes: firstString(input.item.notes, input.item.recommendedAction, input.value) ||
+      'Imported by Full Dashboard Autopilot from source-backed competitor evidence. Product-line revenue, pricing, market share, traffic, and ratings remain separate evidence-gated fields.',
     updatedAt: input.lastChecked,
-  })
+  }
+
+  if (existingIndex >= 0) {
+    const existing = state.competitors[existingIndex]
+    const merged = { ...existing, ...importedRecord }
+    for (const field of ['pricingEvidence', 'marketShare', 'revenue', 'yearlyGrowth', 'traffic', 'rating', 'lastUpdated'] as const) {
+      if (!isUsefulDashboardValue(stringValue(importedRecord[field])) && isUsefulDashboardValue(stringValue(existing[field]))) {
+        ;(merged as Record<string, unknown>)[field] = existing[field]
+      }
+    }
+    state.competitors[existingIndex] = merged
+    return true
+  }
+
+  state.competitors.push(importedRecord)
   return true
 }
 
@@ -2310,6 +2729,11 @@ function appendReviewFinding(
       certifications: firstString(input.item.certifications),
       distributionPresence: firstString(input.item.distributionPresence),
       marketShare: firstString(input.item.marketShare),
+      revenue: firstString(input.item.revenue),
+      yearlyGrowth: firstString(input.item.yearlyGrowth),
+      traffic: firstString(input.item.traffic),
+      rating: firstString(input.item.rating),
+      lastUpdated: firstString(input.item.lastChecked, input.item.sourceDate),
       supplier: firstString(input.item.supplier),
       material: firstString(input.item.material),
       section: firstString(input.item.section),
@@ -2350,6 +2774,21 @@ function applyDashboardUpdates(
       const reviewRequired = reasons.length > 0
 
       if (reviewRequired) {
+        if (group === 'competitorRecords') {
+          const competitorAdded = appendCompetitorRecord(state, {
+            item,
+            value,
+            source,
+            evidenceStatus,
+            lastChecked,
+            runKey,
+            tier,
+            dataType,
+            field,
+            reasons,
+          })
+          if (competitorAdded) autoFilledCount += 1
+        }
         appendVisibleDashboardCandidate(state, {
           item,
           group,
@@ -2413,40 +2852,37 @@ export async function ingestFullDashboardAutopilotOutputs(
     if (options.jobId && id !== options.jobId) return false
     return isDashboardAutopilotOutputJobRecord(job)
   })
-  result.jobsChecked = jobs.length
-  if (jobs.length === 0) return result
+  const discoveredOutputs = await listDashboardAutopilotOutputFiles(profile, jobs, maxFilesPerJob, { jobId: options.jobId })
+  result.jobsChecked = discoveredOutputs.jobsChecked
+  if (discoveredOutputs.outputFiles.length === 0) return result
 
   const registry = await readImportRegistry(profile)
-  const importedRunKeys = new Set(registry.importedRunKeys)
-  const skippedRunKeys = new Set(registry.skippedRunKeys)
+  const shouldReplayImportedRuns = registry.importerVersion !== DASHBOARD_AUTOPILOT_IMPORTER_VERSION
+  const importedRunKeys = new Set(shouldReplayImportedRuns ? [] : registry.importedRunKeys)
+  const skippedRunKeys = new Set(shouldReplayImportedRuns ? [] : registry.skippedRunKeys)
   const envelope = await readDashboardIntelligenceState(profile)
   const state = normalizeState(envelope?.state)
 
-  for (const job of jobs) {
-    const jobId = getJobId(job)
-    if (!jobId) continue
-    const outputs = await listOutputFiles(profile, jobId, maxFilesPerJob)
-    for (const output of outputs) {
-      const runKey = `${output.jobId}/${output.fileName}`
-      if (importedRunKeys.has(runKey) || skippedRunKeys.has(runKey)) continue
-      result.filesChecked += 1
-      try {
-        const content = await readFile(output.path, 'utf-8')
-        const payload = extractDashboardResearchUpdates(content)
-        if (!payload) {
-          skippedRunKeys.add(runKey)
-          result.skippedRuns += 1
-          continue
-        }
-        importedRunKeys.add(runKey)
-        skippedRunKeys.delete(runKey)
-        const applied = applyDashboardUpdates(state, payload, runKey, new Date(output.mtimeMs || Date.now()).toISOString())
-        result.autoFilledCount += applied.autoFilledCount
-        result.stagedReviewCount += applied.stagedReviewCount
-        result.importedRuns += 1
-      } catch (err: any) {
-        result.errors.push(`${runKey}: ${err?.message || 'failed to import output'}`)
+  for (const output of discoveredOutputs.outputFiles) {
+    const runKey = `${output.jobId}/${output.fileName}`
+    if (importedRunKeys.has(runKey) || skippedRunKeys.has(runKey)) continue
+    result.filesChecked += 1
+    try {
+      const content = await readFile(output.path, 'utf-8')
+      const payload = extractDashboardResearchUpdates(content)
+      if (!payload) {
+        skippedRunKeys.add(runKey)
+        result.skippedRuns += 1
+        continue
       }
+      importedRunKeys.add(runKey)
+      skippedRunKeys.delete(runKey)
+      const applied = applyDashboardUpdates(state, payload, runKey, new Date(output.mtimeMs || Date.now()).toISOString())
+      result.autoFilledCount += applied.autoFilledCount
+      result.stagedReviewCount += applied.stagedReviewCount
+      result.importedRuns += 1
+    } catch (err: any) {
+      result.errors.push(`${runKey}: ${err?.message || 'failed to import output'}`)
     }
   }
 
@@ -2474,6 +2910,7 @@ export async function ingestFullDashboardAutopilotOutputs(
 
   await writeImportRegistry(profile, {
     version: 1,
+    importerVersion: DASHBOARD_AUTOPILOT_IMPORTER_VERSION,
     importedRunKeys: [...importedRunKeys],
     skippedRunKeys: [...skippedRunKeys],
     updatedAt: new Date().toISOString(),
@@ -2487,15 +2924,11 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
   const jobs = (await readCronJobs(profile)).filter(isDashboardAutopilotOutputJobRecord)
   const registry = await readImportRegistry(profile)
   const dueRegistry = await readDueRunRegistry(profile)
-  const importedRunKeys = new Set(registry.importedRunKeys)
-  const skippedRunKeys = new Set(registry.skippedRunKeys)
-  const outputFiles: OutputFile[] = []
-
-  for (const job of jobs) {
-    const jobId = getJobId(job)
-    if (!jobId) continue
-    outputFiles.push(...await listOutputFiles(profile, jobId, 50))
-  }
+  const registryMatchesImporter = registry.importerVersion === DASHBOARD_AUTOPILOT_IMPORTER_VERSION
+  const importedRunKeys = new Set(registryMatchesImporter ? registry.importedRunKeys : [])
+  const skippedRunKeys = new Set(registryMatchesImporter ? registry.skippedRunKeys : [])
+  const discoveredOutputs = await listDashboardAutopilotOutputFiles(profile, jobs, 50)
+  const outputFiles = discoveredOutputs.outputFiles
 
   outputFiles.sort((a, b) => b.fileName.localeCompare(a.fileName) || b.mtimeMs - a.mtimeMs)
   const latestOutput = outputFiles[0] || null
@@ -2534,10 +2967,10 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
 
   return {
     profile,
-    jobCount: jobs.length,
+    jobCount: discoveredOutputs.jobsChecked,
     outputCount: outputFiles.length,
-    importedRunCount: registry.importedRunKeys.length,
-    skippedRunCount: registry.skippedRunKeys.length,
+    importedRunCount: registryMatchesImporter ? registry.importedRunKeys.length : 0,
+    skippedRunCount: registryMatchesImporter ? registry.skippedRunKeys.length : 0,
     pendingOutputCount,
     latestOutputRunKey,
     latestOutputFile: latestOutput?.fileName || '',
@@ -2547,7 +2980,7 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
     latestOutputParseStatus,
     latestOutputCandidateCount,
     latestOutputParseError,
-    latestImportedRunKey: registry.importedRunKeys[registry.importedRunKeys.length - 1] || '',
+    latestImportedRunKey: registryMatchesImporter ? registry.importedRunKeys[registry.importedRunKeys.length - 1] || '' : '',
     registryUpdatedAt: registry.updatedAt || '',
     latestDueSlotAt: dueSlotAt,
     latestDueSlotSatisfied,

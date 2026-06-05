@@ -40,6 +40,7 @@ interface SupplierScorecardRow {
   evidenceStatus: IntelligenceEvidenceStatus
   sourceTitle: string
   sourceUrl?: string
+  sourceSummary: string
   nextAction: string
   highRisk?: boolean
 }
@@ -54,7 +55,7 @@ const intelligence = useFeasibilityIntelligence()
 const materials = ref<RawMaterialRecord[]>(loadMaterials())
 const selectedMaterialId = ref(materials.value[0]?.id || '')
 const savingKey = ref('')
-const supplierAutopilotStatus = ref('Hermes is checking the supplier scorecard schedule automatically')
+const supplierAutopilotStatus = ref('Supplier scorecard schedule is being checked automatically')
 const supplierAutopilotJobId = ref('')
 const employeeRedaction = computed(() => shouldRedactForEmployee())
 
@@ -92,6 +93,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'Wilmar Oleochemicals official source',
     sourceUrl: 'https://www.wilmar-international.com/oleochemicals',
+    sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Request quote, TDS, SDS, COA, MOQ, lead time, and payment terms for stearic acid.',
   },
   {
@@ -106,6 +108,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'KLK OLEO product source',
     sourceUrl: 'https://www.klkoleo.com/products/',
+    sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Confirm stearic acid grade match, China delivery route, quote validity, and payment terms.',
   },
   {
@@ -120,6 +123,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'BASF amines / triethanolamine source',
     sourceUrl: 'https://products.basf.com/global/en/ci/triethanolamine',
+    sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Verify TEA grade, SDS, China availability, distributor channel, quote, and lead time.',
   },
   {
@@ -134,6 +138,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'Dow silicone product search',
     sourceUrl: 'https://www.dow.com/en-us/pdp.dowsil-sh-200-fluid-1000-cst.850505z.html',
+    sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Confirm PDMS viscosity, textile softener suitability, distributor quote, and technical documents.',
   },
   {
@@ -148,6 +153,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'WACKER silicone fluids source',
     sourceUrl: 'https://www.wacker.com/h/en-gb/silicone-fluids-emulsions/linear-silicone-fluids/wacker-eco-ak-1000/p/000100490',
+    sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Confirm matching silicone fluid grade, China supply, quote, SDS, TDS, and application notes.',
   },
   {
@@ -162,6 +168,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'To Verify',
     sourceTitle: 'PubChem identity and hazard reference',
     sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
+    sourceSummary: 'Reference-only high-risk raw-material identity target. Supplier use requires regulatory and quote evidence.',
     nextAction: 'Verify supplier identity, exact CAS, legal status, transport/storage rules, SDS, and permit requirements before any quote is used.',
     highRisk: true,
   },
@@ -176,6 +183,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     score: 'Pending supplier shortlist',
     evidenceStatus: 'To Verify',
     sourceTitle: 'Local quote and document evidence needed',
+    sourceSummary: 'Reference-only local sourcing target. Upload or import supplier quote evidence before use.',
     nextAction: 'Identify local suppliers, request quote, SDS, TDS, COA, delivery terms, and tax/VAT details.',
   },
 ]
@@ -187,17 +195,18 @@ function noteLine(notes: string, label: string): string {
 
 function isAutopilotSupplierRecord(record: typeof intelligence.state.value.dataRoomSources[number]): boolean {
   const group = record.dashboardGroup || ''
-  const text = `${record.checklistLabel} ${record.notes} ${record.supplier || ''} ${record.material || ''}`.toLowerCase()
-  return group === 'supplierScorecards' ||
-    group === 'rawMaterialSignals' ||
-    text.includes('supplier scorecard') ||
-    text.includes('raw material') ||
-    text.includes('autopilot candidate from supplierscorecards') ||
-    text.includes('autopilot candidate from rawmaterialsignals')
+  return group === 'supplierScorecards' && Boolean(record.supplier?.trim() && record.material?.trim())
 }
 
 function supplierRecordKey(row: Pick<SupplierScorecardRow, 'supplier' | 'material'>): string {
   return `${row.supplier}::${row.material}`.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function isUsableSupplierPriceRecord(record: typeof intelligence.state.value.dataRoomSources[number], value: string): boolean {
+  const fieldText = `${record.checklistLabel} ${record.proposedDashboardField || ''} ${record.dataType || ''}`.toLowerCase()
+  if (!/(price|pricing|quote|cost|payment)/.test(fieldText)) return false
+  if (!value || /to verify|missing|no quote|quote required|not found|blocked|candidate/i.test(value)) return false
+  return /(?:[$¥€£]|(?:usd|rmb|cny|eur)\s*\d|\d[\d,.]*\s*(?:\/?\s*(?:t|ton|mt|kg)|per\s+(?:t|ton|mt|kg)))/i.test(value)
 }
 
 const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
@@ -206,24 +215,26 @@ const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
     .map(record => {
       const supplier = record.supplier || noteLine(record.notes, 'Supplier') || record.checklistLabel
       const material = record.material || noteLine(record.notes, 'Material') || 'Material To Verify'
-      const value = record.proposedValue || noteLine(record.notes, 'Proposed value') || 'To Verify'
+      const value = record.proposedValue || noteLine(record.notes, 'Proposed value') || ''
       const sourceTitle = record.source?.title || 'Source review needed'
       const sourceUrl = record.source?.url
       const status = record.evidenceStatus === 'Verified' || record.evidenceStatus === 'Investor Approved'
         ? 'To Verify'
         : record.evidenceStatus
+      const hasApprovedPrice = isUsableSupplierPriceRecord(record, value)
       return {
         supplier,
         region: 'Autopilot source candidate',
         material,
-        pricePerTon: value,
-        quality: 'Review source evidence',
+        pricePerTon: hasApprovedPrice ? value : 'No approved quote yet',
+        quality: 'Quote/TDS/SDS/COA review needed',
         reliability: 'To Verify',
         payment: 'To Verify',
         score: 'Review needed',
         evidenceStatus: status,
         sourceTitle,
         sourceUrl,
+        sourceSummary: value || 'Imported supplier candidate. Quote/TDS/SDS/COA evidence is still needed before scoring.',
         nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score in source review until quote/TDS/SDS/COA evidence is approved.`,
         highRisk: isDmsMaterial(`${supplier} ${material}`),
       }
@@ -232,11 +243,12 @@ const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
 
 const displayedSupplierScorecardRows = computed(() => {
   const autopilotRows = autopilotSupplierScorecardRows.value
-  const used = new Set(autopilotRows.map(supplierRecordKey))
-  return [
-    ...autopilotRows,
-    ...supplierScorecardRows.filter(row => !used.has(supplierRecordKey(row))),
-  ]
+  const byKey = new Map<string, SupplierScorecardRow>()
+  for (const row of autopilotRows) {
+    const key = supplierRecordKey(row)
+    if (!byKey.has(key)) byKey.set(key, row)
+  }
+  return Array.from(byKey.values())
 })
 
 const priceForm = ref({
@@ -292,7 +304,7 @@ const summaryCards = computed(() => {
   return [
     { label: 'Tracked materials', value: materials.value.length, note: 'No live prices are hardcoded' },
     { label: 'Source-backed', value: sourced, note: 'Requires source/date and value' },
-    { label: 'Hermes verifying', value: toVerify, note: 'Missing or weak evidence checked twice daily' },
+    { label: 'Needs source review', value: toVerify, note: 'Missing or weak evidence checked twice daily' },
     { label: '5% alerts', value: alerts, note: 'Based on saved price history' },
   ]
 })
@@ -445,6 +457,7 @@ function supplierScorecardTaskBody(row: SupplierScorecardRow): string {
     `Evidence status: ${row.evidenceStatus}`,
     `Source: ${row.sourceTitle}`,
     `Source URL: ${row.sourceUrl || 'Missing / upload supplier document'}`,
+    `Source summary: ${row.sourceSummary}`,
     row.highRisk ? 'Risk flag: DMS/dimethyl sulfate requires regulatory, safety, transport, and permit verification before use.' : '',
     `Recommended next action: ${row.nextAction}`,
     'Do not use screenshot prices, payment terms, quality scores, reliability scores, or supplier rankings until quote/TDS/SDS/COA evidence is attached.',
@@ -659,7 +672,7 @@ onMounted(() => {
             payment terms, and total scores remain in source review until quote/TDS/SDS/COA evidence is attached.
           </p>
           <p v-if="autopilotSupplierScorecardRows.length" class="autopilot-note">
-            Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier/raw-material candidates from trusted-source research.
+            Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier candidates from trusted-source research.
             They are visible here as source-review candidates and still require source review before costing or investor use.
           </p>
           <p class="autopilot-note">
@@ -704,6 +717,10 @@ onMounted(() => {
             <span>Source / Evidence</span>
             <span>Action</span>
           </div>
+          <div v-if="!displayedSupplierScorecardRows.length" class="supplier-scorecard-empty">
+            <strong>No imported supplier scorecard rows yet.</strong>
+            <span>Run Supplier Scorecard Autopilot or upload quote/TDS/SDS/COA evidence. Primary rows will appear here only after Hermes imports source-backed supplier records.</span>
+          </div>
           <div
             v-for="row in displayedSupplierScorecardRows"
             :key="`${row.supplier}-${row.material}`"
@@ -726,6 +743,7 @@ onMounted(() => {
               </a>
               <span v-else class="verify-value">{{ displaySupplierStatus(row.evidenceStatus) }}</span>
               <small>{{ row.sourceTitle }}</small>
+              <small>{{ displaySupplierText(row.sourceSummary) }}</small>
             </div>
             <NButton
               size="tiny"
@@ -743,6 +761,19 @@ onMounted(() => {
         Do not use screenshot prices or supplier scores as verified facts. Supplier scorecards become actionable
         through Kanban tasks and uploaded evidence, not through unsourced dashboard numbers.
       </p>
+
+      <details class="reference-template-archive">
+        <summary>Reference-only supplier target template</summary>
+        <p>
+          These are planning targets only. They are not source-backed dashboard truth and must be checked through
+          Trusted Sources, Research Review, supplier quotes, TDS, SDS, COA, and uploaded evidence before use.
+        </p>
+        <div class="reference-template-grid">
+          <span v-for="row in supplierScorecardRows" :key="`${row.supplier}-${row.material}-reference`">
+            {{ row.supplier }} / {{ row.material }}
+          </span>
+        </div>
+      </details>
     </section>
 
     <section class="workspace-grid">
@@ -1062,6 +1093,18 @@ label,
   color: #c8d4e3;
 }
 
+.supplier-scorecard-empty {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border-bottom: 1px solid rgba(128, 162, 190, 0.18);
+  color: #a8b6c7;
+}
+
+.supplier-scorecard-empty strong {
+  color: #f6fbff;
+}
+
 .supplier-scorecard-row.head {
   border-bottom: 2px solid rgba(242, 200, 107, 0.78);
   color: #f2c86b;
@@ -1108,6 +1151,36 @@ label,
   border-top: 1px solid rgba(242, 200, 107, 0.25);
   padding-top: 12px;
   color: #f5bf5a;
+}
+
+.reference-template-archive {
+  margin-top: 12px;
+  border: 1px solid rgba(128, 162, 190, 0.24);
+  border-radius: 8px;
+  padding: 12px;
+  color: #a8b6c7;
+}
+
+.reference-template-archive summary {
+  color: #38d5ff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.reference-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.reference-template-grid span {
+  border: 1px solid rgba(128, 162, 190, 0.18);
+  border-radius: 7px;
+  padding: 8px;
+  background: rgba(128, 162, 190, 0.06);
+  color: #c8d4e3;
+  font-size: 12px;
 }
 
 .workspace-grid {
