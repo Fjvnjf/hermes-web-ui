@@ -20,6 +20,7 @@ import {
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
   dashboardSourceTierRank,
   ensureFullDashboardAutopilotScheduled,
+  comtradeImportPayloadToMarketClaimUpdate,
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
   readFullDashboardAutopilotImportStatus,
@@ -46,6 +47,19 @@ function companyfactsPayload(entityName: string, concept: string, rows: Array<{ 
         },
       },
     },
+  }
+}
+
+function comtradePayload(rows: Array<{ year: number; primaryValue: number; netWeightKg: number; isReported?: boolean }>) {
+  return {
+    data: rows.map(row => ({
+      refYear: row.year,
+      primaryValue: row.primaryValue,
+      netWgt: row.netWeightKg,
+      qty: row.netWeightKg,
+      isReported: row.isReported ?? false,
+      isAggregate: true,
+    })),
   }
 }
 
@@ -171,6 +185,31 @@ describe('dashboard autopilot output ingestion', () => {
       value: expect.stringContaining('+6.96%'),
       evidenceStatus: 'Official Company Evidence',
     }))
+  })
+
+  it('converts UN Comtrade imports into review-gated country market proxy claims', () => {
+    const update = comtradeImportPayloadToMarketClaimUpdate({
+      country: 'China',
+      reporterCode: '156',
+      fieldKeySlug: 'china',
+    }, comtradePayload([
+      { year: 2023, primaryValue: 195169270, netWeightKg: 51660671.263 },
+      { year: 2024, primaryValue: 236608417, netWeightKg: 65408986.289 },
+    ]), '2026-06-06')
+
+    expect(update).toEqual(expect.objectContaining({
+      fieldKey: 'market.country_consumption_growth.china.hs_380991',
+      label: 'Country-wise consumption growth - China',
+      evidenceStatus: 'Trade Proxy',
+      reviewRequired: true,
+      sourceTitle: 'UN Comtrade API: China HS 380991 imports',
+      sourceUrl: 'https://comtradeapi.un.org/public/v1/preview/C/A/HS?cmdCode=380991&flowCode=M&reporterCode=156&period=2023,2024&partnerCode=0&max=100000',
+    }))
+    expect(update?.value).toContain('FY2024 official HS 380991 import proxy')
+    expect(update?.value).toContain('US$236.608M')
+    expect(update?.value).toContain('65,409 MT')
+    expect(update?.value).toContain('YoY value +21.23%')
+    expect(update?.riskReason).toContain('not direct textile-softener consumption')
   })
 
   it('extracts flat dashboard_updates arrays and classifies competitor metric candidates', () => {
@@ -1095,7 +1134,10 @@ describe('dashboard autopilot output ingestion', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const result = await ingestFullDashboardAutopilotOutputs('default', { includeOfficialConnectors: true })
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: true,
+      includeOfficialTradeConnectors: false,
+    })
     const envelope = await readDashboardIntelligenceState('default')
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
@@ -1126,6 +1168,54 @@ describe('dashboard autopilot output ingestion', () => {
         sourceTier: 'tier1-official',
         confidence: 'high',
         reviewRequired: false,
+      }),
+    ]))
+  })
+
+  it('hydrates official UN Comtrade country import proxies when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => comtradePayload([
+        { year: 2023, primaryValue: 195169270, netWeightKg: 51660671.263 },
+        { year: 2024, primaryValue: 236608417, netWeightKg: 65408986.289 },
+      ]),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialTradeConnectors: true,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(10)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 10,
+    })
+    expect(envelope?.state.marketClaims).toHaveLength(10)
+    expect(envelope?.state.marketClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Country-wise consumption growth - China',
+        value: expect.stringContaining('FY2024 official HS 380991 import proxy: US$236.608M'),
+        evidenceStatus: 'Trade Proxy',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: 'UN Comtrade API: China HS 380991 imports',
+          url: expect.stringContaining('comtradeapi.un.org'),
+        }),
+      }),
+    ]))
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Country-wise consumption growth - China'),
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          fieldKey: 'market.country_consumption_growth.china.hs_380991',
+          value: expect.stringContaining('FY2024 official HS 380991 import proxy'),
+        }),
       }),
     ]))
   })
@@ -1781,7 +1871,7 @@ describe('dashboard autopilot output ingestion', () => {
         reviewRequired: false,
       }),
     ])
-    expect(registry.importerVersion).toContain('sec-financial-metrics')
+    expect(registry.importerVersion).toContain('official-trade-proxies')
     expect(registry.importedRunKeys).toContain(runKey)
     expect(second.importedRuns).toBe(0)
   })

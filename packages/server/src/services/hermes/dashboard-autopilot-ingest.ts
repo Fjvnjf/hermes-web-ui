@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-sec-financial-metrics-v7'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-official-trade-proxies-v8'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -333,6 +333,26 @@ interface SecAnnualRevenueMetric {
   entityName: string
 }
 
+interface ComtradeMarketProxySource {
+  country: string
+  reporterCode: string
+  fieldKeySlug: string
+}
+
+interface ComtradeAnnualImportMetric {
+  year: number
+  primaryValue: number
+  netWeightKg: number
+  isReported: boolean
+  isAggregate: boolean
+}
+
+interface OfficialConnectorResult {
+  autoFilledCount: number
+  stagedReviewCount: number
+  errors: string[]
+}
+
 const COMPETITOR_SOURCE_BACKED_METRIC_FIELDS: CompetitorMetricField[] = [
   'pricingEvidence',
   'marketShare',
@@ -363,6 +383,21 @@ const SEC_REVENUE_CONCEPTS = [
   'Revenues',
   'SalesRevenueNet',
 ]
+
+const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
+  { country: 'China', reporterCode: '156', fieldKeySlug: 'china' },
+  { country: 'Bangladesh', reporterCode: '50', fieldKeySlug: 'bangladesh' },
+  { country: 'India', reporterCode: '699', fieldKeySlug: 'india' },
+  { country: 'Vietnam', reporterCode: '704', fieldKeySlug: 'vietnam' },
+  { country: 'Pakistan', reporterCode: '586', fieldKeySlug: 'pakistan' },
+  { country: 'Turkey', reporterCode: '792', fieldKeySlug: 'turkey' },
+  { country: 'Indonesia', reporterCode: '360', fieldKeySlug: 'indonesia' },
+  { country: 'EU / Germany', reporterCode: '276', fieldKeySlug: 'eu_germany' },
+  { country: 'United States', reporterCode: '842', fieldKeySlug: 'united_states' },
+  { country: 'GCC / Saudi Arabia', reporterCode: '682', fieldKeySlug: 'gcc_saudi_arabia' },
+]
+
+const COMTRADE_TEXTILE_FINISHING_HS_CODE = '380991'
 
 interface ImportRegistry {
   version: 1
@@ -407,6 +442,7 @@ interface IngestOptions {
   jobId?: string
   maxFilesPerJob?: number
   includeOfficialConnectors?: boolean
+  includeOfficialTradeConnectors?: boolean
 }
 
 export interface FullDashboardAutopilotScheduleResult {
@@ -3129,6 +3165,22 @@ function formatSignedPercent(value: number): string {
   return `${sign}${value.toFixed(2).replace(/\.?0+$/, '')}%`
 }
 
+function formatMetricTonsFromKg(value: number): string {
+  return `${Math.round(value / 1000).toLocaleString('en-US')} MT`
+}
+
+function comtradeApiUrl(source: ComtradeMarketProxySource, period = '2023,2024'): string {
+  return [
+    'https://comtradeapi.un.org/public/v1/preview/C/A/HS',
+    `?cmdCode=${COMTRADE_TEXTILE_FINISHING_HS_CODE}`,
+    '&flowCode=M',
+    `&reporterCode=${source.reporterCode}`,
+    `&period=${period}`,
+    '&partnerCode=0',
+    '&max=100000',
+  ].join('')
+}
+
 function annualRevenueMetricsFromSecCompanyfacts(
   source: SecCompetitorFinancialSource,
   payload: unknown,
@@ -3174,6 +3226,28 @@ function annualRevenueMetricsFromSecCompanyfacts(
     })
 
   return candidates[0]?.rows || []
+}
+
+function annualImportMetricsFromComtrade(payload: unknown): ComtradeAnnualImportMetric[] {
+  if (!isPlainRecord(payload) || !Array.isArray(payload.data)) return []
+  const byYear = new Map<number, ComtradeAnnualImportMetric>()
+  for (const entry of payload.data) {
+    if (!isPlainRecord(entry)) continue
+    const year = Number(entry.refYear)
+    const primaryValue = Number(entry.primaryValue)
+    const netWeightKg = Number(entry.netWgt || entry.qty || 0)
+    if (!Number.isFinite(year) || !Number.isFinite(primaryValue) || !Number.isFinite(netWeightKg)) continue
+    const metric: ComtradeAnnualImportMetric = {
+      year,
+      primaryValue,
+      netWeightKg,
+      isReported: entry.isReported === true,
+      isAggregate: entry.isAggregate === true,
+    }
+    const existing = byYear.get(year)
+    if (!existing || metric.primaryValue > existing.primaryValue) byYear.set(year, metric)
+  }
+  return Array.from(byYear.values()).sort((left, right) => left.year - right.year)
 }
 
 export function secCompanyfactsToCompetitorFinancialUpdate(
@@ -3251,14 +3325,55 @@ export function secCompanyfactsToCompetitorFinancialUpdate(
   }
 }
 
+export function comtradeImportPayloadToMarketClaimUpdate(
+  source: ComtradeMarketProxySource,
+  payload: unknown,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const annualRows = annualImportMetricsFromComtrade(payload)
+  const latest = annualRows[annualRows.length - 1]
+  const previous = annualRows[annualRows.length - 2]
+  if (!latest || !previous || previous.primaryValue === 0 || previous.netWeightKg === 0) return null
+
+  const valueGrowth = ((latest.primaryValue - previous.primaryValue) / previous.primaryValue) * 100
+  const weightGrowth = ((latest.netWeightKg - previous.netWeightKg) / previous.netWeightKg) * 100
+  const sourceUrl = comtradeApiUrl(source)
+  const value = [
+    `FY${latest.year} official HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} import proxy:`,
+    `${formatUsdCompact(latest.primaryValue)} import value;`,
+    `${formatMetricTonsFromKg(latest.netWeightKg)} net weight;`,
+    `YoY value ${formatSignedPercent(valueGrowth)} and weight ${formatSignedPercent(weightGrowth)} vs FY${previous.year}.`,
+    latest.isReported ? 'Reported by reporter.' : 'UN Comtrade marks this row as estimated/aggregate.',
+  ].join(' ')
+
+  return {
+    fieldKey: `market.country_consumption_growth.${source.fieldKeySlug}.hs_${COMTRADE_TEXTILE_FINISHING_HS_CODE}`,
+    label: `Country-wise consumption growth - ${source.country}`,
+    proposedDashboardField: `${source.country} HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} import proxy`,
+    value,
+    sourceTitle: `UN Comtrade API: ${source.country} HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} imports`,
+    sourceUrl,
+    sourceTier: 'Tier 1 official UN Comtrade trade source',
+    sourceDate: String(latest.year),
+    lastChecked: checkedAt,
+    confidence: 'medium',
+    evidenceStatus: 'Trade Proxy',
+    reviewRequired: true,
+    dataType: 'trade_data',
+    riskReason: 'Official import data is useful market evidence, but it is not direct textile-softener consumption or product-line demand proof.',
+    recommendedAction: `Review HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} fit and collect direct textile-softener demand evidence for ${source.country}.`,
+  }
+}
+
 async function applyOfficialCompetitorFinancialMetrics(
   state: DashboardIntelligenceState,
   checkedAt: string,
-): Promise<{ autoFilledCount: number, errors: string[] }> {
+): Promise<OfficialConnectorResult> {
   let autoFilledCount = 0
+  let stagedReviewCount = 0
   const errors: string[] = []
   const fetcher = globalThis.fetch
-  if (typeof fetcher !== 'function') return { autoFilledCount, errors: ['official SEC connector: fetch is unavailable'] }
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official SEC connector: fetch is unavailable'] }
 
   for (const source of SEC_COMPETITOR_FINANCIAL_SOURCES) {
     try {
@@ -3281,12 +3396,50 @@ async function applyOfficialCompetitorFinancialMetrics(
       const runKey = `official-sec/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
       const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
       autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
     } catch (err) {
       errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'SEC connector failed'}`)
     }
   }
 
-  return { autoFilledCount, errors }
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyOfficialComtradeMarketProxies(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official Comtrade connector: fetch is unavailable'] }
+
+  for (const source of COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES) {
+    try {
+      const response = await fetcher(comtradeApiUrl(source), {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'application/json',
+        },
+      })
+      if (!response.ok) {
+        errors.push(`${source.country}: UN Comtrade returned ${response.status}`)
+        continue
+      }
+      const payload = await response.json()
+      const update = comtradeImportPayloadToMarketClaimUpdate(source, payload, checkedAt)
+      if (!update) continue
+      const runKey = `official-comtrade/${source.fieldKeySlug}/${COMTRADE_TEXTILE_FINISHING_HS_CODE}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { marketClaims: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.country}: ${err instanceof Error ? err.message : 'UN Comtrade connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
 }
 
 export async function ingestFullDashboardAutopilotOutputs(
@@ -3316,14 +3469,22 @@ export async function ingestFullDashboardAutopilotOutputs(
   const envelope = await readDashboardIntelligenceState(profile)
   const state = normalizeState(envelope?.state)
   const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
+  const officialTradeConnectorsEnabled = options.includeOfficialTradeConnectors ?? officialConnectorsEnabled
   if (officialConnectorsEnabled) {
     const official = await applyOfficialCompetitorFinancialMetrics(state, new Date().toISOString().slice(0, 10))
     result.autoFilledCount += official.autoFilledCount
+    result.stagedReviewCount += official.stagedReviewCount
     result.errors.push(...official.errors.map(error => `official source connector: ${error}`))
+  }
+  if (officialTradeConnectorsEnabled) {
+    const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialTrade.autoFilledCount
+    result.stagedReviewCount += officialTrade.stagedReviewCount
+    result.errors.push(...officialTrade.errors.map(error => `official source connector: ${error}`))
   }
 
   if (discoveredOutputs.outputFiles.length === 0) {
-    if (result.autoFilledCount > 0) {
+    if (result.autoFilledCount > 0 || result.stagedReviewCount > 0) {
       await writeDashboardIntelligenceState({
         profile,
         state,
