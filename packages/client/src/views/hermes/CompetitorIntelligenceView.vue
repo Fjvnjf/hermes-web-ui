@@ -791,14 +791,20 @@ function confidenceScoreForRow(status: IntelligenceEvidenceStatus, hasSource: bo
 function comparableNumber(value: string): number | null {
   const normalized = String(value || '').trim().replace(/\bFY\s*20\d{2}\b/gi, '').replace(/\b20\d{2}\b(?=\s+(?:company|net|sales|revenue|turnover|yoy))/gi, '')
   if (!normalized || /verify|missing|restricted|source search/i.test(normalized)) return null
-  const money = normalized.match(/(?:US\$|USD|EUR|JPY|CNY|RMB|[$€¥])\s*([\d,.]+)\s*(billion|bn|million|mn|m|k)?/i)
+  const percent = normalized.match(/([+-]?\d[\d,.]*)\s*%/)
+  if (percent) {
+    const value = Number.parseFloat(percent[1].replace(/,/g, ''))
+    if (Number.isFinite(value)) return value
+  }
+  const money = normalized.match(/(?:US\$|USD|EUR|JPY|CNY|RMB|[$€¥])\s*([\d,.]+)\s*(billion|bn|b|million|mn|m|k)?/i)
   if (money) {
     const base = Number.parseFloat(money[1].replace(/,/g, ''))
     if (!Number.isFinite(base)) return null
     const unit = money[2]?.toLowerCase()
-    if (unit === 'billion' || unit === 'bn') return base * 1000
+    if (unit === 'billion' || unit === 'bn' || unit === 'b') return base * 1000
     if (unit === 'million' || unit === 'mn' || unit === 'm') return base
     if (unit === 'k') return base / 1000
+    if (base >= 100_000) return base / 1_000_000
     return base
   }
   const range = normalized.match(/([\d,.]+)\s*[-–]\s*([\d,.]+)/)

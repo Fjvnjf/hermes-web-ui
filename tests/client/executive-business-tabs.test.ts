@@ -491,7 +491,7 @@ describe('screenshot-matched executive business tabs', () => {
       distributionPresence: 'Official distributor page',
       marketShare: '7% source-backed',
       revenue: '$42M source-backed',
-      yearlyGrowth: '+8% source-backed',
+      yearlyGrowth: '',
       traffic: '1.2M visits source-backed',
       rating: '4.8 source-backed',
       lastUpdated: '2026-06-05',
@@ -509,8 +509,8 @@ describe('screenshot-matched executive business tabs', () => {
       certifications: 'Official certificate',
       distributionPresence: 'Official distributor page',
       marketShare: '6% source-backed',
-      revenue: '$18M source-backed',
-      yearlyGrowth: '+5% source-backed',
+      revenue: 'FY2024 company-wide net sales: US$2,180,274,000',
+      yearlyGrowth: 'FY2024 net sales YoY: -6.26% vs FY2023 US$2,325,768,000',
       traffic: '950K visits source-backed',
       rating: '4.6 source-backed',
       lastUpdated: '2026-06-04',
@@ -518,6 +518,25 @@ describe('screenshot-matched executive business tabs', () => {
       evidenceStatus: 'Source-backed',
       source: { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' },
       notes: 'Second product variation should not duplicate the company row.',
+    })
+    intelligence.addCompetitor({
+      companyName: 'Alpha Source Co',
+      countryRegion: 'Company-wide',
+      productEquivalent: 'Company-wide financial context; not product-line revenue.',
+      activeContent: 'No source-backed value yet',
+      pricingEvidence: '',
+      certifications: 'Official SEC companyfacts',
+      distributionPresence: 'No source-backed value yet',
+      marketShare: '',
+      revenue: 'FY2025 company-wide revenue: US$2.332B (SEC reported US$2,332,114,000)',
+      yearlyGrowth: '+6.96% source-backed',
+      traffic: '',
+      rating: '',
+      lastUpdated: '2026-02-26',
+      confidence: 'high',
+      evidenceStatus: 'Official Data',
+      source: { title: 'SEC Companyfacts: Alpha Source Co Revenues', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000000.json', date: '2026-02-26' },
+      notes: 'Latest official company-wide metric should beat older exact-dollar formatting.',
     })
     intelligence.addCompetitor({
       companyName: 'Beta Source Co',
@@ -549,6 +568,10 @@ describe('screenshot-matched executive business tabs', () => {
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(alphaRows).toHaveLength(1)
     expect(alphaRows[0].text()).toContain('CWAS equivalent / CWMS variation')
+    expect(alphaRows[0].text()).toContain('FY2025 company-wide revenue: US$2.332B')
+    expect(alphaRows[0].text()).toContain('+6.96% source-backed')
+    expect(alphaRows[0].text()).not.toContain('FY2024 company-wide net sales: US$2,180,274,000')
+    expect(alphaRows[0].text()).not.toContain('FY2024 net sales YoY: -6.26%')
     expect(alphaRows[0].text()).toContain('1.2M visits source-backed')
     expect(alphaRows[0].text()).toContain('4.8 source-backed')
     expect(alphaRows[0].text()).toContain('high')
@@ -565,7 +588,7 @@ describe('screenshot-matched executive business tabs', () => {
     await revenueSort!.trigger('click')
     const firstSortedRow = wrapper.findAll('.comparison-grid-row').filter(row => !row.classes().includes('head'))[0]
     expect(firstSortedRow.text()).toContain('Alpha Source Co')
-    expect(firstSortedRow.text()).toContain('$42M source-backed')
+    expect(firstSortedRow.text()).toContain('FY2025 company-wide revenue: US$2.332B')
 
     const categorySelect = wrapper.findAll('.comparison-filter-bar select')[0]
     await categorySelect.setValue('Silicone Softener')

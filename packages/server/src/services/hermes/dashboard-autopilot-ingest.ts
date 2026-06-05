@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-flat-array-coverage-v6'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-sec-financial-metrics-v7'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -38,6 +38,7 @@ const DASHBOARD_UPDATE_GROUPS = [
 const AUTO_TRUSTED_STATUSES = new Set([
   'Trusted Source Auto-Updated',
   'Official Data',
+  'Official Company Evidence',
   'Source-backed',
   'Supplier Evidence',
 ])
@@ -316,6 +317,22 @@ type CompetitorMetricField =
   | 'rating'
   | 'lastUpdated'
 
+interface SecCompetitorFinancialSource {
+  companyName: string
+  cik: string
+  fieldKeySlug: string
+  aliases: string[]
+}
+
+interface SecAnnualRevenueMetric {
+  year: number
+  value: number
+  filed: string
+  accession: string
+  concept: string
+  entityName: string
+}
+
 const COMPETITOR_SOURCE_BACKED_METRIC_FIELDS: CompetitorMetricField[] = [
   'pricingEvidence',
   'marketShare',
@@ -324,6 +341,27 @@ const COMPETITOR_SOURCE_BACKED_METRIC_FIELDS: CompetitorMetricField[] = [
   'traffic',
   'rating',
   'lastUpdated',
+]
+
+const SEC_COMPETITOR_FINANCIAL_SOURCES: SecCompetitorFinancialSource[] = [
+  {
+    companyName: 'Stepan Company',
+    cik: '0000094049',
+    fieldKeySlug: 'stepan_company',
+    aliases: ['stepan', 'stepan company'],
+  },
+  {
+    companyName: 'Dow',
+    cik: '0001751788',
+    fieldKeySlug: 'dow',
+    aliases: ['dow', 'dow inc', 'dow inc.'],
+  },
+]
+
+const SEC_REVENUE_CONCEPTS = [
+  'RevenueFromContractWithCustomerExcludingAssessedTax',
+  'Revenues',
+  'SalesRevenueNet',
 ]
 
 interface ImportRegistry {
@@ -368,6 +406,7 @@ export interface DashboardAutopilotIngestResult {
 interface IngestOptions {
   jobId?: string
   maxFilesPerJob?: number
+  includeOfficialConnectors?: boolean
 }
 
 export interface FullDashboardAutopilotScheduleResult {
@@ -2699,10 +2738,11 @@ function appendCompetitorRecord(
     recordTier !== 'tier5-public-listing' &&
     recordTier !== 'candidate-source'
   if (!primaryMetric && topLevelReviewRequired && !canImportProductContext) return false
-  const existingIndex = state.competitors.findIndex(competitor =>
-    stringValue(competitor.companyName).toLowerCase() === companyName.toLowerCase() &&
-    stringValue((competitor.source as Record<string, unknown> | undefined)?.title) === stringValue(recordSource?.title),
-  )
+  const existingIndex = state.competitors.findIndex(competitor => {
+    if (stringValue(competitor.companyName).toLowerCase() !== companyName.toLowerCase()) return false
+    if (primaryMetric) return true
+    return stringValue((competitor.source as Record<string, unknown> | undefined)?.title) === stringValue(recordSource?.title)
+  })
   const importedRecord = {
     id: stableId('autopilot-competitor', input.runKey, companyName, stringValue(recordSource?.title)),
     companyName,
@@ -2739,11 +2779,12 @@ function appendCompetitorRecord(
   if (existingIndex >= 0) {
     const existing = state.competitors[existingIndex]
     const merged = { ...existing, ...importedRecord }
-    for (const field of ['pricingEvidence', 'marketShare', 'revenue', 'yearlyGrowth', 'traffic', 'rating', 'lastUpdated'] as const) {
+    for (const field of ['countryRegion', 'productEquivalent', 'activeContent', 'certifications', 'distributionPresence', 'pricingEvidence', 'marketShare', 'revenue', 'yearlyGrowth', 'traffic', 'rating', 'lastUpdated'] as const) {
       if (!isUsefulDashboardValue(stringValue(importedRecord[field])) && isUsefulDashboardValue(stringValue(existing[field]))) {
         ;(merged as Record<string, unknown>)[field] = existing[field]
       }
     }
+    if (JSON.stringify(existing) === JSON.stringify(merged)) return false
     state.competitors[existingIndex] = merged
     return true
   }
@@ -3076,6 +3117,178 @@ function applyDashboardUpdates(
   return { autoFilledCount, stagedReviewCount }
 }
 
+function formatUsdCompact(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000) return `US$${(value / 1_000_000_000).toFixed(3).replace(/\.?0+$/, '')}B`
+  if (abs >= 1_000_000) return `US$${(value / 1_000_000).toFixed(3).replace(/\.?0+$/, '')}M`
+  return `US$${value.toLocaleString('en-US')}`
+}
+
+function formatSignedPercent(value: number): string {
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(2).replace(/\.?0+$/, '')}%`
+}
+
+function annualRevenueMetricsFromSecCompanyfacts(
+  source: SecCompetitorFinancialSource,
+  payload: unknown,
+): SecAnnualRevenueMetric[] {
+  if (!isPlainRecord(payload) || !isPlainRecord(payload.facts)) return []
+  const facts = payload.facts
+  const usGaap = isPlainRecord(facts['us-gaap']) ? facts['us-gaap'] : {}
+  const entityName = firstString(payload.entityName, source.companyName)
+  const candidates = SEC_REVENUE_CONCEPTS
+    .map((concept, priority) => {
+      const fact = isPlainRecord(usGaap[concept]) ? usGaap[concept] : null
+      const units = isPlainRecord(fact?.units) && Array.isArray(fact.units.USD) ? fact.units.USD : []
+      const byYear = new Map<number, SecAnnualRevenueMetric>()
+      for (const entry of units) {
+        if (!isPlainRecord(entry)) continue
+        if (firstString(entry.form) !== '10-K') continue
+        const frame = firstString(entry.frame)
+        const match = frame.match(/^CY(\d{4})$/)
+        const value = Number(entry.val)
+        if (!match || !Number.isFinite(value)) continue
+        const year = Number(match[1])
+        const metric: SecAnnualRevenueMetric = {
+          year,
+          value,
+          filed: firstString(entry.filed),
+          accession: firstString(entry.accn),
+          concept,
+          entityName,
+        }
+        const existing = byYear.get(year)
+        if (!existing || metric.filed > existing.filed) byYear.set(year, metric)
+      }
+      return {
+        priority,
+        rows: Array.from(byYear.values()).sort((left, right) => left.year - right.year),
+      }
+    })
+    .filter(candidate => candidate.rows.length >= 2)
+    .sort((left, right) => {
+      const leftLatest = left.rows[left.rows.length - 1]?.year || 0
+      const rightLatest = right.rows[right.rows.length - 1]?.year || 0
+      return rightLatest - leftLatest || left.priority - right.priority
+    })
+
+  return candidates[0]?.rows || []
+}
+
+export function secCompanyfactsToCompetitorFinancialUpdate(
+  source: SecCompetitorFinancialSource,
+  payload: unknown,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const annualRows = annualRevenueMetricsFromSecCompanyfacts(source, payload)
+  const latest = annualRows[annualRows.length - 1]
+  const previous = annualRows[annualRows.length - 2]
+  if (!latest || !previous || previous.value === 0) return null
+
+  const sourceUrl = `https://data.sec.gov/api/xbrl/companyfacts/CIK${source.cik}.json`
+  const sourceTitle = `SEC Companyfacts: ${latest.entityName} ${latest.concept}`
+  const revenueValue = `FY${latest.year} company-wide revenue: ${formatUsdCompact(latest.value)} (SEC reported US$${latest.value.toLocaleString('en-US')})`
+  const growth = ((latest.value - previous.value) / previous.value) * 100
+  const growthValue = `FY${latest.year} company-wide revenue YoY: ${formatSignedPercent(growth)} vs FY${previous.year} ${formatUsdCompact(previous.value)}`
+
+  return {
+    fieldKey: `competitor_metrics.${source.fieldKeySlug}.official_financials`,
+    companyName: source.companyName,
+    productEquivalent: 'Company-wide financial context; not textile-softener product-line revenue.',
+    countryRegion: 'Company-wide',
+    revenue: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.revenue`,
+      value: revenueValue,
+      sourceTitle,
+      sourceUrl,
+      sourceTier: 'Tier 1 official SEC companyfacts',
+      lastChecked: checkedAt,
+      sourceDate: latest.filed,
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'company_data',
+      riskReason: 'Company-wide revenue from official SEC XBRL companyfacts; not product-line revenue.',
+    },
+    yearlyGrowth: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.yoy_growth`,
+      value: growthValue,
+      sourceTitle,
+      sourceUrl,
+      sourceTier: 'Tier 1 official SEC companyfacts',
+      lastChecked: checkedAt,
+      sourceDate: latest.filed,
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'company_data',
+      riskReason: 'Calculated from two SEC-reported annual company-wide revenue values.',
+    },
+    lastUpdated: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+      value: latest.filed || checkedAt,
+      sourceTitle,
+      sourceUrl,
+      sourceTier: 'Tier 1 official SEC companyfacts',
+      lastChecked: checkedAt,
+      sourceDate: latest.filed,
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'company_data',
+    },
+    sourceTitle,
+    sourceUrl,
+    sourceTier: 'Tier 1 official SEC companyfacts',
+    sourceDate: latest.filed,
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Official Company Evidence',
+    reviewRequired: false,
+    dataType: 'company_data',
+    recommendedAction: 'Use as company-wide financial context only. Do not present as product-line, China, or textile-softener revenue.',
+  }
+}
+
+async function applyOfficialCompetitorFinancialMetrics(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<{ autoFilledCount: number, errors: string[] }> {
+  let autoFilledCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, errors: ['official SEC connector: fetch is unavailable'] }
+
+  for (const source of SEC_COMPETITOR_FINANCIAL_SOURCES) {
+    try {
+      const response = await fetcher(`https://data.sec.gov/api/xbrl/companyfacts/CIK${source.cik}.json`, {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'application/json',
+        },
+      })
+      if (!response.ok) {
+        errors.push(`${source.companyName}: SEC companyfacts returned ${response.status}`)
+        continue
+      }
+      const payload = await response.json()
+      const update = secCompanyfactsToCompetitorFinancialUpdate(source, payload, checkedAt)
+      if (!update) {
+        errors.push(`${source.companyName}: SEC revenue metrics unavailable`)
+        continue
+      }
+      const runKey = `official-sec/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'SEC connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, errors }
+}
+
 export async function ingestFullDashboardAutopilotOutputs(
   profileInput?: string,
   options: IngestOptions = {},
@@ -3100,14 +3313,33 @@ export async function ingestFullDashboardAutopilotOutputs(
   })
   const discoveredOutputs = await listDashboardAutopilotOutputFiles(profile, jobs, maxFilesPerJob, { jobId: options.jobId })
   result.jobsChecked = discoveredOutputs.jobsChecked
-  if (discoveredOutputs.outputFiles.length === 0) return result
+  const envelope = await readDashboardIntelligenceState(profile)
+  const state = normalizeState(envelope?.state)
+  const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
+  if (officialConnectorsEnabled) {
+    const official = await applyOfficialCompetitorFinancialMetrics(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += official.autoFilledCount
+    result.errors.push(...official.errors.map(error => `official source connector: ${error}`))
+  }
+
+  if (discoveredOutputs.outputFiles.length === 0) {
+    if (result.autoFilledCount > 0) {
+      await writeDashboardIntelligenceState({
+        profile,
+        state,
+        savedBy: {
+          username: 'Full Dashboard Autopilot',
+          role: 'system',
+        },
+      })
+    }
+    return result
+  }
 
   const registry = await readImportRegistry(profile)
   const shouldReplayImportedRuns = registry.importerVersion !== DASHBOARD_AUTOPILOT_IMPORTER_VERSION
   const importedRunKeys = new Set(shouldReplayImportedRuns ? [] : registry.importedRunKeys)
   const skippedRunKeys = new Set(shouldReplayImportedRuns ? [] : registry.skippedRunKeys)
-  const envelope = await readDashboardIntelligenceState(profile)
-  const state = normalizeState(envelope?.state)
 
   for (const output of discoveredOutputs.outputFiles) {
     const runKey = `${output.jobId}/${output.fileName}`

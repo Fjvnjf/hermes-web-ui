@@ -24,8 +24,30 @@ import {
   ingestFullDashboardAutopilotOutputs,
   readFullDashboardAutopilotImportStatus,
   runDueFullDashboardAutopilot,
+  secCompanyfactsToCompetitorFinancialUpdate,
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
+
+function companyfactsPayload(entityName: string, concept: string, rows: Array<{ year: number; value: number; filed: string; accession: string }>) {
+  return {
+    entityName,
+    facts: {
+      'us-gaap': {
+        [concept]: {
+          units: {
+            USD: rows.map(row => ({
+              form: '10-K',
+              frame: `CY${row.year}`,
+              val: row.value,
+              filed: row.filed,
+              accn: row.accession,
+            })),
+          },
+        },
+      },
+    },
+  }
+}
 
 function writeFullDashboardJob(
   home: string,
@@ -96,6 +118,7 @@ describe('dashboard autopilot output ingestion', () => {
   afterEach(() => {
     if (originalHermesHome === undefined) delete process.env.HERMES_HOME
     else process.env.HERMES_HOME = originalHermesHome
+    vi.unstubAllGlobals()
     rmSync(hermesHome, { recursive: true, force: true })
   })
 
@@ -119,6 +142,35 @@ describe('dashboard autopilot output ingestion', () => {
     expect(payload?.marketClaims).toEqual([
       expect.objectContaining({ label: 'Official policy source', value: 'Published' }),
     ])
+  })
+
+  it('converts SEC companyfacts revenue into source-backed competitor financial metrics', () => {
+    const update = secCompanyfactsToCompetitorFinancialUpdate({
+      companyName: 'Stepan Company',
+      cik: '0000094049',
+      fieldKeySlug: 'stepan_company',
+      aliases: ['stepan'],
+    }, companyfactsPayload('STEPAN COMPANY', 'RevenueFromContractWithCustomerExcludingAssessedTax', [
+      { year: 2024, value: 2180274000, filed: '2025-02-27', accession: '0000950170-25-029079' },
+      { year: 2025, value: 2332114000, filed: '2026-02-26', accession: '0001193125-26-074976' },
+    ]), '2026-06-06')
+
+    expect(update).toEqual(expect.objectContaining({
+      companyName: 'Stepan Company',
+      fieldKey: 'competitor_metrics.stepan_company.official_financials',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+    }))
+    expect(update?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2025 company-wide revenue: US$2.332B'),
+      sourceUrl: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000094049.json',
+      confidence: 'high',
+      reviewRequired: false,
+    }))
+    expect(update?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('+6.96%'),
+      evidenceStatus: 'Official Company Evidence',
+    }))
   })
 
   it('extracts flat dashboard_updates arrays and classifies competitor metric candidates', () => {
@@ -1024,6 +1076,60 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('hydrates official SEC competitor revenue metrics when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async (url: string) => {
+      const payload = url.includes('0000094049')
+        ? companyfactsPayload('STEPAN COMPANY', 'RevenueFromContractWithCustomerExcludingAssessedTax', [
+          { year: 2024, value: 2180274000, filed: '2025-02-27', accession: '0000950170-25-029079' },
+          { year: 2025, value: 2332114000, filed: '2026-02-26', accession: '0001193125-26-074976' },
+        ])
+        : companyfactsPayload('Dow Inc.', 'Revenues', [
+          { year: 2024, value: 42964000000, filed: '2025-02-04', accession: '0001751788-25-000012' },
+          { year: 2025, value: 39968000000, filed: '2026-02-03', accession: '0001751788-26-000018' },
+        ])
+      return {
+        ok: true,
+        json: async () => payload,
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', { includeOfficialConnectors: true })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 2,
+      stagedReviewCount: 0,
+    })
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        revenue: expect.stringContaining('FY2025 company-wide revenue: US$2.332B'),
+        yearlyGrowth: expect.stringContaining('+6.96%'),
+        evidenceStatus: 'Official Data',
+        sourceTier: 'tier1-official',
+        confidence: 'high',
+        reviewRequired: false,
+        source: expect.objectContaining({
+          title: 'SEC Companyfacts: STEPAN COMPANY RevenueFromContractWithCustomerExcludingAssessedTax',
+          url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000094049.json',
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Dow',
+        revenue: expect.stringContaining('FY2025 company-wide revenue: US$39.968B'),
+        yearlyGrowth: expect.stringContaining('-6.97%'),
+        evidenceStatus: 'Official Data',
+        sourceTier: 'tier1-official',
+        confidence: 'high',
+        reviewRequired: false,
+      }),
+    ]))
+  })
+
   it('imports flat competitor metric arrays by hydrating official metrics and staging weak candidates', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T01-21-23.000000+00-00.md', {
@@ -1062,7 +1168,7 @@ describe('dashboard autopilot output ingestion', () => {
     expect(result).toMatchObject({
       importedRuns: 1,
       autoFilledCount: 1,
-      stagedReviewCount: 2,
+      stagedReviewCount: 1,
     })
     expect(envelope?.state.competitors).toEqual([
       expect.objectContaining({
@@ -1675,7 +1781,7 @@ describe('dashboard autopilot output ingestion', () => {
         reviewRequired: false,
       }),
     ])
-    expect(registry.importerVersion).toContain('flat-array-coverage')
+    expect(registry.importerVersion).toContain('sec-financial-metrics')
     expect(registry.importedRunKeys).toContain(runKey)
     expect(second.importedRuns).toBe(0)
   })
