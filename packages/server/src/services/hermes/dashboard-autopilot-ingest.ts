@@ -3319,6 +3319,17 @@ function formatMetricTonsFromKg(value: number): string {
   return `${Math.round(value / 1000).toLocaleString('en-US')} MT`
 }
 
+function latestComtradeCandidatePeriods(now = new Date()): string[] {
+  const currentYear = Number.isFinite(now.getUTCFullYear()) ? now.getUTCFullYear() : 2026
+  const latestFullYear = Math.max(2025, currentYear - 1)
+  const candidates = [
+    `${latestFullYear - 1},${latestFullYear}`,
+    `${latestFullYear - 2},${latestFullYear - 1}`,
+    '2023,2024',
+  ]
+  return [...new Set(candidates)]
+}
+
 function comtradeApiUrl(source: ComtradeMarketProxySource, period = '2023,2024'): string {
   return [
     'https://comtradeapi.un.org/public/v1/preview/C/A/HS',
@@ -3626,6 +3637,7 @@ export function comtradeImportPayloadToMarketClaimUpdate(
   source: ComtradeMarketProxySource,
   payload: unknown,
   checkedAt: string,
+  period = '2023,2024',
 ): DashboardResearchUpdateItem | null {
   const annualRows = annualImportMetricsFromComtrade(payload)
   const latest = annualRows[annualRows.length - 1]
@@ -3634,7 +3646,7 @@ export function comtradeImportPayloadToMarketClaimUpdate(
 
   const valueGrowth = ((latest.primaryValue - previous.primaryValue) / previous.primaryValue) * 100
   const weightGrowth = ((latest.netWeightKg - previous.netWeightKg) / previous.netWeightKg) * 100
-  const sourceUrl = comtradeApiUrl(source)
+  const sourceUrl = comtradeApiUrl(source, period)
   const value = [
     `FY${latest.year} official HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} import proxy:`,
     `${formatUsdCompact(latest.primaryValue)} import value;`,
@@ -3793,24 +3805,34 @@ async function applyOfficialComtradeMarketProxies(
   if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official Comtrade connector: fetch is unavailable'] }
 
   for (const source of COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES) {
+    let imported = false
+    let lastError = ''
     try {
-      const response = await fetcher(comtradeApiUrl(source), {
-        headers: {
-          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
-          Accept: 'application/json',
-        },
-      })
-      if (!response.ok) {
-        errors.push(`${source.country}: UN Comtrade returned ${response.status}`)
-        continue
+      for (const period of latestComtradeCandidatePeriods()) {
+        const response = await fetcher(comtradeApiUrl(source, period), {
+          headers: {
+            'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+            Accept: 'application/json',
+          },
+        })
+        if (!response.ok) {
+          lastError = `UN Comtrade returned ${response.status} for period ${period}`
+          continue
+        }
+        const payload = await response.json()
+        const update = comtradeImportPayloadToMarketClaimUpdate(source, payload, checkedAt, period)
+        if (!update) {
+          lastError = `UN Comtrade did not return two usable annual rows for period ${period}`
+          continue
+        }
+        const runKey = `official-comtrade/${source.fieldKeySlug}/${COMTRADE_TEXTILE_FINISHING_HS_CODE}/${firstString(update.sourceDate, checkedAt)}`
+        const result = applyDashboardUpdates(state, { marketClaims: [update] }, runKey, checkedAt)
+        autoFilledCount += result.autoFilledCount
+        stagedReviewCount += result.stagedReviewCount
+        imported = true
+        break
       }
-      const payload = await response.json()
-      const update = comtradeImportPayloadToMarketClaimUpdate(source, payload, checkedAt)
-      if (!update) continue
-      const runKey = `official-comtrade/${source.fieldKeySlug}/${COMTRADE_TEXTILE_FINISHING_HS_CODE}/${firstString(update.sourceDate, checkedAt)}`
-      const result = applyDashboardUpdates(state, { marketClaims: [update] }, runKey, checkedAt)
-      autoFilledCount += result.autoFilledCount
-      stagedReviewCount += result.stagedReviewCount
+      if (!imported && lastError) errors.push(`${source.country}: ${lastError}`)
     } catch (err) {
       errors.push(`${source.country}: ${err instanceof Error ? err.message : 'UN Comtrade connector failed'}`)
     }

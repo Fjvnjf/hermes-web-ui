@@ -1514,6 +1514,45 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('falls back to the latest usable two-year UN Comtrade period when newer annual data is incomplete', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.includes('period=2023,2024')
+        ? comtradePayload([
+          { year: 2023, primaryValue: 195169270, netWeightKg: 51660671.263 },
+          { year: 2024, primaryValue: 236608417, netWeightKg: 65408986.289 },
+        ])
+        : comtradePayload([
+          { year: 2024, primaryValue: 236608417, netWeightKg: 65408986.289 },
+        ]),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialTradeConnectors: true,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(10)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 10,
+    })
+    expect(envelope?.state.marketClaims).toHaveLength(10)
+    expect(envelope?.state.marketClaims.every(claim =>
+      String((claim.source as Record<string, unknown> | undefined)?.url || '').includes('period=2023,2024'),
+    )).toBe(true)
+    expect(envelope?.state.marketClaims[0]).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2024 official HS 380991 import proxy'),
+      reviewRequired: true,
+    }))
+  })
+
   it('imports flat competitor metric arrays by hydrating official metrics and staging weak candidates', async () => {
     writeFullDashboardJob(hermesHome)
     writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T01-21-23.000000+00-00.md', {
