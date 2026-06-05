@@ -24,6 +24,7 @@ import {
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
   officialCompanyPageToCompetitorFinancialUpdate,
+  officialCompetitorProductPageToUpdate,
   readFullDashboardAutopilotImportStatus,
   runDueFullDashboardAutopilot,
   secCompanyfactsToCompetitorFinancialUpdate,
@@ -96,6 +97,33 @@ const officialCompanySources = {
     sourceTitle: 'Kao at a Glance',
     sourceUrl: 'https://www.kao.com/global/en/corporate/data/',
     parser: 'kao-glance-2025' as const,
+  },
+}
+
+const officialProductSources = {
+  stepan: {
+    companyName: 'Stepan Company',
+    fieldKeySlug: 'stepan_company',
+    countryRegion: 'United States / global',
+    productLabel: 'STEPANTEX SP-90',
+    productEquivalent: 'STEPANTEX SP-90 esterquat softener product reference',
+    activeContent: 'Dialkylester fabric-softener chemistry; official page source confirms STEPANTEX SP-90 product identity.',
+    distributionPresence: 'Official Stepan product page.',
+    sourceTitle: 'Stepan STEPANTEX SP-90 official product page',
+    sourceUrl: 'https://pt.stepan.com/content/stepan-dot-com/pt_br/products-markets/product/STEPANTEXSP90.html',
+    requiredTerms: ['STEPANTEX', 'SP-90'],
+  },
+  wacker: {
+    companyName: 'WACKER',
+    fieldKeySlug: 'wacker',
+    countryRegion: 'Germany / global',
+    productLabel: 'WACKER FINISH WR 1200',
+    productEquivalent: 'WACKER FINISH WR 1200 functional silicone fluid for textile finishing context',
+    activeContent: 'Reactive aminoethyl-aminopropyl functional polydimethylsiloxane.',
+    distributionPresence: 'Official WACKER product page states global production, sales, and distributor network context.',
+    sourceTitle: 'WACKER FINISH WR 1200 official product page',
+    sourceUrl: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
+    requiredTerms: ['FINISH WR 1200', 'polydimethylsiloxane'],
   },
 }
 
@@ -299,6 +327,51 @@ describe('dashboard autopilot output ingestion', () => {
       sourceUrl: officialCompanySources.kao.sourceUrl,
     }))
     expect(kao?.yearlyGrowth).toBeUndefined()
+  })
+
+  it('converts official competitor product pages into source-backed product context only', () => {
+    const stepan = officialCompetitorProductPageToUpdate(
+      officialProductSources.stepan,
+      '<title>STEPANTEX® SP-90</title><meta name="description" content="STEPANTEX® SP-90"/>',
+      '2026-06-06',
+    )
+    const wacker = officialCompetitorProductPageToUpdate(
+      officialProductSources.wacker,
+      '<h1>WACKER® FINISH WR 1200</h1><p>Reactive aminoethyl-aminopropyl functional polydimethylsiloxane.</p>',
+      '2026-06-06',
+    )
+
+    expect(stepan).toEqual(expect.objectContaining({
+      companyName: 'Stepan Company',
+      fieldKey: 'competitor_products.stepan_company.stepantex-sp-90',
+      productEquivalent: expect.stringContaining('STEPANTEX SP-90'),
+      activeContent: expect.stringContaining('official page source confirms'),
+      evidenceStatus: 'Source-backed',
+      sourceUrl: officialProductSources.stepan.sourceUrl,
+      reviewRequired: false,
+      dataType: 'competitor_data',
+    }))
+    expect(wacker).toEqual(expect.objectContaining({
+      companyName: 'WACKER',
+      fieldKey: 'competitor_products.wacker.wacker-finish-wr-1200',
+      productEquivalent: expect.stringContaining('WACKER FINISH WR 1200'),
+      activeContent: expect.stringContaining('polydimethylsiloxane'),
+      sourceUrl: officialProductSources.wacker.sourceUrl,
+    }))
+    expect(stepan?.pricingEvidence).toBeUndefined()
+    expect(stepan?.marketShare).toBeUndefined()
+    expect(stepan?.revenue).toBeUndefined()
+    expect(stepan?.yearlyGrowth).toBeUndefined()
+    expect(stepan?.traffic).toBeUndefined()
+    expect(stepan?.rating).toBeUndefined()
+  })
+
+  it('rejects official competitor product pages when required product terms are missing', () => {
+    expect(officialCompetitorProductPageToUpdate(
+      officialProductSources.wacker,
+      '<h1>General company page</h1><p>No matching product chemistry here.</p>',
+      '2026-06-06',
+    )).toBeNull()
   })
 
   it('extracts flat dashboard_updates arrays and classifies competitor metric candidates', () => {
@@ -1226,6 +1299,7 @@ describe('dashboard autopilot output ingestion', () => {
     const result = await ingestFullDashboardAutopilotOutputs('default', {
       includeOfficialConnectors: true,
       includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1282,6 +1356,7 @@ describe('dashboard autopilot output ingestion', () => {
     const result = await ingestFullDashboardAutopilotOutputs('default', {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: true,
+      includeOfficialProductConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1324,6 +1399,71 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('hydrates official competitor product evidence when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const htmlByProduct = new Map([
+      ['STEPANTEXSP90', '<title>STEPANTEX® SP-90</title><meta name="description" content="STEPANTEX® SP-90"/>'],
+      ['wacker-finish-wr-1200', '<h1>WACKER® FINISH WR 1200</h1><p>Reactive aminoethyl-aminopropyl functional polydimethylsiloxane.</p>'],
+      ['tetranyl-l9-90', '<h1>TETRANYL L9-90</h1><p>Esterquat based on European Vegetable Sources for the softener market.</p>'],
+      ['siligen-d2w-liq-c', '<h1>SILIGEN D2W LIQ C</h1><p>Durable silicone softener engineered for cotton with a cross-linkable emulsion.</p>'],
+      ['li_tubingal-gep-textile-softener', '<h1>TUBINGAL GEP</h1><p>Innovative silicone-based softener for textile finishing.</p>'],
+    ])
+    const fetchMock = vi.fn(async (url: string) => {
+      const key = Array.from(htmlByProduct.keys()).find(fragment => url.includes(fragment))
+      return {
+        ok: Boolean(key),
+        status: key ? 200 : 404,
+        text: async () => htmlByProduct.get(key || '') || '',
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: true,
+      includeOfficialTradeConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(5)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 5,
+      stagedReviewCount: 0,
+    })
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        productEquivalent: expect.stringContaining('STEPANTEX SP-90'),
+        pricingEvidence: '',
+        marketShare: '',
+        revenue: '',
+        yearlyGrowth: '',
+        traffic: '',
+        rating: '',
+        evidenceStatus: 'Source-backed',
+        sourceTier: 'tier2-company-official',
+        confidence: 'high',
+        reviewRequired: false,
+        source: expect.objectContaining({
+          title: 'Stepan STEPANTEX SP-90 official product page',
+          url: expect.stringContaining('STEPANTEXSP90.html'),
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Kao Corporation',
+        productEquivalent: expect.stringContaining('TETRANYL L9-90'),
+        activeContent: expect.stringContaining('Esterquat'),
+      }),
+      expect.objectContaining({
+        companyName: 'CHT Group',
+        productEquivalent: expect.stringContaining('TUBINGAL GEP'),
+        activeContent: expect.stringContaining('Silicone-based softener'),
+      }),
+    ]))
+  })
+
   it('hydrates official UN Comtrade country import proxies when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
     const fetchMock = vi.fn(async () => ({
@@ -1338,6 +1478,7 @@ describe('dashboard autopilot output ingestion', () => {
     const result = await ingestFullDashboardAutopilotOutputs('default', {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
       includeOfficialTradeConnectors: true,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -2024,7 +2165,7 @@ describe('dashboard autopilot output ingestion', () => {
         reviewRequired: false,
       }),
     ])
-    expect(registry.importerVersion).toContain('official-company-financials')
+    expect(registry.importerVersion).toContain('official-product-evidence')
     expect(registry.importedRunKeys).toContain(runKey)
     expect(second.importedRuns).toBe(0)
   })

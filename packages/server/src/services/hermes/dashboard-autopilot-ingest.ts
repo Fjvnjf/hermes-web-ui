@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-official-company-financials-v9'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-official-product-evidence-v10'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -177,6 +177,7 @@ const COMPANY_OFFICIAL_SOURCE_DOMAINS = [
   'evonik.com',
   'stepan.com',
   'kao.com',
+  'kaochemicals-eu.com',
   'wacker.com',
   'rudolf.de',
   'cht.com',
@@ -335,6 +336,20 @@ interface OfficialCompanyFinancialSource {
   parser: OfficialCompanyFinancialParser
 }
 
+interface OfficialCompetitorProductSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  productLabel: string
+  productEquivalent: string
+  activeContent: string
+  certifications?: string
+  distributionPresence?: string
+  sourceTitle: string
+  sourceUrl: string
+  requiredTerms: string[]
+}
+
 interface SecAnnualRevenueMetric {
   year: number
   value: number
@@ -436,6 +451,69 @@ const OFFICIAL_COMPANY_FINANCIAL_SOURCES: OfficialCompanyFinancialSource[] = [
   },
 ]
 
+const OFFICIAL_COMPETITOR_PRODUCT_SOURCES: OfficialCompetitorProductSource[] = [
+  {
+    companyName: 'Stepan Company',
+    fieldKeySlug: 'stepan_company',
+    countryRegion: 'United States / global',
+    productLabel: 'STEPANTEX SP-90',
+    productEquivalent: 'STEPANTEX SP-90 esterquat softener product reference',
+    activeContent: 'Dialkylester fabric-softener chemistry; official page source confirms STEPANTEX SP-90 product identity.',
+    distributionPresence: 'Official Stepan product page.',
+    sourceTitle: 'Stepan STEPANTEX SP-90 official product page',
+    sourceUrl: 'https://pt.stepan.com/content/stepan-dot-com/pt_br/products-markets/product/STEPANTEXSP90.html',
+    requiredTerms: ['STEPANTEX', 'SP-90'],
+  },
+  {
+    companyName: 'WACKER',
+    fieldKeySlug: 'wacker',
+    countryRegion: 'Germany / global',
+    productLabel: 'WACKER FINISH WR 1200',
+    productEquivalent: 'WACKER FINISH WR 1200 functional silicone fluid for textile finishing context',
+    activeContent: 'Reactive aminoethyl-aminopropyl functional polydimethylsiloxane.',
+    distributionPresence: 'Official WACKER product page states global production, sales, and distributor network context.',
+    sourceTitle: 'WACKER FINISH WR 1200 official product page',
+    sourceUrl: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
+    requiredTerms: ['FINISH WR 1200', 'polydimethylsiloxane'],
+  },
+  {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / Europe',
+    productLabel: 'TETRANYL L9-90',
+    productEquivalent: 'TETRANYL L9-90 esterquat softener-market product reference',
+    activeContent: 'Esterquat based on European vegetable sources.',
+    distributionPresence: 'Official Kao Chemicals EU product page.',
+    sourceTitle: 'Kao TETRANYL L9-90 official product page',
+    sourceUrl: 'https://www.kaochemicals-eu.com/industries/textile-and-leather-chemicals/products/tetranyl-l9-90',
+    requiredTerms: ['TETRANYL L9-90', 'Esterquat'],
+  },
+  {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    productLabel: 'SILIGEN D2W LIQ C',
+    productEquivalent: 'SILIGEN D2W LIQ C durable silicone softener for cotton.',
+    activeContent: 'Patent-pending cross-linkable silicone emulsion.',
+    distributionPresence: 'Official Archroma textile-effects product page.',
+    sourceTitle: 'Archroma SILIGEN D2W LIQ C official product page',
+    sourceUrl: 'https://www.archroma.com/textile-effects/innovations/siligen-d2w-liq-c',
+    requiredTerms: ['SILIGEN', 'silicone softener', 'cotton'],
+  },
+  {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    productLabel: 'TUBINGAL GEP',
+    productEquivalent: 'TUBINGAL GEP silicone-based textile softener.',
+    activeContent: 'Silicone-based softener for textile finishing.',
+    distributionPresence: 'Official CHT textile-softener product page.',
+    sourceTitle: 'CHT TUBINGAL GEP official textile softener page',
+    sourceUrl: 'https://solutions.cht.com/cht/web.nsf/id/li_tubingal-gep-textile-softener.html',
+    requiredTerms: ['TUBINGAL GEP', 'silicone-based softener', 'textile finishing'],
+  },
+]
+
 const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
   { country: 'China', reporterCode: '156', fieldKeySlug: 'china' },
   { country: 'Bangladesh', reporterCode: '50', fieldKeySlug: 'bangladesh' },
@@ -495,6 +573,7 @@ interface IngestOptions {
   maxFilesPerJob?: number
   includeOfficialConnectors?: boolean
   includeOfficialCompanyFinancialConnectors?: boolean
+  includeOfficialProductConnectors?: boolean
   includeOfficialTradeConnectors?: boolean
 }
 
@@ -3511,6 +3590,38 @@ export function officialCompanyPageToCompetitorFinancialUpdate(
   }
 }
 
+export function officialCompetitorProductPageToUpdate(
+  source: OfficialCompetitorProductSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const normalized = normalizeHtmlText(html)
+  const normalizedLower = normalized.toLowerCase()
+  const hasRequiredTerms = source.requiredTerms.every(term => normalizedLower.includes(term.toLowerCase()))
+  if (!hasRequiredTerms) return null
+
+  return {
+    fieldKey: `competitor_products.${source.fieldKeySlug}.${slug(source.productLabel)}`,
+    companyName: source.companyName,
+    countryRegion: source.countryRegion,
+    productEquivalent: source.productEquivalent,
+    activeContent: source.activeContent,
+    certifications: source.certifications || 'No certification claim imported from this official product source.',
+    distributionPresence: source.distributionPresence || 'Official company/product page source-backed presence.',
+    value: source.productEquivalent,
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceTier: 'Tier 2 - Official company / product source',
+    sourceDate: checkedAt,
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Source-backed',
+    reviewRequired: false,
+    dataType: 'competitor_data',
+    recommendedAction: 'Use as source-backed product-equivalence context only; keep pricing, market share, traffic, rating, and product-line revenue review-gated until exact metric sources are available.',
+  }
+}
+
 export function comtradeImportPayloadToMarketClaimUpdate(
   source: ComtradeMarketProxySource,
   payload: unknown,
@@ -3631,6 +3742,46 @@ async function applyOfficialCompanyPageFinancialMetrics(
   return { autoFilledCount, stagedReviewCount, errors }
 }
 
+async function applyOfficialCompetitorProductEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official competitor product connector: fetch is unavailable'] }
+
+  for (const source of OFFICIAL_COMPETITOR_PRODUCT_SOURCES) {
+    try {
+      const response = await fetcher(source.sourceUrl, {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
+        },
+      })
+      if (!response.ok) {
+        errors.push(`${source.companyName}: official product source returned ${response.status}`)
+        continue
+      }
+      const html = await response.text()
+      const update = officialCompetitorProductPageToUpdate(source, html, checkedAt)
+      if (!update) {
+        errors.push(`${source.companyName}: official product evidence unavailable`)
+        continue
+      }
+      const runKey = `official-competitor-products/${source.fieldKeySlug}/${slug(source.productLabel)}/${checkedAt}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'official competitor product connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
 async function applyOfficialComtradeMarketProxies(
   state: DashboardIntelligenceState,
   checkedAt: string,
@@ -3696,6 +3847,7 @@ export async function ingestFullDashboardAutopilotOutputs(
   const state = normalizeState(envelope?.state)
   const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
   const officialCompanyFinancialConnectorsEnabled = options.includeOfficialCompanyFinancialConnectors ?? officialConnectorsEnabled
+  const officialProductConnectorsEnabled = options.includeOfficialProductConnectors ?? officialConnectorsEnabled
   const officialTradeConnectorsEnabled = options.includeOfficialTradeConnectors ?? officialConnectorsEnabled
   if (officialConnectorsEnabled) {
     const official = await applyOfficialCompetitorFinancialMetrics(state, new Date().toISOString().slice(0, 10))
@@ -3708,6 +3860,12 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.autoFilledCount += officialCompany.autoFilledCount
     result.stagedReviewCount += officialCompany.stagedReviewCount
     result.errors.push(...officialCompany.errors.map(error => `official source connector: ${error}`))
+  }
+  if (officialProductConnectorsEnabled) {
+    const officialProduct = await applyOfficialCompetitorProductEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialProduct.autoFilledCount
+    result.stagedReviewCount += officialProduct.stagedReviewCount
+    result.errors.push(...officialProduct.errors.map(error => `official source connector: ${error}`))
   }
   if (officialTradeConnectorsEnabled) {
     const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
