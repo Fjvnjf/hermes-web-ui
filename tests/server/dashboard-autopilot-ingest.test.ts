@@ -25,6 +25,7 @@ import {
   ingestFullDashboardAutopilotOutputs,
   officialCompanyPageToCompetitorFinancialUpdate,
   officialCompetitorProductPageToUpdate,
+  officialSupplierEvidencePageToUpdate,
   readFullDashboardAutopilotImportStatus,
   runDueFullDashboardAutopilot,
   secCompanyfactsToCompetitorFinancialUpdate,
@@ -124,6 +125,29 @@ const officialProductSources = {
     sourceTitle: 'WACKER FINISH WR 1200 official product page',
     sourceUrl: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
     requiredTerms: ['FINISH WR 1200', 'polydimethylsiloxane'],
+  },
+}
+
+const officialSupplierSources = {
+  wilmar: {
+    supplier: 'Wilmar Oleochemicals',
+    material: 'Rubber grade stearic acid / WILFARIN fatty acids',
+    fieldKeySlug: 'wilmar_stearic_acid',
+    sourceTitle: 'Wilmar Rubber Grade Stearic Acid 1807 official product page',
+    sourceUrl: 'https://www.wilmar-international.com/oleochemicals/products/home-care/rubber-grade-stearic-acid-1807',
+    value: 'Official Wilmar product page confirms Rubber Grade Stearic Acid 1807 and WILFARIN fatty-acid product context.',
+    requiredTerms: ['RUBBER GRADE STEARIC ACID 1807', 'Wilfarin fatty acids'],
+    recommendedAction: 'Request current quote, TDS, SDS, COA, MOQ, lead time, delivery route, and payment terms before scoring Wilmar for Chemicon raw-material sourcing.',
+  },
+  basf: {
+    supplier: 'BASF',
+    material: 'Triethanolamine / TEOA',
+    fieldKeySlug: 'basf_triethanolamine',
+    sourceTitle: 'BASF Triethanolamine official product page',
+    sourceUrl: 'https://products.basf.com/global/en/ci/triethanolamine',
+    value: 'Official BASF product page confirms Triethanolamine CAS No. 102-71-6 and states TEOA forms quat salts with fatty acids used in fabric softener formulations.',
+    requiredTerms: ['Triethanolamine', '102-71-6', 'fabric softener formulations'],
+    recommendedAction: 'Request BASF TEA quote, TDS, SDS, COA, China/Bangladesh delivery route, and payment terms before using in cost or supplier scorecards.',
   },
 }
 
@@ -370,6 +394,47 @@ describe('dashboard autopilot output ingestion', () => {
     expect(officialCompetitorProductPageToUpdate(
       officialProductSources.wacker,
       '<h1>General company page</h1><p>No matching product chemistry here.</p>',
+      '2026-06-06',
+    )).toBeNull()
+  })
+
+  it('converts official supplier product pages into review-gated supplier evidence without prices or scores', () => {
+    const wilmar = officialSupplierEvidencePageToUpdate(
+      officialSupplierSources.wilmar,
+      '<h1>RUBBER GRADE STEARIC ACID 1807</h1><p>Wilfarin fatty acids are derived from palm oil and palm kernel oil.</p>',
+      '2026-06-06',
+    )
+    const basf = officialSupplierEvidencePageToUpdate(
+      officialSupplierSources.basf,
+      '<h1>Triethanolamine | CAS No. 102-71-6</h1><p>TEOA forms quat salts with fatty acids which then find application in fabric softener formulations.</p>',
+      '2026-06-06',
+    )
+
+    expect(wilmar).toEqual(expect.objectContaining({
+      fieldKey: 'supplier_scorecards.wilmar_stearic_acid.official_product_evidence',
+      supplier: 'Wilmar Oleochemicals',
+      material: expect.stringContaining('stearic'),
+      evidenceStatus: 'Source-backed',
+      reviewRequired: true,
+      dataType: 'document_evidence',
+      sourceUrl: officialSupplierSources.wilmar.sourceUrl,
+      value: expect.stringContaining('Official Wilmar product page confirms'),
+    }))
+    expect(basf).toEqual(expect.objectContaining({
+      supplier: 'BASF',
+      material: 'Triethanolamine / TEOA',
+      value: expect.stringContaining('CAS No. 102-71-6'),
+      sourceUrl: officialSupplierSources.basf.sourceUrl,
+    }))
+    expect(wilmar?.pricingEvidence).toBeUndefined()
+    expect(wilmar?.marketShare).toBeUndefined()
+    expect(wilmar?.revenue).toBeUndefined()
+  })
+
+  it('rejects official supplier evidence pages when required product terms are missing', () => {
+    expect(officialSupplierEvidencePageToUpdate(
+      officialSupplierSources.basf,
+      '<h1>General BASF page</h1><p>No product-specific TEA sourcing evidence.</p>',
       '2026-06-06',
     )).toBeNull()
   })
@@ -1300,6 +1365,7 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: true,
       includeOfficialCompanyFinancialConnectors: false,
       includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1357,6 +1423,7 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: true,
       includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1422,6 +1489,7 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: false,
       includeOfficialProductConnectors: true,
+      includeOfficialSupplierConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1464,6 +1532,74 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('hydrates official supplier evidence as review-gated data room candidates when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const htmlBySupplier = new Map([
+      ['rubber-grade-stearic-acid-1807', '<h1>RUBBER GRADE STEARIC ACID 1807</h1><p>Wilfarin fatty acids are derived from palm oil and palm kernel oil.</p>'],
+      ['products-banner', '<title>Products - KLK OLEO</title><p>Products include Fatty Acids, Fatty Alcohols, Glycerine, and Oleo Basics.</p>'],
+      ['triethanolamine', '<h1>Triethanolamine | CAS No. 102-71-6</h1><p>TEOA forms quat salts with fatty acids which then find application in fabric softener formulations.</p>'],
+      ['wacker-finish-wr-1200', '<h1>WACKER FINISH WR 1200</h1><p>Functional silicone fluid; reactive aminoethyl-aminopropyl functional polydimethylsiloxane.</p>'],
+    ])
+    const fetchMock = vi.fn(async (url: string) => {
+      const key = Array.from(htmlBySupplier.keys()).find(fragment => url.includes(fragment))
+      return {
+        ok: Boolean(key),
+        status: key ? 200 : 404,
+        text: async () => htmlBySupplier.get(key || '') || '',
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: true,
+      includeOfficialTradeConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 4,
+    })
+    expect(envelope?.state.dataRoomSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'supplierScorecards',
+        supplier: 'Wilmar Oleochemicals',
+        material: expect.stringMatching(/stearic/i),
+        proposedValue: expect.stringContaining('Official Wilmar product page confirms'),
+        evidenceStatus: 'Source-backed',
+        reviewRequired: true,
+        dataType: 'document_evidence',
+        source: expect.objectContaining({
+          title: 'Wilmar Rubber Grade Stearic Acid 1807 official product page',
+          url: officialSupplierSources.wilmar.sourceUrl,
+        }),
+      }),
+      expect.objectContaining({
+        dashboardGroup: 'supplierScorecards',
+        supplier: 'BASF',
+        material: 'Triethanolamine / TEOA',
+        proposedValue: expect.stringContaining('fabric softener formulations'),
+      }),
+    ]))
+    expect(envelope?.state.dataRoomSources).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        proposedValue: expect.stringMatching(/(?:\\$|usd|cny|rmb)\\s*\\d/i),
+      }),
+    ]))
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'supplierScorecards',
+        keyClaim: expect.stringContaining('Wilmar Oleochemicals'),
+        status: 'Pending Review',
+      }),
+    ]))
+  })
+
   it('hydrates official UN Comtrade country import proxies when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
     const fetchMock = vi.fn(async () => ({
@@ -1479,6 +1615,7 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: false,
       includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
       includeOfficialTradeConnectors: true,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1533,6 +1670,7 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: false,
       includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
       includeOfficialTradeConnectors: true,
     })
     const envelope = await readDashboardIntelligenceState('default')

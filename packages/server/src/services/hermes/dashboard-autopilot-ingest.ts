@@ -350,6 +350,17 @@ interface OfficialCompetitorProductSource {
   requiredTerms: string[]
 }
 
+interface OfficialSupplierEvidenceSource {
+  supplier: string
+  material: string
+  fieldKeySlug: string
+  sourceTitle: string
+  sourceUrl: string
+  value: string
+  requiredTerms: string[]
+  recommendedAction: string
+}
+
 interface SecAnnualRevenueMetric {
   year: number
   value: number
@@ -514,6 +525,49 @@ const OFFICIAL_COMPETITOR_PRODUCT_SOURCES: OfficialCompetitorProductSource[] = [
   },
 ]
 
+const OFFICIAL_SUPPLIER_EVIDENCE_SOURCES: OfficialSupplierEvidenceSource[] = [
+  {
+    supplier: 'Wilmar Oleochemicals',
+    material: 'Rubber grade stearic acid / WILFARIN fatty acids',
+    fieldKeySlug: 'wilmar_stearic_acid',
+    sourceTitle: 'Wilmar Rubber Grade Stearic Acid 1807 official product page',
+    sourceUrl: 'https://www.wilmar-international.com/oleochemicals/products/home-care/rubber-grade-stearic-acid-1807',
+    value: 'Official Wilmar product page confirms Rubber Grade Stearic Acid 1807 and WILFARIN fatty-acid product context.',
+    requiredTerms: ['RUBBER GRADE STEARIC ACID 1807', 'Wilfarin fatty acids'],
+    recommendedAction: 'Request current quote, TDS, SDS, COA, MOQ, lead time, delivery route, and payment terms before scoring Wilmar for Chemicon raw-material sourcing.',
+  },
+  {
+    supplier: 'KLK OLEO',
+    material: 'Fatty acids / oleo basics',
+    fieldKeySlug: 'klk_oleo_fatty_acids',
+    sourceTitle: 'KLK OLEO official products page',
+    sourceUrl: 'https://www.klkoleo.com/products-banner/',
+    value: 'Official KLK OLEO products page confirms Fatty Acids as a product category.',
+    requiredTerms: ['KLK OLEO', 'Fatty Acids'],
+    recommendedAction: 'Request KLK OLEO stearic-acid grade details, current quote, TDS, SDS, COA, delivery route, and payment terms before supplier scoring.',
+  },
+  {
+    supplier: 'BASF',
+    material: 'Triethanolamine / TEOA',
+    fieldKeySlug: 'basf_triethanolamine',
+    sourceTitle: 'BASF Triethanolamine official product page',
+    sourceUrl: 'https://products.basf.com/global/en/ci/triethanolamine',
+    value: 'Official BASF product page confirms Triethanolamine CAS No. 102-71-6 and states TEOA forms quat salts with fatty acids used in fabric softener formulations.',
+    requiredTerms: ['Triethanolamine', '102-71-6', 'fabric softener formulations'],
+    recommendedAction: 'Request BASF TEA quote, TDS, SDS, COA, China/Bangladesh delivery route, and payment terms before using in cost or supplier scorecards.',
+  },
+  {
+    supplier: 'WACKER',
+    material: 'WACKER FINISH WR 1200 / functional silicone fluid',
+    fieldKeySlug: 'wacker_finish_wr_1200',
+    sourceTitle: 'WACKER FINISH WR 1200 official product page',
+    sourceUrl: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
+    value: 'Official WACKER product page confirms WACKER FINISH WR 1200 as a functional silicone fluid and reactive aminoethyl-aminopropyl functional polydimethylsiloxane.',
+    requiredTerms: ['FINISH WR 1200', 'polydimethylsiloxane'],
+    recommendedAction: 'Request WACKER quote, TDS, SDS, COA, recommended application fit, delivery route, and payment terms before supplier scoring.',
+  },
+]
+
 const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
   { country: 'China', reporterCode: '156', fieldKeySlug: 'china' },
   { country: 'Bangladesh', reporterCode: '50', fieldKeySlug: 'bangladesh' },
@@ -574,6 +628,7 @@ interface IngestOptions {
   includeOfficialConnectors?: boolean
   includeOfficialCompanyFinancialConnectors?: boolean
   includeOfficialProductConnectors?: boolean
+  includeOfficialSupplierConnectors?: boolean
   includeOfficialTradeConnectors?: boolean
 }
 
@@ -3633,6 +3688,37 @@ export function officialCompetitorProductPageToUpdate(
   }
 }
 
+export function officialSupplierEvidencePageToUpdate(
+  source: OfficialSupplierEvidenceSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const normalized = normalizeHtmlText(html)
+  const normalizedLower = normalized.toLowerCase()
+  const hasRequiredTerms = source.requiredTerms.every(term => normalizedLower.includes(term.toLowerCase()))
+  if (!hasRequiredTerms) return null
+
+  return {
+    fieldKey: `supplier_scorecards.${source.fieldKeySlug}.official_product_evidence`,
+    label: `${source.supplier} / ${source.material}`,
+    supplier: source.supplier,
+    material: source.material,
+    proposedDashboardField: `${source.supplier} / ${source.material} official source evidence`,
+    value: source.value,
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceTier: 'Tier 2 - Official company / product source',
+    sourceDate: checkedAt,
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Source-backed',
+    reviewRequired: true,
+    dataType: 'document_evidence',
+    recommendedAction: source.recommendedAction,
+    riskReason: 'Supplier/product presence is official-source-backed, but price, payment terms, quality, reliability, score, landed cost, and supplier ranking still require quote/TDS/SDS/COA or owner-approved evidence.',
+  }
+}
+
 export function comtradeImportPayloadToMarketClaimUpdate(
   source: ComtradeMarketProxySource,
   payload: unknown,
@@ -3794,6 +3880,46 @@ async function applyOfficialCompetitorProductEvidence(
   return { autoFilledCount, stagedReviewCount, errors }
 }
 
+async function applyOfficialSupplierEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official supplier evidence connector: fetch is unavailable'] }
+
+  for (const source of OFFICIAL_SUPPLIER_EVIDENCE_SOURCES) {
+    try {
+      const response = await fetcher(source.sourceUrl, {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
+        },
+      })
+      if (!response.ok) {
+        errors.push(`${source.supplier}: official supplier source returned ${response.status}`)
+        continue
+      }
+      const html = await response.text()
+      const update = officialSupplierEvidencePageToUpdate(source, html, checkedAt)
+      if (!update) {
+        errors.push(`${source.supplier}: official supplier evidence unavailable`)
+        continue
+      }
+      const runKey = `official-supplier-evidence/${source.fieldKeySlug}/${checkedAt}`
+      const result = applyDashboardUpdates(state, { supplierScorecards: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.supplier}: ${err instanceof Error ? err.message : 'official supplier evidence connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
 async function applyOfficialComtradeMarketProxies(
   state: DashboardIntelligenceState,
   checkedAt: string,
@@ -3870,6 +3996,7 @@ export async function ingestFullDashboardAutopilotOutputs(
   const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
   const officialCompanyFinancialConnectorsEnabled = options.includeOfficialCompanyFinancialConnectors ?? officialConnectorsEnabled
   const officialProductConnectorsEnabled = options.includeOfficialProductConnectors ?? officialConnectorsEnabled
+  const officialSupplierConnectorsEnabled = options.includeOfficialSupplierConnectors ?? officialConnectorsEnabled
   const officialTradeConnectorsEnabled = options.includeOfficialTradeConnectors ?? officialConnectorsEnabled
   if (officialConnectorsEnabled) {
     const official = await applyOfficialCompetitorFinancialMetrics(state, new Date().toISOString().slice(0, 10))
@@ -3888,6 +4015,12 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.autoFilledCount += officialProduct.autoFilledCount
     result.stagedReviewCount += officialProduct.stagedReviewCount
     result.errors.push(...officialProduct.errors.map(error => `official source connector: ${error}`))
+  }
+  if (officialSupplierConnectorsEnabled) {
+    const officialSupplier = await applyOfficialSupplierEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialSupplier.autoFilledCount
+    result.stagedReviewCount += officialSupplier.stagedReviewCount
+    result.errors.push(...officialSupplier.errors.map(error => `official source connector: ${error}`))
   }
   if (officialTradeConnectorsEnabled) {
     const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
