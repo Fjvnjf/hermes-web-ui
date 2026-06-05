@@ -248,6 +248,25 @@ function competitorMetricValue(
   return String(record[field] || '')
 }
 
+function competitorMetricCandidateHasStrongCoverageEvidence(
+  finding: unknown,
+  dashboardTarget: unknown,
+): boolean {
+  const findingRecord = (finding && typeof finding === 'object') ? finding as Record<string, unknown> : {}
+  const targetRecord = (dashboardTarget && typeof dashboardTarget === 'object') ? dashboardTarget as Record<string, unknown> : {}
+  const tier = String(
+    findingRecord.sourceTier ||
+    targetRecord.sourceTier ||
+    findingRecord.reportedSourceTier ||
+    targetRecord.reportedSourceTier ||
+    '',
+  ).toLowerCase()
+  if (!tier) return false
+  if (/tier4|tier 4|tier5|tier 5|candidate|public listing|market reference|weak/i.test(tier)) return false
+  if (!/(tier1|tier 1|tier2|tier 2|tier3|tier 3|official|supplier evidence|company official)/i.test(tier)) return false
+  return String(findingRecord.confidence || targetRecord.confidence || '').toLowerCase() !== 'low'
+}
+
 function competitorMetricCovered(state: FeasibilityIntelligenceState, target: CoverageTarget): boolean {
   if (!target.metric) return false
 
@@ -264,6 +283,7 @@ function competitorMetricCovered(state: FeasibilityIntelligenceState, target: Co
     if (!dashboardTarget || dashboardTarget.group !== 'competitorRecords') return false
     return dashboardTargetMatchesCompanyTarget(dashboardTarget, target) &&
       sourceIsUsable(finding.source) &&
+      competitorMetricCandidateHasStrongCoverageEvidence(finding, dashboardTarget) &&
       coverageValueIsUsable(competitorMetricValue(dashboardTarget, target.metric!))
   })
 }

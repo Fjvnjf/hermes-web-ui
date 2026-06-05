@@ -1918,6 +1918,29 @@ describe('Trusted Source Autopilot', () => {
       source: { title: 'Evonik official website', url: 'https://www.evonik.com/' },
       notes: 'Imported by Full Dashboard Autopilot.',
     })
+    intelligence.addResearchFinding({
+      summary: 'Weak market-reference lead does not prove Evonik textile-softener market share.',
+      keyClaim: 'Evonik Industries market share needs stronger evidence',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'low',
+      sourceTier: 'tier4-market-reference',
+      source: {
+        title: 'Mordor Intelligence: Surfactants Market Companies',
+        url: 'https://www.mordorintelligence.com/industry-reports/surfactants-market/companies',
+      },
+      dashboardGroup: 'competitorRecords',
+      dashboardTarget: {
+        group: 'competitorRecords',
+        fieldKey: 'competitor_metrics.evonik_industries.market_share',
+        companyName: 'Evonik Industries',
+        proposedDashboardField: 'Evonik Industries - Market share',
+        marketShare: 'Market-share reference identified; exact textile-softener share not approved.',
+        sourceTier: 'tier4-market-reference',
+        confidence: 'low',
+        reviewRequired: true,
+      },
+    })
     intelligence.addDataRoomSource({
       checklistLabel: 'Stearic acid supplier scorecard',
       area: 'factory',
@@ -1961,7 +1984,7 @@ describe('Trusted Source Autopilot', () => {
 
     expect(text).toContain('Live imported intelligence')
     expect(text).toContain('Automatic dashboard filling status')
-    expect(text).toContain('Durable intelligence is active. 5 imported records are available to dashboard pages.')
+    expect(text).toContain('Durable intelligence is active. 6 imported records are available to dashboard pages.')
     expect(text).toContain('🔁 4. Fill gaps')
     expect(text).toContain('Market and country signals')
     expect(text).toContain('Competitor records')

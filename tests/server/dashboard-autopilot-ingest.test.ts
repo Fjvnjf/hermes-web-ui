@@ -703,6 +703,18 @@ describe('dashboard autopilot output ingestion', () => {
           dataType: 'trade_data',
           reviewRequired: false,
         }],
+        competitorRecords: [{
+          fieldKey: 'competitor_metrics.evonik_industries.market_share',
+          companyName: 'Metrics Evonik Industries Market',
+          value: 'Market-share reference identified; exact textile-softener share not approved.',
+          sourceTitle: 'Mordor Intelligence: Surfactants Market Companies',
+          sourceUrl: 'https://www.mordorintelligence.com/industry-reports/surfactants-market/companies',
+          sourceTier: 'Tier 4 - Market reference',
+          confidence: 'low',
+          evidenceStatus: 'Reference Only / To Verify',
+          reviewRequired: true,
+          riskReason: 'Market-reference company list does not state Evonik textile-softener market share by geography/year.',
+        }],
       },
     })
 
@@ -711,7 +723,7 @@ describe('dashboard autopilot output ingestion', () => {
     expect(result).toMatchObject({
       importedRuns: 1,
       autoFilledCount: 0,
-      stagedReviewCount: 1,
+      stagedReviewCount: 2,
       missingCoverageFollowUpStarted: true,
     })
     const createArgs = execFileMock.mock.calls.find(call => (call[1] as string[])[1] === 'create')?.[1] as string[]
