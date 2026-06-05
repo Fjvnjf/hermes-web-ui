@@ -23,6 +23,7 @@ import {
   comtradeImportPayloadToMarketClaimUpdate,
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
+  officialCompanyPageToCompetitorFinancialUpdate,
   readFullDashboardAutopilotImportStatus,
   runDueFullDashboardAutopilot,
   secCompanyfactsToCompetitorFinancialUpdate,
@@ -61,6 +62,41 @@ function comtradePayload(rows: Array<{ year: number; primaryValue: number; netWe
       isAggregate: true,
     })),
   }
+}
+
+const officialCompanySources = {
+  basf: {
+    companyName: 'BASF',
+    fieldKeySlug: 'basf',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'BASF Report 2025 - Results of Operations',
+    sourceUrl: 'https://report.basf.com/2025/en/combined-managements-report/basf-groups-business-year/results-of-operations.html',
+    parser: 'basf-report-2025' as const,
+  },
+  evonik: {
+    companyName: 'Evonik Industries',
+    fieldKeySlug: 'evonik_industries',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'Evonik 2025 results release',
+    sourceUrl: 'https://www.evonik.com/en/news/press-releases/2026/03/Q4-reporting-2025.html',
+    parser: 'evonik-results-2025' as const,
+  },
+  wacker: {
+    companyName: 'WACKER',
+    fieldKeySlug: 'wacker',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'WACKER Annual Report 2025 - Regions',
+    sourceUrl: 'https://reports.wacker.com/2025/annual-report/management-report/segments/regions.html',
+    parser: 'wacker-report-2025' as const,
+  },
+  kao: {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / global',
+    sourceTitle: 'Kao at a Glance',
+    sourceUrl: 'https://www.kao.com/global/en/corporate/data/',
+    parser: 'kao-glance-2025' as const,
+  },
 }
 
 function writeFullDashboardJob(
@@ -210,6 +246,59 @@ describe('dashboard autopilot output ingestion', () => {
     expect(update?.value).toContain('65,409 MT')
     expect(update?.value).toContain('YoY value +21.23%')
     expect(update?.riskReason).toContain('not direct textile-softener consumption')
+  })
+
+  it('converts official company financial pages into source-backed competitor metrics', () => {
+    const basf = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.basf,
+      '<p>In the 2025 business year, sales stood at €59,657 million, compared with €61,444 million in the previous year.</p>',
+      '2026-06-06',
+    )
+    const evonik = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.evonik,
+      '<p>Sales in 2025 decreased by 7 percent to €14.1 billion compared to the previous year.</p>',
+      '2026-06-06',
+    )
+    const wacker = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.wacker,
+      '<p>WACKER’s operations are highly international. Of the Group’s €5.49 billion in sales in 2025, (2024: €5.72 billion), 83.2 percent came from international business.</p>',
+      '2026-06-06',
+    )
+    const kao = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.kao,
+      '<h3>Consolidated net sales</h3><p>1,688.6 billion yen</p><p>FY2025 ended December 31</p>',
+      '2026-06-06',
+    )
+
+    expect(basf).toEqual(expect.objectContaining({
+      companyName: 'BASF',
+      fieldKey: 'competitor_metrics.basf.official_financials',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+    }))
+    expect(basf?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2025 company-wide sales: €59.657B'),
+      sourceUrl: officialCompanySources.basf.sourceUrl,
+    }))
+    expect(basf?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('-2.91%'),
+    }))
+    expect(evonik?.revenue).toEqual(expect.objectContaining({
+      value: 'FY2025 company-wide sales: €14.1B',
+      sourceUrl: officialCompanySources.evonik.sourceUrl,
+    }))
+    expect(evonik?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('-7%'),
+    }))
+    expect(wacker?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2025 company-wide sales: €5.49B'),
+      sourceUrl: officialCompanySources.wacker.sourceUrl,
+    }))
+    expect(kao?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2025 company-wide net sales: ¥1,688.6B'),
+      sourceUrl: officialCompanySources.kao.sourceUrl,
+    }))
+    expect(kao?.yearlyGrowth).toBeUndefined()
   })
 
   it('extracts flat dashboard_updates arrays and classifies competitor metric candidates', () => {
@@ -1136,6 +1225,7 @@ describe('dashboard autopilot output ingestion', () => {
 
     const result = await ingestFullDashboardAutopilotOutputs('default', {
       includeOfficialConnectors: true,
+      includeOfficialCompanyFinancialConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1172,6 +1262,68 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('hydrates official company-page financial metrics when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const htmlByCompany = new Map([
+      ['BASF', '<p>In the 2025 business year, sales stood at €59,657 million, compared with €61,444 million in the previous year.</p>'],
+      ['Evonik', '<p>Sales in 2025 decreased by 7 percent to €14.1 billion compared to the previous year.</p>'],
+      ['WACKER', '<p>WACKER’s operations are highly international. Of the Group’s €5.49 billion in sales in 2025, (2024: €5.72 billion), 83.2 percent came from international business.</p>'],
+      ['Kao', '<h3>Consolidated net sales</h3><p>1,688.6 billion yen</p><p>FY2025 ended December 31</p>'],
+    ])
+    const fetchMock = vi.fn(async (url: string) => {
+      const key = Array.from(htmlByCompany.keys()).find(company => url.includes(company.toLowerCase().split(' ')[0]) || (company === 'WACKER' && url.includes('wacker')))
+      return {
+        ok: true,
+        text: async () => htmlByCompany.get(key || 'BASF') || '',
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: true,
+      includeOfficialTradeConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 4,
+      stagedReviewCount: 0,
+    })
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'BASF',
+        revenue: expect.stringContaining('FY2025 company-wide sales: €59.657B'),
+        yearlyGrowth: expect.stringContaining('-2.91%'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        rating: '',
+        evidenceStatus: 'Official Data',
+        sourceTier: 'tier2-company-official',
+        confidence: 'high',
+        reviewRequired: false,
+      }),
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        revenue: 'FY2025 company-wide sales: €14.1B',
+        yearlyGrowth: expect.stringContaining('-7%'),
+      }),
+      expect.objectContaining({
+        companyName: 'WACKER',
+        revenue: expect.stringContaining('FY2025 company-wide sales: €5.49B'),
+        yearlyGrowth: expect.stringContaining('-4.02%'),
+      }),
+      expect.objectContaining({
+        companyName: 'Kao Corporation',
+        revenue: expect.stringContaining('FY2025 company-wide net sales: ¥1,688.6B'),
+        yearlyGrowth: '',
+      }),
+    ]))
+  })
+
   it('hydrates official UN Comtrade country import proxies when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
     const fetchMock = vi.fn(async () => ({
@@ -1185,6 +1337,7 @@ describe('dashboard autopilot output ingestion', () => {
 
     const result = await ingestFullDashboardAutopilotOutputs('default', {
       includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
       includeOfficialTradeConnectors: true,
     })
     const envelope = await readDashboardIntelligenceState('default')
@@ -1871,7 +2024,7 @@ describe('dashboard autopilot output ingestion', () => {
         reviewRequired: false,
       }),
     ])
-    expect(registry.importerVersion).toContain('official-trade-proxies')
+    expect(registry.importerVersion).toContain('official-company-financials')
     expect(registry.importedRunKeys).toContain(runKey)
     expect(second.importedRuns).toBe(0)
   })

@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-official-trade-proxies-v8'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-official-company-financials-v9'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -324,6 +324,17 @@ interface SecCompetitorFinancialSource {
   aliases: string[]
 }
 
+type OfficialCompanyFinancialParser = 'basf-report-2025' | 'evonik-results-2025' | 'wacker-report-2025' | 'kao-glance-2025'
+
+interface OfficialCompanyFinancialSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  sourceTitle: string
+  sourceUrl: string
+  parser: OfficialCompanyFinancialParser
+}
+
 interface SecAnnualRevenueMetric {
   year: number
   value: number
@@ -345,6 +356,12 @@ interface ComtradeAnnualImportMetric {
   netWeightKg: number
   isReported: boolean
   isAggregate: boolean
+}
+
+interface OfficialCompanyFinancialMetric {
+  year: number
+  revenueValue: string
+  growthValue?: string
 }
 
 interface OfficialConnectorResult {
@@ -382,6 +399,41 @@ const SEC_REVENUE_CONCEPTS = [
   'RevenueFromContractWithCustomerExcludingAssessedTax',
   'Revenues',
   'SalesRevenueNet',
+]
+
+const OFFICIAL_COMPANY_FINANCIAL_SOURCES: OfficialCompanyFinancialSource[] = [
+  {
+    companyName: 'BASF',
+    fieldKeySlug: 'basf',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'BASF Report 2025 - Results of Operations',
+    sourceUrl: 'https://report.basf.com/2025/en/combined-managements-report/basf-groups-business-year/results-of-operations.html',
+    parser: 'basf-report-2025',
+  },
+  {
+    companyName: 'Evonik Industries',
+    fieldKeySlug: 'evonik_industries',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'Evonik 2025 results release',
+    sourceUrl: 'https://www.evonik.com/en/news/press-releases/2026/03/Q4-reporting-2025.html',
+    parser: 'evonik-results-2025',
+  },
+  {
+    companyName: 'WACKER',
+    fieldKeySlug: 'wacker',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'WACKER Annual Report 2025 - Regions',
+    sourceUrl: 'https://reports.wacker.com/2025/annual-report/management-report/segments/regions.html',
+    parser: 'wacker-report-2025',
+  },
+  {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / global',
+    sourceTitle: 'Kao at a Glance',
+    sourceUrl: 'https://www.kao.com/global/en/corporate/data/',
+    parser: 'kao-glance-2025',
+  },
 ]
 
 const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
@@ -442,6 +494,7 @@ interface IngestOptions {
   jobId?: string
   maxFilesPerJob?: number
   includeOfficialConnectors?: boolean
+  includeOfficialCompanyFinancialConnectors?: boolean
   includeOfficialTradeConnectors?: boolean
 }
 
@@ -3165,6 +3218,24 @@ function formatSignedPercent(value: number): string {
   return `${sign}${value.toFixed(2).replace(/\.?0+$/, '')}%`
 }
 
+function compactOfficialNumber(value: number, currencySymbol: string): string {
+  if (value >= 1_000) return `${currencySymbol}${(value / 1_000).toFixed(3).replace(/\.?0+$/, '')}B`
+  return `${currencySymbol}${value.toFixed(3).replace(/\.?0+$/, '')}M`
+}
+
+function normalizeHtmlText(value: string): string {
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&euro;/gi, '€')
+    .replace(/&yen;/gi, '¥')
+    .replace(/&amp;/gi, '&')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function formatMetricTonsFromKg(value: number): string {
   return `${Math.round(value / 1000).toLocaleString('en-US')} MT`
 }
@@ -3250,6 +3321,67 @@ function annualImportMetricsFromComtrade(payload: unknown): ComtradeAnnualImport
   return Array.from(byYear.values()).sort((left, right) => left.year - right.year)
 }
 
+function officialCompanyFinancialMetricFromText(
+  source: OfficialCompanyFinancialSource,
+  text: string,
+): OfficialCompanyFinancialMetric | null {
+  const normalized = normalizeHtmlText(text)
+
+  if (source.parser === 'basf-report-2025') {
+    const match = normalized.match(/sales stood at €\s*([\d,.]+)\s*million,\s*compared with €\s*([\d,.]+)\s*million/i)
+    if (!match) return null
+    const latest = Number(match[1].replace(/,/g, ''))
+    const previous = Number(match[2].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(previous) || previous === 0) return null
+    const growth = ((latest - previous) / previous) * 100
+    return {
+      year: 2025,
+      revenueValue: `FY2025 company-wide sales: ${compactOfficialNumber(latest, '€')} (official reported €${latest.toLocaleString('en-US')} million)`,
+      growthValue: `FY2025 company-wide sales YoY: ${formatSignedPercent(growth)} vs FY2024 ${compactOfficialNumber(previous, '€')}`,
+    }
+  }
+
+  if (source.parser === 'evonik-results-2025') {
+    const match = normalized.match(/Sales in 2025 decreased by\s*([\d,.]+)\s*percent to €\s*([\d,.]+)\s*billion/i)
+    if (!match) return null
+    const growth = -Math.abs(Number(match[1].replace(/,/g, '')))
+    const latest = Number(match[2].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(growth)) return null
+    return {
+      year: 2025,
+      revenueValue: `FY2025 company-wide sales: €${latest.toFixed(3).replace(/\.?0+$/, '')}B`,
+      growthValue: `FY2025 company-wide sales YoY: ${formatSignedPercent(growth)} vs FY2024, per official Evonik results release`,
+    }
+  }
+
+  if (source.parser === 'wacker-report-2025') {
+    const match = normalized.match(/Group[’']s €\s*([\d,.]+)\s*billion in sales in 2025,?\s*\(2024:\s*€\s*([\d,.]+)\s*billion\)/i)
+    if (!match) return null
+    const latest = Number(match[1].replace(/,/g, ''))
+    const previous = Number(match[2].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(previous) || previous === 0) return null
+    const growth = ((latest - previous) / previous) * 100
+    return {
+      year: 2025,
+      revenueValue: `FY2025 company-wide sales: €${latest.toFixed(3).replace(/\.?0+$/, '')}B (official rounded figure)`,
+      growthValue: `FY2025 company-wide sales YoY: ${formatSignedPercent(growth)} vs FY2024 €${previous.toFixed(3).replace(/\.?0+$/, '')}B`,
+    }
+  }
+
+  if (source.parser === 'kao-glance-2025') {
+    const match = normalized.match(/Consolidated net sales\s*([\d,.]+)\s*billion yen/i)
+    if (!match || !/FY2025 ended December 31/i.test(normalized)) return null
+    const latest = Number(match[1].replace(/,/g, ''))
+    if (!Number.isFinite(latest)) return null
+    return {
+      year: 2025,
+      revenueValue: `FY2025 company-wide net sales: ¥${latest.toLocaleString('en-US')}B (official reported ${latest.toLocaleString('en-US')} billion yen)`,
+    }
+  }
+
+  return null
+}
+
 export function secCompanyfactsToCompetitorFinancialUpdate(
   source: SecCompetitorFinancialSource,
   payload: unknown,
@@ -3322,6 +3454,60 @@ export function secCompanyfactsToCompetitorFinancialUpdate(
     reviewRequired: false,
     dataType: 'company_data',
     recommendedAction: 'Use as company-wide financial context only. Do not present as product-line, China, or textile-softener revenue.',
+  }
+}
+
+export function officialCompanyPageToCompetitorFinancialUpdate(
+  source: OfficialCompanyFinancialSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const metric = officialCompanyFinancialMetricFromText(source, html)
+  if (!metric) return null
+  return {
+    fieldKey: `competitor_metrics.${source.fieldKeySlug}.official_financials`,
+    companyName: source.companyName,
+    countryRegion: source.countryRegion,
+    productEquivalent: 'Company-wide financial context; not textile-softener product-line revenue.',
+    value: metric.revenueValue,
+    revenue: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.revenue`,
+      value: metric.revenueValue,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 2 - Official company / financial report source',
+      lastChecked: checkedAt,
+      sourceDate: String(metric.year),
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Company-wide revenue from official company financial source; not product-line revenue.',
+    },
+    yearlyGrowth: metric.growthValue ? {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.yoy_growth`,
+      value: metric.growthValue,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 2 - Official company / financial report source',
+      lastChecked: checkedAt,
+      sourceDate: String(metric.year),
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Company-wide YoY sales movement from official company financial source; not product-line growth.',
+    } : undefined,
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceDate: String(metric.year),
+    sourceTier: 'Tier 2 - Official company / financial report source',
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Official Company Evidence',
+    reviewRequired: false,
+    dataType: 'competitor_data',
+    recommendedAction: 'Use revenue/YoY as company-wide context only; keep pricing, market share, traffic, and rating review-gated until exact sources are available.',
   }
 }
 
@@ -3405,6 +3591,46 @@ async function applyOfficialCompetitorFinancialMetrics(
   return { autoFilledCount, stagedReviewCount, errors }
 }
 
+async function applyOfficialCompanyPageFinancialMetrics(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official company financial connector: fetch is unavailable'] }
+
+  for (const source of OFFICIAL_COMPANY_FINANCIAL_SOURCES) {
+    try {
+      const response = await fetcher(source.sourceUrl, {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'text/html,application/xhtml+xml,text/plain',
+        },
+      })
+      if (!response.ok) {
+        errors.push(`${source.companyName}: official financial source returned ${response.status}`)
+        continue
+      }
+      const html = await response.text()
+      const update = officialCompanyPageToCompetitorFinancialUpdate(source, html, checkedAt)
+      if (!update) {
+        errors.push(`${source.companyName}: official financial metrics unavailable`)
+        continue
+      }
+      const runKey = `official-company-financials/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'official company financial connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
 async function applyOfficialComtradeMarketProxies(
   state: DashboardIntelligenceState,
   checkedAt: string,
@@ -3469,12 +3695,19 @@ export async function ingestFullDashboardAutopilotOutputs(
   const envelope = await readDashboardIntelligenceState(profile)
   const state = normalizeState(envelope?.state)
   const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
+  const officialCompanyFinancialConnectorsEnabled = options.includeOfficialCompanyFinancialConnectors ?? officialConnectorsEnabled
   const officialTradeConnectorsEnabled = options.includeOfficialTradeConnectors ?? officialConnectorsEnabled
   if (officialConnectorsEnabled) {
     const official = await applyOfficialCompetitorFinancialMetrics(state, new Date().toISOString().slice(0, 10))
     result.autoFilledCount += official.autoFilledCount
     result.stagedReviewCount += official.stagedReviewCount
     result.errors.push(...official.errors.map(error => `official source connector: ${error}`))
+  }
+  if (officialCompanyFinancialConnectorsEnabled) {
+    const officialCompany = await applyOfficialCompanyPageFinancialMetrics(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialCompany.autoFilledCount
+    result.stagedReviewCount += officialCompany.stagedReviewCount
+    result.errors.push(...officialCompany.errors.map(error => `official source connector: ${error}`))
   }
   if (officialTradeConnectorsEnabled) {
     const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
