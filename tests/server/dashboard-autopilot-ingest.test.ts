@@ -1532,6 +1532,96 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('merges competitor company evidence into one row with product-wise variations and source list', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T03-00-00.000000+00-00.md', {
+      dashboard_updates: {
+        competitorRecords: [
+          {
+            fieldKey: 'competitor_products.stepan.stepantex-sp-90',
+            companyName: 'Stepan Company',
+            countryRegion: 'United States',
+            productEquivalent: 'STEPANTEX SP-90 esterquat softener candidate / STEPANTEX SP-90 esterquat softener candidate / automated SSL verification failed',
+            activeContent: 'Esterquat product identity from official product page',
+            value: 'Official Stepan product page confirms STEPANTEX SP-90 product identity.',
+            sourceTitle: 'Stepan STEPANTEX SP-90 official product page',
+            sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/products-and-markets/product/STEPANTEXSP90.html',
+            sourceTier: 'Tier 2 - Official company / product source',
+            sourceDate: '2026-06-06',
+            confidence: 'high',
+            evidenceStatus: 'Source-backed',
+            reviewRequired: false,
+          },
+          {
+            fieldKey: 'competitor_products.stepan.accosoft-501',
+            companyName: 'Stepan Company',
+            countryRegion: 'United States',
+            productEquivalent: 'ACCOSOFT 501 fabric softener candidate',
+            activeContent: 'Fabric softener product identity from official Stepan product page',
+            value: 'Official Stepan product page confirms ACCOSOFT 501 product identity.',
+            sourceTitle: 'Stepan ACCOSOFT 501 official product page',
+            sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/products-and-markets/product/ACCOSOFT501.html',
+            sourceTier: 'Tier 2 - Official company / product source',
+            sourceDate: '2026-06-06',
+            confidence: 'high',
+            evidenceStatus: 'Source-backed',
+            reviewRequired: false,
+          },
+          {
+            fieldKey: 'competitor_metrics.stepan_company.official_financials',
+            companyName: 'Stepan Company',
+            countryRegion: 'United States',
+            productEquivalent: 'Company-wide financial context; not textile-softener product-line revenue.',
+            value: 'FY2025 company-wide revenue: US$2.332B',
+            revenue: 'FY2025 company-wide revenue: US$2.332B',
+            yearlyGrowth: 'FY2025 company-wide revenue YoY: +6.96%',
+            sourceTitle: 'SEC Companyfacts: STEPAN COMPANY RevenueFromContractWithCustomerExcludingAssessedTax',
+            sourceUrl: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000094049.json',
+            sourceTier: 'Tier 1 - Official filing / statistical source',
+            sourceDate: '2026-06-06',
+            confidence: 'high',
+            evidenceStatus: 'Official Data',
+            reviewRequired: false,
+          },
+        ],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+    const competitors = envelope?.state.competitors || []
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 3,
+      stagedReviewCount: 0,
+    })
+    expect(competitors).toHaveLength(1)
+    expect(competitors[0]).toEqual(expect.objectContaining({
+      companyName: 'Stepan Company',
+      productEquivalent: expect.stringContaining('STEPANTEX SP-90'),
+      productVariations: expect.stringContaining('ACCOSOFT 501'),
+      revenue: expect.stringContaining('US$2.332B'),
+      yearlyGrowth: expect.stringContaining('+6.96%'),
+      sourceCount: 3,
+      evidenceStatus: 'Official Data',
+    }))
+    expect(String(competitors[0].productEquivalent)).not.toContain('Company-wide financial context')
+    expect(String(competitors[0].productVariations)).not.toMatch(/automated SSL/i)
+    expect(String(competitors[0].productVariations).match(/STEPANTEX SP-90/g)).toHaveLength(1)
+    expect(competitors[0].sources).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: 'Stepan STEPANTEX SP-90 official product page' }),
+      expect.objectContaining({ title: 'Stepan ACCOSOFT 501 official product page' }),
+      expect.objectContaining({ title: expect.stringContaining('SEC Companyfacts') }),
+    ]))
+  })
+
   it('hydrates official supplier evidence as review-gated data room candidates when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
     const htmlBySupplier = new Map([

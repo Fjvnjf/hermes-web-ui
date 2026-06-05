@@ -2828,13 +2828,76 @@ function normalizeState(raw: Record<string, unknown> | null | undefined): Dashbo
   return {
     evidenceItems: asArray(raw?.evidenceItems),
     marketClaims: asArray(raw?.marketClaims),
-    competitors: asArray(raw?.competitors),
+    competitors: compactCompetitorStateRecords(asArray(raw?.competitors)),
     presentationMaterials: asArray(raw?.presentationMaterials),
     researchJobs: asArray(raw?.researchJobs),
     researchFindings: asArray(raw?.researchFindings),
     financialModels: asArray(raw?.financialModels),
     dataRoomSources: asArray(raw?.dataRoomSources),
   }
+}
+
+function competitorCompanyMergeKey(value: unknown): string {
+  const text = stringValue(value)
+  if (!text) return ''
+  const known = KNOWN_COMPETITOR_NAME_BY_SLUG[normalizeHeader(text)]
+  const normalized = known || text
+  return normalized
+    .toLowerCase()
+    .replace(/\b(group|company|chemicals?|chemical|industries|industry|co|corp|corporation|limited|ltd|inc|gmbh|ag|plc)\b/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function compactCompetitorStateRecords(records: Record<string, unknown>[]): Record<string, unknown>[] {
+  const groups = new Map<string, Record<string, unknown>[]>()
+  const passthrough: Record<string, unknown>[] = []
+  for (const record of records) {
+    const key = competitorCompanyMergeKey(record.companyName)
+    if (!key) {
+      passthrough.push(record)
+      continue
+    }
+    groups.set(key, [...(groups.get(key) || []), record])
+  }
+
+  const compacted = Array.from(groups.values()).map(group => {
+    if (group.length === 1) return group[0]
+    const primary = group.find(record => sourceIsUsable(record.source as Record<string, unknown> | null)) || group[0]
+    const productVariations = mergeUniqueStrings(group.flatMap(record => competitorProductVariationValues(record)))
+    const sources = mergeCompetitorSources(...group)
+    const merged: Record<string, unknown> = { ...primary }
+    for (const record of group.slice(1)) {
+      for (const field of ['countryRegion', 'activeContent', 'certifications', 'distributionPresence', 'pricingEvidence', 'marketShare', 'revenue', 'yearlyGrowth', 'traffic', 'rating', 'lastUpdated'] as const) {
+        const current = stringValue(merged[field])
+        const next = stringValue(record[field])
+        if (!isUsefulDashboardValue(current) && isUsefulDashboardValue(next)) merged[field] = next
+      }
+      merged.evidenceStatus = strongestCompetitorEvidenceStatus(
+        stringValue(merged.evidenceStatus),
+        stringValue(record.evidenceStatus),
+      )
+      merged.confidence = strongestConfidence(
+        stringValue(merged.confidence),
+        stringValue(record.confidence),
+      )
+      merged.updatedAt = [stringValue(merged.updatedAt), stringValue(record.updatedAt)].filter(Boolean).sort().at(-1) || merged.updatedAt
+    }
+    if (productVariations.length > 0) {
+      merged.productVariationList = productVariations
+      merged.productVariations = productVariations.join(' / ')
+      merged.productEquivalent = productVariations.join(' / ')
+    }
+    if (sources.length > 0) {
+      merged.sources = sources
+      merged.sourceCount = sources.length
+      merged.source = sourceIsUsable(merged.source as Record<string, unknown> | null) ? merged.source : sources[0]
+    }
+    merged.id = group.map(record => stringValue(record.id)).filter(Boolean).join('__') || stringValue(primary.id) || stableId('competitor', stringValue(primary.companyName))
+    return merged
+  })
+
+  return [...passthrough, ...compacted]
 }
 
 function stableId(prefix: string, ...values: string[]): string {
@@ -2950,6 +3013,7 @@ function appendCompetitorRecord(
   const recordConfidence = primaryMetric?.confidence || fallbackConfidence
   const recordEvidenceStatus = primaryMetric?.evidenceStatus || fallbackEvidenceStatus
   const recordReviewRequired = primaryMetric ? false : topLevelReviewRequired
+  const recordSources = recordSource ? [recordSource] : []
   const hasUsefulProductContext = isUsefulDashboardValue(firstString(
     input.item.productEquivalent,
     input.item.activeContent,
@@ -2963,8 +3027,10 @@ function appendCompetitorRecord(
   if (!primaryMetric && topLevelReviewRequired && !canImportProductContext) return false
   const existingIndex = state.competitors.findIndex(competitor => {
     if (stringValue(competitor.companyName).toLowerCase() !== companyName.toLowerCase()) return false
-    if (primaryMetric) return true
-    return stringValue((competitor.source as Record<string, unknown> | undefined)?.title) === stringValue(recordSource?.title)
+    return true
+  })
+  const importedProductVariations = competitorProductVariationValues({
+    productEquivalent: firstString(input.item.productEquivalent),
   })
   const importedRecord = {
     id: stableId('autopilot-competitor', input.runKey, companyName, stringValue(recordSource?.title)),
@@ -2987,6 +3053,8 @@ function appendCompetitorRecord(
     lastUpdated: metricValues.lastUpdated || firstString(input.item.lastChecked, input.item.sourceDate) || '',
     evidenceStatus: recordEvidenceStatus,
     source: recordSource,
+    sources: recordSources,
+    sourceCount: recordSources.length,
     sourceTier: recordTier,
     reportedSourceTier: firstString(input.item.sourceTier) || undefined,
     dataType: input.dataType,
@@ -2996,6 +3064,8 @@ function appendCompetitorRecord(
     riskReason: firstString(input.item.riskReason) || (input.reasons?.join('; ') || undefined),
     notes: firstString(input.item.notes, input.item.recommendedAction, input.value) ||
       'Imported by Full Dashboard Autopilot from source-backed competitor evidence. Product-line revenue, pricing, market share, traffic, and ratings remain separate evidence-gated fields.',
+    productVariationList: importedProductVariations,
+    productVariations: importedProductVariations.join(' / '),
     updatedAt: input.lastChecked,
   }
 
@@ -3007,6 +3077,32 @@ function appendCompetitorRecord(
         ;(merged as Record<string, unknown>)[field] = existing[field]
       }
     }
+    const productVariations = mergeUniqueStrings([
+      ...competitorProductVariationValues(existing),
+      ...competitorProductVariationValues(importedRecord),
+    ])
+    if (productVariations.length > 0) {
+      merged.productVariationList = productVariations
+      merged.productVariations = productVariations.join(' / ')
+      merged.productEquivalent = productVariations.join(' / ')
+    }
+    const sources = mergeCompetitorSources(existing, importedRecord)
+    if (sources.length > 0) {
+      merged.sources = sources
+      merged.sourceCount = sources.length
+      merged.source = sourceIsUsable(merged.source as Record<string, unknown> | null)
+        ? merged.source
+        : sources[0]
+    }
+    merged.evidenceStatus = strongestCompetitorEvidenceStatus(
+      stringValue(existing.evidenceStatus),
+      stringValue(importedRecord.evidenceStatus),
+    )
+    merged.confidence = strongestConfidence(
+      stringValue(existing.confidence),
+      stringValue(importedRecord.confidence),
+    )
+    merged.reviewRequired = Boolean(existing.reviewRequired && importedRecord.reviewRequired)
     if (JSON.stringify(existing) === JSON.stringify(merged)) return false
     state.competitors[existingIndex] = merged
     return true
@@ -3014,6 +3110,98 @@ function appendCompetitorRecord(
 
   state.competitors.push(importedRecord)
   return true
+}
+
+function mergeUniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const normalized = stringValue(value)
+    if (!normalized) continue
+    const key = normalized.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+  return result
+}
+
+function isUsefulCompetitorProductVariation(value: string): boolean {
+  const text = stringValue(value)
+  if (!isUsefulDashboardValue(text)) return false
+  if (/company-wide financial context|not textile-softener product-line revenue|financial context/i.test(text)) return false
+  if (/automated ssl verification failed|page access failed|certificate-chain issue blocked|url identified|candidate identified|category presence only/i.test(text)) return false
+  return true
+}
+
+function competitorProductVariationValues(record: Record<string, unknown>): string[] {
+  const values: string[] = []
+  if (Array.isArray(record.productVariationList)) {
+    values.push(...record.productVariationList.flatMap(splitCompetitorProductVariationText))
+  }
+  values.push(...splitCompetitorProductVariationText(record.productVariations))
+  values.push(...splitCompetitorProductVariationText(record.productEquivalent))
+  return mergeUniqueStrings(values.filter(isUsefulCompetitorProductVariation))
+}
+
+function splitCompetitorProductVariationText(value: unknown): string[] {
+  return stringValue(value)
+    .split(/\s+\/\s+|\s+;\s+|\n+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function mergeCompetitorSources(...records: Array<Record<string, unknown>>): Record<string, unknown>[] {
+  const sources: Record<string, unknown>[] = []
+  const seen = new Set<string>()
+  for (const record of records) {
+    const candidates = [
+      ...(Array.isArray(record.sources) ? record.sources.filter(isPlainRecord) : []),
+      isPlainRecord(record.source) ? record.source : null,
+    ].filter(isPlainRecord)
+    for (const source of candidates) {
+      if (!sourceIsUsable(source)) continue
+      const key = [
+        stringValue(source.title).toLowerCase(),
+        stringValue(source.url).toLowerCase(),
+        stringValue(source.date),
+      ].join('|')
+      if (seen.has(key)) continue
+      seen.add(key)
+      sources.push(source)
+    }
+  }
+  return sources
+}
+
+function strongestCompetitorEvidenceStatus(...statuses: string[]): string {
+  const order = [
+    'Verified',
+    'User Approved',
+    'Investor Approved',
+    'Trusted Source Auto-Updated',
+    'Official Data',
+    'Official Company Evidence',
+    'Source-backed',
+    'Supplier Evidence',
+    'Market Reference',
+    'Trade Proxy',
+    'Reference Only',
+    'Candidate Source',
+    'Assumption',
+    'Powerful Assumption',
+    'Hypothesis',
+    'Conflict Detected',
+    'To Verify',
+    'Missing',
+  ]
+  return order.find(status => statuses.includes(status)) || statuses.find(Boolean) || 'To Verify'
+}
+
+function strongestConfidence(...values: string[]): Confidence {
+  const order: Confidence[] = ['high', 'medium', 'low']
+  const normalized = values.map(value => stringValue(value).toLowerCase()).filter(Boolean)
+  return order.find(value => normalized.includes(value)) || 'medium'
 }
 
 function safeCandidateStatus(status: string): string {

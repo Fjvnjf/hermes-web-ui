@@ -511,7 +511,7 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
     rating: autoVerifyText(competitor.rating),
     lastUpdated: competitorLastUpdatedLabel(competitor),
     confidence: competitorConfidenceLabel(competitor),
-    source: competitor.source?.title || 'Source search running',
+    source: competitor.sourceCount && competitor.sourceCount > 1 ? `${competitor.sourceCount} sources` : competitor.source?.title || 'Source search running',
     sourceUrl: competitor.source?.url,
     evidenceStatus: competitor.evidenceStatus,
     nextAction: competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
@@ -528,11 +528,11 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
   }
 
   return Array.from(groups.values()).map(group => {
-    const sourceBacked = group.filter(record => sourceIsUsable(record.source))
+    const sourceBacked = group.filter(record => competitorRecordSources(record).some(source => sourceIsUsable(source)))
     const primary = sourceBacked[0] || group[0]
-    const productVariations = uniqueValues(group.map(record => record.productEquivalent)).sort((a, b) => a.localeCompare(b))
-    const sourceRecords = sourceBacked.length ? sourceBacked : group.filter(record => record.source?.title)
-    const sourceTitles = uniqueValues(sourceRecords.map(record => record.source?.title))
+    const productVariations = uniqueValues(group.flatMap(record => competitorProductVariationValues(record))).sort((a, b) => a.localeCompare(b))
+    const visibleSources = group.flatMap(record => competitorRecordSources(record)).filter(source => sourceIsUsable(source))
+    const sourceTitles = uniqueValues(visibleSources.map(source => source.title))
     const notes = uniqueValues(group.map(record => record.notes).filter(Boolean))
 
     return {
@@ -556,7 +556,7 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
       lastUpdated: firstUsefulValue(group.map(record => record.lastUpdated || record.updatedAt || ''), primary.lastUpdated || primary.updatedAt),
       confidence: bestConfidenceValue(group.map(record => record.confidence || ''), primary.confidence || ''),
       evidenceStatus: strongestEvidenceStatus(group.map(record => record.evidenceStatus)),
-      source: sourceRecords[0]?.source || primary.source || null,
+      source: visibleSources[0] || primary.source || null,
       notes: notes.length > 1 ? notes.join(' / ') : notes[0] || primary.notes,
       updatedAt: group
         .map(record => record.updatedAt)
@@ -564,7 +564,8 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
         .sort()
         .at(-1) || primary.updatedAt,
       records: group,
-      sourceCount: sourceTitles.length,
+      sources: visibleSources,
+      sourceCount: sourceTitles.length || primary.sourceCount || 0,
     }
   })
 }
@@ -689,6 +690,45 @@ function normalizedCompetitorKey(value: string): string {
     .replace(/\b(group|company|chemicals?|chemical|industries|industry|co|corp|corporation|limited|ltd|inc|gmbh|ag|plc)\b/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
+}
+
+function competitorRecordSources(record: CompetitorIntelligenceRecord): NonNullable<CompetitorIntelligenceRecord['source']>[] {
+  const candidates = [
+    ...(Array.isArray(record.sources) ? record.sources : []),
+    record.source || null,
+  ].filter(Boolean) as NonNullable<CompetitorIntelligenceRecord['source']>[]
+  const seen = new Set<string>()
+  const sources: NonNullable<CompetitorIntelligenceRecord['source']>[] = []
+  for (const source of candidates) {
+    const key = `${source.title || ''}|${source.url || ''}|${source.date || ''}`.toLowerCase()
+    if (!source.title || seen.has(key)) continue
+    seen.add(key)
+    sources.push(source)
+  }
+  return sources
+}
+
+function isUsefulCompetitorProductVariation(value: string): boolean {
+  const normalized = String(value || '').trim()
+  if (!normalized || /no source-backed value yet|source review needed|not published by cited source|source search running/i.test(normalized)) return false
+  if (/company-wide financial context|not textile-softener product-line revenue|financial context/i.test(normalized)) return false
+  if (/automated ssl verification failed|page access failed|certificate-chain issue blocked|url identified|candidate identified|category presence only/i.test(normalized)) return false
+  return true
+}
+
+function competitorProductVariationValues(record: CompetitorIntelligenceRecord): string[] {
+  return uniqueValues([
+    ...(Array.isArray(record.productVariationList) ? record.productVariationList.flatMap(splitCompetitorProductVariationText) : []),
+    ...splitCompetitorProductVariationText(record.productVariations),
+    ...splitCompetitorProductVariationText(record.productEquivalent),
+  ].filter(isUsefulCompetitorProductVariation))
+}
+
+function splitCompetitorProductVariationText(value: unknown): string[] {
+  return String(value || '')
+    .split(/\s+\/\s+|\s+;\s+|\n+/)
+    .map(item => item.trim())
+    .filter(Boolean)
 }
 
 function uniqueValues(values: Array<string | undefined>): string[] {

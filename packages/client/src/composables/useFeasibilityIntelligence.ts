@@ -41,6 +41,8 @@ export interface CompetitorIntelligenceRecord {
   proposedDashboardField?: string
   countryRegion: string
   productEquivalent: string
+  productVariations?: string
+  productVariationList?: string[]
   activeContent: string
   pricingEvidence: string
   certifications: string
@@ -53,6 +55,8 @@ export interface CompetitorIntelligenceRecord {
   lastUpdated?: string
   evidenceStatus: IntelligenceEvidenceStatus
   source?: SourceReference | null
+  sources?: SourceReference[]
+  sourceCount?: number
   sourceTier?: string
   dataType?: string
   confidence?: 'low' | 'medium' | 'high' | string
