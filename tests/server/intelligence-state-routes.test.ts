@@ -55,11 +55,23 @@ describe('dashboard intelligence state routes', () => {
   it('sanitizes dashboard intelligence state to known arrays and redacts secret-looking keys', () => {
     const sanitized = sanitizeDashboardIntelligenceState({
       marketClaims: [{ label: 'China demand', apiKey: 'do-not-store', safe: 'visible' }],
+      rawMaterialSignals: [{ material: 'Stearic Acid', authorization: 'do-not-store' }],
+      supplierScorecards: [{ supplier: 'Wilmar', material: 'Stearic Acid' }],
+      regulatoryFindings: [{ label: 'DMS regulatory check' }],
+      financialEvidence: [{ label: 'Investment model source' }],
+      suggestedTasks: [{ title: 'Review supplier quote' }],
+      investorMaterialCandidates: [{ section: 'Risk register' }],
       randomKey: [{ should: 'drop' }],
     })
 
     expect(sanitized).toMatchObject({
       marketClaims: [{ label: 'China demand', apiKey: '[REDACTED]', safe: 'visible' }],
+      rawMaterialSignals: [{ material: 'Stearic Acid', authorization: '[REDACTED]' }],
+      supplierScorecards: [{ supplier: 'Wilmar', material: 'Stearic Acid' }],
+      regulatoryFindings: [{ label: 'DMS regulatory check' }],
+      financialEvidence: [{ label: 'Investment model source' }],
+      suggestedTasks: [{ title: 'Review supplier quote' }],
+      investorMaterialCandidates: [{ section: 'Risk register' }],
       competitors: [],
       financialModels: [],
     })
@@ -158,6 +170,60 @@ describe('dashboard intelligence state routes', () => {
           marketShare: 'Market-share reference identified; exact textile-softener share not approved.',
         }),
       }),
+    ])
+  })
+
+  it('deduplicates repeated research findings before writing durable state', async () => {
+    const sanitized = sanitizeDashboardIntelligenceState({
+      researchFindings: [
+        {
+          id: 'old-copy',
+          status: 'Pending Review',
+          keyClaim: 'Dashboard update: Missing proof',
+          summary: 'Imported by Full Dashboard Trusted Source Autopilot from Financial evidence.',
+          evidenceStatus: 'To Verify',
+          source: { title: 'Workspace evidence search', url: 'https://example.com/source' },
+          dashboardTarget: {
+            group: 'financialEvidence',
+            fieldKey: 'investment.irr',
+            proposedDashboardField: 'Projected IRR',
+            value: 'Missing / To Verify',
+          },
+        },
+        {
+          id: 'latest-copy',
+          status: 'Pending Review',
+          keyClaim: 'Dashboard update: Missing proof',
+          summary: 'Imported by Full Dashboard Trusted Source Autopilot from Financial evidence.',
+          evidenceStatus: 'To Verify',
+          source: { title: 'Workspace evidence search', url: 'https://example.com/source' },
+          dashboardTarget: {
+            group: 'financialEvidence',
+            fieldKey: 'investment.irr',
+            proposedDashboardField: 'Projected IRR',
+            value: 'Missing / To Verify',
+          },
+        },
+        {
+          id: 'different-status-copy',
+          status: 'Approved',
+          keyClaim: 'Dashboard update: Missing proof',
+          summary: 'Imported by Full Dashboard Trusted Source Autopilot from Financial evidence.',
+          evidenceStatus: 'Source-backed',
+          source: { title: 'Workspace evidence search', url: 'https://example.com/source' },
+          dashboardTarget: {
+            group: 'financialEvidence',
+            fieldKey: 'investment.irr',
+            proposedDashboardField: 'Projected IRR',
+            value: 'Missing / To Verify',
+          },
+        },
+      ],
+    })
+
+    expect(sanitized.researchFindings).toEqual([
+      expect.objectContaining({ id: 'latest-copy' }),
+      expect.objectContaining({ id: 'different-status-copy' }),
     ])
   })
 
@@ -292,6 +358,62 @@ describe('dashboard intelligence state routes', () => {
       },
     })
     expect(JSON.stringify(getCtx.body)).not.toContain('Zhejiang textile cluster source-backed')
+  })
+
+  it('imports ready full-dashboard autopilot output through the owner import endpoint', async () => {
+    const cronDir = join(hermesHome, 'cron')
+    const outputDir = join(cronDir, 'output', 'job-full-dashboard')
+    mkdirSync(outputDir, { recursive: true })
+    writeFileSync(join(cronDir, 'jobs.json'), JSON.stringify({
+      jobs: [{
+        id: 'job-full-dashboard',
+        job_id: 'job-full-dashboard',
+        name: 'Full Dashboard Trusted Source Autopilot',
+        prompt: 'Return dashboard_updates for the full dashboard.',
+      }],
+    }))
+    writeFileSync(join(outputDir, '2026-06-03T19-00-00.md'), [
+      '# Full Dashboard Trusted Source Autopilot',
+      '',
+      '## Market Intelligence',
+      '',
+      '| Field | Value | Source | Source Tier | Confidence | Evidence Status | Review Required |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
+      '| Target provinces | Zhejiang textile cluster source-backed | [Zhejiang official](https://www.zhejiang.gov.cn/) | Tier 1 | high | Official Data | no |',
+    ].join('\n'))
+
+    const postLayer = intelligenceStateRoutes.stack.find((entry: any) =>
+      entry.path === '/api/hermes/intelligence-state/autopilot-import-now' && entry.methods.includes('POST'),
+    )
+    const postCtx = createCtx('POST', null, '/api/hermes/intelligence-state/autopilot-import-now')
+
+    await runRouteLayer(postLayer, postCtx)
+
+    expect(postCtx.body).toMatchObject({
+      ok: true,
+      profile: 'default',
+      importResult: {
+        importedRuns: 1,
+        autoFilledCount: 1,
+      },
+      autopilotImport: {
+        latestOutputImported: true,
+        latestOutputParseStatus: 'imported',
+      },
+    })
+    expect(JSON.stringify(postCtx.body)).not.toContain('Zhejiang textile cluster source-backed')
+
+    const direct = await readDashboardIntelligenceState('default')
+    expect(direct?.state.marketClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Target provinces',
+        value: 'Zhejiang textile cluster source-backed',
+        source: expect.objectContaining({
+          title: 'Zhejiang official',
+          url: 'https://www.zhejiang.gov.cn/',
+        }),
+      }),
+    ]))
   })
 
   it('rejects non-object dashboard intelligence payloads', async () => {

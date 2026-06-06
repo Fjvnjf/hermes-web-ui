@@ -203,7 +203,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Scenario Selector')
     expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('No approved source-backed value')
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).toContain('Reference Template / User PDF Archive')
@@ -361,7 +361,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Research HS Codes')
     expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).toContain('Example supplier')
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     for (const selector of [
@@ -523,10 +523,10 @@ describe('screenshot-matched executive business tabs', () => {
       companyName: 'Alpha Source Co',
       countryRegion: 'Company-wide',
       productEquivalent: 'Company-wide financial context; not product-line revenue.',
-      activeContent: 'No source-backed value yet',
+      activeContent: 'Awaiting trusted-source import',
       pricingEvidence: '',
       certifications: 'Official SEC companyfacts',
-      distributionPresence: 'No source-backed value yet',
+      distributionPresence: 'Awaiting trusted-source import',
       marketShare: '',
       revenue: 'FY2025 company-wide revenue: US$2.332B (SEC reported US$2,332,114,000)',
       yearlyGrowth: '+6.96% source-backed',
@@ -542,7 +542,7 @@ describe('screenshot-matched executive business tabs', () => {
       companyName: 'Beta Source Co',
       countryRegion: 'Germany',
       productEquivalent: 'Silicone Softener',
-      activeContent: 'No source-backed value yet',
+      activeContent: 'Awaiting trusted-source import',
       pricingEvidence: '$36/kg source-backed',
       certifications: 'Official product page',
       distributionPresence: 'Official distributor page',
@@ -562,7 +562,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).toContain('Market Share')
     expect(panel().text()).toContain('Revenue')
     expect(panel().text()).toContain('YoY Growth')
-    expect(panel().text()).toContain('No source-backed value yet')
+    expect(panel().text()).toContain('Traffic source import needed')
+    expect(panel().text()).toContain('Rating / recognition source needed')
     expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     const alphaRows = wrapper.findAll('.comparison-grid-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
@@ -606,6 +607,158 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).not.toContain('20-25%')
   })
 
+  it('shows collective market-share context without promoting it to a company-specific leader badge', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'BASF',
+      countryRegion: 'Germany / global',
+      productEquivalent: 'Esterquats / fabric-care softener competitor context',
+      activeContent: 'Awaiting trusted-source import',
+      pricingEvidence: '',
+      certifications: 'Awaiting trusted-source import',
+      distributionPresence: 'Awaiting trusted-source import',
+      marketShare: 'Collective Tier-1 esterquats share 50-60%; individual company share not published by this source. Review required before ranking or investor use.',
+      revenue: '',
+      yearlyGrowth: '',
+      traffic: '',
+      rating: '',
+      lastUpdated: 'February 2026',
+      confidence: 'medium',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: true,
+      source: {
+        title: 'Persistence Market Research - Esterquats Market',
+        url: 'https://www.persistencemarketresearch.com/market-research/esterquats-market.asp',
+        date: 'February 2026',
+      },
+      notes: 'Use as competitor-landscape context only. Do not rank companies from collective share.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    const basfRow = wrapper.findAll('.comparison-grid-row')
+      .filter(row => !row.classes().includes('head') && row.text().includes('BASF'))[0]
+
+    expect(basfRow.text()).toContain('No approved company-specific source yet')
+    expect(basfRow.text()).toContain('Hermes missing-coverage research is chasing')
+    expect(basfRow.text()).toContain('company-specific market share')
+    expect(basfRow.text()).not.toContain('Collective Tier-1 esterquats share 50-60%')
+    expect(basfRow.text()).not.toContain('individual company share not published')
+    expect(basfRow.text()).toContain('No source-backed leader badge')
+    expect(basfRow.text()).not.toContain('🥇 Market Leader')
+    expect(wrapper.findAll('.market-share-panel .share-row')
+      .filter(row => row.text().includes('BASF'))).toHaveLength(0)
+  })
+
+  it('does not promote review-gated company-specific market share into a market leader badge', () => {
+    useFeasibilityIntelligence().addCompetitor({
+      companyName: 'Review Share Co',
+      countryRegion: 'Global',
+      productEquivalent: 'Esterquat competitor context',
+      activeContent: 'Awaiting trusted-source import',
+      pricingEvidence: '',
+      certifications: 'Awaiting trusted-source import',
+      distributionPresence: 'Awaiting trusted-source import',
+      marketShare: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+      revenue: 'FY2025 company-wide revenue: US$2.332B',
+      yearlyGrowth: '+6.96% YoY source-backed',
+      traffic: '',
+      rating: '',
+      lastUpdated: '2026-06-06',
+      confidence: 'high',
+      evidenceStatus: 'Official Data',
+      source: { title: 'SEC Companyfacts', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000094049.json', date: '2026-02-26' },
+      metricEvidence: {
+        marketShare: {
+          value: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+          source: { title: '360 Research Reports - Esterquat Market', url: 'https://www.360researchreports.com/market-reports/esterquat-market-204218', date: '18 November 2025' },
+          evidenceStatus: 'Market Reference',
+          confidence: 'medium',
+          reviewRequired: true,
+        },
+        revenue: {
+          value: 'FY2025 company-wide revenue: US$2.332B',
+          source: { title: 'SEC Companyfacts', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000094049.json', date: '2026-02-26' },
+          evidenceStatus: 'Official Data',
+          confidence: 'high',
+          reviewRequired: false,
+        },
+      },
+      notes: 'Market share is company-specific but still review-gated.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    const row = wrapper.findAll('.comparison-grid-row')
+      .filter(item => !item.classes().includes('head') && item.text().includes('Review Share Co'))[0]
+
+    expect(row.text()).toContain('No approved company-specific source yet')
+    expect(row.text()).toContain('Hermes missing-coverage research is chasing')
+    expect(row.text()).toContain('company-specific market share')
+    expect(row.text()).not.toContain('19% global esterquat share')
+    expect(row.text()).not.toContain('Review required')
+    expect(row.text()).toContain('💰 Highest Revenue')
+    expect(row.text()).not.toContain('🥇 Market Leader')
+    expect(wrapper.findAll('.market-share-panel .share-row')
+      .filter(item => item.text().includes('Review Share Co'))).toHaveLength(0)
+  })
+
+  it('shows sourced traffic and recognition while keeping market-reference share review-gated', () => {
+    useFeasibilityIntelligence().addCompetitor({
+      companyName: 'Traffic Evidence Co',
+      countryRegion: 'Japan / global',
+      productEquivalent: 'Textile softener competitor context',
+      activeContent: 'Source-backed product context',
+      pricingEvidence: '',
+      certifications: 'Source-backed',
+      distributionPresence: 'Source-backed',
+      marketShare: '14% global esterquat share (market-reference estimate; not textile-softener-specific).',
+      revenue: 'FY2025 company-wide net sales: ¥1,688.6B',
+      yearlyGrowth: 'FY2024 net sales YoY: +6.26%',
+      traffic: 'April 2026 Semrush website-traffic estimate: 1.17M visits.',
+      rating: 'Official sustainability recognition source-backed.',
+      lastUpdated: 'April 2026',
+      confidence: 'high',
+      evidenceStatus: 'Official Data',
+      source: { title: 'Official company source', url: 'https://example.com/company', date: '2026-06-06' },
+      metricEvidence: {
+        marketShare: {
+          value: '14% global esterquat share (market-reference estimate; not textile-softener-specific).',
+          source: { title: 'Market reference estimate', url: 'https://example.com/market-reference', date: '2026-06-06' },
+          evidenceStatus: 'Market Reference',
+          confidence: 'medium',
+          reviewRequired: true,
+        },
+        traffic: {
+          value: 'April 2026 Semrush website-traffic estimate: 1.17M visits.',
+          source: { title: 'Semrush website traffic overview', url: 'https://www.semrush.com/website/example.com/overview/', date: 'April 2026' },
+          evidenceStatus: 'Market Reference',
+          confidence: 'high',
+          reviewRequired: false,
+        },
+        rating: {
+          value: 'Official sustainability recognition source-backed.',
+          source: { title: 'Official recognition page', url: 'https://example.com/recognition', date: '2026-06-06' },
+          evidenceStatus: 'Official Data',
+          confidence: 'high',
+          reviewRequired: false,
+        },
+      },
+      notes: 'Traffic is directional; market share is review-gated.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    const row = wrapper.findAll('.comparison-grid-row')
+      .filter(item => !item.classes().includes('head') && item.text().includes('Traffic Evidence Co'))[0]
+
+    expect(row.text()).toContain('1.17M visits')
+    expect(row.text()).toContain('Official sustainability recognition')
+    expect(row.text()).toContain('No approved company-specific source yet')
+    expect(row.text()).not.toContain('14% global esterquat share')
+    expect(row.text()).not.toContain('Review required')
+    expect(row.text()).not.toContain('🥇 Market Leader')
+    expect(wrapper.findAll('.market-share-panel .share-row')
+      .filter(item => item.text().includes('Traffic Evidence Co'))).toHaveLength(0)
+  })
+
   it('renders supplier scorecards as source-gated raw material verification targets and auto-schedules supplier research', async () => {
     useFeasibilityIntelligence().addDataRoomSource({
       checklistLabel: 'Autopilot supplier scorecard - Official Supplier',
@@ -637,7 +790,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Hermes Autopilot has staged 1 supplier candidates')
     expect(text).toContain('Official Supplier Candidate')
     expect(text).toContain('Stearic Acid TP')
-    expect(text).toContain('Quote/TDS requested; price No source-backed value yet')
+    expect(text).toContain('Quote/TDS requested; price Awaiting trusted-source import')
     expect(text).toContain('No approved quote yet')
     expect(text).toContain('Official supplier product catalog')
     expect(text).toContain('Reference-only supplier target template')
@@ -660,7 +813,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Owner approval')
     expect(text).toContain('Full dashboard autopilot')
     expect(text).toContain('Verify Supplier')
-    expect(text).toContain('No source-backed value yet')
+    expect(text).toContain('Awaiting trusted-source import')
     expect(text).not.toContain('$1,180')
     expect(text).not.toContain('$1,210')
     expect(text).not.toContain('$1,450')
@@ -719,7 +872,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Hermes Autopilot has filled 1 country-wise trade-proxy records')
     expect(text).toContain('China')
     expect(text).toContain('Textile auxiliary / softener trade proxy')
-    expect(text).toContain('HS 380991 trade proxy / No source-backed value yet')
+    expect(text).toContain('HS 380991 trade proxy / Awaiting trusted-source import')
     expect(text).toContain('2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg')
     expect(text).toContain('+21.23%')
     expect(text).toContain('WITS / World Bank Comtrade - China imports of HS 380991')

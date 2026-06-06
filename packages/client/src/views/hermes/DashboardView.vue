@@ -1610,9 +1610,9 @@ onMounted(() => {
               <span class="action-priority">{{ action.priority }}</span>
               <span class="action-body">
                 <strong>{{ action.title }}</strong>
-                <small>{{ action.reason }}</small>
+                <small>{{ displayAutomaticVerificationText(action.reason) }}</small>
               </span>
-              <span class="action-status">{{ action.evidenceStatus }}</span>
+              <span class="action-status">{{ displayEvidenceStatus(action.evidenceStatus) }}</span>
               <span class="action-route">{{ action.routeLabel }}</span>
             </RouterLink>
             <NButton
@@ -1653,7 +1653,7 @@ onMounted(() => {
                   :to="{ name: evidenceGapRouteName(gap.id) }"
                 >
                   <span>{{ gap.label }}</span>
-                  <small>{{ gap.evidenceStatus }} / {{ gap.nextAction }}</small>
+                  <small>{{ displayEvidenceStatus(gap.evidenceStatus) }} / {{ displayAutomaticVerificationText(gap.nextAction) }}</small>
                 </RouterLink>
               </div>
               <div v-else class="triage-empty">No missing readiness areas in the current local intelligence state.</div>
@@ -1675,7 +1675,7 @@ onMounted(() => {
                   :to="{ name: risk.routeName }"
                 >
                   <span>{{ risk.title }}</span>
-                  <small>{{ risk.origin }} / {{ risk.evidenceStatus }} / {{ risk.detail }}</small>
+                  <small>{{ risk.origin }} / {{ displayEvidenceStatus(risk.evidenceStatus) }} / {{ displayAutomaticVerificationText(risk.detail) }}</small>
                 </RouterLink>
               </div>
               <div v-else class="triage-empty">No current investor risks in the local intelligence state.</div>
@@ -1697,7 +1697,7 @@ onMounted(() => {
                   :to="{ name: 'hermes.researchResultReview' }"
                 >
                   <span>{{ finding.keyClaim || finding.summary }}</span>
-                  <small>{{ finding.status }} / {{ finding.evidenceStatus }}</small>
+                  <small>{{ finding.status }} / {{ displayEvidenceStatus(finding.evidenceStatus) }}</small>
                 </RouterLink>
                 <RouterLink
                   v-for="job in openResearchJobs"

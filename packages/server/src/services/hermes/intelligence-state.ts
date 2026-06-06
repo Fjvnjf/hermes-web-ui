@@ -20,7 +20,13 @@ const TOP_LEVEL_ARRAY_KEYS = [
   'evidenceItems',
   'marketClaims',
   'competitors',
+  'rawMaterialSignals',
+  'supplierScorecards',
+  'regulatoryFindings',
+  'financialEvidence',
   'presentationMaterials',
+  'suggestedTasks',
+  'investorMaterialCandidates',
   'researchJobs',
   'researchFindings',
   'financialModels',
@@ -83,6 +89,11 @@ const KNOWN_COMPETITOR_NAME_BY_SLUG: Record<string, string> = {
   dow_inc: 'Dow',
   dow_chemical: 'Dow',
   dow_chemical_company: 'Dow',
+  akzonobel: 'AkzoNobel',
+  akzo_nobel: 'AkzoNobel',
+  procter_gamble: 'Procter & Gamble',
+  procter_and_gamble: 'Procter & Gamble',
+  p_g: 'Procter & Gamble',
   basf: 'BASF',
   basf_se: 'BASF',
 }
@@ -133,6 +144,56 @@ function isNoisyCompetitorCompanyName(value: unknown): boolean {
     /\b(market share|price evidence|pricing evidence|yoy growth|yearly growth|website traffic|review rating|last updated|source date)\b/.test(text)
 }
 
+function normalizeHeader(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/(^_|_$)/g, '')
+}
+
+function canonicalCompetitorCompanyName(value: unknown): string {
+  const text = stringValue(value)
+  if (!text) return ''
+  return KNOWN_COMPETITOR_NAME_BY_SLUG[normalizeHeader(text)] || text
+}
+
+function researchFindingDedupeKey(value: unknown): string {
+  if (!isPlainRecord(value)) return JSON.stringify(value)
+  const source = isPlainRecord(value.source) ? value.source : {}
+  const target = isPlainRecord(value.dashboardTarget) ? value.dashboardTarget : {}
+  return [
+    stringValue(value.status),
+    stringValue(value.evidenceStatus),
+    stringValue(value.keyClaim),
+    stringValue(value.summary),
+    stringValue(source.title),
+    stringValue(source.url),
+    stringValue(target.group),
+    stringValue(target.fieldKey),
+    stringValue(target.proposedDashboardField),
+    stringValue(target.companyName),
+    stringValue(target.value),
+    stringValue(target.marketShare),
+    stringValue(target.pricingEvidence),
+    stringValue(target.revenue),
+    stringValue(target.yearlyGrowth),
+    stringValue(target.traffic),
+    stringValue(target.rating),
+  ].join('\u001f')
+}
+
+function compactResearchFindingsForWrite(value: unknown[]): unknown[] {
+  const seen = new Set<string>()
+  const compacted: unknown[] = []
+
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    const item = value[index]
+    const key = researchFindingDedupeKey(item)
+    if (seen.has(key)) continue
+    seen.add(key)
+    compacted.push(item)
+  }
+
+  return compacted.reverse()
+}
+
 function parseCompetitorMetricTarget(fieldKey: unknown): { companyName: string; metricLabel: string } | null {
   const text = stringValue(fieldKey)
   if (!text) return null
@@ -167,6 +228,13 @@ function parseCompetitorMetricTarget(fieldKey: unknown): { companyName: string; 
 }
 
 function normalizeStoredDashboardStateForRead(state: Record<string, unknown>): Record<string, unknown> {
+  const competitors = Array.isArray(state.competitors)
+    ? state.competitors.map(competitor => {
+      if (!isPlainRecord(competitor)) return competitor
+      const companyName = canonicalCompetitorCompanyName(competitor.companyName)
+      return companyName ? { ...competitor, companyName } : competitor
+    })
+    : state.competitors
   const findings = Array.isArray(state.researchFindings)
     ? state.researchFindings.map(finding => {
       if (!isPlainRecord(finding) || !isPlainRecord(finding.dashboardTarget)) return finding
@@ -185,7 +253,7 @@ function normalizeStoredDashboardStateForRead(state: Record<string, unknown>): R
       return { ...finding, dashboardTarget: target }
     })
     : state.researchFindings
-  return { ...state, researchFindings: findings }
+  return { ...state, competitors, researchFindings: findings }
 }
 
 export function sanitizeDashboardIntelligenceState(input: unknown): Record<string, unknown> {
@@ -196,7 +264,10 @@ export function sanitizeDashboardIntelligenceState(input: unknown): Record<strin
   const sanitized: Record<string, unknown> = {}
   for (const key of TOP_LEVEL_ARRAY_KEYS) {
     const value = input[key]
-    sanitized[key] = Array.isArray(value) ? redactSecretKeys(value) : []
+    const redacted = Array.isArray(value) ? redactSecretKeys(value) : []
+    sanitized[key] = key === 'researchFindings' && Array.isArray(redacted)
+      ? compactResearchFindingsForWrite(redacted)
+      : redacted
   }
   return sanitized
 }

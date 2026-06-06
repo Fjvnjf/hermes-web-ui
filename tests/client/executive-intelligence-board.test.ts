@@ -147,7 +147,7 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(wrapper.text()).toContain('No source-backed claim captured yet')
     expect(wrapper.text()).not.toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).toContain('Unknown supplier')
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).toContain('Powerful Assumption: 12%')

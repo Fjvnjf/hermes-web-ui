@@ -72,19 +72,19 @@ const financialEvidenceCandidates = computed(() =>
     })),
 )
 const processEquipmentRows = computed(() => [
-  detailRow('Tanks / reactors / mixers', 'Capacity and metallurgy To Verify'),
-  detailRow('Dosing / transfer systems', 'Quote and sizing To Verify'),
-  detailRow('QC / lab equipment', 'Specification To Verify'),
+  detailRow('Tanks / reactors / mixers', 'Capacity and metallurgy need approved source evidence'),
+  detailRow('Dosing / transfer systems', 'Quote and sizing need approved source evidence'),
+  detailRow('QC / lab equipment', 'Specification needs approved source evidence'),
 ])
 const utilitiesBuildingRows = computed(() => [
-  detailRow('Utilities & Infrastructure', 'Power, steam, water, compressed air To Verify'),
-  detailRow('Buildings & Civil', 'Factory, warehouse, office, safety areas To Verify'),
-  detailRow('Wastewater / safety systems', 'Environmental and fire-system scope To Verify'),
+  detailRow('Utilities & Infrastructure', 'Power, steam, water, and compressed air need approved source evidence'),
+  detailRow('Buildings & Civil', 'Factory, warehouse, office, and safety areas need approved source evidence'),
+  detailRow('Wastewater / safety systems', 'Environmental and fire-system scope needs approved source evidence'),
 ])
 const workingCapitalRows = computed(() => [
-  detailRow('Inventory days', 'Raw material and finished goods days To Verify'),
-  detailRow('Receivable days', 'Customer credit / DSO To Verify'),
-  detailRow('Payable days', 'Supplier credit / DPO To Verify'),
+  detailRow('Inventory days', 'Raw material and finished goods days need approved assumptions'),
+  detailRow('Receivable days', 'Customer credit / DSO needs approved assumptions'),
+  detailRow('Payable days', 'Supplier credit / DPO needs approved assumptions'),
   detailRow('Working capital need', 'Derived only after input evidence is reviewed'),
 ])
 const projectAnalysisTemplateKpis = computed(() => kpis.value)
@@ -267,7 +267,7 @@ function displayInvestmentText(text?: string | null): string {
 function detailRow(item: string, spec: string) {
   return {
     item,
-    spec,
+    spec: displayInvestmentText(spec),
     cost: redactsFinancials.value ? 'Restricted' : 'To Verify',
     source: 'Source missing',
     status: 'To Verify' as IntelligenceEvidenceStatus,
@@ -280,10 +280,10 @@ function analysisReviewSummary(): string {
     'Investment Analysis refresh draft',
     `Schedule metadata: ${refreshState.value.scheduleDisplay}`,
     `Scenario: ${model?.scenarioName || `${selectedScenario.value} scenario not filled yet`}`,
-    `Evidence status: ${model ? 'Derived from Assumptions' : 'To Verify'}`,
-    `NPV: ${model ? model.npv : 'To Verify'}`,
-    `IRR: ${model?.irr ?? 'To Verify'}`,
-    `Payback: ${model?.paybackYear ?? 'To Verify'}`,
+    `Evidence status: ${model ? 'Derived from Assumptions' : displayInvestmentStatus('To Verify')}`,
+    `NPV: ${model ? model.npv : displayInvestmentStatus('To Verify')}`,
+    `IRR: ${model?.irr ?? displayInvestmentStatus('To Verify')}`,
+    `Payback: ${model?.paybackYear ?? displayInvestmentStatus('To Verify')}`,
     '',
     'This is not investor-approved. Review sources and assumptions before presentation use.',
   ].join('\n')
@@ -324,7 +324,7 @@ async function createMissingFinanceTask() {
       body: [
         'Resolve missing Investment Analysis data before investor use.',
         'Required evidence: capex quotes, working capital assumptions, raw material/cost support, revenue assumptions, tax/discount rate rationale, and investor return assumptions.',
-        'Evidence status: To Verify / Derived from Assumptions',
+        `Evidence status: ${displayInvestmentStatus('To Verify')} / Derived from Assumptions`,
         'Source page: Investment Analysis',
         'Tags: Investment Analysis, Financial Evidence, Chemicon China Feasibility',
       ].join('\n'),

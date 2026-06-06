@@ -4,7 +4,10 @@ import {
   readDashboardIntelligenceState,
   writeDashboardIntelligenceState,
 } from '../../services/hermes/intelligence-state'
-import { readFullDashboardAutopilotImportStatus } from '../../services/hermes/dashboard-autopilot-ingest'
+import {
+  ingestFullDashboardAutopilotOutputs,
+  readFullDashboardAutopilotImportStatus,
+} from '../../services/hermes/dashboard-autopilot-ingest'
 
 export const intelligenceStateRoutes = new Router()
 
@@ -61,6 +64,29 @@ intelligenceStateRoutes.get('/api/hermes/intelligence-state/autopilot-import-sta
     ctx.body = {
       ok: true,
       profile: autopilotImport.profile,
+      autopilotImport,
+    }
+  } catch (err) {
+    handleStateError(ctx, err)
+  }
+})
+
+intelligenceStateRoutes.post('/api/hermes/intelligence-state/autopilot-import-now', requirePermission('view:product-development'), async (ctx) => {
+  try {
+    const profile = requestedProfile(ctx)
+    const importResult = await ingestFullDashboardAutopilotOutputs(profile, { maxFilesPerJob: 20 })
+    const autopilotImport = await readFullDashboardAutopilotImportStatus(profile)
+    auditAccessEvent({
+      ctx,
+      action: `${ctx.method} ${ctx.path}`,
+      resource: 'dashboard-autopilot-import-now',
+      permission: 'view:product-development',
+      result: 'allowed',
+    })
+    ctx.body = {
+      ok: true,
+      profile: autopilotImport.profile,
+      importResult,
       autopilotImport,
     }
   } catch (err) {

@@ -18,6 +18,18 @@ import {
   evidenceStatusForTier,
 } from '@/utils/trustedSources'
 import {
+  TRUSTED_SOURCE_DISCOVERY_ROOTS,
+  TRUSTED_SOURCE_DISCOVERY_ROOT_COUNT,
+} from '@/utils/trustedSourceDiscoveryRoots'
+import {
+  TRUSTED_SOURCE_BATCH_2_CANDIDATE_COUNT,
+  TRUSTED_SOURCE_BATCH_2_COUNTRY_COUNT,
+  TRUSTED_SOURCE_BATCH_2_HS_CODE_COUNT,
+  TRUSTED_SOURCE_BATCH_2_INDICATOR_COUNT,
+  TRUSTED_SOURCE_BATCH_2_PROVIDER_SUMMARIES,
+  TRUSTED_SOURCE_BATCH_2_URL_CANDIDATES,
+} from '@/utils/trustedSourceUrlCandidates'
+import {
   SCREEN_FIELD_MAPPINGS,
   createMissingFieldClaim,
   preferredSourceForField,
@@ -40,6 +52,7 @@ const fetchAvailableModelsMock = vi.hoisted(() => vi.fn())
 const updateDefaultModelMock = vi.hoisted(() => vi.fn())
 const fetchDashboardIntelligenceStateMock = vi.hoisted(() => vi.fn())
 const fetchDashboardAutopilotImportStatusMock = vi.hoisted(() => vi.fn())
+const importDashboardAutopilotOutputNowMock = vi.hoisted(() => vi.fn())
 const saveDashboardIntelligenceStateMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/client', () => ({
@@ -60,6 +73,7 @@ vi.mock('@/api/hermes/system', () => ({
 vi.mock('@/api/hermes/intelligence-state', () => ({
   fetchDashboardIntelligenceState: fetchDashboardIntelligenceStateMock,
   fetchDashboardAutopilotImportStatus: fetchDashboardAutopilotImportStatusMock,
+  importDashboardAutopilotOutputNow: importDashboardAutopilotOutputNowMock,
   saveDashboardIntelligenceState: saveDashboardIntelligenceStateMock,
 }))
 
@@ -217,6 +231,42 @@ describe('Trusted Source Autopilot', () => {
       state: null,
     })
     fetchDashboardAutopilotImportStatusMock.mockRejectedValue(new Error('server import status not configured'))
+    importDashboardAutopilotOutputNowMock.mockResolvedValue({
+      ok: true,
+      profile: 'default',
+      importResult: {
+        profile: 'default',
+        jobsChecked: 0,
+        filesChecked: 0,
+        importedRuns: 0,
+        skippedRuns: 0,
+        autoFilledCount: 0,
+        stagedReviewCount: 0,
+        missingCoverageFollowUpStarted: false,
+        errors: [],
+      },
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 0,
+        outputCount: 0,
+        importedRunCount: 0,
+        pendingOutputCount: 0,
+        latestOutputRunKey: '',
+        latestOutputFile: '',
+        latestOutputAt: '',
+        latestOutputImported: false,
+        latestOutputSkipped: false,
+        latestOutputParseStatus: 'none',
+        latestOutputCandidateCount: 0,
+        latestOutputParseError: '',
+        latestImportedRunKey: '',
+        registryUpdatedAt: '',
+        latestDueSlotAt: '',
+        latestDueSlotSatisfied: false,
+        latestDueSlotAttemptedAt: '',
+        latestDueSlotRunError: '',
+      },
+    })
     saveDashboardIntelligenceStateMock.mockResolvedValue({
       ok: true,
       profile: 'default',
@@ -259,6 +309,47 @@ describe('Trusted Source Autopilot', () => {
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'epa-comptox' && source.connector_type === 'API')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.source_id === 'supplier-uploaded-quote' && source.connector_type === 'supplier_quote')).toBe(true)
     expect(DEFAULT_TRUSTED_SOURCES.some(source => source.tier === 'tier4-public-listing' && source.requires_review)).toBe(true)
+  })
+
+  it('seeds the 750-root trusted source discovery registry without treating roots as verified facts', () => {
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOT_COUNT).toBe(750)
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS).toHaveLength(18)
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS.find(root => root.tier_number === 1)?.source_names).toContain('UN Comtrade')
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS.find(root => root.tier_number === 6)?.source_names).toContain('Evonik')
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS.find(root => root.tier_number === 7)?.source_names).toContain('Supplier formal quotation')
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS.find(root => root.tier_number === 8)?.trust_tier).toBe('tier4-public-listing')
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS.find(root => root.tier_number === 8)?.requires_review).toBe(true)
+    expect(TRUSTED_SOURCE_DISCOVERY_ROOTS.find(root => root.tier_number === 18)?.source_names).toContain('Hermes Trusted Sources registry')
+  })
+
+  it('adds the 2000-row URL-backed trusted source candidate batch with official-source gating', () => {
+    expect(TRUSTED_SOURCE_BATCH_2_CANDIDATE_COUNT).toBe(2000)
+    expect(TRUSTED_SOURCE_BATCH_2_PROVIDER_SUMMARIES).toHaveLength(2)
+    expect(TRUSTED_SOURCE_BATCH_2_COUNTRY_COUNT).toBe(80)
+    expect(TRUSTED_SOURCE_BATCH_2_INDICATOR_COUNT).toBe(18)
+    expect(TRUSTED_SOURCE_BATCH_2_HS_CODE_COUNT).toBe(7)
+
+    const worldBank = TRUSTED_SOURCE_BATCH_2_URL_CANDIDATES.find(source => source.source_id === 'SRC-00751')
+    expect(worldBank).toMatchObject({
+      provider: 'World Bank Indicators API',
+      trust_tier: 'tier1-official',
+      connector_type: 'API',
+      confidence_default: 'high',
+      auto_update_allowed: true,
+      requires_review: false,
+    })
+    expect(worldBank?.url).toContain('api.worldbank.org/v2/country/CN/indicator/NY.GDP.MKTP.CD')
+
+    const comtrade = TRUSTED_SOURCE_BATCH_2_URL_CANDIDATES.find(source => source.source_id === 'SRC-02198')
+    expect(comtrade).toMatchObject({
+      provider: 'UN Comtrade / Comtrade Plus',
+      trust_tier: 'tier1-official',
+      connector_type: 'API',
+      confidence_default: 'high',
+      auto_update_allowed: true,
+      requires_review: true,
+    })
+    expect(comtrade?.title).toContain('HS 3402')
   })
 
   it('defines source mappings for all full-dashboard research screens', () => {
@@ -721,6 +812,82 @@ describe('Trusted Source Autopilot', () => {
     expect(missing.notes).toContain('Create research job')
   })
 
+  it('compacts hydrated dashboard snapshots before browser storage to avoid quota-heavy local cache', () => {
+    const autopilot = useTrustedSourceAutopilot()
+    for (let index = 0; index < 120; index += 1) {
+      autopilot.applyTrustedSourceClaim({
+        screen: 'market',
+        label: `Country-wise consumption growth - Test ${index}`,
+        value: `Large source-backed import text ${index} ${'x'.repeat(1000)}`,
+        dataType: 'trade_data',
+        source: {
+          title: `Official trade source ${index}`,
+          url: `https://example.com/source-${index}`,
+          date: '2026-06-06',
+        },
+        notes: `Large risk note ${index} ${'y'.repeat(1000)}`,
+      })
+    }
+    const raw = window.localStorage.getItem('hermes.trustedSourceAutopilot.v1')
+    const stored = JSON.parse(raw || '{}')
+
+    expect(stored.snapshots.length).toBeLessThanOrEqual(12)
+    expect(stored.snapshots.every((snapshot: any) => snapshot.claims.length <= 24)).toBe(true)
+    expect(stored.snapshots.every((snapshot: any) => snapshot.claims.every((claim: any) => claim.value.length <= 360))).toBe(true)
+    expect(raw!.length).toBeLessThan(250_000)
+  })
+
+  it('compacts feasibility intelligence browser cache without dropping full server state', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+    saveDashboardIntelligenceStateMock.mockClear()
+
+    for (let index = 0; index < 340; index += 1) {
+      intelligence.addResearchFinding({
+        summary: `Extensive dashboard finding ${index} ${'source-backed context '.repeat(80)}`,
+        keyClaim: `Critical dashboard claim ${index}`,
+        area: 'market',
+        evidenceStatus: 'To Verify',
+        confidence: 'medium',
+        source: {
+          title: `Official source ${index}`,
+          url: `https://example.gov/source-${index}`,
+          date: '2026-06-06',
+        },
+        suggestedTask: `Review trusted-source claim ${index} ${'task detail '.repeat(60)}`,
+        suggestedInvestorMaterial: `Investor draft candidate ${index} ${'not approved '.repeat(60)}`,
+        riskNote: `Review required before dashboard truth ${index} ${'risk note '.repeat(80)}`,
+        dashboardTarget: {
+          group: 'competitorRecords',
+          fieldKey: `competitor.metrics.company-${index}.marketShare`,
+          proposedDashboardField: `Company ${index} - Market share`,
+          companyName: `Company ${index}`,
+          value: `${'long proposed value '.repeat(90)}`,
+          sourceTier: 'tier1-official',
+          dataType: 'competitor_data',
+          reviewRequired: true,
+          riskReason: `${'high-risk metric '.repeat(80)}`,
+        },
+      })
+    }
+
+    const raw = window.localStorage.getItem('hermes.feasibilityIntelligence.v1')
+    const cached = JSON.parse(raw || '{}')
+
+    expect(intelligence.state.value.researchFindings).toHaveLength(340)
+    expect(cached.researchFindings.length).toBeLessThanOrEqual(120)
+    expect(raw!.length).toBeLessThan(900_000)
+
+    await intelligence.persistFeasibilityIntelligenceToServer()
+
+    expect(saveDashboardIntelligenceStateMock).toHaveBeenCalledWith(expect.objectContaining({
+      researchFindings: expect.arrayContaining([
+        expect.objectContaining({ keyClaim: 'Critical dashboard claim 339' }),
+      ]),
+    }))
+    expect(saveDashboardIntelligenceStateMock.mock.calls.at(-1)?.[0].researchFindings).toHaveLength(340)
+  })
+
   it('ranks official and company sources ahead of weak marketplace references', () => {
     const official = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'un-comtrade-plus')!
     const company = DEFAULT_TRUSTED_SOURCES.find(item => item.source_id === 'basf')!
@@ -874,6 +1041,17 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Keep companyName clean')
     expect(prompt).toContain('competitor_metrics.dow.market_share')
     expect(prompt).toContain('companyName must be the actual company only')
+    expect(prompt).toContain('Trusted source discovery registry seed: 750 source roots across 18 groups')
+    expect(prompt).toContain('Tier 7 - Supplier/direct/quote sources')
+    expect(prompt).toContain('Tier 8 - Marketplaces / weak reference only')
+    expect(prompt).toContain('Anything discovered outside the registry must enter as Candidate Source / To Verify')
+    expect(prompt).toContain('Trusted source URL candidate batch 2: 2000 concrete Tier 1 candidates across 2 providers')
+    expect(prompt).toContain('80 countries/regions')
+    expect(prompt).toContain('18 World Bank indicators')
+    expect(prompt).toContain('7 HS-code families')
+    expect(prompt).toContain('Batch 2 - World Bank Indicators API: 1440 Tier 1 source candidates')
+    expect(prompt).toContain('Batch 2 - UN Comtrade / Comtrade Plus: 560 Tier 1 source candidates')
+    expect(prompt).toContain('HS-code relevance remains review-gated')
   })
 
   it('extracts dashboard_updates JSON from Hermes markdown job output', () => {
@@ -1200,6 +1378,122 @@ describe('Trusted Source Autopilot', () => {
     expect(status.message).toContain('ready to import')
   })
 
+  it('auto-imports parse-ready server autopilot output during status refresh', async () => {
+    listJobsMock.mockResolvedValueOnce([{
+      id: 'job-full-dashboard',
+      job_id: 'job-full-dashboard',
+      name: FULL_DASHBOARD_AUTOPILOT_JOB_NAME,
+      prompt: 'Research trusted-source dashboard_updates for the full dashboard',
+      schedule_display: '07:00 / 19:00',
+      enabled: true,
+      state: 'scheduled',
+      last_run_at: '2026-06-03T07:00:00.000Z',
+      next_run_at: '2026-06-03T19:00:00.000Z',
+      last_status: 'completed',
+      last_error: null,
+    }])
+    vi.mocked(listCronRuns).mockResolvedValueOnce([{
+      jobId: 'job-full-dashboard',
+      fileName: '2026-06-03T07-00-00.md',
+      runTime: '2026-06-03T07:00:00.000Z',
+      size: 2048,
+      hasOutput: true,
+    }])
+    fetchDashboardAutopilotImportStatusMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 1,
+        importedRunCount: 0,
+        pendingOutputCount: 1,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        latestOutputFile: '2026-06-03T07-00-00.md',
+        latestOutputAt: '2026-06-03T07:05:00.000Z',
+        latestOutputImported: false,
+        latestOutputParseStatus: 'ready',
+        latestOutputCandidateCount: 2,
+        latestOutputParseError: '',
+        latestImportedRunKey: '',
+        registryUpdatedAt: '',
+        latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+        latestDueSlotSatisfied: true,
+        latestDueSlotAttemptedAt: '',
+        latestDueSlotRunError: '',
+      },
+    })
+    importDashboardAutopilotOutputNowMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      importResult: {
+        profile: 'default',
+        jobsChecked: 1,
+        filesChecked: 1,
+        importedRuns: 1,
+        skippedRuns: 0,
+        autoFilledCount: 1,
+        stagedReviewCount: 1,
+        missingCoverageFollowUpStarted: false,
+        errors: [],
+      },
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 1,
+        importedRunCount: 1,
+        pendingOutputCount: 0,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        latestOutputFile: '2026-06-03T07-00-00.md',
+        latestOutputAt: '2026-06-03T07:05:00.000Z',
+        latestOutputImported: true,
+        latestOutputParseStatus: 'imported',
+        latestOutputCandidateCount: 0,
+        latestOutputParseError: '',
+        latestImportedRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        registryUpdatedAt: '2026-06-03T07:06:00.000Z',
+        latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+        latestDueSlotSatisfied: true,
+        latestDueSlotAttemptedAt: '',
+        latestDueSlotRunError: '',
+      },
+    })
+    fetchDashboardIntelligenceStateMock.mockResolvedValueOnce({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-03T07:06:00.000Z',
+      state: {
+        marketClaims: [{
+          label: 'Target Countries / Provinces',
+          value: 'Jiangsu textile cluster source-backed',
+          evidenceStatus: 'Official Data',
+          confidence: 'high',
+          source: { title: 'Jiangsu official source', url: 'https://www.jiangsu.gov.cn/' },
+        }],
+        researchFindings: [{
+          status: 'Pending Review',
+          summary: 'Review competitor market share before use.',
+          keyClaim: 'Competitor market share still needs review',
+          area: 'competitor',
+          evidenceStatus: 'To Verify',
+          confidence: 'medium',
+          source: { title: 'Weak market reference', url: 'https://example.com/report' },
+        }],
+      },
+    })
+
+    const status = await useTrustedSourceAutopilot().refreshFullDashboardServerStatus()
+
+    expect(importDashboardAutopilotOutputNowMock).toHaveBeenCalledTimes(1)
+    expect(fetchDashboardIntelligenceStateMock).toHaveBeenCalled()
+    expect(status.latestOutputImported).toBe(true)
+    expect(status.latestOutputParseStatus).toBe('imported')
+    expect(status.importedRunCount).toBe(1)
+    expect(status.dashboardRecordCount).toBe(1)
+    expect(status.pendingReviewCount).toBe(1)
+    expect(status.message).toContain('review-gated findings waiting for approval')
+  })
+
   it('uses the server import registry for latest full-dashboard import status', async () => {
     listJobsMock.mockResolvedValueOnce([{
       id: 'job-full-dashboard',
@@ -1385,6 +1679,46 @@ describe('Trusted Source Autopilot', () => {
           },
           lastChecked: '2026-06-02',
         }],
+        supplierScorecards: [{
+          id: 'supplier-server-1',
+          supplier: 'Wilmar Oleochemicals',
+          material: 'Rubber grade stearic acid / WILFARIN fatty acids',
+          value: 'Official Wilmar product page confirms Rubber Grade Stearic Acid 1807 and WILFARIN fatty-acid product context.',
+          source: {
+            title: 'Wilmar Rubber Grade Stearic Acid 1807 official product page',
+            url: 'https://www.wilmar-international.com/oleochemicals/products/home-care/rubber-grade-stearic-acid-1807',
+            date: '2026-06-06',
+          },
+          sourceTier: 'tier2-company-official',
+          confidence: 'high',
+          evidenceStatus: 'Source-backed',
+          reviewRequired: true,
+          dataType: 'document_evidence',
+          pricePerTon: '',
+          quality: 'Quote/TDS/SDS/COA review needed',
+          reliability: 'Quote/TDS/SDS/COA review needed',
+          payment: 'Quote/payment terms needed',
+          score: 'Review needed',
+        }],
+        rawMaterialSignals: [{
+          id: 'raw-material-server-1',
+          material: 'DMS / dimethyl sulfate',
+          value: 'PubChem CID 6497; CAS signal 77-78-1; molecular formula C2H6O4S',
+          cas: '77-78-1',
+          formula: 'C2H6O4S',
+          source: {
+            title: 'Dimethyl Sulfate | (CH3O)2SO2 | CID 6497 - PubChem',
+            url: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
+            date: '2026-06-02',
+          },
+          sourceTier: 'tier1-official',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          reviewRequired: true,
+          dataType: 'regulatory_data',
+          pricePerTon: '',
+          priceStatus: 'No approved price yet',
+        }],
       },
     })
 
@@ -1393,8 +1727,32 @@ describe('Trusted Source Autopilot', () => {
 
     expect(fetchDashboardIntelligenceStateMock).toHaveBeenCalledOnce()
     expect(intelligence.state.value.marketClaims[0].label).toBe('Country-wise consumption growth - China')
+    expect(intelligence.state.value.supplierScorecards[0]).toMatchObject({
+      supplier: 'Wilmar Oleochemicals',
+      material: expect.stringContaining('stearic'),
+      value: expect.stringContaining('Official Wilmar product page confirms'),
+      pricePerTon: '',
+      evidenceStatus: 'Source-backed',
+      source: expect.objectContaining({
+        title: 'Wilmar Rubber Grade Stearic Acid 1807 official product page',
+      }),
+    })
+    expect(intelligence.state.value.rawMaterialSignals[0]).toMatchObject({
+      material: 'DMS / dimethyl sulfate',
+      value: expect.stringContaining('PubChem CID 6497'),
+      cas: '77-78-1',
+      formula: 'C2H6O4S',
+      pricePerTon: '',
+      priceStatus: 'No approved price yet',
+      evidenceStatus: 'Official Data',
+      source: expect.objectContaining({
+        title: expect.stringContaining('Dimethyl Sulfate'),
+      }),
+    })
     expect(intelligence.serverSyncStatus.value.hydrated).toBe(true)
     expect(window.localStorage.getItem('hermes.feasibilityIntelligence.v1')).toContain('Country-wise consumption growth - China')
+    expect(window.localStorage.getItem('hermes.feasibilityIntelligence.v1')).toContain('Wilmar Oleochemicals')
+    expect(window.localStorage.getItem('hermes.feasibilityIntelligence.v1')).toContain('DMS / dimethyl sulfate')
   })
 
   it('hydrates trusted-source panels from durable server intelligence state', async () => {
@@ -1618,7 +1976,7 @@ describe('Trusted Source Autopilot', () => {
       riskReason: expect.any(String),
     })
     expect(intelligence.pendingResearchFindings.value.some(item => item.keyClaim.includes('Full dashboard autopilot'))).toBe(true)
-  })
+  }, 30000)
 
   it('sends conflicting trusted-source updates to Research Result Review', () => {
     const autopilot = useTrustedSourceAutopilot()
@@ -1820,6 +2178,19 @@ describe('Trusted Source Autopilot', () => {
     expect(wrapper.text()).toContain('Tier 1: official / regulator / trade')
     expect(wrapper.text()).toContain('Tier 2: official company / product')
     expect(wrapper.text()).toContain('Tier 5: public listing / weak reference')
+    expect(wrapper.text()).toContain('Trusted source discovery roots')
+    expect(wrapper.text()).toContain('750 roots across 18 groups + 2000 URL-backed candidates')
+    expect(wrapper.text()).toContain('Hermes starts research from these trusted roots')
+    expect(wrapper.text()).toContain('Batch 2 source catalog')
+    expect(wrapper.text()).toContain('URL-backed official source candidates')
+    expect(wrapper.text()).toContain('2000 candidates')
+    expect(wrapper.text()).toContain('80 countries')
+    expect(wrapper.text()).toContain('World Bank Indicators API')
+    expect(wrapper.text()).toContain('UN Comtrade / Comtrade Plus')
+    expect(wrapper.text()).toContain('HS-code relevance remains review-gated')
+    expect(wrapper.text()).toContain('Tier 1 - Official trade, customs, macro, country data')
+    expect(wrapper.text()).toContain('Tier 8 - Marketplaces / weak reference only')
+    expect(wrapper.text()).toContain('Candidate Source / To Verify')
     expect(wrapper.text()).toContain('07:00 / 19:00')
 
     await wrapper.findAll('button').find(button => button.text().includes('Create Source Snapshot'))!.trigger('click')
@@ -2197,25 +2568,83 @@ describe('Trusted Source Autopilot', () => {
         latestDueSlotRunError: '',
       },
     })
+    importDashboardAutopilotOutputNowMock.mockResolvedValue({
+      ok: true,
+      profile: 'default',
+      importResult: {
+        profile: 'default',
+        jobsChecked: 1,
+        filesChecked: 1,
+        importedRuns: 1,
+        skippedRuns: 0,
+        autoFilledCount: 2,
+        stagedReviewCount: 1,
+        missingCoverageFollowUpStarted: false,
+        errors: [],
+      },
+      autopilotImport: {
+        profile: 'default',
+        jobCount: 1,
+        outputCount: 1,
+        importedRunCount: 1,
+        pendingOutputCount: 0,
+        latestOutputRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        latestOutputFile: '2026-06-03T07-00-00.md',
+        latestOutputAt: '2026-06-03T07:05:00.000Z',
+        latestOutputImported: true,
+        latestOutputParseStatus: 'imported',
+        latestOutputCandidateCount: 0,
+        latestOutputParseError: '',
+        latestImportedRunKey: 'job-full-dashboard/2026-06-03T07-00-00.md',
+        registryUpdatedAt: '2026-06-03T07:06:00.000Z',
+        latestDueSlotAt: '2026-06-03T07:00:00.000Z',
+        latestDueSlotSatisfied: true,
+        latestDueSlotAttemptedAt: '2026-06-03T07:01:00.000Z',
+        latestDueSlotRunError: '',
+      },
+    })
+    fetchDashboardIntelligenceStateMock.mockResolvedValue({
+      ok: true,
+      profile: 'default',
+      savedAt: '2026-06-03T07:06:00.000Z',
+      state: {
+        marketClaims: [{
+          label: 'Target provinces',
+          value: 'Zhejiang textile cluster source-backed',
+          evidenceStatus: 'Official Data',
+          confidence: 'high',
+          source: { title: 'Zhejiang official source', url: 'https://www.zhejiang.gov.cn/' },
+        }],
+        researchFindings: [{
+          status: 'Pending Review',
+          summary: 'Market share needs source review.',
+          keyClaim: 'Market share needs source review',
+          evidenceStatus: 'To Verify',
+          confidence: 'medium',
+          source: { title: 'Market reference', url: 'https://example.com/report' },
+        }],
+      },
+    })
 
     const wrapper = mount(TrustedSourcesView)
     await vi.dynamicImportSettled()
 
     const text = wrapper.text()
+    expect(importDashboardAutopilotOutputNowMock).toHaveBeenCalled()
     expect(text).toContain('Server job status')
     expect(text).toContain('Hermes research job is connected')
-    expect(text).toContain('The latest Hermes output has 3 source-backed candidate items ready for the source-gated importer')
+    expect(text).toContain('Full Dashboard Autopilot is filling the dashboard and has review-gated findings waiting for approval')
     expect(text).toContain('job-full-dashboard')
     expect(text).toContain('Readable outputs')
     expect(text).toContain('Latest imported')
     expect(text).toContain('Parse status')
-    expect(text).toContain('ready')
+    expect(text).toContain('imported')
     expect(text).toContain('Candidate items')
-    expect(text).toContain('3')
+    expect(text).toContain('0')
     expect(text).toContain('Due slot')
     expect(text).toContain('Due satisfied')
     expect(text).toContain('Last server kick')
-    expect(text).toContain('No / pending')
+    expect(text).toContain('Yes')
     expect(text).toContain('Yes')
     expect(text).toContain('Latest file: 2026-06-03T07-00-00.md')
   })

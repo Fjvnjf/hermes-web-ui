@@ -33,6 +33,7 @@ describe('RBAC request permission gate', () => {
     expect(permissionForRequest(ctx('/api/hermes/backup/export', 'super_admin'))).toBe('export:backup')
     expect(permissionForRequest(ctx('/api/hermes/intelligence-state', 'super_admin'))).toBe('view:product-development')
     expect(permissionForRequest(ctx('/api/hermes/intelligence-state/autopilot-import-status', 'super_admin'))).toBe('view:jobs')
+    expect(permissionForRequest(ctx('/api/hermes/intelligence-state/autopilot-import-now', 'super_admin', 'POST'))).toBe('view:product-development')
     expect(permissionForRequest(ctx('/v1/chat/completions', 'super_admin'))).toBe('use:proxy')
   })
 
@@ -105,17 +106,27 @@ describe('RBAC request permission gate', () => {
 
   it('keeps dashboard intelligence persistence owner-only because it can contain sensitive business facts', async () => {
     for (const role of ['employee', 'investor_viewer', 'research_assistant', 'financial_analyst', 'regulatory_consultant', 'developer_admin']) {
-      const request = ctx('/api/hermes/intelligence-state', role)
-      const next = vi.fn(async () => {})
-      await requireRequestPermission(request, next)
-      expect(request.status).toBe(403)
-      expect(next).not.toHaveBeenCalled()
+      for (const [path, method] of [
+        ['/api/hermes/intelligence-state', 'GET'],
+        ['/api/hermes/intelligence-state/autopilot-import-now', 'POST'],
+      ] as const) {
+        const request = ctx(path, role, method)
+        const next = vi.fn(async () => {})
+        await requireRequestPermission(request, next)
+        expect(request.status).toBe(403)
+        expect(next).not.toHaveBeenCalled()
+      }
     }
 
     const owner = ctx('/api/hermes/intelligence-state', 'super_admin')
     const next = vi.fn(async () => {})
     await requireRequestPermission(owner, next)
     expect(next).toHaveBeenCalledOnce()
+
+    const ownerImport = ctx('/api/hermes/intelligence-state/autopilot-import-now', 'super_admin', 'POST')
+    const importNext = vi.fn(async () => {})
+    await requireRequestPermission(ownerImport, importNext)
+    expect(importNext).toHaveBeenCalledOnce()
   })
 
   it('allows jobs-scoped users to read autopilot import health without granting full dashboard intelligence', async () => {

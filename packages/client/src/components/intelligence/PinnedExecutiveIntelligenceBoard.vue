@@ -237,7 +237,7 @@ function refreshSummaryText(): string {
     `Investor readiness score: ${intelligence.readinessScore.value}%`,
     `Evidence gaps: ${intelligence.evidenceGaps.value.length}`,
     `Pending research review items: ${intelligence.pendingResearchFindings.value.length}`,
-    `Financial model status: ${latestFinancialModel.value?.evidenceStatus || 'To Verify'}`,
+    `Financial model status: ${displayBoardStatus(latestFinancialModel.value?.evidenceStatus || 'To Verify')}`,
     `Market claims available: ${intelligence.state.value.marketClaims.length}`,
     `Competitor records available: ${intelligence.state.value.competitors.length}`,
     `Raw material records available locally: ${rawMaterials.value.length}`,
@@ -592,14 +592,14 @@ onMounted(() => {
             <div>
               <h5>Today’s Priorities</h5>
               <ul>
-                <li v-for="gap in evidenceGaps" :key="gap.id">{{ gap.label }} - {{ gap.evidenceStatus }}</li>
+                <li v-for="gap in evidenceGaps" :key="gap.id">{{ gap.label }} - {{ displayBoardStatus(gap.evidenceStatus) }}</li>
                 <li v-if="!evidenceGaps.length">No evidence gaps in current local state.</li>
               </ul>
             </div>
             <div>
               <h5>Top Risk</h5>
               <ul>
-                <li v-for="risk in topRisks" :key="risk.id">{{ risk.title }} - {{ risk.evidenceStatus }}</li>
+                <li v-for="risk in topRisks" :key="risk.id">{{ risk.title }} - {{ displayBoardStatus(risk.evidenceStatus) }}</li>
                 <li v-if="!topRisks.length">No current risks in local intelligence state.</li>
               </ul>
             </div>
@@ -608,7 +608,7 @@ onMounted(() => {
           <div v-if="topRawMaterials.length && isOwner" class="source-list">
             <strong>Raw material watchlist</strong>
             <span v-for="material in topRawMaterials" :key="material.id">
-              {{ material.name }} / {{ material.evidenceStatus }} / {{ material.source || 'Source search running' }}
+              {{ material.name }} / {{ displayBoardStatus(material.evidenceStatus) }} / {{ material.source || 'Source search running' }}
             </span>
           </div>
 

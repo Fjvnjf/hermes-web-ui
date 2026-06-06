@@ -43,12 +43,37 @@ export interface DashboardAutopilotImportStatusResponse {
   autopilotImport: DashboardAutopilotImportStatus
 }
 
+export interface DashboardAutopilotImportResult {
+  profile: string
+  jobsChecked: number
+  filesChecked: number
+  importedRuns: number
+  skippedRuns: number
+  autoFilledCount: number
+  stagedReviewCount: number
+  missingCoverageFollowUpStarted: boolean
+  errors: string[]
+}
+
+export interface DashboardAutopilotImportNowResponse {
+  ok: boolean
+  profile: string
+  importResult: DashboardAutopilotImportResult
+  autopilotImport: DashboardAutopilotImportStatus
+}
+
 export function fetchDashboardIntelligenceState(): Promise<DashboardIntelligenceStateResponse> {
   return request<DashboardIntelligenceStateResponse>('/api/hermes/intelligence-state')
 }
 
 export function fetchDashboardAutopilotImportStatus(): Promise<DashboardAutopilotImportStatusResponse> {
   return request<DashboardAutopilotImportStatusResponse>('/api/hermes/intelligence-state/autopilot-import-status')
+}
+
+export function importDashboardAutopilotOutputNow(): Promise<DashboardAutopilotImportNowResponse> {
+  return request<DashboardAutopilotImportNowResponse>('/api/hermes/intelligence-state/autopilot-import-now', {
+    method: 'POST',
+  })
 }
 
 export function saveDashboardIntelligenceState(state: unknown): Promise<DashboardIntelligenceStateSaveResponse> {

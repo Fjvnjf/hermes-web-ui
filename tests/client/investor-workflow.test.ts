@@ -1639,7 +1639,7 @@ describe('investor readiness pages', () => {
     })
 
     expect(wrapper.text()).toContain('Evidence-Backed Competitor Tracking')
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
   })
 
@@ -1664,7 +1664,7 @@ describe('investor readiness pages', () => {
     })
 
     expect(wrapper.text()).toContain('Unsourced share competitor')
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toContain('12%')
   })
@@ -2957,7 +2957,7 @@ describe('investor readiness pages', () => {
     expect(wrapper.find('.executive-visual-board').exists()).toBe(true)
     expect(wrapper.findAll('.visual-panel')).toHaveLength(5)
     expect(wrapper.find('.market-share-donut').exists()).toBe(false)
-    expect(wrapper.text()).toContain('No source-backed value yet')
+    expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).toContain('Hermes Automation Center')
     expect(wrapper.text()).toContain('Hermes found source-backed items for review')

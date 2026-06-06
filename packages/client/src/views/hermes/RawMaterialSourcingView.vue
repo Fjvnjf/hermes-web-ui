@@ -45,6 +45,19 @@ interface SupplierScorecardRow {
   highRisk?: boolean
 }
 
+interface RawMaterialIdentitySignalRow {
+  material: string
+  value: string
+  cas: string
+  formula: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence: string
+  sourceTitle: string
+  sourceUrl?: string
+  lastChecked: string
+  riskReason: string
+}
+
 const SUPPLIER_SCORECARD_AUTOPILOT_JOB_NAME = 'Supplier Scorecard Autopilot - Key Raw Materials'
 
 const message = useMessage()
@@ -202,12 +215,120 @@ function supplierRecordKey(row: Pick<SupplierScorecardRow, 'supplier' | 'materia
   return `${row.supplier}::${row.material}`.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
+function materialIdentityKey(text: string): string {
+  const lower = text.toLowerCase()
+  if (/\btea\b|triethanolamine/.test(lower)) return 'tea'
+  if (/\bdms\b|dimethyl\s+sulfate|dimethyl\s+sulphate/.test(lower)) return 'dms'
+  if (/stearic|octadecanoic/.test(lower)) return 'stearic'
+  if (/pdms|polydimethylsiloxane|poly\(dimethylsiloxane\)|silicone\s+oil/.test(lower)) return 'pdms'
+  if (/acetic/.test(lower)) return 'acetic'
+  return lower.replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+}
+
+function casFromText(text: string): string {
+  return text.match(/\b\d{2,7}-\d{2}-\d\b/)?.[0] || ''
+}
+
+function formulaFromText(text: string): string {
+  return text.match(/(?:formula|molecular formula)\s+([A-Z][A-Za-z0-9()]+)/i)?.[1] ||
+    text.match(/\|\s*([A-Z][A-Za-z0-9()]+)\s*\|/)?.[1] ||
+    ''
+}
+
 function isUsableSupplierPriceRecord(record: typeof intelligence.state.value.dataRoomSources[number], value: string): boolean {
   const fieldText = `${record.checklistLabel} ${record.proposedDashboardField || ''} ${record.dataType || ''}`.toLowerCase()
   if (!/(price|pricing|quote|cost|payment)/.test(fieldText)) return false
   if (!value || /to verify|missing|no quote|quote required|not found|blocked|candidate/i.test(value)) return false
   return /(?:[$¥€£]|(?:usd|rmb|cny|eur)\s*\d|\d[\d,.]*\s*(?:\/?\s*(?:t|ton|mt|kg)|per\s+(?:t|ton|mt|kg)))/i.test(value)
 }
+
+const importedRawMaterialIdentitySignals = computed<RawMaterialIdentitySignalRow[]>(() => {
+  const directSignals = intelligence.state.value.rawMaterialSignals.map(record => {
+    const sourceTitle = record.source?.title || 'Trusted raw-material source'
+    const sourceUrl = record.source?.url
+    const value = record.value || record.notes || ''
+    const searchText = `${record.material} ${record.label || ''} ${record.value || ''} ${record.notes || ''} ${sourceTitle}`
+    return {
+      material: record.material || record.label || 'Raw material',
+      value,
+      cas: record.cas || casFromText(searchText),
+      formula: record.formula || formulaFromText(searchText),
+      evidenceStatus: record.evidenceStatus,
+      confidence: record.confidence || 'medium',
+      sourceTitle,
+      sourceUrl,
+      lastChecked: record.lastChecked || record.sourceDate || record.updatedAt || '',
+      riskReason: record.riskReason || 'Official source confirms raw-material identity only. Price, landed cost, supplier quote, formula use, and regulatory permission remain review-gated.',
+    }
+  })
+
+  const fallbackSignals = intelligence.state.value.dataRoomSources
+    .filter(record => record.dashboardGroup === 'rawMaterialSignals' && record.source?.url && /pubchem|comptox|cas|cid|chemical identity/i.test(`${record.proposedValue || ''} ${record.source?.title || ''} ${record.source?.url || ''}`))
+    .map(record => {
+      const sourceTitle = record.source?.title || 'Trusted raw-material source'
+      const value = record.proposedValue || record.notes || ''
+      const searchText = `${record.checklistLabel} ${record.proposedDashboardField || ''} ${value} ${sourceTitle}`
+      return {
+        material: materialIdentityKey(searchText) === 'tea'
+          ? 'TEA'
+          : materialIdentityKey(searchText) === 'dms'
+            ? 'DMS / dimethyl sulfate'
+            : materialIdentityKey(searchText) === 'stearic'
+              ? 'Stearic acid 1842'
+              : materialIdentityKey(searchText) === 'pdms'
+                ? 'PDMS 1000 cSt'
+                : materialIdentityKey(searchText) === 'acetic'
+                  ? 'Acetic acid'
+                  : record.checklistLabel,
+        value,
+        cas: casFromText(searchText),
+        formula: formulaFromText(searchText),
+        evidenceStatus: record.evidenceStatus,
+        confidence: record.confidence || 'medium',
+        sourceTitle,
+        sourceUrl: record.source?.url,
+        lastChecked: record.updatedAt || record.source?.date || '',
+        riskReason: record.riskReason || 'Official source confirms raw-material identity only. Price, landed cost, supplier quote, formula use, and regulatory permission remain review-gated.',
+      }
+    })
+
+  const byKey = new Map<string, RawMaterialIdentitySignalRow>()
+  for (const signal of [...directSignals, ...fallbackSignals]) {
+    const key = `${materialIdentityKey(signal.material)}::${signal.sourceTitle}`
+    if (!byKey.has(key)) byKey.set(key, signal)
+  }
+  return Array.from(byKey.values())
+})
+
+function identitySignalForMaterial(material?: RawMaterialRecord | null): RawMaterialIdentitySignalRow | null {
+  if (!material) return null
+  const key = materialIdentityKey(material.name)
+  return importedRawMaterialIdentitySignals.value.find(signal => materialIdentityKey(signal.material) === key) || null
+}
+
+const importedSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
+  intelligence.state.value.supplierScorecards.map(record => {
+    const value = record.value || ''
+    const sourceTitle = record.source?.title || 'Trusted source record'
+    const sourceUrl = record.source?.url
+    return {
+      supplier: record.supplier,
+      region: 'Trusted-source import',
+      material: record.material,
+      pricePerTon: record.pricePerTon?.trim() || 'No approved quote yet',
+      quality: record.quality?.trim() || 'Quote/TDS/SDS/COA review needed',
+      reliability: record.reliability?.trim() || 'Quote/TDS/SDS/COA review needed',
+      payment: record.payment?.trim() || 'Quote/payment terms needed',
+      score: record.score?.trim() || 'Review needed',
+      evidenceStatus: record.evidenceStatus,
+      sourceTitle,
+      sourceUrl,
+      sourceSummary: value || record.notes || 'Imported source-backed supplier/material context. Price and supplier score are not approved without quote evidence.',
+      nextAction: record.riskReason || record.notes || `Review quote, TDS, SDS, COA, payment terms, and delivery evidence for ${record.supplier} / ${record.material}.`,
+      highRisk: isDmsMaterial(`${record.supplier} ${record.material}`),
+    }
+  }),
+)
 
 const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
   intelligence.state.value.dataRoomSources
@@ -242,7 +363,10 @@ const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
 )
 
 const displayedSupplierScorecardRows = computed(() => {
-  const autopilotRows = autopilotSupplierScorecardRows.value
+  const autopilotRows = [
+    ...importedSupplierScorecardRows.value,
+    ...autopilotSupplierScorecardRows.value,
+  ]
   const byKey = new Map<string, SupplierScorecardRow>()
   for (const row of autopilotRows) {
     const key = supplierRecordKey(row)
@@ -296,14 +420,20 @@ const selectedMaterial = computed(() =>
 
 const selectedLatest = computed(() => selectedMaterial.value ? latestPriceEntry(selectedMaterial.value) : null)
 const selectedAlert = computed(() => selectedMaterial.value ? materialPriceAlert(selectedMaterial.value) : calculatePriceAlert(null, null))
+const selectedIdentitySignal = computed(() => identitySignalForMaterial(selectedMaterial.value))
 
 const summaryCards = computed(() => {
-  const sourced = materials.value.filter(item => item.evidenceStatus === 'Source-backed' || item.evidenceStatus === 'Verified').length
-  const toVerify = materials.value.filter(item => item.evidenceStatus === 'To Verify' || item.evidenceStatus === 'Reference Only').length
+  const identityKeys = new Set(importedRawMaterialIdentitySignals.value.map(signal => materialIdentityKey(signal.material)))
+  const sourced = materials.value.filter(item =>
+    item.evidenceStatus === 'Source-backed' ||
+    item.evidenceStatus === 'Verified' ||
+    identityKeys.has(materialIdentityKey(item.name)),
+  ).length
+  const toVerify = Math.max(0, materials.value.length - sourced)
   const alerts = materials.value.filter(item => materialPriceAlert(item).triggered).length
   return [
     { label: 'Tracked materials', value: materials.value.length, note: 'No live prices are hardcoded' },
-    { label: 'Source-backed', value: sourced, note: 'Requires source/date and value' },
+    { label: 'Source-backed identity', value: sourced, note: 'Official identity source; price still needs quote evidence' },
     { label: 'Needs source review', value: toVerify, note: 'Missing or weak evidence checked twice daily' },
     { label: '5% alerts', value: alerts, note: 'Based on saved price history' },
   ]
@@ -787,7 +917,8 @@ onMounted(() => {
         >
           <strong>{{ material.name }}</strong>
           <span class="status-badge" :class="material.evidenceStatus.toLowerCase().replace(/\s+/g, '-')">{{ displaySupplierStatus(material.evidenceStatus) }}</span>
-          <small v-if="material.highRisk">High regulatory/safety risk</small>
+          <small v-if="identitySignalForMaterial(material)">Official identity evidence imported</small>
+          <small v-else-if="material.highRisk">High regulatory/safety risk</small>
           <small v-else>{{ material.sourceType }}</small>
         </button>
       </aside>
@@ -805,6 +936,40 @@ onMounted(() => {
         <section v-if="selectedMaterial.highRisk" class="risk-banner">
           <strong>DMS / dimethyl sulfate high-risk checkpoint</strong>
           <span>Verify exact chemical identity, regulatory status, handling rules, and source evidence before using this material in costing, process, or investor material.</span>
+        </section>
+
+        <section v-if="selectedIdentitySignal" class="identity-signal-panel">
+          <div>
+            <p class="eyebrow">Official identity evidence</p>
+            <h3>{{ selectedIdentitySignal.material }}</h3>
+            <p>{{ displaySupplierText(selectedIdentitySignal.value) }}</p>
+          </div>
+          <div class="identity-signal-grid">
+            <article>
+              <span>CAS</span>
+              <strong>{{ selectedIdentitySignal.cas || 'Review source' }}</strong>
+            </article>
+            <article>
+              <span>Formula</span>
+              <strong>{{ selectedIdentitySignal.formula || 'Review source' }}</strong>
+            </article>
+            <article>
+              <span>Evidence</span>
+              <strong>{{ displaySupplierStatus(selectedIdentitySignal.evidenceStatus) }}</strong>
+            </article>
+            <article>
+              <span>Confidence</span>
+              <strong>{{ selectedIdentitySignal.confidence }}</strong>
+            </article>
+          </div>
+          <p class="identity-source">
+            <a v-if="selectedIdentitySignal.sourceUrl" :href="selectedIdentitySignal.sourceUrl" target="_blank" rel="noopener noreferrer">
+              {{ selectedIdentitySignal.sourceTitle }}
+            </a>
+            <span v-else>{{ selectedIdentitySignal.sourceTitle }}</span>
+            <small v-if="selectedIdentitySignal.lastChecked">Last checked {{ selectedIdentitySignal.lastChecked }}</small>
+          </p>
+          <p class="scorecard-footnote">{{ selectedIdentitySignal.riskReason }}</p>
         </section>
 
         <section class="price-grid">
@@ -982,6 +1147,50 @@ label,
 .warning,
 .alert {
   color: #f5bf5a;
+}
+
+.identity-signal-panel {
+  border: 1px solid rgba(56, 213, 255, 0.24);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(135deg, rgba(56, 213, 255, 0.08), transparent 70%),
+    rgba(0, 0, 0, 0.16);
+}
+
+.identity-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.identity-signal-grid article {
+  border: 1px solid rgba(128, 162, 190, 0.22);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.identity-signal-grid span,
+.identity-source small {
+  display: block;
+  color: #7f91ad;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.identity-signal-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #f6fbff;
+}
+
+.identity-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
 }
 
 .summary-grid,

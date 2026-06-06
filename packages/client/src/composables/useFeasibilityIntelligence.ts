@@ -53,6 +53,21 @@ export interface CompetitorIntelligenceRecord {
   traffic?: string
   rating?: string
   lastUpdated?: string
+  metricEvidence?: Partial<Record<
+    'pricingEvidence' | 'marketShare' | 'revenue' | 'yearlyGrowth' | 'traffic' | 'rating' | 'lastUpdated',
+    {
+      value?: string
+      source?: SourceReference | null
+      sourceTier?: string
+      evidenceStatus?: IntelligenceEvidenceStatus | string
+      confidence?: 'low' | 'medium' | 'high' | string
+      reviewRequired?: boolean
+      dataType?: string
+      lastChecked?: string
+      sourceDate?: string
+      riskReason?: string
+    }
+  >>
   evidenceStatus: IntelligenceEvidenceStatus
   source?: SourceReference | null
   sources?: SourceReference[]
@@ -209,6 +224,63 @@ export interface DataRoomSourceRecord {
   riskReason?: string
 }
 
+export interface SupplierScorecardRecord {
+  id: string
+  fieldKey?: string
+  dashboardGroup?: string
+  group?: string
+  supplier: string
+  material: string
+  proposedDashboardField?: string
+  value?: string
+  source?: SourceReference | null
+  sourceTier?: string
+  reportedSourceTier?: string
+  sourceDate?: string
+  lastChecked?: string
+  confidence?: 'low' | 'medium' | 'high' | string
+  evidenceStatus: IntelligenceEvidenceStatus
+  reviewRequired?: boolean
+  reportedReviewRequired?: boolean
+  dataType?: string
+  pricePerTon?: string
+  quality?: string
+  reliability?: string
+  payment?: string
+  score?: string
+  riskReason?: string
+  notes?: string
+  updatedAt?: string
+}
+
+export interface RawMaterialSignalRecord {
+  id: string
+  fieldKey?: string
+  dashboardGroup?: string
+  group?: string
+  material: string
+  label?: string
+  proposedDashboardField?: string
+  value?: string
+  cas?: string
+  formula?: string
+  source?: SourceReference | null
+  sourceTier?: string
+  reportedSourceTier?: string
+  sourceDate?: string
+  lastChecked?: string
+  confidence?: 'low' | 'medium' | 'high' | string
+  evidenceStatus: IntelligenceEvidenceStatus
+  reviewRequired?: boolean
+  reportedReviewRequired?: boolean
+  dataType?: string
+  pricePerTon?: string
+  priceStatus?: string
+  riskReason?: string
+  notes?: string
+  updatedAt?: string
+}
+
 export interface FeasibilityIntelligenceState {
   evidenceItems: FeasibilityEvidenceItem[]
   marketClaims: MarketClaim[]
@@ -217,10 +289,37 @@ export interface FeasibilityIntelligenceState {
   researchJobs: ResearchJobRecord[]
   researchFindings: ResearchReviewFinding[]
   financialModels: FinancialModelSnapshot[]
+  rawMaterialSignals: RawMaterialSignalRecord[]
+  supplierScorecards: SupplierScorecardRecord[]
   dataRoomSources: DataRoomSourceRecord[]
 }
 
 const STORAGE_KEY = 'hermes.feasibilityIntelligence.v1'
+const LOCAL_STORAGE_TEXT_LIMIT = 480
+const LOCAL_STORAGE_LONG_TEXT_LIMIT = 900
+const LOCAL_STORAGE_SOURCE_LIMIT = 12
+const LOCAL_STORAGE_LIMITS = {
+  marketClaims: 240,
+  competitors: 80,
+  presentationMaterials: 120,
+  researchJobs: 80,
+  researchFindings: 120,
+  financialModels: 16,
+  rawMaterialSignals: 100,
+  supplierScorecards: 80,
+  dataRoomSources: 200,
+}
+const LOCAL_STORAGE_FALLBACK_LIMITS = {
+  marketClaims: 120,
+  competitors: 40,
+  presentationMaterials: 40,
+  researchJobs: 30,
+  researchFindings: 40,
+  financialModels: 8,
+  rawMaterialSignals: 50,
+  supplierScorecards: 40,
+  dataRoomSources: 80,
+}
 
 const defaultEvidenceItems: FeasibilityEvidenceItem[] = [
   {
@@ -290,6 +389,8 @@ function emptyState(): FeasibilityIntelligenceState {
     researchJobs: [],
     researchFindings: [],
     financialModels: [],
+    rawMaterialSignals: [],
+    supplierScorecards: [],
     dataRoomSources: [],
   }
 }
@@ -341,9 +442,249 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
       : [],
     researchFindings: Array.isArray(raw.researchFindings) ? raw.researchFindings : [],
     financialModels: Array.isArray(raw.financialModels) ? raw.financialModels : [],
+    rawMaterialSignals: Array.isArray((raw as Partial<FeasibilityIntelligenceState>).rawMaterialSignals)
+      ? (raw as Partial<FeasibilityIntelligenceState>).rawMaterialSignals!.map((record, index) => ({
+          ...record,
+          id: record.id || idFrom('raw-material-signal', `${record.material || record.label || 'material'}-${index}`),
+          material: record.material || record.label || 'Raw material',
+          evidenceStatus: record.evidenceStatus || 'To Verify',
+          source: record.source || null,
+        }))
+      : [],
+    supplierScorecards: Array.isArray((raw as Partial<FeasibilityIntelligenceState>).supplierScorecards)
+      ? (raw as Partial<FeasibilityIntelligenceState>).supplierScorecards!.map((record, index) => ({
+          ...record,
+          id: record.id || idFrom('supplier-scorecard', `${record.supplier || 'supplier'}-${record.material || 'material'}-${index}`),
+          evidenceStatus: record.evidenceStatus || 'To Verify',
+          source: record.source || null,
+        }))
+      : [],
     dataRoomSources: Array.isArray(raw.dataRoomSources)
       ? raw.dataRoomSources.map((record, index) => normalizeDataRoomSourceRecord(record, index))
       : [],
+  }
+}
+
+function truncateLocalStorageText(value: unknown, maxLength = LOCAL_STORAGE_TEXT_LIMIT): string {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
+}
+
+function compactSourceForLocalStorage(source?: SourceReference | null): SourceReference | null {
+  if (!source) return null
+  return {
+    title: truncateLocalStorageText(source.title, 240),
+    url: truncateLocalStorageText(source.url, 360),
+    date: truncateLocalStorageText(source.date, 80),
+  }
+}
+
+function compactTargetForLocalStorage(target?: ResearchReviewDashboardTarget): ResearchReviewDashboardTarget | undefined {
+  if (!target) return undefined
+  return {
+    ...target,
+    fieldKey: truncateLocalStorageText(target.fieldKey, 240),
+    field: truncateLocalStorageText(target.field, 240),
+    value: truncateLocalStorageText(target.value, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    proposedDashboardField: truncateLocalStorageText(target.proposedDashboardField, 240),
+    companyName: truncateLocalStorageText(target.companyName, 160),
+    countryRegion: truncateLocalStorageText(target.countryRegion, 160),
+    productEquivalent: truncateLocalStorageText(target.productEquivalent, 360),
+    activeContent: truncateLocalStorageText(target.activeContent, 360),
+    pricingEvidence: truncateLocalStorageText(target.pricingEvidence, 360),
+    certifications: truncateLocalStorageText(target.certifications, 360),
+    distributionPresence: truncateLocalStorageText(target.distributionPresence, 360),
+    marketShare: truncateLocalStorageText(target.marketShare, 360),
+    revenue: truncateLocalStorageText(target.revenue, 360),
+    yearlyGrowth: truncateLocalStorageText(target.yearlyGrowth, 360),
+    traffic: truncateLocalStorageText(target.traffic, 360),
+    rating: truncateLocalStorageText(target.rating, 360),
+    lastUpdated: truncateLocalStorageText(target.lastUpdated, 360),
+    supplier: truncateLocalStorageText(target.supplier, 160),
+    material: truncateLocalStorageText(target.material, 160),
+    section: truncateLocalStorageText(target.section, 240),
+    content: truncateLocalStorageText(target.content, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    sourceTier: truncateLocalStorageText(target.sourceTier, 160),
+    reportedSourceTier: truncateLocalStorageText(target.reportedSourceTier, 160),
+    dataType: truncateLocalStorageText(target.dataType, 160),
+    riskReason: truncateLocalStorageText(target.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    runKey: truncateLocalStorageText(target.runKey, 240),
+  }
+}
+
+function compactMetricEvidenceForLocalStorage(
+  metricEvidence: CompetitorIntelligenceRecord['metricEvidence'],
+): CompetitorIntelligenceRecord['metricEvidence'] {
+  if (!metricEvidence) return undefined
+  const compacted: CompetitorIntelligenceRecord['metricEvidence'] = {}
+  for (const [key, metric] of Object.entries(metricEvidence)) {
+    if (!metric) continue
+    compacted[key as keyof NonNullable<CompetitorIntelligenceRecord['metricEvidence']>] = {
+      ...metric,
+      value: truncateLocalStorageText(metric.value, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      source: compactSourceForLocalStorage(metric.source),
+      sourceTier: truncateLocalStorageText(metric.sourceTier, 160),
+      evidenceStatus: truncateLocalStorageText(metric.evidenceStatus, 120),
+      confidence: truncateLocalStorageText(metric.confidence, 80),
+      dataType: truncateLocalStorageText(metric.dataType, 160),
+      lastChecked: truncateLocalStorageText(metric.lastChecked, 120),
+      sourceDate: truncateLocalStorageText(metric.sourceDate, 120),
+      riskReason: truncateLocalStorageText(metric.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    }
+  }
+  return compacted
+}
+
+function compactCompetitorForLocalStorage(record: CompetitorIntelligenceRecord): CompetitorIntelligenceRecord {
+  return {
+    ...record,
+    companyName: truncateLocalStorageText(record.companyName, 160),
+    countryRegion: truncateLocalStorageText(record.countryRegion, 180),
+    productEquivalent: truncateLocalStorageText(record.productEquivalent, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    productVariations: truncateLocalStorageText(record.productVariations, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    productVariationList: record.productVariationList?.slice(0, 16).map(item => truncateLocalStorageText(item, 260)),
+    activeContent: truncateLocalStorageText(record.activeContent, 720),
+    pricingEvidence: truncateLocalStorageText(record.pricingEvidence, 720),
+    certifications: truncateLocalStorageText(record.certifications, 720),
+    distributionPresence: truncateLocalStorageText(record.distributionPresence, 720),
+    marketShare: truncateLocalStorageText(record.marketShare, 720),
+    revenue: truncateLocalStorageText(record.revenue, 720),
+    yearlyGrowth: truncateLocalStorageText(record.yearlyGrowth, 720),
+    traffic: truncateLocalStorageText(record.traffic, 720),
+    rating: truncateLocalStorageText(record.rating, 720),
+    lastUpdated: truncateLocalStorageText(record.lastUpdated, 720),
+    metricEvidence: compactMetricEvidenceForLocalStorage(record.metricEvidence),
+    source: compactSourceForLocalStorage(record.source),
+    sources: record.sources?.slice(0, LOCAL_STORAGE_SOURCE_LIMIT).map(compactSourceForLocalStorage).filter(Boolean) as SourceReference[] | undefined,
+    sourceTier: truncateLocalStorageText(record.sourceTier, 160),
+    dataType: truncateLocalStorageText(record.dataType, 160),
+    confidence: truncateLocalStorageText(record.confidence, 80),
+    riskReason: truncateLocalStorageText(record.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    notes: truncateLocalStorageText(record.notes, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+  }
+}
+
+function compactStateForLocalStorage(
+  input: FeasibilityIntelligenceState,
+  limits = LOCAL_STORAGE_LIMITS,
+): FeasibilityIntelligenceState {
+  return {
+    evidenceItems: input.evidenceItems.map(item => ({
+      ...item,
+      description: truncateLocalStorageText(item.description, 720),
+      nextAction: truncateLocalStorageText(item.nextAction, 720),
+      source: compactSourceForLocalStorage(item.source),
+    })),
+    marketClaims: input.marketClaims.slice(0, limits.marketClaims).map(claim => ({
+      ...claim,
+      label: truncateLocalStorageText(claim.label, 320),
+      value: truncateLocalStorageText(claim.value, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      source: compactSourceForLocalStorage(claim.source),
+      sourceTier: truncateLocalStorageText(claim.sourceTier, 160),
+      dataType: truncateLocalStorageText(claim.dataType, 160),
+      confidence: claim.confidence,
+      riskReason: truncateLocalStorageText(claim.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    })),
+    competitors: input.competitors.slice(0, limits.competitors).map(compactCompetitorForLocalStorage),
+    presentationMaterials: input.presentationMaterials.slice(0, limits.presentationMaterials).map(material => ({
+      ...material,
+      section: truncateLocalStorageText(material.section, 240),
+      content: truncateLocalStorageText(material.content, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      source: compactSourceForLocalStorage(material.source),
+    })),
+    researchJobs: input.researchJobs.slice(0, limits.researchJobs).map(job => ({
+      ...job,
+      title: truncateLocalStorageText(job.title, 240),
+      question: truncateLocalStorageText(job.question, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      scope: truncateLocalStorageText(job.scope, 720),
+      expectedOutput: truncateLocalStorageText(job.expectedOutput, 720),
+      sourceRequirements: truncateLocalStorageText(job.sourceRequirements, 720),
+      context: truncateLocalStorageText(job.context, 240),
+    })),
+    researchFindings: input.researchFindings.slice(0, limits.researchFindings).map(finding => ({
+      ...finding,
+      summary: truncateLocalStorageText(finding.summary, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      keyClaim: truncateLocalStorageText(finding.keyClaim, 360),
+      source: compactSourceForLocalStorage(finding.source),
+      suggestedTask: truncateLocalStorageText(finding.suggestedTask, 720),
+      suggestedInvestorMaterial: truncateLocalStorageText(finding.suggestedInvestorMaterial, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      sourceTier: truncateLocalStorageText(finding.sourceTier, 160),
+      dataType: truncateLocalStorageText(finding.dataType, 160),
+      riskReason: truncateLocalStorageText(finding.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      riskNote: truncateLocalStorageText(finding.riskNote, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      dashboardTarget: compactTargetForLocalStorage(finding.dashboardTarget),
+    })),
+    financialModels: input.financialModels.slice(0, limits.financialModels).map(model => ({
+      ...model,
+      scenarioName: truncateLocalStorageText(model.scenarioName, 180),
+      projectName: truncateLocalStorageText(model.projectName, 240),
+      warnings: model.warnings.slice(0, 12).map(item => truncateLocalStorageText(item, 360)),
+      source: compactSourceForLocalStorage(model.source),
+    })),
+    rawMaterialSignals: input.rawMaterialSignals.slice(0, limits.rawMaterialSignals).map(record => ({
+      ...record,
+      material: truncateLocalStorageText(record.material, 180),
+      label: truncateLocalStorageText(record.label, 180),
+      proposedDashboardField: truncateLocalStorageText(record.proposedDashboardField, 240),
+      value: truncateLocalStorageText(record.value, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      cas: truncateLocalStorageText(record.cas, 80),
+      formula: truncateLocalStorageText(record.formula, 120),
+      source: compactSourceForLocalStorage(record.source),
+      sourceTier: truncateLocalStorageText(record.sourceTier, 160),
+      reportedSourceTier: truncateLocalStorageText(record.reportedSourceTier, 160),
+      confidence: truncateLocalStorageText(record.confidence, 80),
+      dataType: truncateLocalStorageText(record.dataType, 120),
+      pricePerTon: truncateLocalStorageText(record.pricePerTon, 160),
+      priceStatus: truncateLocalStorageText(record.priceStatus, 160),
+      riskReason: truncateLocalStorageText(record.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      notes: truncateLocalStorageText(record.notes, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    })),
+    supplierScorecards: input.supplierScorecards.slice(0, limits.supplierScorecards).map(record => ({
+      ...record,
+      supplier: truncateLocalStorageText(record.supplier, 180),
+      material: truncateLocalStorageText(record.material, 240),
+      proposedDashboardField: truncateLocalStorageText(record.proposedDashboardField, 240),
+      value: truncateLocalStorageText(record.value, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      source: compactSourceForLocalStorage(record.source),
+      sourceTier: truncateLocalStorageText(record.sourceTier, 160),
+      reportedSourceTier: truncateLocalStorageText(record.reportedSourceTier, 160),
+      confidence: truncateLocalStorageText(record.confidence, 80),
+      dataType: truncateLocalStorageText(record.dataType, 120),
+      pricePerTon: truncateLocalStorageText(record.pricePerTon, 160),
+      quality: truncateLocalStorageText(record.quality, 180),
+      reliability: truncateLocalStorageText(record.reliability, 180),
+      payment: truncateLocalStorageText(record.payment, 180),
+      score: truncateLocalStorageText(record.score, 120),
+      riskReason: truncateLocalStorageText(record.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      notes: truncateLocalStorageText(record.notes, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    })),
+    dataRoomSources: input.dataRoomSources.slice(0, limits.dataRoomSources).map(record => ({
+      ...record,
+      checklistLabel: truncateLocalStorageText(record.checklistLabel, 320),
+      source: compactSourceForLocalStorage(record.source),
+      notes: truncateLocalStorageText(record.notes, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      proposedValue: truncateLocalStorageText(record.proposedValue, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+      sourceTier: truncateLocalStorageText(record.sourceTier, 160),
+      dataType: truncateLocalStorageText(record.dataType, 160),
+      confidence: truncateLocalStorageText(record.confidence, 80),
+      riskReason: truncateLocalStorageText(record.riskReason, LOCAL_STORAGE_LONG_TEXT_LIMIT),
+    })),
+  }
+}
+
+function writeLocalStorageState(value: FeasibilityIntelligenceState) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compactStateForLocalStorage(value)))
+    return
+  } catch (err) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compactStateForLocalStorage(value, LOCAL_STORAGE_FALLBACK_LIMITS)))
+      return
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY)
+      console.warn('[feasibility-intelligence] compact browser cache cleared after storage quota failure', err)
+    }
   }
 }
 
@@ -358,8 +699,7 @@ function loadState(): FeasibilityIntelligenceState {
 }
 
 function persist() {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+  writeLocalStorageState(state.value)
   scheduleServerPersist()
 }
 
@@ -370,8 +710,7 @@ function ensureLoaded() {
 }
 
 function persistLocalOnly() {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+  writeLocalStorageState(state.value)
 }
 
 function scheduleServerPersist() {

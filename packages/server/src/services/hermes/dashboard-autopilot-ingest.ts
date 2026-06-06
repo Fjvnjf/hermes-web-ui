@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-06-official-product-evidence-v10'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-07-official-private-company-coverage-v21'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -118,6 +118,10 @@ const SENSITIVE_DATA_TYPES = new Set(['price_data', 'financial_data', 'supplier_
 const PLACEHOLDER_PATTERN = /to verify|missing|research required|api-ready|reference only|trade proxy/i
 const SCREENSHOT_FAKE_VALUES = ['$3.2B', '$120M', '$16M', '$49.8M', '60%', '7.2%', '38%', '$34/kg', '$24/kg', '20-25%']
 const MAX_IMPORTED_RUN_KEYS = 500
+const MARKET_REFERENCE_REVIEW_ACTION = 'Review market-reference methodology and approve only if the source is acceptable for dashboard or investor use.'
+const SOURCE_READER_PREFIX = 'https://r.jina.ai/http://'
+const SOURCE_FETCH_TIMEOUT_MS = 12_000
+const TRAFFIC_SOURCE_FETCH_TIMEOUT_MS = 3_500
 
 type DashboardResearchUpdateGroup = typeof DASHBOARD_UPDATE_GROUPS[number]
 type SourceTier =
@@ -165,6 +169,8 @@ const OFFICIAL_SOURCE_DOMAINS = [
   'bb.org.bd',
   'epb.gov.bd',
   'sec.gov',
+  'euronext.com',
+  'live.euronext.com',
   'hkexnews.hk',
   'echa.europa.eu',
   'pubchem.ncbi.nlm.nih.gov',
@@ -175,10 +181,12 @@ const OFFICIAL_SOURCE_DOMAINS = [
 
 const COMPANY_OFFICIAL_SOURCE_DOMAINS = [
   'evonik.com',
+  'evonik.cn',
   'stepan.com',
   'kao.com',
   'kaochemicals-eu.com',
   'wacker.com',
+  'rudolf.com',
   'rudolf.de',
   'cht.com',
   'archroma.com',
@@ -187,11 +195,22 @@ const COMPANY_OFFICIAL_SOURCE_DOMAINS = [
   'transfarchem.com',
   'syensqo.com',
   'basf.com',
+  'akzonobel.com',
   'dow.com',
+  'pg.com',
+  'us.pg.com',
   'shinetsu.co.jp',
   'momentive.com',
   'wilmar-international.com',
   'klkoleo.com',
+]
+
+const TRUSTED_CERTIFICATION_SOURCE_DOMAINS = [
+  'sgs.com',
+  'sgsgroup.com.cn',
+  'sgsonline.com.cn',
+  'ecovadis.com',
+  'tuvsud.com',
 ]
 
 const MARKET_REFERENCE_SOURCE_DOMAINS = [
@@ -208,11 +227,18 @@ const MARKET_REFERENCE_SOURCE_DOMAINS = [
   'fibre2fashion.com',
   'just-style.com',
   'grandviewresearch.com',
+  'fortunebusinessinsights.com',
+  '360researchreports.com',
+  'futuremarketinsights.com',
+  'persistencemarketresearch.com',
   'marketsandmarkets.com',
   'researchandmarkets.com',
   'mordorintelligence.com',
   'statista.com',
   'euromonitor.com',
+  'semrush.com',
+  'tranco-list.eu',
+  'stockanalysis.com',
   'mckinsey.com',
   'deloitte.com',
 ]
@@ -221,6 +247,9 @@ const WEAK_PUBLIC_LISTING_DOMAINS = [
   'alibaba.com',
   'made-in-china.com',
   '1688.com',
+  'zauba.com',
+  'wholesalesuppliesplus.com',
+  'ekokoza.com',
   'lookchem.com',
   'guidechem.com',
   'chembk.com',
@@ -289,7 +318,13 @@ interface DashboardIntelligenceState {
   evidenceItems: Record<string, unknown>[]
   marketClaims: Record<string, unknown>[]
   competitors: Record<string, unknown>[]
+  rawMaterialSignals: Record<string, unknown>[]
+  supplierScorecards: Record<string, unknown>[]
+  regulatoryFindings: Record<string, unknown>[]
+  financialEvidence: Record<string, unknown>[]
   presentationMaterials: Record<string, unknown>[]
+  suggestedTasks: Record<string, unknown>[]
+  investorMaterialCandidates: Record<string, unknown>[]
   researchJobs: Record<string, unknown>[]
   researchFindings: Record<string, unknown>[]
   financialModels: Record<string, unknown>[]
@@ -318,6 +353,8 @@ type CompetitorMetricField =
   | 'rating'
   | 'lastUpdated'
 
+type CompetitorMetricEvidenceMap = Partial<Record<CompetitorMetricField, Record<string, unknown>>>
+
 interface SecCompetitorFinancialSource {
   companyName: string
   cik: string
@@ -325,7 +362,16 @@ interface SecCompetitorFinancialSource {
   aliases: string[]
 }
 
-type OfficialCompanyFinancialParser = 'basf-report-2025' | 'evonik-results-2025' | 'wacker-report-2025' | 'kao-glance-2025'
+type OfficialCompanyFinancialParser =
+  | 'basf-report-2025'
+  | 'evonik-results-2025'
+  | 'wacker-report-2025'
+  | 'kao-glance-2025'
+  | 'syensqo-results-2025'
+  | 'cht-growth-2024'
+  | 'zschimmer-turnover-2023'
+  | 'pulcra-csrd-2023'
+  | 'akzonobel-q1-2026'
 
 interface OfficialCompanyFinancialSource {
   companyName: string
@@ -350,6 +396,18 @@ interface OfficialCompetitorProductSource {
   requiredTerms: string[]
 }
 
+interface OfficialCompetitorRecognitionSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  ratingLabel: string
+  sourceTitle: string
+  sourceUrl: string
+  sourceTierLabel?: string
+  requiredTerms: string[]
+  recommendedAction: string
+}
+
 interface OfficialSupplierEvidenceSource {
   supplier: string
   material: string
@@ -359,6 +417,20 @@ interface OfficialSupplierEvidenceSource {
   value: string
   requiredTerms: string[]
   recommendedAction: string
+}
+
+type PublicCompetitorPriceParser = 'zauba-stepantex-sp90' | 'wholesale-varisoft-eq65'
+
+interface PublicCompetitorPriceSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  productEquivalent: string
+  sourceTitle: string
+  sourceUrl: string
+  parser: PublicCompetitorPriceParser
+  requiredTerms: string[]
+  riskReason: string
 }
 
 interface SecAnnualRevenueMetric {
@@ -376,6 +448,56 @@ interface ComtradeMarketProxySource {
   fieldKeySlug: string
 }
 
+type MarketReferenceParser =
+  | 'future-market-insights-esterquats'
+  | 'persistence-esterquats'
+  | 'grandview-esterquats'
+  | 'fortune-esterquats'
+  | 'research360-esterquat'
+
+interface MarketReferenceSource {
+  fieldKeySlug: string
+  sourceTitle: string
+  sourceUrl: string
+  parser: MarketReferenceParser
+}
+
+interface MarketReferenceTrafficSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  domain: string
+  sourceTitle: string
+  sourceUrl: string
+}
+
+interface TrancoTrafficRankSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  domain: string
+}
+
+interface TrancoRankPayload {
+  ranks?: Array<{
+    date?: unknown
+    rank?: unknown
+  }>
+}
+
+type MarketReferenceCompetitorFinancialParser =
+  | 'spglobal-archroma-2025'
+  | 'stockanalysis-transfar-2025'
+
+interface MarketReferenceCompetitorFinancialSource {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  sourceTitle: string
+  sourceUrl: string
+  parser: MarketReferenceCompetitorFinancialParser
+}
+
 interface ComtradeAnnualImportMetric {
   year: number
   primaryValue: number
@@ -388,6 +510,23 @@ interface OfficialCompanyFinancialMetric {
   year: number
   revenueValue: string
   growthValue?: string
+}
+
+interface MarketReferenceClaim {
+  fieldKey: string
+  label: string
+  proposedDashboardField: string
+  value: string
+  confidence: Confidence
+}
+
+interface MarketReferenceCompetitorShareContext {
+  companyName: string
+  fieldKeySlug: string
+  countryRegion: string
+  marketShare: string
+  productEquivalent: string
+  riskReason: string
 }
 
 interface OfficialConnectorResult {
@@ -418,6 +557,12 @@ const SEC_COMPETITOR_FINANCIAL_SOURCES: SecCompetitorFinancialSource[] = [
     cik: '0001751788',
     fieldKeySlug: 'dow',
     aliases: ['dow', 'dow inc', 'dow inc.'],
+  },
+  {
+    companyName: 'Procter & Gamble',
+    cik: '0000080424',
+    fieldKeySlug: 'procter_gamble',
+    aliases: ['procter gamble', 'procter & gamble', 'pg', 'p&g'],
   },
 ]
 
@@ -460,6 +605,46 @@ const OFFICIAL_COMPANY_FINANCIAL_SOURCES: OfficialCompanyFinancialSource[] = [
     sourceUrl: 'https://www.kao.com/global/en/corporate/data/',
     parser: 'kao-glance-2025',
   },
+  {
+    companyName: 'Syensqo / Solvay',
+    fieldKeySlug: 'syensqo_solvay',
+    countryRegion: 'Belgium / global',
+    sourceTitle: 'Syensqo fourth quarter and full year 2025 results',
+    sourceUrl: 'https://live.euronext.com/en/products/equities/company-news/2026-02-26-syensqo-fourth-quarter-and-full-year-2025-results',
+    parser: 'syensqo-results-2025',
+  },
+  {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'CHT Group expands Management Team and focuses on Sustainable Growth',
+    sourceUrl: 'https://www.cht.com/en/news-media/article/cht-group-expands-management-team-and-focuses-on-sustainable-growth',
+    parser: 'cht-growth-2024',
+  },
+  {
+    companyName: 'Zschimmer & Schwarz',
+    fieldKeySlug: 'zschimmer_schwarz',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'Zschimmer & Schwarz initiates management change',
+    sourceUrl: 'https://www.zschimmer-schwarz.com/en/news/news-details/zschimmer-schwarz-initiates-management-change',
+    parser: 'zschimmer-turnover-2023',
+  },
+  {
+    companyName: 'Pulcra Chemicals',
+    fieldKeySlug: 'pulcra_chemicals',
+    countryRegion: 'Germany / group context',
+    sourceTitle: 'Pulcra Germany GmbH Sustainability Statement 2023',
+    sourceUrl: 'https://www.pulcra-chemicals.com/wp-content/uploads/PULCRA_CSRD_2023.pdf',
+    parser: 'pulcra-csrd-2023',
+  },
+  {
+    companyName: 'AkzoNobel',
+    fieldKeySlug: 'akzonobel',
+    countryRegion: 'Netherlands / global',
+    sourceTitle: 'AkzoNobel Q1 2026 report',
+    sourceUrl: 'https://www.akzonobel.com/content/dam/akzonobel-corporate/global/en/investor-relations-images/result-center/reports---presentation/2026/report-q1-2026-akzonobel.pdf',
+    parser: 'akzonobel-q1-2026',
+  },
 ]
 
 const OFFICIAL_COMPETITOR_PRODUCT_SOURCES: OfficialCompetitorProductSource[] = [
@@ -496,8 +681,32 @@ const OFFICIAL_COMPETITOR_PRODUCT_SOURCES: OfficialCompetitorProductSource[] = [
     activeContent: 'Esterquat based on European vegetable sources.',
     distributionPresence: 'Official Kao Chemicals EU product page.',
     sourceTitle: 'Kao TETRANYL L9-90 official product page',
-    sourceUrl: 'https://www.kaochemicals-eu.com/industries/textile-and-leather-chemicals/products/tetranyl-l9-90',
+    sourceUrl: 'https://www.kaochemicals-eu.com/industries/laundry-and-cleaning/tetranyl-l9-90',
     requiredTerms: ['TETRANYL L9-90', 'Esterquat'],
+  },
+  {
+    companyName: 'Dow',
+    fieldKeySlug: 'dow',
+    countryRegion: 'United States / global',
+    productLabel: 'DOWSIL 2202A Textile Finish',
+    productEquivalent: 'DOWSIL 2202A Textile Finish reactive silicone textile-finishing product reference.',
+    activeContent: 'Dispersion of a reactive silicone in white spirit for water-repellent fabric and leather finishing.',
+    distributionPresence: 'Official Dow product page; direct fetch may require reader fallback when Dow blocks automated access.',
+    sourceTitle: 'Dow DOWSIL 2202A Textile Finish official product page',
+    sourceUrl: 'https://www.dow.com/en-us/pdp.dowsil-2202a-textile-finish.01484273z.html',
+    requiredTerms: ['DOWSIL', '2202A Textile Finish', 'water repellent finishing'],
+  },
+  {
+    companyName: 'Dow',
+    fieldKeySlug: 'dow',
+    countryRegion: 'United States / global',
+    productLabel: 'XIAMETER OFX-8417 Fluid',
+    productEquivalent: 'XIAMETER OFX-8417 Fluid amino-functional silicone fluid for textile-softener formulation context.',
+    activeContent: 'Premium amino softener suitable for formulation into microemulsion for textile softener applications.',
+    distributionPresence: 'Official Dow product page; direct fetch may require reader fallback when Dow blocks automated access.',
+    sourceTitle: 'Dow XIAMETER OFX-8417 Fluid official product page',
+    sourceUrl: 'https://www.dow.com/en-us/pdp.xiameter-ofx-8417-fluid.01812092z.html',
+    requiredTerms: ['XIAMETER', 'Premium amino softener', 'textile softener'],
   },
   {
     companyName: 'Archroma',
@@ -521,7 +730,222 @@ const OFFICIAL_COMPETITOR_PRODUCT_SOURCES: OfficialCompetitorProductSource[] = [
     distributionPresence: 'Official CHT textile-softener product page.',
     sourceTitle: 'CHT TUBINGAL GEP official textile softener page',
     sourceUrl: 'https://solutions.cht.com/cht/web.nsf/id/li_tubingal-gep-textile-softener.html',
-    requiredTerms: ['TUBINGAL GEP', 'silicone-based softener', 'textile finishing'],
+    requiredTerms: ['TUBINGAL GEP', 'silicone', 'textile'],
+  },
+  {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    productLabel: 'TUBINGAL RISE',
+    productEquivalent: 'TUBINGAL RISE recycled silicone textile softener product reference.',
+    activeContent: 'Textile softener based on recycled and reprocessed silicone waste and renewable bio-based emulsifiers.',
+    distributionPresence: 'Official CHT textile-softener product page.',
+    sourceTitle: 'CHT TUBINGAL RISE official textile softener page',
+    sourceUrl: 'https://solutions.cht.com/cht/web.nsf/id/pa_tubingal-rise-softener.html',
+    requiredTerms: ['TUBINGAL', 'recycled silicones', 'textile softener'],
+  },
+  {
+    companyName: 'Transfar',
+    fieldKeySlug: 'transfar',
+    countryRegion: 'China / global',
+    productLabel: 'TRANSOFT FLA TF-442',
+    productEquivalent: 'TRANSOFT FLA TF-442 fatty-acid ester softener flake for textile reference.',
+    activeContent: 'Fatty acid ester compound softener flake for textile.',
+    distributionPresence: 'Official Zhejiang Transfar Chemicals product page.',
+    sourceTitle: 'Transfar TRANSOFT FLA TF-442 official product page',
+    sourceUrl: 'https://www.transfarchem.com/en/index.php/productinfo/index/60/155.html',
+    requiredTerms: ['TRANSOFT FLA TF-442', 'fatty acid ester', 'softener flake'],
+  },
+  {
+    companyName: 'Rudolf Group',
+    fieldKeySlug: 'rudolf_group',
+    countryRegion: 'Germany / global',
+    productLabel: 'RUCOFIN',
+    productEquivalent: 'RUCOFIN high-performance silicone softeners for textile applications.',
+    activeContent: 'Polysiloxane/silicone softener technology for premium softness, hydrophilic softness, value softness, and sustainable softness.',
+    distributionPresence: 'Official RUDOLF technology page.',
+    sourceTitle: 'RUDOLF RUCOFIN official textile softener technology page',
+    sourceUrl: 'https://rudolf.com/technologies/rucofin',
+    requiredTerms: ['RUCOFIN', 'silicone softeners', 'textile'],
+  },
+  {
+    companyName: 'Pulcra Chemicals',
+    fieldKeySlug: 'pulcra_chemicals',
+    countryRegion: 'Germany / global',
+    productLabel: 'ADALIN / ADASIL / AQUASOFT / BELFASIN / BELSOFT / SETILON',
+    productEquivalent: 'Pulcra textile softener brand family: ADALIN, ADASIL, AQUASOFT, BELFASIN, BELSOFT, SETILON.',
+    activeContent: 'Textile finishing softeners for handle, surface smoothness, sewability, hydrophilicity, and elasticity.',
+    distributionPresence: 'Official Pulcra textile-industry solutions page.',
+    sourceTitle: 'Pulcra Chemicals textile-industry solutions official page',
+    sourceUrl: 'https://www.pulcra-chemicals.com/kundenloesungen/textilindustrie/',
+    requiredTerms: ['Softeners', 'ADALIN', 'textile'],
+  },
+  {
+    companyName: 'Zschimmer & Schwarz',
+    fieldKeySlug: 'zschimmer_schwarz',
+    countryRegion: 'Germany / global',
+    productLabel: 'Zschimmer & Schwarz textile softeners',
+    productEquivalent: 'Textile softeners and finishing auxiliaries for soft handle and improved physical properties.',
+    activeContent: 'Fatty acid condensate softeners based on silicone or polyethylene for textile finishing.',
+    distributionPresence: 'Official Zschimmer & Schwarz textile auxiliaries page.',
+    sourceTitle: 'Zschimmer & Schwarz textile auxiliaries official page',
+    sourceUrl: 'https://www.zschimmer-schwarz.com/en/fibre-textile-auxiliaries/textile-auxiliaries',
+    requiredTerms: ['SOFTENERS', 'textile finishing'],
+  },
+]
+
+const OFFICIAL_COMPETITOR_RECOGNITION_SOURCES: OfficialCompetitorRecognitionSource[] = [
+  {
+    companyName: 'BASF',
+    fieldKeySlug: 'basf',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2026 CDP leadership recognition; official BASF page says BASF received A ratings for climate and forests, and A- for water security.',
+    sourceTitle: 'CDP otorga a BASF el estatus de liderazgo',
+    sourceUrl: 'https://www.basf.com/ar/es/media/news-releases/2026/Febrero/CDP-otorga-a-BASF-el-estatus-de-liderazgo',
+    requiredTerms: ['CDP', 'calificación', 'estatus de liderazgo', 'A-'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Dow',
+    fieldKeySlug: 'dow',
+    countryRegion: 'United States / global',
+    ratingLabel: 'Dow 2025 Sustainability Goals page says Dow aligned more than 89% of its innovation portfolio to sustainability outcomes and earned twelve Edison awards in 2024.',
+    sourceTitle: 'Dow 2025 Sustainability Goals',
+    sourceUrl: 'https://corporate.dow.com/en-us/purpose-in-action/2025-goals.html',
+    requiredTerms: ['Dow aligned >89%', 'Record-setting twelve Edison awards', '2025 Sustainability Goals'],
+    recommendedAction: 'Use this as official sustainability/innovation-recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Evonik Industries',
+    fieldKeySlug: 'evonik_industries',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2025 EcoVadis Gold rating; official Evonik page says top 5% placement among globally assessed companies.',
+    sourceTitle: 'EcoVadis ranks Evonik among the world’s most sustainable companies',
+    sourceUrl: 'https://corporate.evonik.cn/en/media/news/ecovadis-ranks-evonik-among-the-worlds-most-sustainable-companies-289380.html',
+    requiredTerms: ['EcoVadis', 'Gold rating', 'top five percent'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Stepan Company',
+    fieldKeySlug: 'stepan_company',
+    countryRegion: 'United States / global',
+    ratingLabel: '2026 EcoVadis Silver medal; official Stepan page says top 15% globally and 89th percentile among manufacturers of chemical products.',
+    sourceTitle: 'Stepan Achieves a Silver Medal in 2026 EcoVadis Assessment',
+    sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/news-events/news---events/Stepan-Achieves-Silver-Medal-in-2026-EcoVadis-Assessment.html',
+    requiredTerms: ['Silver medal', 'top 15%', '89th percentile'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / global',
+    ratingLabel: 'Kao Sustainability Report 2025 release says Kao achieved CDP Triple-A in 2024 and World’s Most Ethical Companies 2025 recognition.',
+    sourceTitle: 'Kao Releases Kao Sustainability Report 2025',
+    sourceUrl: 'https://www.kao.com/global/en/newsroom/news/release/2025/20250613-002/',
+    requiredTerms: ['Triple-A rating', 'World’s Most Ethical Companies', '2025'],
+    recommendedAction: 'Use this as sustainability/ethics recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    ratingLabel: '2025 adidas adiFormulator Award: Champion status; official Archroma recognition page.',
+    sourceTitle: 'Archroma recognized as top chemicals supplier for the second consecutive year',
+    sourceUrl: 'https://www.archroma.com/news/archroma-recognized-as-top-chemicals-supplier-for-the-second-consecutive-year',
+    requiredTerms: ['Champion status', '2025 adiFormulator Award', 'adidas'],
+    recommendedAction: 'Use this as external-recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    ratingLabel: '2025 EcoVadis Gold rating; official Archroma sustainability page says top 5% in its industry.',
+    sourceTitle: 'Archroma Sustainability',
+    sourceUrl: 'https://www.archroma.com/sustainability',
+    requiredTerms: ['EcoVadis', 'Gold', 'top 5%'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2025 adidas adiFORMULATOR Award: Champion for the third time in a row; official CHT recognition page.',
+    sourceTitle: 'CHT Group adiFORMULATOR AWARD 2025',
+    sourceUrl: 'https://www.cht.com/en/news-media/article/adiformulator-award-2025',
+    requiredTerms: ['champion', 'adiFORMULATOR AWARD', 'third time in a row'],
+    recommendedAction: 'Use this as external-recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'WACKER',
+    fieldKeySlug: 'wacker',
+    countryRegion: 'Germany / global',
+    ratingLabel: 'WACKER Annual Report 2025 supplier-assessment evidence: average EcoVadis score across WACKER suppliers was 62 points.',
+    sourceTitle: 'WACKER Annual Report 2025 - Upstream Value Chain',
+    sourceUrl: 'https://reports.wacker.com/2025/annual-report/management-report/sustainability-report/esrs-s2-workers-in-the-value-chain/upstream-value-chain.html',
+    requiredTerms: ['EcoVadis', '62 points', 'suppliers'],
+    recommendedAction: 'Use this as official supplier-sustainability assessment evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'AkzoNobel',
+    fieldKeySlug: 'akzonobel',
+    countryRegion: 'Netherlands / global',
+    ratingLabel: 'AkzoNobel 2025 sustainability progress page reports a CDP A score, 69% renewable electricity in own operations, and 84 locations using 100% renewable electricity.',
+    sourceTitle: 'AkzoNobel energy use and renewable electricity',
+    sourceUrl: 'https://www.akzonobel.com/en/about-us/sustainability/energy-use-and-renewable-electricity',
+    requiredTerms: ['CDP A score', '69% renewable electricity', '84 locations'],
+    recommendedAction: 'Use this as official sustainability-rating/progress evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Pulcra Chemicals',
+    fieldKeySlug: 'pulcra_chemicals',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2025 EcoVadis Silver Medal; official Pulcra page says 92nd percentile / top 8% of chemical companies evaluated by EcoVadis.',
+    sourceTitle: 'Pulcra Chemicals Awarded EcoVadis Silver Medal for the Second Time',
+    sourceUrl: 'https://www.pulcra-chemicals.com/pulcra-chemicals-awarded-ecovadis-silver-medal-for-the-second-time/',
+    requiredTerms: ['EcoVadis Silver Medal', '92%', 'top 8%'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Procter & Gamble',
+    fieldKeySlug: 'procter_gamble',
+    countryRegion: 'United States / global',
+    ratingLabel: 'P&G official awards page says P&G ranked #21 on Barron’s 100 Most Sustainable Companies in 2025 and the Advantage Report Global Scorecard ranked P&G the #1 manufacturer for the 10th consecutive year.',
+    sourceTitle: 'P&G awards and recognitions',
+    sourceUrl: 'https://us.pg.com/blogs/pg-awards-and-recognitions/',
+    requiredTerms: ['Barron', '100 Most Sustainable Companies', '#21 ranking in 2025', 'Advantage Report Global Scorecard'],
+    recommendedAction: 'Use this as official company-recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Rudolf Group',
+    fieldKeySlug: 'rudolf_group',
+    countryRegion: 'Germany / global',
+    ratingLabel: 'RUDOLF official PCF Program certification page says TÜV SÜD certified its Product Carbon Footprint program under PACT Methodology V3 and aligned it with TfS PCF Guideline V3.',
+    sourceTitle: 'RUDOLF PCF Program certified under PACT and aligned with TfS',
+    sourceUrl: 'https://rudolf.com/news/rudolf-pcf-program-certified-under-pact-and-aligned-with-tfs',
+    sourceTierLabel: 'Tier 2 - Official company / certification source',
+    requiredTerms: ['TÜV SÜD', 'PACT Methodology V3', 'TfS'],
+    recommendedAction: 'Use this as official product-carbon-footprint program certification evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Transfar',
+    fieldKeySlug: 'transfar',
+    countryRegion: 'China / global',
+    ratingLabel: 'SGS China CIIE 2024 release says SGS presented Transfar the first SGS Green Mark bio-based content certificate for a polyester FDY oil product in China, plus several ZDHC MRSL Level 3 certifications.',
+    sourceTitle: 'SGS China - Supporting Key Sustainability Goals in China’s Textile Industry at CIIE',
+    sourceUrl: 'https://www.sgsgroup.com.cn/en-cn/news/2024/12/supporting-key-sustainability-goals-in-chinas-textile-industry-at-ciie',
+    sourceTierLabel: 'Tier 2 - Official certification / inspection source',
+    requiredTerms: ['Transfar', 'first SGS green mark bio-based content certificate', 'ZDHC MRSL Level 3'],
+    recommendedAction: 'Use this as third-party certification/recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  {
+    companyName: 'Zschimmer & Schwarz',
+    fieldKeySlug: 'zschimmer_schwarz',
+    countryRegion: 'Germany / global',
+    ratingLabel: 'EcoVadis Silver for ZSL; official Zschimmer & Schwarz page says top 15% of companies assessed worldwide last year.',
+    sourceTitle: 'Outstanding sustainability: ZSL awarded Silver by EcoVadis',
+    sourceUrl: 'https://www.zschimmer-schwarz.com/en/news/news-details/outstanding-sustainability-zsl-awarded-silver-by-ecovadis',
+    requiredTerms: ['EcoVadis', 'Silver', 'top 15 %'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
   },
 ]
 
@@ -568,6 +992,31 @@ const OFFICIAL_SUPPLIER_EVIDENCE_SOURCES: OfficialSupplierEvidenceSource[] = [
   },
 ]
 
+const PUBLIC_COMPETITOR_PRICE_SOURCES: PublicCompetitorPriceSource[] = [
+  {
+    companyName: 'Stepan Company',
+    fieldKeySlug: 'stepan_company',
+    countryRegion: 'United States / global',
+    productEquivalent: 'STEPANTEX SP-90 public customs/import price reference; not a current industrial quote.',
+    sourceTitle: 'Zauba - Stepantex SP 90 imports under HS Code 29051490',
+    sourceUrl: 'https://www.zauba.com/import-STEPANTEX%2BSP%2B90/hs-code-29051490-hs-code.html',
+    parser: 'zauba-stepantex-sp90',
+    requiredTerms: ['stepantex sp 90', 'average import price'],
+    riskReason: 'Zauba is a public customs/listing reference and the visible records are historical/import-unit specific. Use only as review-gated price context, not as a current industrial textile-softener quote.',
+  },
+  {
+    companyName: 'Evonik Industries',
+    fieldKeySlug: 'evonik_industries',
+    countryRegion: 'Germany / global',
+    productEquivalent: 'VARISOFT EQ 65 public retail/sample price reference; not an industrial textile softener quote.',
+    sourceTitle: 'Wholesale Supplies Plus - Varisoft EQ 65',
+    sourceUrl: 'https://www.wholesalesuppliesplus.com/products/varisoft-eq-65',
+    parser: 'wholesale-varisoft-eq65',
+    requiredTerms: ['varisoft eq 65', 'regular price'],
+    riskReason: 'This is a retail/cosmetic-supply listing for small packaging. Use only as review-gated public price context, not as bulk industrial textile-auxiliary pricing.',
+  },
+]
+
 const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
   { country: 'China', reporterCode: '156', fieldKeySlug: 'china' },
   { country: 'Bangladesh', reporterCode: '50', fieldKeySlug: 'bangladesh' },
@@ -582,6 +1031,188 @@ const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
 ]
 
 const COMTRADE_TEXTILE_FINISHING_HS_CODE = '380991'
+
+const MARKET_REFERENCE_SOURCES: MarketReferenceSource[] = [
+  {
+    fieldKeySlug: 'future_market_insights_esterquats',
+    sourceTitle: 'Future Market Insights - Esterquats Market',
+    sourceUrl: 'https://www.futuremarketinsights.com/reports/esterquats-market',
+    parser: 'future-market-insights-esterquats',
+  },
+  {
+    fieldKeySlug: 'persistence_market_research_esterquats',
+    sourceTitle: 'Persistence Market Research - Esterquats Market',
+    sourceUrl: 'https://www.persistencemarketresearch.com/market-research/esterquats-market.asp',
+    parser: 'persistence-esterquats',
+  },
+  {
+    fieldKeySlug: 'grandview_esterquats',
+    sourceTitle: 'Grand View Research - Esterquats Market Size, Share & Trends',
+    sourceUrl: 'https://www.grandviewresearch.com/industry-analysis/esterquats-market',
+    parser: 'grandview-esterquats',
+  },
+  {
+    fieldKeySlug: 'fortune_esterquats',
+    sourceTitle: 'Fortune Business Insights - Esterquats Market',
+    sourceUrl: 'https://www.fortunebusinessinsights.com/esterquats-market-102891',
+    parser: 'fortune-esterquats',
+  },
+  {
+    fieldKeySlug: 'research360_esterquat',
+    sourceTitle: '360 Research Reports - Esterquat Market',
+    sourceUrl: 'https://www.360researchreports.com/market-reports/esterquat-market-204218',
+    parser: 'research360-esterquat',
+  },
+]
+
+const MARKET_REFERENCE_TRAFFIC_SOURCES: MarketReferenceTrafficSource[] = [
+  {
+    companyName: 'BASF',
+    fieldKeySlug: 'basf',
+    countryRegion: 'Germany / global',
+    domain: 'basf.com',
+    sourceTitle: 'Semrush website traffic overview - basf.com',
+    sourceUrl: 'https://www.semrush.com/website/basf.com/overview/',
+  },
+  {
+    companyName: 'Evonik Industries',
+    fieldKeySlug: 'evonik_industries',
+    countryRegion: 'Germany / global',
+    domain: 'evonik.com',
+    sourceTitle: 'Semrush website traffic overview - evonik.com',
+    sourceUrl: 'https://www.semrush.com/website/evonik.com/overview/',
+  },
+  {
+    companyName: 'Stepan Company',
+    fieldKeySlug: 'stepan_company',
+    countryRegion: 'United States / global',
+    domain: 'stepan.com',
+    sourceTitle: 'Semrush website traffic overview - stepan.com',
+    sourceUrl: 'https://www.semrush.com/website/stepan.com/overview/',
+  },
+  {
+    companyName: 'Dow',
+    fieldKeySlug: 'dow',
+    countryRegion: 'United States / global',
+    domain: 'dow.com',
+    sourceTitle: 'Semrush website traffic overview - dow.com',
+    sourceUrl: 'https://www.semrush.com/website/dow.com/overview/',
+  },
+  {
+    companyName: 'AkzoNobel',
+    fieldKeySlug: 'akzonobel',
+    countryRegion: 'Netherlands / global',
+    domain: 'akzonobel.com',
+    sourceTitle: 'Semrush website traffic overview - akzonobel.com',
+    sourceUrl: 'https://www.semrush.com/website/akzonobel.com/overview/',
+  },
+  {
+    companyName: 'Procter & Gamble',
+    fieldKeySlug: 'procter_gamble',
+    countryRegion: 'United States / global',
+    domain: 'pg.com',
+    sourceTitle: 'Semrush website traffic overview - pg.com',
+    sourceUrl: 'https://www.semrush.com/website/pg.com/overview/',
+  },
+  {
+    companyName: 'WACKER',
+    fieldKeySlug: 'wacker',
+    countryRegion: 'Germany / global',
+    domain: 'wacker.com',
+    sourceTitle: 'Semrush website traffic overview - wacker.com',
+    sourceUrl: 'https://www.semrush.com/website/wacker.com/overview/',
+  },
+  {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    domain: 'cht.com',
+    sourceTitle: 'Semrush website traffic overview - cht.com',
+    sourceUrl: 'https://www.semrush.com/website/cht.com/overview/',
+  },
+  {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    domain: 'archroma.com',
+    sourceTitle: 'Semrush website traffic overview - archroma.com',
+    sourceUrl: 'https://www.semrush.com/website/archroma.com/overview/',
+  },
+  {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / global',
+    domain: 'kao.com',
+    sourceTitle: 'Semrush website traffic overview - kao.com',
+    sourceUrl: 'https://www.semrush.com/website/kao.com/overview/',
+  },
+  {
+    companyName: 'Transfar',
+    fieldKeySlug: 'transfar',
+    countryRegion: 'China / global',
+    domain: 'transfarchem.com',
+    sourceTitle: 'Semrush website traffic overview - transfarchem.com',
+    sourceUrl: 'https://www.semrush.com/website/transfarchem.com/overview/',
+  },
+  {
+    companyName: 'Rudolf Group',
+    fieldKeySlug: 'rudolf_group',
+    countryRegion: 'Germany / global',
+    domain: 'rudolf.com',
+    sourceTitle: 'Semrush website traffic overview - rudolf.com',
+    sourceUrl: 'https://www.semrush.com/website/rudolf.com/overview/',
+  },
+  {
+    companyName: 'Zschimmer & Schwarz',
+    fieldKeySlug: 'zschimmer_schwarz',
+    countryRegion: 'Germany / global',
+    domain: 'zschimmer-schwarz.com',
+    sourceTitle: 'Semrush website traffic overview - zschimmer-schwarz.com',
+    sourceUrl: 'https://www.semrush.com/website/zschimmer-schwarz.com/overview/',
+  },
+  {
+    companyName: 'Pulcra Chemicals',
+    fieldKeySlug: 'pulcra_chemicals',
+    countryRegion: 'Germany / global',
+    domain: 'pulcra-chemicals.com',
+    sourceTitle: 'Semrush website traffic overview - pulcra-chemicals.com',
+    sourceUrl: 'https://www.semrush.com/website/pulcra-chemicals.com/overview/',
+  },
+  {
+    companyName: 'Syensqo / Solvay',
+    fieldKeySlug: 'syensqo_solvay',
+    countryRegion: 'Belgium / global',
+    domain: 'syensqo.com',
+    sourceTitle: 'Semrush website traffic overview - syensqo.com',
+    sourceUrl: 'https://www.semrush.com/website/syensqo.com/overview/',
+  },
+]
+
+const TRANCO_TRAFFIC_RANK_SOURCES: TrancoTrafficRankSource[] = MARKET_REFERENCE_TRAFFIC_SOURCES.map(source => ({
+  companyName: source.companyName,
+  fieldKeySlug: source.fieldKeySlug,
+  countryRegion: source.countryRegion,
+  domain: source.domain,
+}))
+
+const MARKET_REFERENCE_COMPETITOR_FINANCIAL_SOURCES: MarketReferenceCompetitorFinancialSource[] = [
+  {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    sourceTitle: 'S&P Global Ratings - Archroma research update',
+    sourceUrl: 'https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3539926',
+    parser: 'spglobal-archroma-2025',
+  },
+  {
+    companyName: 'Transfar',
+    fieldKeySlug: 'transfar',
+    countryRegion: 'China / global',
+    sourceTitle: 'StockAnalysis / S&P Global Market Intelligence - Transfar Zhilian revenue by segment',
+    sourceUrl: 'https://stockanalysis.com/quote/she/002010/financials/metrics/',
+    parser: 'stockanalysis-transfar-2025',
+  },
+]
 
 interface ImportRegistry {
   version: 1
@@ -628,8 +1259,13 @@ interface IngestOptions {
   includeOfficialConnectors?: boolean
   includeOfficialCompanyFinancialConnectors?: boolean
   includeOfficialProductConnectors?: boolean
+  includeOfficialRecognitionConnectors?: boolean
   includeOfficialSupplierConnectors?: boolean
+  includePublicPriceEvidenceConnectors?: boolean
   includeOfficialTradeConnectors?: boolean
+  includeMarketReferenceConnectors?: boolean
+  includeMarketReferenceTrafficConnectors?: boolean
+  includeTrancoTrafficConnectors?: boolean
 }
 
 export interface FullDashboardAutopilotScheduleResult {
@@ -1156,7 +1792,7 @@ function coverageValueIsUsable(value: unknown): boolean {
   const text = firstString(value)
   if (!text) return false
   if (PLACEHOLDER_PATTERN.test(text)) return false
-  if (/no source-backed|source search running|auto-checking|review required|restricted/i.test(text)) return false
+  if (/no source-backed|awaiting trusted-source import|source search running|auto-checking|review required|restricted/i.test(text)) return false
   return true
 }
 
@@ -1225,6 +1861,25 @@ function competitorMetricCovered(state: DashboardIntelligenceState, target: Cove
   })
 }
 
+function financialTargetSatisfied(state: DashboardIntelligenceState, target: CoverageTarget): boolean {
+  if (state.financialModels.length === 0) return false
+  const text = normalizeCoverageAlias(state.financialModels
+    .map(item => [
+      firstString(item.scenarioName),
+      firstString(item.projectName),
+      firstString(item.totalInvestment),
+      firstString(item.irr),
+      firstString(item.npv),
+      firstString(item.paybackYear),
+      firstString(item.profitabilityIndex),
+      firstString(item.fiveYearRoi),
+      firstString(item.yearOneRevenue),
+      Array.isArray(item.warnings) ? item.warnings.join(' ') : '',
+    ].join(' '))
+    .join(' '))
+  return target.aliases.some(alias => coverageTextHasAlias(text, alias))
+}
+
 function coverageTargetSatisfied(
   state: DashboardIntelligenceState,
   row: CoverageRequirement,
@@ -1233,6 +1888,9 @@ function coverageTargetSatisfied(
 ): boolean {
   if (row.textScope === 'competitor' && target.metric) {
     return competitorMetricCovered(state, target)
+  }
+  if (row.textScope === 'financial') {
+    return financialTargetSatisfied(state, target)
   }
   return target.aliases.some(alias => coverageTextHasAlias(text, alias))
 }
@@ -1512,7 +2170,24 @@ async function ensureMissingCoverageFollowUp(profile: string, state: DashboardIn
 
   const beforeJobs = await readCronJobs(profile)
   const existing = beforeJobs.find(job => isMissingCoverageFollowUpJobRecord(job, signature))
-  let jobId = existing ? getJobId(existing) : ''
+  const reusableExisting = existing || beforeJobs.find(job => isMissingCoverageFollowUpJobRecord(job))
+  let jobId = reusableExisting ? getJobId(reusableExisting) : ''
+
+  if (jobId && reusableExisting && !isMissingCoverageFollowUpJobRecord(reusableExisting, signature)) {
+    await runHermesCron(profile, [
+      'cron',
+      'edit',
+      jobId,
+      '--name',
+      FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+      '--schedule',
+      FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
+      '--deliver',
+      'local',
+      '--prompt',
+      missingCoveragePrompt(missingRows, signature),
+    ], CREATE_TIMEOUT_MS)
+  }
 
   if (!jobId) {
     await runHermesCron(profile, [
@@ -1958,6 +2633,11 @@ const KNOWN_COMPETITOR_NAME_BY_SLUG: Record<string, string> = {
   dow_inc: 'Dow',
   dow_chemical: 'Dow',
   dow_chemical_company: 'Dow',
+  akzonobel: 'AkzoNobel',
+  akzo_nobel: 'AkzoNobel',
+  procter_gamble: 'Procter & Gamble',
+  procter_and_gamble: 'Procter & Gamble',
+  p_g: 'Procter & Gamble',
   basf: 'BASF',
   basf_se: 'BASF',
 }
@@ -2513,7 +3193,7 @@ export function extractDashboardResearchUpdates(content: string): DashboardResea
 function normalizeSourceTier(value: unknown): SourceTier {
   const text = stringValue(value).toLowerCase()
   if (text.includes('tier1') || text.includes('tier 1') || text.includes('government') || text.includes('regulator') || text.includes('statistical') || text.includes('trade source')) return 'tier1-official'
-  if (text.includes('tier2') || text.includes('tier 2') || text.includes('company') || text.includes('catalog') || text.includes('product source')) return 'tier2-company-official'
+  if (text.includes('tier2') || text.includes('tier 2') || text.includes('company') || text.includes('catalog') || text.includes('product source') || text.includes('certification') || text.includes('inspection source')) return 'tier2-company-official'
   if (text.includes('tier3') || text.includes('tier 3') || text.includes('supplier evidence') || text.includes('quote') || text.includes('sds') || text.includes('tds') || text.includes('coa') || text.includes('invoice')) return 'tier3-supplier-evidence'
   if (text.includes('tier4') || text.includes('tier 4') || text.includes('market reference') || text.includes('paid')) return 'tier4-market-reference'
   if (text.includes('tier5') || text.includes('tier 5') || text.includes('marketplace') || text.includes('public listing')) return 'tier5-public-listing'
@@ -2547,6 +3227,7 @@ function inferSourceTierFromDomain(item: DashboardResearchUpdateItem): SourceTie
   if (domainMatches(domain, WEAK_PUBLIC_LISTING_DOMAINS)) return 'tier5-public-listing'
   if (isGovernmentDomain(domain) || domainMatches(domain, OFFICIAL_SOURCE_DOMAINS)) return 'tier1-official'
   if (domainMatches(domain, COMPANY_OFFICIAL_SOURCE_DOMAINS)) return 'tier2-company-official'
+  if (domainMatches(domain, TRUSTED_CERTIFICATION_SOURCE_DOMAINS)) return 'tier2-company-official'
   if (domainMatches(domain, MARKET_REFERENCE_SOURCE_DOMAINS)) return 'tier4-market-reference'
   return 'candidate-source'
 }
@@ -2719,20 +3400,52 @@ function shouldHydrateCompetitorMetric(input: {
 }): boolean {
   if (!isUsefulDashboardValue(input.value)) return false
   if (!sourceIsUsable(input.source)) return false
-  if (!isTrustedMetricEvidence(input.evidenceStatus)) return false
-  if (input.confidence !== 'high') return false
-  if (input.tier === 'tier5-public-listing' || input.tier === 'candidate-source') return false
+  const reviewGatedMarketShareContext =
+    input.field === 'marketShare' &&
+    input.evidenceStatus === 'Market Reference' &&
+    input.reviewRequired === true &&
+    input.tier === 'tier4-market-reference' &&
+    /collective|collectively|not company-specific|individual share not|not published/i.test(input.value)
+  const reviewGatedCompanyMarketShare =
+    input.field === 'marketShare' &&
+    input.evidenceStatus === 'Market Reference' &&
+    input.reviewRequired === true &&
+    input.tier === 'tier4-market-reference' &&
+    /\b\d[\d,.]*\s*%/.test(input.value) &&
+    /global esterquat share|company-specific|market-reference estimate/i.test(input.value) &&
+    !/collective|collectively|individual company share not|not published/i.test(input.value)
+  const reviewGatedPublicPriceReference =
+    input.field === 'pricingEvidence' &&
+    input.evidenceStatus === 'Reference Only' &&
+    input.reviewRequired === true &&
+    input.dataType === 'price_data' &&
+    (input.tier === 'tier5-public-listing' || input.tier === 'tier4-market-reference') &&
+    /price|\$|usd|\/lb|\/kg|quote|listing|customs|import/i.test(input.value)
+  const lowRiskMarketReferenceMetric =
+    (input.field === 'traffic' || input.field === 'rating' || input.field === 'lastUpdated') &&
+    input.evidenceStatus === 'Market Reference'
+  const companyFinancialMarketReferenceMetric =
+    (input.field === 'revenue' || input.field === 'yearlyGrowth' || input.field === 'lastUpdated') &&
+    input.evidenceStatus === 'Market Reference' &&
+    input.reviewRequired === false &&
+    input.tier === 'tier4-market-reference'
+  if (!isTrustedMetricEvidence(input.evidenceStatus) && !lowRiskMarketReferenceMetric && !companyFinancialMarketReferenceMetric && !reviewGatedMarketShareContext && !reviewGatedCompanyMarketShare && !reviewGatedPublicPriceReference) return false
+  if (input.confidence !== 'high' && !lowRiskMarketReferenceMetric && !companyFinancialMarketReferenceMetric && !reviewGatedMarketShareContext && !reviewGatedCompanyMarketShare && !reviewGatedPublicPriceReference) return false
+  if ((input.tier === 'tier5-public-listing' || input.tier === 'candidate-source') && !reviewGatedPublicPriceReference) return false
 
   if (input.field === 'pricingEvidence') {
-    return input.reviewRequired === false && input.tier === 'tier3-supplier-evidence'
+    return (input.reviewRequired === false && input.tier === 'tier3-supplier-evidence') ||
+      reviewGatedPublicPriceReference
   }
 
   if (input.field === 'marketShare') {
-    return input.reviewRequired === false && (input.tier === 'tier1-official' || input.tier === 'tier2-company-official')
+    return reviewGatedMarketShareContext ||
+      reviewGatedCompanyMarketShare ||
+      (input.reviewRequired === false && (input.tier === 'tier1-official' || input.tier === 'tier2-company-official'))
   }
 
   if (input.field === 'traffic' || input.field === 'rating') {
-    return input.reviewRequired === false && input.tier !== 'tier4-market-reference'
+    return input.reviewRequired === false
   }
 
   if (input.field === 'revenue' || input.field === 'yearlyGrowth' || input.field === 'lastUpdated') {
@@ -2747,6 +3460,14 @@ function sourceIsUsable(source: Record<string, unknown> | null): boolean {
 }
 
 function hasKnownFakeScreenshotValue(value: string): boolean {
+  const isSourceBackedCollectiveShareContext =
+    /50\s*[-–]\s*60%/i.test(value) &&
+    /collective|market-reference|individual company share not published/i.test(value)
+  if (isSourceBackedCollectiveShareContext) {
+    return SCREENSHOT_FAKE_VALUES
+      .filter(fakeValue => fakeValue !== '60%')
+      .some(fakeValue => value.includes(fakeValue))
+  }
   return SCREENSHOT_FAKE_VALUES.some(fakeValue => value.includes(fakeValue))
 }
 
@@ -2767,7 +3488,11 @@ function dashboardFieldKey(item: DashboardResearchUpdateItem, group: DashboardRe
 }
 
 function itemValueText(item: DashboardResearchUpdateItem): string {
+  const metricValue = COMPETITOR_SOURCE_BACKED_METRIC_FIELDS
+    .map(field => competitorMetricText(item, field))
+    .find(value => value)
   return firstString(
+    metricValue,
     item.value,
     item.content,
     item.marketShare,
@@ -2829,7 +3554,13 @@ function normalizeState(raw: Record<string, unknown> | null | undefined): Dashbo
     evidenceItems: asArray(raw?.evidenceItems),
     marketClaims: asArray(raw?.marketClaims),
     competitors: compactCompetitorStateRecords(asArray(raw?.competitors)),
+    rawMaterialSignals: asArray(raw?.rawMaterialSignals),
+    supplierScorecards: asArray(raw?.supplierScorecards),
+    regulatoryFindings: asArray(raw?.regulatoryFindings),
+    financialEvidence: asArray(raw?.financialEvidence),
     presentationMaterials: asArray(raw?.presentationMaterials),
+    suggestedTasks: asArray(raw?.suggestedTasks),
+    investorMaterialCandidates: asArray(raw?.investorMaterialCandidates),
     researchJobs: asArray(raw?.researchJobs),
     researchFindings: asArray(raw?.researchFindings),
     financialModels: asArray(raw?.financialModels),
@@ -2847,6 +3578,12 @@ function competitorCompanyMergeKey(value: unknown): string {
     .replace(/\b(group|company|chemicals?|chemical|industries|industry|co|corp|corporation|limited|ltd|inc|gmbh|ag|plc)\b/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
+}
+
+function canonicalCompetitorCompanyName(value: unknown): string {
+  const text = stringValue(value)
+  if (!text) return ''
+  return KNOWN_COMPETITOR_NAME_BY_SLUG[normalizeHeader(text)] || text
 }
 
 function compactCompetitorStateRecords(records: Record<string, unknown>[]): Record<string, unknown>[] {
@@ -2893,6 +3630,9 @@ function compactCompetitorStateRecords(records: Record<string, unknown>[]): Reco
       merged.sourceCount = sources.length
       merged.source = sourceIsUsable(merged.source as Record<string, unknown> | null) ? merged.source : sources[0]
     }
+    const metricEvidence = mergeCompetitorMetricEvidence(...group)
+    if (Object.keys(metricEvidence).length > 0) merged.metricEvidence = metricEvidence
+    merged.companyName = canonicalCompetitorCompanyName(merged.companyName)
     merged.id = group.map(record => stringValue(record.id)).filter(Boolean).join('__') || stringValue(primary.id) || stableId('competitor', stringValue(primary.companyName))
     return merged
   })
@@ -2956,6 +3696,36 @@ function appendMarketClaim(
   return true
 }
 
+function pruneMalformedMarketReferenceClaims(state: DashboardIntelligenceState): number {
+  const invalidValuePattern = /Review market-reference methodology and approve only if the source is acceptable/i
+  const oversizedCompetitorSetPattern = /Frequently Asked Questions|Related Reports|Not Every Business|Get Your Customization/i
+  const isMalformed = (record: Record<string, unknown>): boolean => {
+    const value = stringValue(record.value)
+    if (invalidValuePattern.test(value)) return true
+    if (
+      /key competitor set/i.test(stringValue(record.label)) &&
+      (value.length > 800 || oversizedCompetitorSetPattern.test(value))
+    ) return true
+    return false
+  }
+  const beforeClaims = state.marketClaims.length
+  state.marketClaims = state.marketClaims.filter(claim => {
+    if (stringValue(claim.evidenceStatus) !== 'Market Reference') return true
+    return !isMalformed(claim)
+  })
+
+  const beforeFindings = state.researchFindings.length
+  state.researchFindings = state.researchFindings.filter(finding => {
+    if (stringValue(finding.evidenceStatus) !== 'Market Reference') return true
+    const keyClaim = stringValue(finding.keyClaim)
+    if (invalidValuePattern.test(keyClaim)) return false
+    if (/key competitor set/i.test(keyClaim) && (keyClaim.length > 900 || oversizedCompetitorSetPattern.test(keyClaim))) return false
+    return true
+  })
+
+  return (beforeClaims - state.marketClaims.length) + (beforeFindings - state.researchFindings.length)
+}
+
 function appendCompetitorRecord(
   state: DashboardIntelligenceState,
   input: {
@@ -2971,18 +3741,20 @@ function appendCompetitorRecord(
     reasons?: string[]
   },
 ): boolean {
-  const companyName = firstString(input.item.companyName, input.item.title, input.item.label)
+  const companyName = canonicalCompetitorCompanyName(firstString(input.item.companyName, input.item.title, input.item.label))
   if (!companyName) return false
   const topLevelReviewRequired = Boolean(input.reasons?.length || input.item.reviewRequired === true)
   const fallbackConfidence = coerceConfidence(input.item.confidence)
   const fallbackEvidenceStatus = trustedEvidenceStatus(input.evidenceStatus, input.evidenceStatus)
   const metricValues: Partial<Record<CompetitorMetricField, string>> = {}
+  const metricEvidence: CompetitorMetricEvidenceMap = {}
   let primaryMetric: {
     source: Record<string, unknown> | null
     tier: SourceTier
     confidence: Confidence
     evidenceStatus: string
   } | null = null
+  let hydratedMetricReviewRequired = false
 
   for (const field of COMPETITOR_SOURCE_BACKED_METRIC_FIELDS) {
     const value = competitorMetricText(input.item, field)
@@ -3003,6 +3775,18 @@ function appendCompetitorRecord(
       dataType,
     })) continue
     metricValues[field] = value
+    metricEvidence[field] = buildCompetitorMetricEvidence({
+      value,
+      source,
+      tier,
+      confidence,
+      evidenceStatus,
+      reviewRequired,
+      dataType,
+      lastChecked: input.lastChecked,
+      riskReason: firstString(nestedMetricRecord(input.item, field)?.riskReason, input.item.riskReason),
+    })
+    if (reviewRequired) hydratedMetricReviewRequired = true
     if (!primaryMetric || field === 'revenue' || field === 'yearlyGrowth') {
       primaryMetric = { source, tier, confidence, evidenceStatus }
     }
@@ -3012,7 +3796,7 @@ function appendCompetitorRecord(
   const recordTier = primaryMetric?.tier || input.tier
   const recordConfidence = primaryMetric?.confidence || fallbackConfidence
   const recordEvidenceStatus = primaryMetric?.evidenceStatus || fallbackEvidenceStatus
-  const recordReviewRequired = primaryMetric ? false : topLevelReviewRequired
+  const recordReviewRequired = hydratedMetricReviewRequired || (primaryMetric ? false : topLevelReviewRequired)
   const recordSources = recordSource ? [recordSource] : []
   const hasUsefulProductContext = isUsefulDashboardValue(firstString(
     input.item.productEquivalent,
@@ -3026,7 +3810,7 @@ function appendCompetitorRecord(
     recordTier !== 'candidate-source'
   if (!primaryMetric && topLevelReviewRequired && !canImportProductContext) return false
   const existingIndex = state.competitors.findIndex(competitor => {
-    if (stringValue(competitor.companyName).toLowerCase() !== companyName.toLowerCase()) return false
+    if (competitorCompanyMergeKey(competitor.companyName) !== competitorCompanyMergeKey(companyName)) return false
     return true
   })
   const importedProductVariations = competitorProductVariationValues({
@@ -3055,6 +3839,7 @@ function appendCompetitorRecord(
     source: recordSource,
     sources: recordSources,
     sourceCount: recordSources.length,
+    metricEvidence,
     sourceTier: recordTier,
     reportedSourceTier: firstString(input.item.sourceTier) || undefined,
     dataType: input.dataType,
@@ -3087,6 +3872,7 @@ function appendCompetitorRecord(
       merged.productEquivalent = productVariations.join(' / ')
     }
     const sources = mergeCompetitorSources(existing, importedRecord)
+    const mergedMetricEvidence = mergeCompetitorMetricEvidence(existing, importedRecord)
     if (sources.length > 0) {
       merged.sources = sources
       merged.sourceCount = sources.length
@@ -3094,6 +3880,7 @@ function appendCompetitorRecord(
         ? merged.source
         : sources[0]
     }
+    if (Object.keys(mergedMetricEvidence).length > 0) merged.metricEvidence = mergedMetricEvidence
     merged.evidenceStatus = strongestCompetitorEvidenceStatus(
       stringValue(existing.evidenceStatus),
       stringValue(importedRecord.evidenceStatus),
@@ -3102,7 +3889,7 @@ function appendCompetitorRecord(
       stringValue(existing.confidence),
       stringValue(importedRecord.confidence),
     )
-    merged.reviewRequired = Boolean(existing.reviewRequired && importedRecord.reviewRequired)
+    merged.reviewRequired = Boolean(existing.reviewRequired || importedRecord.reviewRequired)
     if (JSON.stringify(existing) === JSON.stringify(merged)) return false
     state.competitors[existingIndex] = merged
     return true
@@ -3172,6 +3959,62 @@ function mergeCompetitorSources(...records: Array<Record<string, unknown>>): Rec
     }
   }
   return sources
+}
+
+function competitorMetricEvidenceMap(record: Record<string, unknown>): CompetitorMetricEvidenceMap {
+  return isPlainRecord(record.metricEvidence) ? record.metricEvidence as CompetitorMetricEvidenceMap : {}
+}
+
+function buildCompetitorMetricEvidence(input: {
+  value: string
+  source: Record<string, unknown> | null
+  tier: SourceTier
+  confidence: Confidence
+  evidenceStatus: string
+  reviewRequired: boolean
+  dataType: string
+  lastChecked: string
+  riskReason?: string
+}): Record<string, unknown> {
+  return {
+    value: input.value,
+    source: input.source,
+    sourceTier: input.tier,
+    confidence: input.confidence,
+    evidenceStatus: input.evidenceStatus,
+    reviewRequired: input.reviewRequired,
+    dataType: input.dataType,
+    lastChecked: input.lastChecked,
+    sourceDate: stringValue(input.source?.date),
+    riskReason: input.riskReason,
+  }
+}
+
+function isCollectiveMarketShareText(value: string): boolean {
+  return /collective|collectively|individual company share not|not company-specific|not published/i.test(value)
+}
+
+function mergeCompetitorMetricEvidence(...records: Array<Record<string, unknown>>): CompetitorMetricEvidenceMap {
+  const merged: CompetitorMetricEvidenceMap = {}
+  for (const record of records) {
+    const evidenceMap = competitorMetricEvidenceMap(record)
+    for (const field of COMPETITOR_SOURCE_BACKED_METRIC_FIELDS) {
+      const evidence = evidenceMap[field]
+      if (!isPlainRecord(evidence)) continue
+      const current = merged[field]
+      const nextValue = stringValue(evidence.value)
+      const currentValue = isPlainRecord(current) ? stringValue(current.value) : ''
+      const shouldPreferCompanySpecificShare =
+        field === 'marketShare' &&
+        isUsefulDashboardValue(nextValue) &&
+        isCollectiveMarketShareText(currentValue) &&
+        !isCollectiveMarketShareText(nextValue)
+      if (!current || (!isUsefulDashboardValue(currentValue) && isUsefulDashboardValue(nextValue)) || shouldPreferCompanySpecificShare) {
+        merged[field] = evidence
+      }
+    }
+  }
+  return merged
 }
 
 function strongestCompetitorEvidenceStatus(...statuses: string[]): string {
@@ -3304,6 +4147,228 @@ function appendDataRoomCandidate(
   return true
 }
 
+function shouldHydrateSupplierScorecardCandidate(input: {
+  value: string
+  source: Record<string, unknown> | null
+  tier: SourceTier
+  dataType: string
+}): boolean {
+  if (!sourceIsUsable(input.source)) return false
+  if (!input.value || PLACEHOLDER_PATTERN.test(input.value)) return false
+  if (hasKnownFakeScreenshotValue(input.value)) return false
+  if (input.dataType === 'supplier_quote' || input.dataType === 'price_data') return false
+  return input.tier === 'tier1-official' || input.tier === 'tier2-company-official' || input.tier === 'tier3-supplier-evidence'
+}
+
+function rawMaterialSignalText(input: {
+  item: DashboardResearchUpdateItem
+  field: string
+  value: string
+  source: Record<string, unknown> | null
+}): string {
+  return [
+    firstString(input.item.material),
+    firstString(input.item.label),
+    firstString(input.item.title),
+    firstString(input.item.field),
+    input.field,
+    input.value,
+    firstString(input.item.fieldKey),
+    firstString(input.source?.title),
+    firstString(input.source?.url),
+  ].filter(Boolean).join(' ')
+}
+
+function rawMaterialNameFromSignal(input: {
+  item: DashboardResearchUpdateItem
+  field: string
+  value: string
+  source: Record<string, unknown> | null
+}): string {
+  const explicit = firstString(input.item.material)
+  if (explicit) return explicit
+  const text = rawMaterialSignalText(input).toLowerCase()
+  if (/\btea\b|triethanolamine/.test(text)) return 'TEA'
+  if (/\bdms\b|dimethyl\s+sulfate|dimethyl\s+sulphate/.test(text)) return 'DMS / dimethyl sulfate'
+  if (/stearic|octadecanoic/.test(text)) return 'Stearic acid 1842'
+  if (/pdms|polydimethylsiloxane|poly\(dimethylsiloxane\)|silicone\s+oil/.test(text)) return 'PDMS 1000 cSt'
+  if (/acetic/.test(text)) return 'Acetic acid'
+  return firstString(input.item.label, input.item.title, input.field, input.item.fieldKey, 'Raw material')
+}
+
+function extractCasSignal(text: string): string {
+  return text.match(/\b\d{2,7}-\d{2}-\d\b/)?.[0] || ''
+}
+
+function extractFormulaSignal(text: string): string {
+  const titleFormula = text.match(/\|\s*([A-Z][A-Za-z0-9()]+(?:[A-Z][A-Za-z0-9()]+)*)\s*\|/)?.[1]
+  if (titleFormula && /[A-Z][a-z]?\d*/.test(titleFormula)) return titleFormula
+  const formulaText = text.match(/(?:molecular\s+formula|formula)\s+([A-Z][A-Za-z0-9()]+)/i)?.[1]
+  return formulaText || ''
+}
+
+function isOfficialChemicalIdentitySignal(input: {
+  value: string
+  source: Record<string, unknown> | null
+  item: DashboardResearchUpdateItem
+  field: string
+}): boolean {
+  const text = [
+    input.value,
+    input.field,
+    firstString(input.item.fieldKey),
+    firstString(input.item.label),
+    firstString(input.item.title),
+    firstString(input.source?.title),
+    firstString(input.source?.url),
+  ].filter(Boolean).join(' ').toLowerCase()
+  const sourceUrl = firstString(input.source?.url).toLowerCase()
+  const officialSource = sourceUrl.includes('pubchem.ncbi.nlm.nih.gov') || sourceUrl.includes('comptox.epa.gov')
+  const identityLanguage = /pubchem|comptox|cid\s+\d+|cas\s+(?:signal\s+)?\d{2,7}-\d{2}-\d|chemical identity|molecular formula/.test(text)
+  return officialSource && identityLanguage
+}
+
+function shouldHydrateRawMaterialSignalCandidate(input: {
+  value: string
+  source: Record<string, unknown> | null
+  tier: SourceTier
+  dataType: string
+  item: DashboardResearchUpdateItem
+  field: string
+}): boolean {
+  if (!sourceIsUsable(input.source)) return false
+  if (!input.value || PLACEHOLDER_PATTERN.test(input.value)) return false
+  if (hasKnownFakeScreenshotValue(input.value)) return false
+  if (isOfficialChemicalIdentitySignal(input)) return true
+  if (input.dataType === 'price_data' || input.dataType === 'supplier_quote' || input.dataType === 'financial_data') return false
+  return input.tier === 'tier1-official' || input.tier === 'tier2-company-official'
+}
+
+function appendRawMaterialSignalCandidate(
+  state: DashboardIntelligenceState,
+  input: {
+    item: DashboardResearchUpdateItem
+    field: string
+    value: string
+    source: Record<string, unknown> | null
+    evidenceStatus: string
+    confidence: Confidence
+    lastChecked: string
+    runKey: string
+    tier: SourceTier
+    dataType: string
+    reasons: string[]
+  },
+): boolean {
+  if (!shouldHydrateRawMaterialSignalCandidate(input)) return false
+  const material = rawMaterialNameFromSignal(input)
+  const signalText = rawMaterialSignalText(input)
+  const cas = extractCasSignal(signalText)
+  const formula = extractFormulaSignal(signalText)
+  if (includesExisting(state.rawMaterialSignals, row =>
+    stringValue(row.material).toLowerCase() === material.toLowerCase() &&
+    stringValue((row.source as Record<string, unknown> | undefined)?.title) === stringValue(input.source?.title),
+  )) return false
+
+  state.rawMaterialSignals.push({
+    id: stableId('autopilot-raw-material-signal', input.runKey, material, stringValue(input.source?.title)),
+    fieldKey: dashboardFieldKey(input.item, 'rawMaterialSignals', input.field),
+    dashboardGroup: 'rawMaterialSignals',
+    group: 'rawMaterialSignals',
+    material,
+    label: material,
+    proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.field, input.item.label, `${material} identity evidence`),
+    value: input.value,
+    cas,
+    formula,
+    source: input.source,
+    sourceTier: input.tier,
+    reportedSourceTier: firstString(input.item.sourceTier) || undefined,
+    sourceDate: firstString(input.item.sourceDate) || input.lastChecked,
+    lastChecked: input.lastChecked,
+    confidence: input.confidence,
+    evidenceStatus: safeCandidateStatus(input.evidenceStatus),
+    reviewRequired: true,
+    reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
+    dataType: isOfficialChemicalIdentitySignal(input) ? 'regulatory_data' : input.dataType,
+    pricePerTon: '',
+    priceStatus: 'No approved price yet',
+    riskReason: firstString(input.item.riskReason) || input.reasons.join('; ') || 'Official source confirms raw-material identity context only. Price, landed cost, supplier quote, formula use, handling, import/storage/use permission, and product-development conclusions remain review-gated.',
+    notes: [
+      input.value,
+      cas ? `CAS: ${cas}` : '',
+      formula ? `Formula: ${formula}` : '',
+      'Visible raw-material identity signal imported from trusted source.',
+      'No price, landed cost, supplier score, product formula, regulatory permission, or investor claim was auto-approved.',
+      firstString(input.item.recommendedAction),
+    ].filter(Boolean).join('\n'),
+    updatedAt: input.lastChecked,
+  })
+  return true
+}
+
+function appendSupplierScorecardCandidate(
+  state: DashboardIntelligenceState,
+  input: {
+    item: DashboardResearchUpdateItem
+    field: string
+    value: string
+    source: Record<string, unknown> | null
+    evidenceStatus: string
+    confidence: Confidence
+    lastChecked: string
+    runKey: string
+    tier: SourceTier
+    dataType: string
+    reasons: string[]
+  },
+): boolean {
+  const supplier = firstString(input.item.supplier, input.item.title, input.item.label)
+  const material = firstString(input.item.material, input.field)
+  if (!supplier || !material) return false
+  if (!shouldHydrateSupplierScorecardCandidate(input)) return false
+  if (includesExisting(state.supplierScorecards, row =>
+    stringValue(row.supplier).toLowerCase() === supplier.toLowerCase() &&
+    stringValue(row.material).toLowerCase() === material.toLowerCase() &&
+    stringValue((row.source as Record<string, unknown> | undefined)?.title) === stringValue(input.source?.title),
+  )) return false
+
+  state.supplierScorecards.push({
+    id: stableId('autopilot-supplier-scorecard', input.runKey, supplier, material, stringValue(input.source?.title)),
+    fieldKey: dashboardFieldKey(input.item, 'supplierScorecards', input.field),
+    dashboardGroup: 'supplierScorecards',
+    group: 'supplierScorecards',
+    supplier,
+    material,
+    proposedDashboardField: firstString(input.item.proposedDashboardField, input.item.field, input.item.label, `${supplier} / ${material}`),
+    value: input.value,
+    source: input.source,
+    sourceTier: input.tier,
+    reportedSourceTier: firstString(input.item.sourceTier) || undefined,
+    sourceDate: firstString(input.item.sourceDate) || input.lastChecked,
+    lastChecked: input.lastChecked,
+    confidence: input.confidence,
+    evidenceStatus: safeCandidateStatus(input.evidenceStatus),
+    reviewRequired: true,
+    reportedReviewRequired: typeof input.item.reviewRequired === 'boolean' ? input.item.reviewRequired : undefined,
+    dataType: input.dataType,
+    pricePerTon: '',
+    quality: 'Quote/TDS/SDS/COA review needed',
+    reliability: 'Quote/TDS/SDS/COA review needed',
+    payment: 'Quote/payment terms needed',
+    score: 'Review needed',
+    riskReason: firstString(input.item.riskReason) || input.reasons.join('; ') || 'Supplier source confirms product/material context, but price, payment terms, quality, reliability, landed cost, and score still need quote/TDS/SDS/COA evidence.',
+    notes: [
+      input.value,
+      'Visible supplier scorecard context imported from trusted source.',
+      'No price, payment term, quality score, reliability score, landed cost, or supplier ranking was auto-approved.',
+      firstString(input.item.recommendedAction),
+    ].filter(Boolean).join('\n'),
+    updatedAt: input.lastChecked,
+  })
+  return true
+}
+
 function appendVisibleDashboardCandidate(
   state: DashboardIntelligenceState,
   input: {
@@ -3360,6 +4425,12 @@ function appendVisibleDashboardCandidate(
       input.group === 'financialEvidence') &&
     shouldShowDataRoomCandidate(input)
   ) {
+    if (input.group === 'rawMaterialSignals') {
+      appendRawMaterialSignalCandidate(state, input)
+    }
+    if (input.group === 'supplierScorecards') {
+      appendSupplierScorecardCandidate(state, input)
+    }
     return appendDataRoomCandidate(state, input)
   }
 
@@ -3558,6 +4629,65 @@ function normalizeHtmlText(value: string): string {
     .trim()
 }
 
+function sourceReaderUrl(sourceUrl: string): string {
+  return `${SOURCE_READER_PREFIX}${sourceUrl}`
+}
+
+async function fetchTextCandidate(
+  fetcher: typeof fetch,
+  sourceUrl: string,
+  headers: Record<string, string>,
+  timeoutMs = SOURCE_FETCH_TIMEOUT_MS,
+): Promise<string | null> {
+  const response = await fetchWithTimeout(fetcher, sourceReaderUrl(sourceUrl), { headers }, timeoutMs)
+  if (!response.ok) return null
+  return response.text()
+}
+
+async function fetchWithTimeout(
+  fetcher: typeof fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs = SOURCE_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetcher(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+async function fetchOfficialTextCandidate(
+  fetcher: typeof fetch,
+  sourceUrl: string,
+  headers: Record<string, string>,
+  timeoutMs = SOURCE_FETCH_TIMEOUT_MS,
+): Promise<{ text: string, ok: boolean, status: number, usedReader: boolean }> {
+  if (/\.pdf(?:$|[?#])/i.test(sourceUrl)) {
+    const readerText = await fetchTextCandidate(fetcher, sourceUrl, headers, timeoutMs)
+    if (readerText) return { text: readerText, ok: true, status: 200, usedReader: true }
+  }
+
+  try {
+    const response = await fetchWithTimeout(fetcher, sourceUrl, { headers }, timeoutMs)
+    if (response.ok) {
+      const text = await response.text()
+      if (/^%PDF-/i.test(text.slice(0, 20))) {
+        const readerText = await fetchTextCandidate(fetcher, sourceUrl, headers, timeoutMs)
+        if (readerText) return { text: readerText, ok: true, status: response.status, usedReader: true }
+      }
+      return { text, ok: true, status: response.status, usedReader: false }
+    }
+    const readerText = await fetchTextCandidate(fetcher, sourceUrl, headers, timeoutMs)
+    return { text: readerText || '', ok: Boolean(readerText), status: response.status, usedReader: Boolean(readerText) }
+  } catch {
+    const readerText = await fetchTextCandidate(fetcher, sourceUrl, headers, timeoutMs)
+    return { text: readerText || '', ok: Boolean(readerText), status: 0, usedReader: Boolean(readerText) }
+  }
+}
+
 function formatMetricTonsFromKg(value: number): string {
   return `${Math.round(value / 1000).toLocaleString('en-US')} MT`
 }
@@ -3575,14 +4705,33 @@ function latestComtradeCandidatePeriods(now = new Date()): string[] {
 
 function comtradeApiUrl(source: ComtradeMarketProxySource, period = '2023,2024'): string {
   return [
-    'https://comtradeapi.un.org/public/v1/preview/C/A/HS',
+    'https://comtradeapi.un.org/data/v1/get/C/A/HS',
     `?cmdCode=${COMTRADE_TEXTILE_FINISHING_HS_CODE}`,
     '&flowCode=M',
     `&reporterCode=${source.reporterCode}`,
     `&period=${period}`,
     '&partnerCode=0',
-    '&max=100000',
+    '&partner2Code=0',
+    '&customsCode=C00',
+    '&motCode=0',
+    '&maxRecords=100000',
+    '&includeDesc=true',
   ].join('')
+}
+
+function comtradeSubscriptionKey(): string {
+  return firstString(
+    process.env.UN_COMTRADE_SUBSCRIPTION_KEY,
+    process.env.COMTRADE_SUBSCRIPTION_KEY,
+    process.env.UN_COMTRADE_API_KEY,
+    process.env.COMTRADE_API_KEY,
+  )
+}
+
+function comtradeApiRequestUrl(source: ComtradeMarketProxySource, period = '2023,2024'): string {
+  const baseUrl = comtradeApiUrl(source, period)
+  const key = comtradeSubscriptionKey()
+  return key ? `${baseUrl}&subscription-key=${encodeURIComponent(key)}` : baseUrl
 }
 
 function annualRevenueMetricsFromSecCompanyfacts(
@@ -3661,7 +4810,7 @@ function officialCompanyFinancialMetricFromText(
   const normalized = normalizeHtmlText(text)
 
   if (source.parser === 'basf-report-2025') {
-    const match = normalized.match(/sales stood at €\s*([\d,.]+)\s*million,\s*compared with €\s*([\d,.]+)\s*million/i)
+    const match = normalized.match(/sales stood at\s*(?:€|EUR)\s*([\d,.]+)\s*million\s*,?\s*compared with\s*(?:€|EUR)\s*([\d,.]+)\s*million/i)
     if (!match) return null
     const latest = Number(match[1].replace(/,/g, ''))
     const previous = Number(match[2].replace(/,/g, ''))
@@ -3688,16 +4837,22 @@ function officialCompanyFinancialMetricFromText(
   }
 
   if (source.parser === 'wacker-report-2025') {
-    const match = normalized.match(/Group[’']s €\s*([\d,.]+)\s*billion in sales in 2025,?\s*\(2024:\s*€\s*([\d,.]+)\s*billion\)/i)
-    if (!match) return null
-    const latest = Number(match[1].replace(/,/g, ''))
-    const previous = Number(match[2].replace(/,/g, ''))
-    if (!Number.isFinite(latest) || !Number.isFinite(previous) || previous === 0) return null
-    const growth = ((latest - previous) / previous) * 100
+    const reportMatch = normalized.match(/Group[’']s\s*(?:€|EUR)\s*([\d,.]+)\s*billion in sales in 2025,?\s*\(2024:\s*(?:€|EUR)\s*([\d,.]+)\s*billion\s*\)/i)
+    const releaseMatch = normalized.match(/Group sales total\s*(?:€|EUR)\s*([\d,.]+)\s*billion,?\s*down\s*([\d,.]+)\s*percent on prior-year level/i)
+    const latest = Number((reportMatch?.[1] || releaseMatch?.[1] || '').replace(/,/g, ''))
+    const previous = reportMatch ? Number(reportMatch[2].replace(/,/g, '')) : null
+    const growth = reportMatch && previous
+      ? ((latest - previous) / previous) * 100
+      : releaseMatch
+        ? -Math.abs(Number(releaseMatch[2].replace(/,/g, '')))
+        : null
+    if (!Number.isFinite(latest) || !Number.isFinite(growth)) return null
     return {
       year: 2025,
       revenueValue: `FY2025 company-wide sales: €${latest.toFixed(3).replace(/\.?0+$/, '')}B (official rounded figure)`,
-      growthValue: `FY2025 company-wide sales YoY: ${formatSignedPercent(growth)} vs FY2024 €${previous.toFixed(3).replace(/\.?0+$/, '')}B`,
+      growthValue: reportMatch && Number.isFinite(previous)
+        ? `FY2025 company-wide sales YoY: ${formatSignedPercent(growth as number)} vs FY2024 €${(previous as number).toFixed(3).replace(/\.?0+$/, '')}B`
+        : `FY2025 company-wide sales YoY: ${formatSignedPercent(growth as number)} vs FY2024, per official WACKER report`,
     }
   }
 
@@ -3709,6 +4864,79 @@ function officialCompanyFinancialMetricFromText(
     return {
       year: 2025,
       revenueValue: `FY2025 company-wide net sales: ¥${latest.toLocaleString('en-US')}B (official reported ${latest.toLocaleString('en-US')} billion yen)`,
+    }
+  }
+
+  if (source.parser === 'syensqo-results-2025') {
+    const revenueMatch = normalized.match(/FY\s*2025\s+Highlights\s+\*?\s*Net sales of €\s*([\d,.]+)\s*billion/i) ||
+      normalized.match(/Net sales of €\s*([\d,.]+)\s*billion[^.]*FY\s*2025/i)
+    if (!revenueMatch) return null
+    const latest = Number(revenueMatch[1].replace(/,/g, ''))
+    if (!Number.isFinite(latest)) return null
+    const tableMatch = normalized.match(/Net sales\s+[\d,]+\s+[\d,]+\s+[\d,]+\s*-?[\d.]+%\s*-?[\d.]+%\s*-?[\d.]+%\s+([\d,]+)\s+([\d,]+)\s*(-?[\d.]+)%/i)
+    const growth = tableMatch ? Number(tableMatch[3].replace(/,/g, '')) : null
+    return {
+      year: 2025,
+      revenueValue: `FY2025 company-wide net sales: €${latest.toFixed(3).replace(/\.?0+$/, '')}B`,
+      growthValue: Number.isFinite(growth)
+        ? `FY2025 company-wide net sales YoY: ${formatSignedPercent(growth as number)} vs FY2024, per regulated Syensqo results release`
+        : undefined,
+    }
+  }
+
+  if (source.parser === 'cht-growth-2024') {
+    const match = normalized.match(/recorded sales growth to EUR\s*([\d,.]+)\s*million\s*\(\+?([\d,.]+)%\)/i)
+    if (!match) return null
+    const latest = Number(match[1].replace(/,/g, ''))
+    const growth = Number(match[2].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(growth)) return null
+    return {
+      year: 2024,
+      revenueValue: `FY2024 company-wide sales: €${latest.toFixed(1).replace(/\.?0+$/, '')}M (official preliminary figure)`,
+      growthValue: `FY2024 company-wide sales YoY: ${formatSignedPercent(growth)} per official CHT press release`,
+    }
+  }
+
+  if (source.parser === 'zschimmer-turnover-2023') {
+    const match = normalized.match(/turnover increasing by\s*([\d,.]+)\s*million to almost\s*([\d,.]+)\s*million euros/i)
+    if (!match) return null
+    const increase = Number(match[1].replace(/,/g, ''))
+    const latest = Number(match[2].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(increase)) return null
+    return {
+      year: 2023,
+      revenueValue: `Official company scale: turnover almost €${latest.toLocaleString('en-US')}M (Zschimmer & Schwarz release says turnover increased by €${increase.toLocaleString('en-US')}M over 15 years)`,
+    }
+  }
+
+  if (source.parser === 'pulcra-csrd-2023') {
+    const match = normalized.match(/revenue for the year decreased by EUR\s*([\d,.]+)\s*million\s*\(([\d,.]+)%\)\s*to EUR\s*([\d,.]+)\s*million\s*\(previous year:\s*EUR\s*([\d,.]+)\s*million\)/i) ||
+      normalized.match(/Our revenue for the year decreased by EUR\s*([\d,.]+)\s*million\s*\(([\d,.]+)%\)\s*to EUR\s*([\d,.]+)\s*million\s*\(previous year:\s*EUR\s*([\d,.]+)\s*million\)/i)
+    if (!match) return null
+    const decrease = Number(match[1].replace(/,/g, ''))
+    const decreasePercent = Number(match[2].replace(/,/g, ''))
+    const latest = Number(match[3].replace(/,/g, ''))
+    const previous = Number(match[4].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(previous) || !Number.isFinite(decrease) || !Number.isFinite(decreasePercent)) return null
+    return {
+      year: 2023,
+      revenueValue: `FY2023 Pulcra Germany GmbH net revenue: €${latest.toFixed(1).replace(/\.?0+$/, '')}M (CSRD statement; previous year €${previous.toFixed(1).replace(/\.?0+$/, '')}M)`,
+      growthValue: `FY2023 Pulcra Germany GmbH revenue YoY: ${formatSignedPercent(-Math.abs(decreasePercent))}; decrease €${decrease.toFixed(1).replace(/\.?0+$/, '')}M per CSRD statement`,
+    }
+  }
+
+  if (source.parser === 'akzonobel-q1-2026') {
+    const match = normalized.match(/\bRevenue\s+([\d,.]+)\s+([\d,.]+)\s+\(?(-?[\d.]+)%\)?/i)
+    if (!match) return null
+    const previous = Number(match[1].replace(/,/g, ''))
+    const latest = Number(match[2].replace(/,/g, ''))
+    const rawGrowth = Number(match[3].replace(/,/g, ''))
+    if (!Number.isFinite(latest) || !Number.isFinite(previous) || !Number.isFinite(rawGrowth)) return null
+    const growth = /\([\d.]+%\)/.test(match[0]) ? -Math.abs(rawGrowth) : rawGrowth
+    return {
+      year: 2026,
+      revenueValue: `Q1 2026 company-wide revenue: ${compactOfficialNumber(latest, '€')} (official reported €${latest.toLocaleString('en-US')} million)`,
+      growthValue: `Q1 2026 company-wide revenue YoY: ${formatSignedPercent(growth)} vs Q1 2025 ${compactOfficialNumber(previous, '€')}`,
     }
   }
 
@@ -3831,6 +5059,20 @@ export function officialCompanyPageToCompetitorFinancialUpdate(
       dataType: 'competitor_data',
       riskReason: 'Company-wide YoY sales movement from official company financial source; not product-line growth.',
     } : undefined,
+    lastUpdated: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+      value: String(metric.year),
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 2 - Official company / financial report source',
+      lastChecked: checkedAt,
+      sourceDate: String(metric.year),
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Source date for official company financial evidence. This does not verify product-line pricing, market share, or investor-ready financial outputs.',
+    },
     sourceTitle: source.sourceTitle,
     sourceUrl: source.sourceUrl,
     sourceDate: String(metric.year),
@@ -3862,6 +5104,20 @@ export function officialCompetitorProductPageToUpdate(
     activeContent: source.activeContent,
     certifications: source.certifications || 'No certification claim imported from this official product source.',
     distributionPresence: source.distributionPresence || 'Official company/product page source-backed presence.',
+    lastUpdated: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+      value: checkedAt,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 2 - Official company / product source',
+      sourceDate: checkedAt,
+      lastChecked: checkedAt,
+      confidence: 'high',
+      evidenceStatus: 'Source-backed',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Last checked date for official product/context source. This does not verify price, market share, revenue, or growth.',
+    },
     value: source.productEquivalent,
     sourceTitle: source.sourceTitle,
     sourceUrl: source.sourceUrl,
@@ -3873,6 +5129,118 @@ export function officialCompetitorProductPageToUpdate(
     reviewRequired: false,
     dataType: 'competitor_data',
     recommendedAction: 'Use as source-backed product-equivalence context only; keep pricing, market share, traffic, rating, and product-line revenue review-gated until exact metric sources are available.',
+  }
+}
+
+export function officialCompetitorRecognitionPageToUpdate(
+  source: OfficialCompetitorRecognitionSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const normalized = normalizeHtmlText(html)
+  const normalizedLower = normalized.toLowerCase()
+  const hasRequiredTerms = source.requiredTerms.every(term => normalizedLower.includes(term.toLowerCase()))
+  if (!hasRequiredTerms) return null
+
+  return {
+    fieldKey: `competitor_metrics.${source.fieldKeySlug}.official_recognition_rating`,
+    companyName: source.companyName,
+    countryRegion: source.countryRegion,
+    productEquivalent: 'Official recognition context; product-wise equivalent still requires separate TDS/SDS/product evidence.',
+    rating: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.rating`,
+      value: source.ratingLabel,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: source.sourceTierLabel || 'Tier 2 - Official company / recognition source',
+      lastChecked: checkedAt,
+      sourceDate: checkedAt,
+      confidence: 'high',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'External-recognition evidence from official company source; not a customer review rating, price, market share, or product-line performance metric.',
+    },
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceDate: checkedAt,
+    sourceTier: source.sourceTierLabel || 'Tier 2 - Official company / recognition source',
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Official Company Evidence',
+    reviewRequired: false,
+    dataType: 'competitor_data',
+    recommendedAction: source.recommendedAction,
+    riskReason: 'Use this only as source-backed external-recognition evidence. It does not prove customer rating, market share, price, traffic, or product-line revenue.',
+  }
+}
+
+export function publicCompetitorPricePageToUpdate(
+  source: PublicCompetitorPriceSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const normalized = normalizeHtmlText(html)
+  const normalizedLower = normalized.toLowerCase()
+  const hasRequiredTerms = source.requiredTerms.every(term => normalizedLower.includes(term.toLowerCase()))
+  if (!hasRequiredTerms) return null
+
+  let priceValue = ''
+  let sourceDate = checkedAt
+
+  if (source.parser === 'zauba-stepantex-sp90') {
+    const average = normalized.match(/average import price for stepantex sp 90[^$]{0,160}\$\s*([\d,.]+)/i)
+    const recordDate = normalized.match(/\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\s+20\d{2}\b/i)
+    if (!average) return null
+    const price = average[1]
+    sourceDate = recordDate?.[0] || checkedAt
+    priceValue = `Public customs listing: average import price $${price} for STEPANTEX SP-90 under HS Code 29051490; historical/import-unit-specific reference, not a current industrial quote.`
+  }
+
+  if (source.parser === 'wholesale-varisoft-eq65') {
+    const regularPrice = normalized.match(/regular price\s*\$?\s*([\d,.]+)/i)
+    const perLb = normalized.match(/\(\s*\$?\s*([\d,.]+)\s*\/\s*lb\s*\)/i)
+    if (!regularPrice && !perLb) return null
+    priceValue = [
+      'Public retail listing:',
+      regularPrice ? `regular price $${regularPrice[1]}` : '',
+      perLb ? `(${perLb[1]}/lb)` : '',
+      'for VARISOFT EQ 65; sample/cosmetic-supply reference, not bulk industrial textile pricing.',
+    ].filter(Boolean).join(' ')
+  }
+
+  if (!priceValue) return null
+
+  return {
+    fieldKey: `competitor_metrics.${source.fieldKeySlug}.public_price_reference`,
+    companyName: source.companyName,
+    countryRegion: source.countryRegion,
+    productEquivalent: source.productEquivalent,
+    pricingEvidence: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.pricing_evidence`,
+      value: priceValue,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 5 - Public listing / weak price reference',
+      lastChecked: checkedAt,
+      sourceDate,
+      confidence: 'low',
+      evidenceStatus: 'Reference Only',
+      reviewRequired: true,
+      dataType: 'price_data',
+      riskReason: source.riskReason,
+    },
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceDate,
+    sourceTier: 'Tier 5 - Public listing / weak price reference',
+    lastChecked: checkedAt,
+    confidence: 'low',
+    evidenceStatus: 'Reference Only',
+    reviewRequired: true,
+    dataType: 'price_data',
+    recommendedAction: 'Use this only as public price context. Request current quote, MOQ, incoterms, SDS/TDS, and contract terms before supplier, competitor, finance, or investor use.',
+    riskReason: source.riskReason,
   }
 }
 
@@ -3948,6 +5316,799 @@ export function comtradeImportPayloadToMarketClaimUpdate(
   }
 }
 
+function numberTextToCompactUsdMillions(value: string): string {
+  const numeric = Number(value.replace(/,/g, ''))
+  if (!Number.isFinite(numeric)) return `USD ${value} million`
+  if (numeric >= 1000) return `USD ${(numeric / 1000).toFixed(3).replace(/\.?0+$/, '')}B`
+  return `USD ${numeric.toLocaleString('en-US')}M`
+}
+
+function decodeCommonHtmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/gi, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+}
+
+function parseMarketReferenceSourceDate(text: string): string {
+  return firstString(
+    text.match(/Page last updated on:\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})/i)?.[1],
+    text.match(/Last Updated:\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})/i)?.[1],
+    text.match(/Last Updated:\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})/i)?.[1],
+    text.match(/\b(ID:\s*[A-Z0-9]+\s*)?([A-Za-z]+\s+\d{4})\s+\d+\s+Pages/i)?.[2],
+    text.match(/Last Updated:\s*([A-Za-z]+\s+\d{4})/i)?.[1],
+    text.match(/Published:\s*([A-Za-z]+\s+\d{4})/i)?.[1],
+  )
+}
+
+function pushMarketReferenceClaim(
+  claims: MarketReferenceClaim[],
+  fieldKey: string,
+  label: string,
+  proposedDashboardField: string,
+  value: string,
+  confidence: Confidence = 'high',
+): void {
+  const cleanValue = value.replace(/\s+/g, ' ').trim()
+  if (!cleanValue) return
+  if (claims.some(claim => claim.fieldKey === fieldKey && claim.value === cleanValue)) return
+  claims.push({ fieldKey, label, proposedDashboardField, value: cleanValue, confidence })
+}
+
+function marketReferenceCompanyListAfterHeading(text: string, heading: string): string {
+  const sections = text.split(new RegExp(heading, 'i')).slice(1)
+  const companyLeadPattern = /^(?:BASF|Evonik|Stepan|Kao|Akzo|Clariant|Italmatch|ABITEC|Hangzhou|Dongnam|Langh|Seppic|Innospec|Floerger|Solvay|Lubrizol|Chemelco|Nouryon|Kemin|Croda|Miwon|Dongnam|ABITEC)/i
+  for (const section of sections.reverse()) {
+    const candidate = section
+      .split(/Frequently Asked Questions|Related Reports|Esterquats Market Key Takeaways|Buy This Report|Get Free Sample|Get Your Customization/i)[0]
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!candidate || candidate.length > 700) continue
+    if (!companyLeadPattern.test(candidate)) continue
+    return candidate
+  }
+  return ''
+}
+
+function marketReferenceClaimsFromText(
+  source: MarketReferenceSource,
+  text: string,
+): { sourceDate: string, claims: MarketReferenceClaim[] } {
+  const normalized = normalizeHtmlText(text)
+  const sourceDate = parseMarketReferenceSourceDate(normalized)
+
+  const claims: MarketReferenceClaim[] = []
+
+  if (source.parser === 'future-market-insights-esterquats') {
+    const marketSize = normalized.match(/projected to grow from USD\s*([\d,.]+)\s*billion in\s*(\d{4})\s*to USD\s*([\d,.]+)\s*billion by\s*(\d{4}),\s*at a CAGR of\s*([\d,.]+)%/i)
+    if (marketSize) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_market_size', 'Global esterquats market size', 'Market Size / Scope', `USD ${marketSize[1]}B in ${marketSize[2]} (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_forecast_value', 'Global esterquats forecast value', 'Market forecast', `USD ${marketSize[3]}B by ${marketSize[4]} (market-reference forecast)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_cagr', 'Global esterquats CAGR', 'Growth Rate', `${marketSize[5]}% CAGR from ${marketSize[2]} to ${marketSize[4]} (market-reference forecast)`)
+    }
+
+    const teaQuats = normalized.match(/TEA-quats segment is projected to hold\s*([\d,.]+)%\s*of the esterquats market revenue share in\s*(\d{4})/i)
+    if (teaQuats) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_tea_quats_share', 'TEA-quats product-type share', 'Market segmentation', `${teaQuats[1]}% TEA-quats revenue share in ${teaQuats[2]} (market-reference segment estimate)`)
+    }
+
+    const liquidForm = normalized.match(/liquid form segment is anticipated to account for\s*([\d,.]+)%\s*of the esterquats market revenue share in\s*(\d{4})/i)
+    if (liquidForm) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_liquid_form_share', 'Liquid esterquats form share', 'Market segmentation', `${liquidForm[1]}% liquid-form revenue share in ${liquidForm[2]} (market-reference segment estimate)`)
+    }
+
+    const personalCare = normalized.match(/personal care products application segment is expected to capture\s*([\d,.]+)%\s*of the esterquats market revenue share in\s*(\d{4})/i)
+    if (personalCare) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_personal_care_share', 'Personal-care application share', 'Market segmentation', `${personalCare[1]}% personal-care revenue share in ${personalCare[2]} (market-reference segment estimate)`)
+    }
+
+    const countryTable = normalized.match(/Analysis of Esterquats Market By Key Countries Country CAGR\s*([^.]*)/i)?.[1] || ''
+    const countryMatches = [...countryTable.matchAll(/\b(China|India|Germany|France|UK|USA|Brazil)\s+([\d,.]+)%/gi)]
+    for (const match of countryMatches) {
+      const country = match[1]
+      pushMarketReferenceClaim(
+        claims,
+        `market.esterquats.fmi_country_cagr.${slug(country)}`,
+        `Country-wise esterquats market CAGR - ${country}`,
+        `Country-wise growth - ${country}`,
+        `${match[2]}% CAGR (market-reference country forecast)`,
+        'medium',
+      )
+    }
+
+    const players = marketReferenceCompanyListAfterHeading(normalized, 'Top Key Players in Esterquats Market:')
+    if (players) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fmi_key_players', 'Esterquats key competitor set', 'Competitor landscape', players, 'medium')
+    }
+  } else if (source.parser === 'persistence-esterquats') {
+    const marketSize = normalized.match(/projected to reach US\$\s*([\d,.]+)\s*billion in\s*(\d{4})\s*and US\$\s*([\d,.]+)\s*billion by\s*(\d{4}),\s*growing at a CAGR of\s*([\d,.]+)%/i)
+    if (marketSize) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_market_size', 'Global esterquats market size', 'Market Size / Scope', `US$ ${marketSize[1]}B in ${marketSize[2]} (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_forecast_value', 'Global esterquats forecast value', 'Market forecast', `US$ ${marketSize[3]}B by ${marketSize[4]} (market-reference forecast)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_cagr', 'Global esterquats CAGR', 'Growth Rate', `${marketSize[5]}% CAGR from ${marketSize[2]} to ${marketSize[4]} (market-reference forecast)`)
+    }
+
+    const northAmerica = normalized.match(/North America[^.]*holding\s*([\d,.]+)%\s*share/i)
+    if (northAmerica) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_north_america_share', 'North America esterquats regional share', 'Regional market share', `${northAmerica[1]}% North America share (market-reference regional estimate)`)
+    }
+
+    const countryGrowth = normalized.match(/Asia Pacific experiences the fastest regional growth at\s*([\d,.]+)%\s*CAGR in China and\s*([\d,.]+)%\s*CAGR in India/i)
+    if (countryGrowth) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_country_cagr.china', 'Country-wise esterquats market CAGR - China', 'Country-wise growth - China', `${countryGrowth[1]}% CAGR (market-reference country forecast)`, 'medium')
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_country_cagr.india', 'Country-wise esterquats market CAGR - India', 'Country-wise growth - India', `${countryGrowth[2]}% CAGR (market-reference country forecast)`, 'medium')
+    }
+
+    const solidPaste = normalized.match(/Solid and paste esterquats account for approximately\s*([\d,.]+)%\s*of market share/i)
+    if (solidPaste) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_solid_paste_share', 'Solid/paste esterquats form share', 'Market segmentation', `${solidPaste[1]}% solid/paste form share (market-reference segment estimate)`)
+    }
+
+    const tallow = normalized.match(/Tallow-based esterquats continue to dominate the market with approximately\s*([\d,.]+)%\s*share/i)
+    if (tallow) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_tallow_share', 'Tallow-based esterquats feedstock share', 'Market segmentation', `${tallow[1]}% tallow-based feedstock share (market-reference segment estimate)`)
+    }
+
+    const vegetable = normalized.match(/vegetable oil-based esterquats[^.]*currently account for around\s*([\d,.]+)%\s*of the market/i)
+    if (vegetable) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_vegetable_share', 'Vegetable-based esterquats feedstock share', 'Market segmentation', `${vegetable[1]}% vegetable-based feedstock share (market-reference segment estimate)`)
+    }
+
+    const fabricCare = normalized.match(/Fabric care remains the largest application segment, accounting for approximately\s*([\d,.]+)%\s*of total esterquat demand/i)
+    if (fabricCare) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_fabric_care_share', 'Fabric-care application share', 'Market segmentation', `${fabricCare[1]}% fabric-care demand share (market-reference segment estimate)`)
+    }
+
+    const personalCareGrowth = normalized.match(/Personal care represents the fastest-growing application area, with estimated growth of\s*([\d,.]+)%\s*CAGR/i)
+    if (personalCareGrowth) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_personal_care_cagr', 'Personal-care esterquats application CAGR', 'Application growth', `${personalCareGrowth[1]}% CAGR for personal-care application (market-reference forecast)`, 'medium')
+    }
+
+    const players = marketReferenceCompanyListAfterHeading(normalized, 'Companies Covered in Esterquats Market')
+    if (players) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.pmr_key_players', 'Esterquats key competitor set', 'Competitor landscape', players, 'medium')
+    }
+  } else if (source.parser === 'grandview-esterquats') {
+    const marketSize = normalized.match(/global esterquats market size was estimated at USD\s*([\d,.]+)\s*million in\s*(\d{4})/i)
+    if (marketSize) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.grandview_market_size', 'Global esterquats market size', 'Market Size / Scope', `${numberTextToCompactUsdMillions(marketSize[1])} in ${marketSize[2]} (market-reference estimate)`)
+    }
+
+    const cagr = normalized.match(/(?:compound annual growth rate|CAGR) of\s*([\d,.]+)%\s*from\s*(\d{4})\s*to\s*(\d{4})/i)
+    if (cagr) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.grandview_cagr', 'Global esterquats CAGR', 'Growth Rate', `${cagr[1]}% CAGR from ${cagr[2]} to ${cagr[3]} (market-reference forecast)`)
+    }
+
+    const forecast = normalized.match(/reach USD\s*([\d,.]+)\s*million by\s*(\d{4})/i)
+    if (forecast) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.grandview_forecast_value', 'Global esterquats forecast value', 'Market forecast', `${numberTextToCompactUsdMillions(forecast[1])} by ${forecast[2]} (market-reference forecast)`)
+    }
+
+    const fabricCare = normalized.match(/Fabric care dominated the esterquats market with a share of\s*([\d,.]+)%\s*in\s*(\d{4})/i)
+    if (fabricCare) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.grandview_fabric_care_share', 'Esterquats fabric-care segment share', 'Market segmentation', `${fabricCare[1]}% fabric-care share in ${fabricCare[2]} (market-reference segment estimate)`)
+    }
+
+    const keyPlayers = normalized.match(/Some key players operating in the esterquats market include\s*([\s\S]+?)\.\s*(?:$|[A-Z][a-z])/i)
+    if (keyPlayers) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.grandview_key_players', 'Esterquats key competitor set', 'Competitor landscape', keyPlayers[1].replace(/\s+/g, ' ').trim(), 'medium')
+    }
+  } else if (source.parser === 'fortune-esterquats') {
+    const valued = normalized.match(/global esterquats market size was valued at USD\s*([\d,.]+)\s*billion in\s*(\d{4})/i)
+    if (valued) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_market_size', 'Global esterquats market size', 'Market Size / Scope', `USD ${valued[1]}B in ${valued[2]} (market-reference estimate)`)
+    }
+
+    const forecast = normalized.match(/grow from USD\s*([\d,.]+)\s*billion in\s*(\d{4})\s*to USD\s*([\d,.]+)\s*billion by\s*(\d{4}),\s*exhibiting a CAGR of\s*([\d,.]+)%/i) ||
+      normalized.match(/projected to grow from USD\s*([\d,.]+)\s*billion in\s*(\d{4})\s*to USD\s*([\d,.]+)\s*billion by\s*(\d{4}),\s*(?:at|exhibiting)\s*a CAGR of\s*([\d,.]+)%/i)
+    if (forecast) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_current_year_value', 'Global esterquats current-year value', 'Market Size / Scope', `USD ${forecast[1]}B in ${forecast[2]} (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_forecast_value', 'Global esterquats forecast value', 'Market forecast', `USD ${forecast[3]}B by ${forecast[4]} (market-reference forecast)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_cagr', 'Global esterquats CAGR', 'Growth Rate', `${forecast[5]}% CAGR from ${forecast[2]} to ${forecast[4]} (market-reference forecast)`)
+    } else {
+      const cagr = normalized.match(/CAGR\s*\(?\s*(?:\d{4}\s*[-–]\s*\d{4})?\s*\)?\s*[:|-]?\s*([\d,.]+)%/i)
+      if (cagr) {
+        pushMarketReferenceClaim(claims, 'market.esterquats.fortune_cagr', 'Global esterquats CAGR', 'Growth Rate', `${cagr[1]}% CAGR (market-reference forecast)`)
+      }
+    }
+
+    const northAmerica = normalized.match(/North America[^.]*?(?:held|accounted for|captured)\s*([\d,.]+)%\s*(?:share)?\s*in\s*(\d{4})/i)
+    if (northAmerica) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_north_america_share', 'North America esterquats regional share', 'Regional market share', `${northAmerica[1]}% North America share in ${northAmerica[2]} (market-reference regional estimate)`)
+    }
+
+    const canada = normalized.match(/Canada[^.]*?(?:captured|held|accounted for)\s*([\d,.]+)%[^.]*?global market share in\s*(\d{4})/i)
+    if (canada) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_canada_share', 'Canada esterquats country share', 'Country-wise market share - Canada', `${canada[1]}% Canada share in ${canada[2]} (market-reference country estimate)`, 'medium')
+    }
+
+    const tea = normalized.match(/triethanolamine\s*\(?TEA\)?\s*segment accounted for\s*([\d,.]+)%\s*in\s*(\d{4})/i) ||
+      normalized.match(/TEA[^.]*?segment accounted for\s*([\d,.]+)%\s*in\s*(\d{4})/i)
+    if (tea) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_tea_share', 'TEA esterquats product-type share', 'Market segmentation', `${tea[1]}% TEA segment share in ${tea[2]} (market-reference segment estimate)`)
+    }
+
+    const liquid = normalized.match(/liquid form segment held\s*([\d,.]+)%\s*share in\s*(\d{4})/i) ||
+      normalized.match(/liquid[^.]*?held\s*([\d,.]+)%\s*share in\s*(\d{4})/i)
+    if (liquid) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_liquid_share', 'Liquid esterquats form share', 'Market segmentation', `${liquid[1]}% liquid-form share in ${liquid[2]} (market-reference segment estimate)`)
+    }
+
+    const fabric = normalized.match(/fabric softeners? segment held\s*([\d,.]+)%\s*share in\s*(\d{4})/i) ||
+      normalized.match(/fabric care[^.]*?held\s*([\d,.]+)%\s*share in\s*(\d{4})/i)
+    if (fabric) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_fabric_softener_share', 'Fabric-softener application share', 'Market segmentation', `${fabric[1]}% fabric-softener application share in ${fabric[2]} (market-reference segment estimate)`)
+    }
+
+    const players = marketReferenceCompanyListAfterHeading(normalized, 'List of Top Esterquats Companies') ||
+      marketReferenceCompanyListAfterHeading(normalized, 'List of the Top Key Players in the Esterquats Market') ||
+      marketReferenceCompanyListAfterHeading(normalized, 'Top Key Players in Esterquats Market')
+    if (players) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.fortune_key_players', 'Esterquats key competitor set', 'Competitor landscape', players, 'medium')
+    }
+  } else if (source.parser === 'research360-esterquat') {
+    const marketSize = normalized.match(/Global Esterquat market value is expected to rise from USD\s*([\d,.]+)\s*million in\s*(\d{4})\s*to approximately USD\s*([\d,.]+)\s*million by\s*(\d{4}),\s*progressing at a CAGR of\s*([\d,.]+)%/i)
+    if (marketSize) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_market_size', 'Global esterquat market size', 'Market Size / Scope', `${numberTextToCompactUsdMillions(marketSize[1])} in ${marketSize[2]} (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_forecast_value', 'Global esterquat forecast value', 'Market forecast', `${numberTextToCompactUsdMillions(marketSize[3])} by ${marketSize[4]} (market-reference forecast)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_cagr', 'Global esterquat CAGR', 'Growth Rate', `${marketSize[5]}% CAGR from ${marketSize[2]} to ${marketSize[4]} (market-reference forecast)`)
+    }
+
+    const regionalShares = normalized.match(/Asia-Pacific holds\s*([\d,.]+)%\s*of global esterquat consumption[\s\S]{0,220}?Europe holds\s*([\d,.]+)%[\s\S]{0,160}?North America holds\s*([\d,.]+)%[\s\S]{0,260}?Middle East & Africa[\s\S]{0,120}?\b([\d,.]+)%/i)
+    if (regionalShares) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_apac_consumption_share', 'Asia-Pacific esterquat consumption share', 'Regional market share', `${regionalShares[1]}% Asia-Pacific consumption share (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_europe_consumption_share', 'Europe esterquat consumption share', 'Regional market share', `${regionalShares[2]}% Europe consumption share (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_north_america_consumption_share', 'North America esterquat consumption share', 'Regional market share', `${regionalShares[3]}% North America consumption share (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_mea_consumption_share', 'Middle East & Africa esterquat consumption share', 'Regional market share', `${regionalShares[4]}% Middle East & Africa consumption share (market-reference estimate)`)
+    }
+
+    const segmentation = normalized.match(/segmented by type into\s*TEAQ,\s*DEEDMAC,\s*HEQ,\s*and Others,\s*representing\s*([\d,.]+)%,\s*([\d,.]+)%,\s*([\d,.]+)%,\s*and\s*([\d,.]+)%/i) ||
+      normalized.match(/TEAQ[\s\S]{0,120}?([\d,.]+)%[\s\S]{0,120}?DEEDMAC[\s\S]{0,120}?([\d,.]+)%[\s\S]{0,120}?HEQ[\s\S]{0,120}?([\d,.]+)%[\s\S]{0,120}?Others[\s\S]{0,120}?([\d,.]+)%/i)
+    if (segmentation) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_teaq_share', 'TEAQ product-type share', 'Market segmentation', `${segmentation[1]}% TEAQ global consumption share (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_deedmac_share', 'DEEDMAC product-type share', 'Market segmentation', `${segmentation[2]}% DEEDMAC global consumption share (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_heq_share', 'HEQ product-type share', 'Market segmentation', `${segmentation[3]}% HEQ global consumption share (market-reference estimate)`)
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_other_type_share', 'Other esterquat type share', 'Market segmentation', `${segmentation[4]}% other esterquat type share (market-reference estimate)`, 'medium')
+    }
+
+    const competitiveLandscape = normalized.match(/top 2 manufacturers hold\s*([\d,.]+)%\s*market share collectively,\s*while the top 5 control\s*([\d,.]+)%,\s*and the largest producer alone represents\s*([\d,.]+)%/i)
+    if (competitiveLandscape) {
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_top_two_share', 'Top two esterquat producer share', 'Competitor landscape', `${competitiveLandscape[1]}% top-two collective share (market-reference estimate)`, 'medium')
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_top_five_share', 'Top five esterquat producer share', 'Competitor landscape', `${competitiveLandscape[2]}% top-five collective share (market-reference estimate)`, 'medium')
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_largest_producer_share', 'Largest esterquat producer share', 'Competitor landscape', `${competitiveLandscape[3]}% largest-producer share (market-reference estimate)`, 'medium')
+    }
+
+    const regionCountryBlocks: Array<{ region: string, countries: string }> = []
+    const asiaCountries = normalized.match(/China leads with\s*([\d,.]+)\s*tons,\s*India with\s*([\d,.]+)\s*tons,\s*Japan with\s*([\d,.]+)\s*tons,\s*South Korea with\s*([\d,.]+)\s*tons,\s*and Indonesia with\s*([\d,.]+)\s*tons/i)
+    if (asiaCountries) {
+      regionCountryBlocks.push({ region: 'China', countries: `${asiaCountries[1]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'India', countries: `${asiaCountries[2]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'Japan', countries: `${asiaCountries[3]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'South Korea', countries: `${asiaCountries[4]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'Indonesia', countries: `${asiaCountries[5]} tons esterquat consumption (market-reference estimate)` })
+    }
+    const europeCountries = normalized.match(/Germany leads with\s*([\d,.]+)\s*tons,\s*followed by the U\.?K\.?\s*at\s*([\d,.]+)\s*tons,\s*France at\s*([\d,.]+)\s*tons,\s*Italy at\s*([\d,.]+)\s*tons,\s*and Spain at\s*([\d,.]+)\s*tons/i)
+    if (europeCountries) {
+      regionCountryBlocks.push({ region: 'Germany', countries: `${europeCountries[1]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'United Kingdom', countries: `${europeCountries[2]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'France', countries: `${europeCountries[3]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'Italy', countries: `${europeCountries[4]} tons esterquat consumption (market-reference estimate)` })
+      regionCountryBlocks.push({ region: 'Spain', countries: `${europeCountries[5]} tons esterquat consumption (market-reference estimate)` })
+    }
+    for (const row of regionCountryBlocks) {
+      pushMarketReferenceClaim(claims, `market.esterquats.360_country_consumption.${slug(row.region)}`, `Country-wise esterquat consumption - ${row.region}`, `Country-wise consumption - ${row.region}`, row.countries, 'medium')
+    }
+
+    const topCompanies = normalized.match(/List of Top Esterquat Companies\s*([\s\S]+?)Top Two Companies with Highest Share/i)
+    if (topCompanies) {
+      const players = topCompanies[1]
+        .replace(/\s*\*\s*/g, ', ')
+        .replace(/\s+/g, ' ')
+        .replace(/^,\s*/, '')
+        .trim()
+      pushMarketReferenceClaim(claims, 'market.esterquats.360_key_players', 'Esterquat key competitor set', 'Competitor landscape', players, 'medium')
+    }
+  }
+
+  return { sourceDate, claims }
+}
+
+function marketReferenceCompetitorShareContextsFromText(
+  source: MarketReferenceSource,
+  text: string,
+): { sourceDate: string, contexts: MarketReferenceCompetitorShareContext[] } {
+  const normalized = normalizeHtmlText(text)
+  const sourceDate = parseMarketReferenceSourceDate(normalized)
+  const contexts: MarketReferenceCompetitorShareContext[] = []
+
+  if (source.parser === 'persistence-esterquats') {
+    const collectiveShare = normalized.match(/Tier\s*1 companies[^.]*BASF(?:\s+SE)?[^.]*Evonik(?:\s+Industries(?:\s+AG)?)?[^.]*Stepan(?:\s+Company)?[^.]*Kao(?:\s+Corporation)?[^.]*collectively account for approximately\s*([\d,.]+\s*[-–]\s*[\d,.]+%)\s*of global market share/i)
+    if (!collectiveShare) return { sourceDate, contexts }
+
+    const shareRange = collectiveShare[1].replace(/\s+/g, '')
+    const marketShare = `Collective Tier-1 esterquats share ${shareRange}; individual company share not published by this source. Review required before ranking or investor use.`
+    const productEquivalent = 'Esterquats / fabric-care softener competitor context; product-wise equivalence still requires official TDS/SDS evidence.'
+    const riskReason = 'The source provides a collective Tier-1 market-share range for BASF, Evonik, Stepan, and Kao. It does not publish company-specific market share, so this must not drive leader badges or investor claims.'
+
+    contexts.push(
+      {
+        companyName: 'BASF',
+        fieldKeySlug: 'basf',
+        countryRegion: 'Germany / global',
+        marketShare,
+        productEquivalent,
+        riskReason,
+      },
+      {
+        companyName: 'Evonik Industries',
+        fieldKeySlug: 'evonik_industries',
+        countryRegion: 'Germany / global',
+        marketShare,
+        productEquivalent,
+        riskReason,
+      },
+      {
+        companyName: 'Stepan Company',
+        fieldKeySlug: 'stepan_company',
+        countryRegion: 'United States / global',
+        marketShare,
+        productEquivalent,
+        riskReason,
+      },
+      {
+        companyName: 'Kao Corporation',
+        fieldKeySlug: 'kao_corporation',
+        countryRegion: 'Japan / global',
+        marketShare,
+        productEquivalent,
+        riskReason,
+      },
+    )
+  } else if (source.parser === 'fortune-esterquats') {
+    const productEquivalent = 'Global esterquat/fabric-care competitor context; Chemicon-equivalent textile-softener product relevance still requires separate product/TDS evidence.'
+    const companySharePatterns: Array<{
+      companyName: string
+      fieldKeySlug: string
+      countryRegion: string
+      pattern: RegExp
+    }> = [
+      {
+        companyName: 'AkzoNobel',
+        fieldKeySlug: 'akzonobel',
+        countryRegion: 'Netherlands / global',
+        pattern: /AkzoNobel\s*[:|-]?\s*([\d,.]+)%\s*Market Share/i,
+      },
+      {
+        companyName: 'Procter & Gamble',
+        fieldKeySlug: 'procter_gamble',
+        countryRegion: 'United States / global',
+        pattern: /Procter\s*&\s*Gamble\s*[:|-]?\s*([\d,.]+)%\s*Market Share/i,
+      },
+    ]
+    for (const item of companySharePatterns) {
+      const match = normalized.match(item.pattern)
+      if (!match) continue
+      contexts.push({
+        companyName: item.companyName,
+        fieldKeySlug: item.fieldKeySlug,
+        countryRegion: item.countryRegion,
+        marketShare: `${match[1]}% global esterquats share (Fortune Business Insights market-reference estimate; not textile-softener-specific).`,
+        productEquivalent,
+        riskReason: 'This is a Tier-4 market-reference company-share estimate. It is not official, not China-specific, and not direct Chemicon-equivalent textile-softener proof, so it must stay review-gated before ranking or investor use.',
+      })
+    }
+  } else if (source.parser === 'research360-esterquat') {
+    const productEquivalent = 'Global esterquat producer context; textile-softener and Chemicon-equivalent product relevance still requires separate product/TDS evidence.'
+    const companySharePatterns: Array<{
+      companyName: string
+      fieldKeySlug: string
+      countryRegion: string
+      pattern: RegExp
+    }> = [
+      {
+        companyName: 'Stepan Company',
+        fieldKeySlug: 'stepan_company',
+        countryRegion: 'United States / global',
+        pattern: /Stepan Company:\s*Stepan Company holds\s*([\d,.]+)%\s*global esterquat share[^.]*\./i,
+      },
+      {
+        companyName: 'Evonik Industries',
+        fieldKeySlug: 'evonik_industries',
+        countryRegion: 'Germany / global',
+        pattern: /Evonik Industries:\s*Evonik Industries controls\s*([\d,.]+)%\s*global esterquat share[^.]*\./i,
+      },
+    ]
+    for (const item of companySharePatterns) {
+      const match = normalized.match(item.pattern)
+      if (!match) continue
+      const share = match[1]
+      contexts.push({
+        companyName: item.companyName,
+        fieldKeySlug: item.fieldKeySlug,
+        countryRegion: item.countryRegion,
+        marketShare: `${share}% global esterquat share (market-reference estimate; not textile-softener-specific).`,
+        productEquivalent,
+        riskReason: 'This is a Tier-4 market-reference estimate for global esterquat share. It is company-specific, but it is not official, not China-specific, and not Chemicon product-equivalent proof, so it must stay review-gated before ranking or investor use.',
+      })
+    }
+  }
+
+  return { sourceDate, contexts }
+}
+
+function parseSemrushTrafficSourceDate(text: string, domain: string): string {
+  return firstString(
+    text.match(new RegExp(`${domain.replace(/\./g, '\\.')} Website Traffic, Ranking, Analytics \\[([^\\]]+)\\]`, 'i'))?.[1],
+    text.match(/"displayDate":\[0,"(\d{4}-\d{2}-\d{2})"\]/i)?.[1],
+  )
+}
+
+function parseSemrushAuthorityScore(text: string): string {
+  return firstString(
+    text.match(/"authorityScore"\s*:\s*\[0,\{"value":\[0,(\d+)\]/i)?.[1],
+    text.match(/Authority Score\s+(\d+)/i)?.[1],
+  )
+}
+
+export function marketReferenceTrafficPageToCompetitorUpdate(
+  source: MarketReferenceTrafficSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const normalized = decodeCommonHtmlEntities(normalizeHtmlText(html))
+  if (!new RegExp(`${source.domain.replace(/\./g, '\\.')} Website Traffic`, 'i').test(normalized)) return null
+
+  const trafficMatch = normalized.match(new RegExp(`In\\s+([A-Za-z]+)\\s+${source.domain.replace(/\./g, '\\.')}\\s+received\\s+([\\d.]+[KMB]?)\\s+visits`, 'i')) ||
+    normalized.match(/Visits\s+([\d.]+[KMB]?)/i)
+  const trafficValue = trafficMatch
+    ? (trafficMatch.length >= 3 ? trafficMatch[2] : trafficMatch[1])
+    : ''
+  const monthName = trafficMatch && trafficMatch.length >= 3 ? trafficMatch[1] : ''
+  const sourceDate = parseSemrushTrafficSourceDate(normalized, source.domain) || (monthName ? `${monthName} traffic snapshot` : checkedAt)
+  const monthlyChange = normalized.match(new RegExp(`Compared to\\s+([A-Za-z]+)\\s+traffic to\\s+${source.domain.replace(/\./g, '\\.')}\\s+has\\s+(increased|decreased)\\s+by\\s+(-?[\\d.]+)%`, 'i'))
+  const authorityScore = parseSemrushAuthorityScore(normalized)
+
+  if (!trafficValue && !authorityScore) return null
+
+  const trafficSummary = trafficValue
+    ? [
+        `${sourceDate} Semrush website-traffic estimate: ${trafficValue} visits.`,
+        monthlyChange ? `Compared to ${monthlyChange[1]}: ${monthlyChange[2]} by ${monthlyChange[3]}%.` : '',
+      ].filter(Boolean).join(' ')
+    : undefined
+  const authoritySummary = authorityScore
+    ? `Semrush Authority Score: ${authorityScore} (domain authority metric, not customer review rating).`
+    : undefined
+
+  return {
+    fieldKey: `competitor_metrics.${source.fieldKeySlug}.semrush_traffic_authority`,
+    companyName: source.companyName,
+    countryRegion: source.countryRegion,
+    value: trafficSummary || authoritySummary,
+    traffic: trafficSummary ? {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.traffic`,
+      value: trafficSummary,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 4 - Reputable web analytics reference',
+      lastChecked: checkedAt,
+      sourceDate,
+      confidence: 'high',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Semrush traffic is a third-party estimate for website visits; use as directional digital-interest evidence only.',
+    } : undefined,
+    rating: authoritySummary ? {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.rating`,
+      value: authoritySummary,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 4 - Reputable web analytics reference',
+      lastChecked: checkedAt,
+      sourceDate,
+      confidence: 'high',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Authority Score is a Semrush domain authority metric; it is not a product/customer rating.',
+    } : undefined,
+    lastUpdated: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+      value: sourceDate || checkedAt,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 4 - Reputable web analytics reference',
+      lastChecked: checkedAt,
+      sourceDate,
+      confidence: 'high',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+    },
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceTier: 'Tier 4 - Reputable web analytics reference',
+    sourceDate,
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Market Reference',
+    reviewRequired: false,
+    dataType: 'competitor_data',
+    recommendedAction: 'Use traffic/authority as directional market-interest evidence only; do not treat it as chemical market share, revenue, or customer rating.',
+    riskReason: 'Traffic and authority are market-reference estimates from Semrush and remain separate from verified market share, price, and product-line performance.',
+  }
+}
+
+function trancoTrafficRankApiUrl(domain: string): string {
+  return `https://tranco-list.eu/api/ranks/domain/${encodeURIComponent(domain)}`
+}
+
+function validTrancoDate(value: unknown): string {
+  const text = firstString(value)
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
+}
+
+export function trancoRanksPayloadToCompetitorUpdate(
+  source: TrancoTrafficRankSource,
+  payload: TrancoRankPayload,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const ranks = Array.isArray(payload?.ranks) ? payload.ranks : []
+  const latest = ranks
+    .map(item => ({
+      date: validTrancoDate(item.date),
+      rank: Number(item.rank),
+    }))
+    .filter(item => item.date && Number.isFinite(item.rank) && item.rank > 0)
+    .sort((a, b) => b.date.localeCompare(a.date))[0]
+  if (!latest) return null
+
+  const sourceTitle = `Tranco daily domain rank - ${source.domain}`
+  const sourceUrl = trancoTrafficRankApiUrl(source.domain)
+  const rankText = latest.rank.toLocaleString('en-US')
+  const value = `Tranco daily traffic-rank signal: #${rankText} for ${source.domain} on ${latest.date}. Lower rank means higher observed web popularity; this is not monthly visit volume.`
+
+  return {
+    fieldKey: `competitor_metrics.${source.fieldKeySlug}.tranco_traffic_rank`,
+    companyName: source.companyName,
+    countryRegion: source.countryRegion,
+    value,
+    traffic: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.traffic`,
+      value,
+      sourceTitle,
+      sourceUrl,
+      sourceTier: 'Tier 4 - Reputable web ranking reference',
+      sourceDate: latest.date,
+      lastChecked: checkedAt,
+      confidence: 'high',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Tranco provides a daily domain popularity rank, not monthly visit volume. Use it as directional web-presence evidence only.',
+    },
+    lastUpdated: {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+      value: latest.date,
+      sourceTitle,
+      sourceUrl,
+      sourceTier: 'Tier 4 - Reputable web ranking reference',
+      sourceDate: latest.date,
+      lastChecked: checkedAt,
+      confidence: 'high',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      riskReason: 'Latest Tranco rank date for this domain.',
+    },
+    sourceTitle,
+    sourceUrl,
+    sourceTier: 'Tier 4 - Reputable web ranking reference',
+    sourceDate: latest.date,
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Market Reference',
+    reviewRequired: false,
+    dataType: 'competitor_data',
+    recommendedAction: 'Use as source-backed web-presence rank only. Do not treat it as chemical market share, sales revenue, customer rating, or monthly visit volume.',
+    riskReason: 'Tranco is a research-oriented daily domain ranking; it is useful for competitor digital presence but not for market-share or revenue claims.',
+  }
+}
+
+function trancoFetchDelayMs(): number {
+  return process.env.NODE_ENV === 'test' ? 0 : 1100
+}
+
+function sleep(ms: number): Promise<void> {
+  return ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve()
+}
+
+function financialMetricEvidence(input: {
+  fieldKey: string
+  value: string
+  source: MarketReferenceCompetitorFinancialSource
+  checkedAt: string
+  sourceDate: string
+  confidence?: Confidence
+}): Record<string, unknown> {
+  return {
+    fieldKey: input.fieldKey,
+    value: input.value,
+    sourceTitle: input.source.sourceTitle,
+    sourceUrl: input.source.sourceUrl,
+    sourceTier: 'Tier 4 - Reputable market/financial reference',
+    lastChecked: input.checkedAt,
+    sourceDate: input.sourceDate,
+    confidence: input.confidence || 'medium',
+    evidenceStatus: 'Market Reference',
+    reviewRequired: false,
+    dataType: 'competitor_data',
+    riskReason: 'Reputable third-party financial reference. Treat as company-wide context, not product-line textile-softener revenue, pricing, market share, or investor-approved proof.',
+  }
+}
+
+export function marketReferenceFinancialPageToCompetitorUpdate(
+  source: MarketReferenceCompetitorFinancialSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const normalized = decodeCommonHtmlEntities(normalizeHtmlText(html))
+    .replace(/\\u0026lt;/g, '<')
+    .replace(/\\u0026gt;/g, '>')
+    .replace(/\\u0026amp;/g, '&')
+
+  if (source.parser === 'spglobal-archroma-2025') {
+    const revenue = normalized.match(/reported about\s*\$([\d.]+)\s*billion in sales in fiscal\s*(20\d{2})/i)
+    if (!revenue) return null
+    const value = `FY${revenue[2]} company-wide sales: about US$${revenue[1]}B (S&P Global Ratings research update)`
+    return {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.market_reference_financials`,
+      companyName: source.companyName,
+      countryRegion: source.countryRegion,
+      value,
+      revenue: financialMetricEvidence({
+        fieldKey: `competitor_metrics.${source.fieldKeySlug}.revenue`,
+        value,
+        source,
+        checkedAt,
+        sourceDate: `Fiscal ${revenue[2]}`,
+      }),
+      lastUpdated: financialMetricEvidence({
+        fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+        value: checkedAt,
+        source,
+        checkedAt,
+        sourceDate: checkedAt,
+      }),
+      productEquivalent: 'Textile Effects / specialty-chemicals competitor context; exact Chemicon-equivalent product revenue still requires product-line evidence.',
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 4 - Reputable market/financial reference',
+      sourceDate: `Fiscal ${revenue[2]}`,
+      lastChecked: checkedAt,
+      confidence: 'medium',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      recommendedAction: 'Use as company-wide revenue context only. Keep product-line revenue, pricing, and market share review-gated until exact sources are imported.',
+      riskReason: 'S&P Global Ratings gives company-wide sales context. It does not prove textile-softener product-line revenue, price, market share, or investor material.',
+    }
+  }
+
+  if (source.parser === 'stockanalysis-transfar-2025') {
+    const sourceDate = firstString(
+      normalized.match(/Last checked:\s*([A-Za-z]+\s+\d{1,2},\s*20\d{2})/i)?.[1],
+      normalized.match(/Period Ending\s+Dec '?(\d{2})/i)?.[1] ? `Fiscal 20${normalized.match(/Period Ending\s+Dec '?(\d{2})/i)?.[1]}` : '',
+      checkedAt,
+    )
+    const total = normalized.match(/Total\s+([\d.]+[BM])\s+[\d.]+[BM][\s\S]{0,160}?Total Growth\s+([+-]?[\d.]+)%/i)
+    if (!total) return null
+    const segment = normalized.match(/Textile Printing and Dyeing Auxiliaries\s+([\d.]+[BM])[\s\S]{0,160}?Textile Printing and Dyeing Auxiliaries Growth\s+([+-]?[\d.]+)%/i)
+    const revenueValue = `FY2025 company-wide revenue: CNY ${total[1]} (StockAnalysis / S&P Global Market Intelligence)`
+    const growthValue = `FY2025 company-wide revenue YoY: ${total[2]}%`
+    const segmentText = segment
+      ? `Textile Printing and Dyeing Auxiliaries segment: CNY ${segment[1]} in FY2025; segment YoY ${segment[2]}%.`
+      : 'Textile Printing and Dyeing Auxiliaries segment source found; segment value parser needs review.'
+    return {
+      fieldKey: `competitor_metrics.${source.fieldKeySlug}.market_reference_financials`,
+      companyName: source.companyName,
+      countryRegion: source.countryRegion,
+      value: revenueValue,
+      revenue: financialMetricEvidence({
+        fieldKey: `competitor_metrics.${source.fieldKeySlug}.revenue`,
+        value: revenueValue,
+        source,
+        checkedAt,
+        sourceDate,
+      }),
+      yearlyGrowth: financialMetricEvidence({
+        fieldKey: `competitor_metrics.${source.fieldKeySlug}.yoy_growth`,
+        value: growthValue,
+        source,
+        checkedAt,
+        sourceDate,
+      }),
+      lastUpdated: financialMetricEvidence({
+        fieldKey: `competitor_metrics.${source.fieldKeySlug}.last_updated`,
+        value: sourceDate,
+        source,
+        checkedAt,
+        sourceDate,
+      }),
+      productEquivalent: `China textile-auxiliaries competitor context. ${segmentText}`,
+      activeContent: segmentText,
+      sourceTitle: source.sourceTitle,
+      sourceUrl: source.sourceUrl,
+      sourceTier: 'Tier 4 - Reputable market/financial reference',
+      sourceDate,
+      lastChecked: checkedAt,
+      confidence: 'medium',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      dataType: 'competitor_data',
+      recommendedAction: 'Use as company-wide and segment financial context. Keep actual Chemicon-equivalent product price and market share review-gated until exact sources are imported.',
+      riskReason: 'StockAnalysis reports S&P Global Market Intelligence financial data. This is useful company/segment context but not a current quote, product-line price, or market-share proof.',
+    }
+  }
+
+  return null
+}
+
+export function marketReferencePageToMarketClaimUpdates(
+  source: MarketReferenceSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem[] {
+  const parsed = marketReferenceClaimsFromText(source, html)
+  return parsed.claims.map(claim => ({
+    fieldKey: claim.fieldKey,
+    label: claim.label,
+    proposedDashboardField: claim.proposedDashboardField,
+    value: claim.value,
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceTier: 'Tier 4 - Paid/reputable market reference',
+    sourceDate: parsed.sourceDate || checkedAt,
+    lastChecked: checkedAt,
+    confidence: claim.confidence,
+    evidenceStatus: 'Market Reference',
+    reviewRequired: true,
+    dataType: 'market_size',
+    recommendedAction: MARKET_REFERENCE_REVIEW_ACTION,
+    riskReason: 'Market-reference data is useful for dashboard context, but market size, CAGR, segmentation, and competitor landscape claims require owner review before investor use.',
+  }))
+}
+
+export function marketReferencePageToCompetitorContextUpdates(
+  source: MarketReferenceSource,
+  html: string,
+  checkedAt: string,
+): DashboardResearchUpdateItem[] {
+  const parsed = marketReferenceCompetitorShareContextsFromText(source, html)
+  return parsed.contexts.map(context => ({
+    fieldKey: `competitor_metrics.${context.fieldKeySlug}.collective_esterquats_share_context`,
+    companyName: context.companyName,
+    countryRegion: context.countryRegion,
+    productEquivalent: context.productEquivalent,
+    marketShare: context.marketShare,
+    value: context.marketShare,
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+    sourceTier: 'Tier 4 - Paid/reputable market reference',
+    sourceDate: parsed.sourceDate || checkedAt,
+    lastChecked: checkedAt,
+    confidence: 'medium',
+    evidenceStatus: 'Market Reference',
+    reviewRequired: true,
+    dataType: 'competitor_data',
+    recommendedAction: 'Use as competitor-landscape context only. Do not rank companies, label a market leader, or use in investor material until an individual company-specific market-share source is approved.',
+    riskReason: context.riskReason,
+  }))
+}
+
 async function applyOfficialCompetitorFinancialMetrics(
   state: DashboardIntelligenceState,
   checkedAt: string,
@@ -3960,7 +6121,7 @@ async function applyOfficialCompetitorFinancialMetrics(
 
   for (const source of SEC_COMPETITOR_FINANCIAL_SOURCES) {
     try {
-      const response = await fetcher(`https://data.sec.gov/api/xbrl/companyfacts/CIK${source.cik}.json`, {
+      const response = await fetchWithTimeout(fetcher, `https://data.sec.gov/api/xbrl/companyfacts/CIK${source.cik}.json`, {
         headers: {
           'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
           Accept: 'application/json',
@@ -4000,20 +6161,15 @@ async function applyOfficialCompanyPageFinancialMetrics(
 
   for (const source of OFFICIAL_COMPANY_FINANCIAL_SOURCES) {
     try {
-      const response = await fetcher(source.sourceUrl, {
-        headers: {
-          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
-          Accept: 'text/html,application/xhtml+xml,text/plain',
-        },
-      })
-      if (!response.ok) {
-        errors.push(`${source.companyName}: official financial source returned ${response.status}`)
-        continue
+      const headers = {
+        'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
       }
-      const html = await response.text()
-      const update = officialCompanyPageToCompetitorFinancialUpdate(source, html, checkedAt)
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers)
+      const html = fetched.text
+      let update = html ? officialCompanyPageToCompetitorFinancialUpdate(source, html, checkedAt) : null
       if (!update) {
-        errors.push(`${source.companyName}: official financial metrics unavailable`)
+        errors.push(`${source.companyName}: ${fetched.ok ? 'official financial metrics unavailable' : `official financial source returned ${fetched.status || 'unreachable'}`}`)
         continue
       }
       const runKey = `official-company-financials/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
@@ -4040,20 +6196,15 @@ async function applyOfficialCompetitorProductEvidence(
 
   for (const source of OFFICIAL_COMPETITOR_PRODUCT_SOURCES) {
     try {
-      const response = await fetcher(source.sourceUrl, {
-        headers: {
-          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
-          Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
-        },
-      })
-      if (!response.ok) {
-        errors.push(`${source.companyName}: official product source returned ${response.status}`)
-        continue
+      const headers = {
+        'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+        Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
       }
-      const html = await response.text()
-      const update = officialCompetitorProductPageToUpdate(source, html, checkedAt)
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers)
+      const html = fetched.text
+      let update = html ? officialCompetitorProductPageToUpdate(source, html, checkedAt) : null
       if (!update) {
-        errors.push(`${source.companyName}: official product evidence unavailable`)
+        errors.push(`${source.companyName}: ${fetched.ok ? 'official product evidence unavailable' : `official product source returned ${fetched.status || 'unreachable'}`}`)
         continue
       }
       const runKey = `official-competitor-products/${source.fieldKeySlug}/${slug(source.productLabel)}/${checkedAt}`
@@ -4062,6 +6213,73 @@ async function applyOfficialCompetitorProductEvidence(
       stagedReviewCount += result.stagedReviewCount
     } catch (err) {
       errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'official competitor product connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyOfficialCompetitorRecognitionEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official competitor recognition connector: fetch is unavailable'] }
+
+  for (const source of OFFICIAL_COMPETITOR_RECOGNITION_SOURCES) {
+    try {
+      const headers = {
+        'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      }
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers)
+      const html = fetched.text
+      let update = html ? officialCompetitorRecognitionPageToUpdate(source, html, checkedAt) : null
+      if (!update) {
+        errors.push(`${source.companyName}: ${fetched.ok ? 'official recognition evidence unavailable' : `official recognition source returned ${fetched.status || 'unreachable'}`}`)
+        continue
+      }
+      const runKey = `official-competitor-recognition/${source.fieldKeySlug}/${checkedAt}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'official competitor recognition connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyPublicCompetitorPriceEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['public competitor price connector: fetch is unavailable'] }
+
+  for (const source of PUBLIC_COMPETITOR_PRICE_SOURCES) {
+    try {
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (compatible; Hermes Web UI dashboard intelligence connector; +http://localhost)',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      }
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers, SOURCE_FETCH_TIMEOUT_MS)
+      const html = fetched.text
+      const update = html ? publicCompetitorPricePageToUpdate(source, html, checkedAt) : null
+      if (!update) continue
+      const runKey = `public-competitor-price/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'public competitor price connector failed'}`)
     }
   }
 
@@ -4080,20 +6298,15 @@ async function applyOfficialSupplierEvidence(
 
   for (const source of OFFICIAL_SUPPLIER_EVIDENCE_SOURCES) {
     try {
-      const response = await fetcher(source.sourceUrl, {
-        headers: {
-          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
-          Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
-        },
-      })
-      if (!response.ok) {
-        errors.push(`${source.supplier}: official supplier source returned ${response.status}`)
-        continue
+      const headers = {
+        'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+        Accept: 'text/html,application/xhtml+xml,text/plain,application/pdf',
       }
-      const html = await response.text()
-      const update = officialSupplierEvidencePageToUpdate(source, html, checkedAt)
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers)
+      const html = fetched.text
+      let update = html ? officialSupplierEvidencePageToUpdate(source, html, checkedAt) : null
       if (!update) {
-        errors.push(`${source.supplier}: official supplier evidence unavailable`)
+        errors.push(`${source.supplier}: ${fetched.ok ? 'official supplier evidence unavailable' : `official supplier source returned ${fetched.status || 'unreachable'}`}`)
         continue
       }
       const runKey = `official-supplier-evidence/${source.fieldKeySlug}/${checkedAt}`
@@ -4117,13 +6330,20 @@ async function applyOfficialComtradeMarketProxies(
   const errors: string[] = []
   const fetcher = globalThis.fetch
   if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official Comtrade connector: fetch is unavailable'] }
+  if (!comtradeSubscriptionKey()) {
+    return {
+      autoFilledCount,
+      stagedReviewCount,
+      errors: ['official Comtrade connector: subscription key not configured; set UN_COMTRADE_SUBSCRIPTION_KEY or COMTRADE_SUBSCRIPTION_KEY to import current official trade data'],
+    }
+  }
 
   for (const source of COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES) {
     let imported = false
     let lastError = ''
     try {
       for (const period of latestComtradeCandidatePeriods()) {
-        const response = await fetcher(comtradeApiUrl(source, period), {
+        const response = await fetchWithTimeout(fetcher, comtradeApiRequestUrl(source, period), {
           headers: {
             'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
             Accept: 'application/json',
@@ -4149,6 +6369,173 @@ async function applyOfficialComtradeMarketProxies(
       if (!imported && lastError) errors.push(`${source.country}: ${lastError}`)
     } catch (err) {
       errors.push(`${source.country}: ${err instanceof Error ? err.message : 'UN Comtrade connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyMarketReferenceEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['market reference connector: fetch is unavailable'] }
+
+  for (const source of MARKET_REFERENCE_SOURCES) {
+    try {
+      const headers = {
+        'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      }
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers)
+      const html = fetched.text
+      let updates = html ? marketReferencePageToMarketClaimUpdates(source, html, checkedAt) : []
+      let competitorContextUpdates = html ? marketReferencePageToCompetitorContextUpdates(source, html, checkedAt) : []
+      if (updates.length === 0 && competitorContextUpdates.length === 0) {
+        errors.push(`${source.sourceTitle}: ${fetched.ok ? 'market reference facts unavailable' : `market reference source returned ${fetched.status || 'unreachable'}`}`)
+        continue
+      }
+      const runKey = `market-reference/${source.fieldKeySlug}/${firstString(updates[0]?.sourceDate, competitorContextUpdates[0]?.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, {
+        marketClaims: updates,
+        competitorRecords: competitorContextUpdates,
+      }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.sourceTitle}: ${err instanceof Error ? err.message : 'market reference connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyMarketReferenceTrafficEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['market reference traffic connector: fetch is unavailable'] }
+
+  const fetchedUpdates = await Promise.all(MARKET_REFERENCE_TRAFFIC_SOURCES.map(async (source) => {
+    try {
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (compatible; Hermes Web UI dashboard intelligence connector; +http://localhost)',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      }
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers, TRAFFIC_SOURCE_FETCH_TIMEOUT_MS)
+      const html = fetched.text
+      const update = html ? marketReferenceTrafficPageToCompetitorUpdate(source, html, checkedAt) : null
+      if (!update) return { source, update: null, error: '' }
+      return { source, update, error: '' }
+    } catch (err) {
+      return {
+        source,
+        update: null,
+        error: `${source.companyName}: ${err instanceof Error ? err.message : 'market reference traffic connector failed'}`,
+      }
+    }
+  }))
+
+  for (const item of fetchedUpdates) {
+    if (item.error) {
+      errors.push(item.error)
+      continue
+    }
+    if (!item.update) continue
+    try {
+      const update = item.update
+      const source = item.source
+      const runKey = `market-reference-traffic/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${item.source.companyName}: ${err instanceof Error ? err.message : 'market reference traffic connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyTrancoTrafficRankEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['Tranco traffic rank connector: fetch is unavailable'] }
+
+  const delayMs = trancoFetchDelayMs()
+  for (const [index, source] of TRANCO_TRAFFIC_RANK_SOURCES.entries()) {
+    if (index > 0) await sleep(delayMs)
+    try {
+      const response = await fetchWithTimeout(fetcher, trancoTrafficRankApiUrl(source.domain), {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'application/json',
+        },
+      }, SOURCE_FETCH_TIMEOUT_MS)
+      if (!response.ok) {
+        errors.push(`${source.companyName}: Tranco returned ${response.status}`)
+        continue
+      }
+      const payload = await response.json()
+      const update = trancoRanksPayloadToCompetitorUpdate(source, payload, checkedAt)
+      if (!update) {
+        errors.push(`${source.companyName}: Tranco rank unavailable`)
+        continue
+      }
+      const runKey = `tranco-traffic-rank/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'Tranco traffic rank connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyMarketReferenceCompetitorFinancialEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['market reference financial connector: fetch is unavailable'] }
+
+  for (const source of MARKET_REFERENCE_COMPETITOR_FINANCIAL_SOURCES) {
+    try {
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (compatible; Hermes Web UI dashboard intelligence connector; +http://localhost)',
+        Accept: 'text/html,application/xhtml+xml,text/plain',
+      }
+      const fetched = await fetchOfficialTextCandidate(fetcher, source.sourceUrl, headers, SOURCE_FETCH_TIMEOUT_MS)
+      const html = fetched.text
+      const update = html ? marketReferenceFinancialPageToCompetitorUpdate(source, html, checkedAt) : null
+      if (!update) {
+        errors.push(`${source.companyName}: ${fetched.ok ? 'market reference financial metrics unavailable' : `market reference financial source returned ${fetched.status || 'unreachable'}`}`)
+        continue
+      }
+      const runKey = `market-reference-financials/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { competitorRecords: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.companyName}: ${err instanceof Error ? err.message : 'market reference financial connector failed'}`)
     }
   }
 
@@ -4181,11 +6568,17 @@ export async function ingestFullDashboardAutopilotOutputs(
   result.jobsChecked = discoveredOutputs.jobsChecked
   const envelope = await readDashboardIntelligenceState(profile)
   const state = normalizeState(envelope?.state)
+  const prunedMalformedMarketReferenceClaims = pruneMalformedMarketReferenceClaims(state)
   const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
   const officialCompanyFinancialConnectorsEnabled = options.includeOfficialCompanyFinancialConnectors ?? officialConnectorsEnabled
   const officialProductConnectorsEnabled = options.includeOfficialProductConnectors ?? officialConnectorsEnabled
+  const officialRecognitionConnectorsEnabled = options.includeOfficialRecognitionConnectors ?? officialConnectorsEnabled
   const officialSupplierConnectorsEnabled = options.includeOfficialSupplierConnectors ?? officialConnectorsEnabled
+  const publicPriceEvidenceConnectorsEnabled = options.includePublicPriceEvidenceConnectors ?? officialConnectorsEnabled
   const officialTradeConnectorsEnabled = options.includeOfficialTradeConnectors ?? officialConnectorsEnabled
+  const marketReferenceConnectorsEnabled = options.includeMarketReferenceConnectors ?? process.env.NODE_ENV !== 'test'
+  const marketReferenceTrafficConnectorsEnabled = options.includeMarketReferenceTrafficConnectors ?? marketReferenceConnectorsEnabled
+  const trancoTrafficConnectorsEnabled = options.includeTrancoTrafficConnectors ?? marketReferenceTrafficConnectorsEnabled
   if (officialConnectorsEnabled) {
     const official = await applyOfficialCompetitorFinancialMetrics(state, new Date().toISOString().slice(0, 10))
     result.autoFilledCount += official.autoFilledCount
@@ -4204,11 +6597,23 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.stagedReviewCount += officialProduct.stagedReviewCount
     result.errors.push(...officialProduct.errors.map(error => `official source connector: ${error}`))
   }
+  if (officialRecognitionConnectorsEnabled) {
+    const officialRecognition = await applyOfficialCompetitorRecognitionEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialRecognition.autoFilledCount
+    result.stagedReviewCount += officialRecognition.stagedReviewCount
+    result.errors.push(...officialRecognition.errors.map(error => `official source connector: ${error}`))
+  }
   if (officialSupplierConnectorsEnabled) {
     const officialSupplier = await applyOfficialSupplierEvidence(state, new Date().toISOString().slice(0, 10))
     result.autoFilledCount += officialSupplier.autoFilledCount
     result.stagedReviewCount += officialSupplier.stagedReviewCount
     result.errors.push(...officialSupplier.errors.map(error => `official source connector: ${error}`))
+  }
+  if (publicPriceEvidenceConnectorsEnabled) {
+    const publicPriceEvidence = await applyPublicCompetitorPriceEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += publicPriceEvidence.autoFilledCount
+    result.stagedReviewCount += publicPriceEvidence.stagedReviewCount
+    result.errors.push(...publicPriceEvidence.errors.map(error => `public price connector: ${error}`))
   }
   if (officialTradeConnectorsEnabled) {
     const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
@@ -4216,9 +6621,42 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.stagedReviewCount += officialTrade.stagedReviewCount
     result.errors.push(...officialTrade.errors.map(error => `official source connector: ${error}`))
   }
+  if (marketReferenceConnectorsEnabled) {
+    const marketReference = await applyMarketReferenceEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += marketReference.autoFilledCount
+    result.stagedReviewCount += marketReference.stagedReviewCount
+    result.errors.push(...marketReference.errors.map(error => `market reference connector: ${error}`))
+    const marketReferenceFinancial = await applyMarketReferenceCompetitorFinancialEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += marketReferenceFinancial.autoFilledCount
+    result.stagedReviewCount += marketReferenceFinancial.stagedReviewCount
+    result.errors.push(...marketReferenceFinancial.errors.map(error => `market reference connector: ${error}`))
+  }
+  if (marketReferenceTrafficConnectorsEnabled) {
+    const marketReferenceTraffic = await applyMarketReferenceTrafficEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += marketReferenceTraffic.autoFilledCount
+    result.stagedReviewCount += marketReferenceTraffic.stagedReviewCount
+    result.errors.push(...marketReferenceTraffic.errors.map(error => `market reference connector: ${error}`))
+  }
+  if (trancoTrafficConnectorsEnabled) {
+    const trancoTraffic = await applyTrancoTrafficRankEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += trancoTraffic.autoFilledCount
+    result.stagedReviewCount += trancoTraffic.stagedReviewCount
+    result.errors.push(...trancoTraffic.errors.map(error => `market reference connector: ${error}`))
+  }
 
   if (discoveredOutputs.outputFiles.length === 0) {
-    if (result.autoFilledCount > 0 || result.stagedReviewCount > 0) {
+    try {
+      result.missingCoverageFollowUpStarted = await ensureMissingCoverageFollowUp(profile, state)
+    } catch (err) {
+      result.errors.push(`missing coverage follow-up: ${err instanceof Error ? err.message : 'failed to start follow-up research'}`)
+    }
+
+    if (
+      result.autoFilledCount > 0 ||
+      result.stagedReviewCount > 0 ||
+      prunedMalformedMarketReferenceClaims > 0 ||
+      result.missingCoverageFollowUpStarted
+    ) {
       await writeDashboardIntelligenceState({
         profile,
         state,
@@ -4269,6 +6707,7 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.importedRuns > 0 ||
     result.autoFilledCount > 0 ||
     result.stagedReviewCount > 0 ||
+    prunedMalformedMarketReferenceClaims > 0 ||
     result.missingCoverageFollowUpStarted
   ) {
     await writeDashboardIntelligenceState({

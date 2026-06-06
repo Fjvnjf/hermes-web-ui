@@ -13,6 +13,19 @@ import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntellig
 import { createJob, runJob } from '@/api/hermes/jobs'
 import type { TrustedSourceDataType, TrustedSourceTier } from '@/utils/trustedSources'
 import {
+  TRUSTED_SOURCE_DISCOVERY_ROOTS,
+  TRUSTED_SOURCE_DISCOVERY_ROOT_COUNT,
+  trustedSourceDiscoveryRootExamples,
+} from '@/utils/trustedSourceDiscoveryRoots'
+import {
+  TRUSTED_SOURCE_BATCH_2_CANDIDATE_COUNT,
+  TRUSTED_SOURCE_BATCH_2_COUNTRY_COUNT,
+  TRUSTED_SOURCE_BATCH_2_HS_CODE_COUNT,
+  TRUSTED_SOURCE_BATCH_2_INDICATOR_COUNT,
+  TRUSTED_SOURCE_BATCH_2_PROVIDER_SUMMARIES,
+  trustedSourceBatch2Examples,
+} from '@/utils/trustedSourceUrlCandidates'
+import {
   buildDashboardCoverageRows,
   missingDashboardCoverageTargetCount,
 } from '@/utils/dashboardCoverage'
@@ -57,6 +70,17 @@ const dataTypeOptions = [
   'document_evidence',
   'internal_activity',
 ].map(value => ({ label: value.replace(/_/g, ' '), value }))
+
+const sourceDiscoveryRoots = computed(() => TRUSTED_SOURCE_DISCOVERY_ROOTS)
+const sourceDiscoveryRootCount = TRUSTED_SOURCE_DISCOVERY_ROOT_COUNT
+const sourceDiscoveryGroupCount = computed(() => sourceDiscoveryRoots.value.length)
+const sourceDiscoveryExamples = (root: typeof TRUSTED_SOURCE_DISCOVERY_ROOTS[number]) => trustedSourceDiscoveryRootExamples(root, 10)
+const sourceUrlCandidateCount = TRUSTED_SOURCE_BATCH_2_CANDIDATE_COUNT
+const sourceUrlCandidateProviders = computed(() => TRUSTED_SOURCE_BATCH_2_PROVIDER_SUMMARIES)
+const sourceUrlCandidateCountryCount = TRUSTED_SOURCE_BATCH_2_COUNTRY_COUNT
+const sourceUrlCandidateIndicatorCount = TRUSTED_SOURCE_BATCH_2_INDICATOR_COUNT
+const sourceUrlCandidateHsCodeCount = TRUSTED_SOURCE_BATCH_2_HS_CODE_COUNT
+const sourceUrlCandidateExamples = (provider: string) => trustedSourceBatch2Examples(provider, 8)
 
 const groupedSources = computed(() => ({
   tier1: autopilot.state.value.sources.filter(source => source.tier === 'tier1-official'),
@@ -916,6 +940,95 @@ async function bootstrapTrustedSourcesView() {
       </p>
     </section>
 
+    <details class="advanced-disclosure discovery-root-disclosure" open>
+      <summary>
+        <span>Trusted source discovery roots</span>
+        <small>{{ sourceDiscoveryRootCount }} roots across {{ sourceDiscoveryGroupCount }} groups + {{ sourceUrlCandidateCount }} URL-backed candidates; not automatic facts.</small>
+      </summary>
+      <section class="discovery-root-panel" aria-label="Trusted source discovery root registry">
+        <div class="discovery-root-intro">
+          <div>
+            <p class="eyebrow">Source registry seed</p>
+            <h3>Hermes starts research from these trusted roots</h3>
+            <p>
+              These are root sources for automatic discovery. Hermes must still extract a concrete source title,
+              URL/date, confidence score, evidence status, and review decision before any dashboard field is filled.
+              Sources discovered outside this list enter as Candidate Source / To Verify.
+            </p>
+          </div>
+          <div class="discovery-root-count">
+            <strong>{{ sourceDiscoveryRootCount }}</strong>
+            <span>source roots</span>
+          </div>
+        </div>
+        <section class="source-url-candidate-panel" aria-label="Batch 2 URL-backed trusted source candidates">
+          <div class="source-url-candidate-header">
+            <div>
+              <p class="eyebrow">Batch 2 source catalog</p>
+              <h3>URL-backed official source candidates</h3>
+              <p>
+                The new batch adds concrete official API and source URLs for country indicators and HS-code trade checks.
+                These rows help Hermes research faster, but they do not become verified dashboard facts until fetched,
+                parsed, source-scored, and accepted by the field-level review policy.
+              </p>
+            </div>
+            <div class="source-url-candidate-stats" aria-label="Batch 2 source candidate stats">
+              <span><strong>{{ sourceUrlCandidateCount }}</strong> candidates</span>
+              <span><strong>{{ sourceUrlCandidateCountryCount }}</strong> countries</span>
+              <span><strong>{{ sourceUrlCandidateIndicatorCount }}</strong> indicators</span>
+              <span><strong>{{ sourceUrlCandidateHsCodeCount }}</strong> HS families</span>
+            </div>
+          </div>
+          <div class="source-url-provider-grid">
+            <article v-for="provider in sourceUrlCandidateProviders" :key="provider.provider" class="source-url-provider-card">
+              <div class="discovery-root-card-header">
+                <h4>{{ provider.provider }}</h4>
+                <span>{{ provider.source_count }} candidates</span>
+              </div>
+              <div class="discovery-root-meta">
+                <span>{{ provider.trust_tier }}</span>
+                <span>{{ provider.connector_type }}</span>
+                <span>{{ provider.confidence_default }} confidence</span>
+                <span>{{ provider.requires_review ? 'review-gated' : 'auto-fetch candidate' }}</span>
+              </div>
+              <p>{{ provider.notes }}</p>
+              <div class="source-url-example-list">
+                <a
+                  v-for="candidate in sourceUrlCandidateExamples(provider.provider)"
+                  :key="candidate.source_id"
+                  :href="candidate.url"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {{ candidate.source_id }} · {{ candidate.title }}
+                </a>
+                <em v-if="provider.source_count > sourceUrlCandidateExamples(provider.provider).length">+{{ provider.source_count - sourceUrlCandidateExamples(provider.provider).length }} more URL-backed candidates</em>
+              </div>
+            </article>
+          </div>
+        </section>
+        <div class="discovery-root-grid">
+          <article v-for="root in sourceDiscoveryRoots" :key="root.root_id" class="discovery-root-card">
+            <div class="discovery-root-card-header">
+              <h4>{{ root.title }}</h4>
+              <span>{{ root.source_count }} roots</span>
+            </div>
+            <div class="discovery-root-meta">
+              <span>{{ root.trust_tier }}</span>
+              <span>{{ root.connector_type }}</span>
+              <span>{{ root.confidence_default }} confidence</span>
+              <span>{{ root.requires_review ? 'review-gated' : 'official-first' }}</span>
+            </div>
+            <p>{{ root.notes }}</p>
+            <div class="discovery-root-examples">
+              <span v-for="sourceName in sourceDiscoveryExamples(root)" :key="sourceName">{{ sourceName }}</span>
+              <em v-if="root.source_count > sourceDiscoveryExamples(root).length">+{{ root.source_count - sourceDiscoveryExamples(root).length }} more</em>
+            </div>
+          </article>
+        </div>
+      </section>
+    </details>
+
     <details class="advanced-disclosure source-registry-disclosure">
       <summary>
         <span>Advanced source registry</span>
@@ -1309,6 +1422,253 @@ async function bootstrapTrustedSourcesView() {
   &[open] > summary::after {
     content: '-';
   }
+}
+
+.discovery-root-panel {
+  display: grid;
+  gap: 12px;
+  margin: 0 12px 12px;
+}
+
+.discovery-root-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(var(--accent-primary-rgb), 0.06);
+
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h3 {
+    color: $warning;
+  }
+
+  p {
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.discovery-root-count {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.08);
+
+  strong {
+    color: $accent-info;
+    font-size: 30px;
+    line-height: 1;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+}
+
+.source-url-candidate-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(var(--accent-success-rgb), 0.26);
+  border-radius: 8px;
+  background: rgba(var(--accent-success-rgb), 0.045);
+}
+
+.source-url-candidate-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 14px;
+  align-items: start;
+
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h3 {
+    color: $warning;
+  }
+
+  p {
+    color: $text-secondary;
+    line-height: 1.55;
+  }
+}
+
+.source-url-candidate-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+
+  span {
+    display: grid;
+    gap: 3px;
+    min-height: 64px;
+    align-content: center;
+    padding: 10px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.2);
+    border-radius: 8px;
+    background: rgba(var(--accent-info-rgb), 0.055);
+    color: $text-muted;
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $accent-info;
+    font-size: 22px;
+    line-height: 1;
+  }
+}
+
+.source-url-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.source-url-provider-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  background: $bg-secondary;
+
+  h4,
+  p {
+    margin: 0;
+  }
+
+  h4 {
+    color: $warning;
+    font-size: 14px;
+  }
+
+  p {
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.source-url-example-list {
+  display: grid;
+  gap: 6px;
+
+  a,
+  em {
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid rgba(var(--accent-info-rgb), 0.18);
+    border-radius: 6px;
+    background: rgba(var(--accent-info-rgb), 0.045);
+    color: $text-secondary;
+    font-size: 11px;
+    font-style: normal;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: $accent-info;
+  }
+
+  em {
+    color: $accent-info;
+    font-weight: 900;
+  }
+}
+
+.discovery-root-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.discovery-root-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  background: $bg-secondary;
+
+  h4,
+  p {
+    margin: 0;
+  }
+
+  h4 {
+    color: $warning;
+    font-size: 14px;
+  }
+
+  p {
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.discovery-root-card-header {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  justify-content: space-between;
+
+  span {
+    flex: 0 0 auto;
+    color: $accent-info;
+    font-size: 12px;
+    font-weight: 900;
+  }
+}
+
+.discovery-root-meta,
+.discovery-root-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.discovery-root-meta span,
+.discovery-root-examples span,
+.discovery-root-examples em {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.22);
+  border-radius: 999px;
+  background: rgba(var(--accent-info-rgb), 0.06);
+  color: $text-secondary;
+  font-size: 11px;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.discovery-root-examples em {
+  color: $accent-info;
+  font-weight: 900;
 }
 
 .autopilot-details {
@@ -1984,6 +2344,8 @@ async function bootstrapTrustedSourcesView() {
   .sources-header,
   .easy-autopilot-panel,
   .command-strip-header,
+  .discovery-root-intro,
+  .source-url-candidate-header,
   .source-permission-panel,
   .source-form {
     grid-template-columns: 1fr;
@@ -2028,6 +2390,7 @@ async function bootstrapTrustedSourcesView() {
   }
 
   .source-permission-panel,
+  .discovery-root-panel,
   .source-form,
   .source-groups {
     margin-right: 10px;

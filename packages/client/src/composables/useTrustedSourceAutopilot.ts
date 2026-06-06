@@ -10,6 +10,7 @@ import { listCronRuns, readCronRun } from '@/api/hermes/cron-history'
 import { createJob, listJobs, runJob, scheduleToDisplayText, type Job } from '@/api/hermes/jobs'
 import {
   fetchDashboardAutopilotImportStatus,
+  importDashboardAutopilotOutputNow,
 } from '@/api/hermes/intelligence-state'
 import { fetchAvailableModels, updateDefaultModel } from '@/api/hermes/system'
 import {
@@ -43,6 +44,19 @@ import {
   type DashboardResearchUpdateGroup,
   type DashboardResearchUpdateItem,
 } from '@/utils/dashboardAutopilotPolicy'
+import {
+  TRUSTED_SOURCE_DISCOVERY_ROOT_COUNT,
+  trustedSourceDiscoveryRootPromptLines,
+  trustedSourceDiscoveryRootSummaryLines,
+} from '@/utils/trustedSourceDiscoveryRoots'
+import {
+  TRUSTED_SOURCE_BATCH_2_CANDIDATE_COUNT,
+  TRUSTED_SOURCE_BATCH_2_COUNTRY_COUNT,
+  TRUSTED_SOURCE_BATCH_2_HS_CODE_COUNT,
+  TRUSTED_SOURCE_BATCH_2_INDICATOR_COUNT,
+  TRUSTED_SOURCE_BATCH_2_PROVIDER_SUMMARIES,
+  trustedSourceBatch2ProviderPromptLines,
+} from '@/utils/trustedSourceUrlCandidates'
 import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
 interface TrustedSourceAutopilotState {
@@ -137,7 +151,12 @@ const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
 export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
-export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-05-competitor-metrics-v4'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-07-source-url-candidates-v6'
+const MAX_STORED_SNAPSHOTS = 12
+const MAX_STORED_CLAIMS_PER_SNAPSHOT = 24
+const MAX_STORED_CLAIM_TEXT_LENGTH = 360
+const MAX_STORED_SOURCES = 160
+const MAX_STORED_IMPORTED_RUN_KEYS = 100
 const FULL_DASHBOARD_SCREENS: AutopilotScreen[] = [
   'executive',
   'market',
@@ -169,6 +188,21 @@ const state = ref<TrustedSourceAutopilotState>({
 })
 let loaded = false
 let idSequence = 0
+let persistBatchDepth = 0
+let persistBatchPending = false
+
+async function withBatchedPersist<T>(callback: () => Promise<T>): Promise<T> {
+  persistBatchDepth += 1
+  try {
+    return await callback()
+  } finally {
+    persistBatchDepth -= 1
+    if (persistBatchDepth === 0 && persistBatchPending) {
+      persistBatchPending = false
+      persist()
+    }
+  }
+}
 
 function nowIso(): string {
   return new Date().toISOString()
@@ -190,10 +224,12 @@ function mergeState(raw: Partial<TrustedSourceAutopilotState> | null): TrustedSo
     sourceMap.set(source.source_id, { ...fallback, ...source })
   }
   return {
-    sources: Array.from(sourceMap.values()),
-    snapshots: Array.isArray(raw.snapshots) ? raw.snapshots.slice(0, 50) : [],
+    sources: Array.from(sourceMap.values()).slice(0, MAX_STORED_SOURCES),
+    snapshots: Array.isArray(raw.snapshots)
+      ? raw.snapshots.slice(0, MAX_STORED_SNAPSHOTS).map(compactSnapshotForStorage)
+      : [],
     importedRunKeys: Array.isArray(raw.importedRunKeys)
-      ? raw.importedRunKeys.filter(key => typeof key === 'string').slice(0, 100)
+      ? raw.importedRunKeys.filter(key => typeof key === 'string').slice(0, MAX_STORED_IMPORTED_RUN_KEYS)
       : [],
   }
 }
@@ -210,13 +246,67 @@ function loadState(): TrustedSourceAutopilotState {
 
 function persist() {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.value))
+  if (persistBatchDepth > 0) {
+    persistBatchPending = true
+    return
+  }
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(compactStateForStorage(state.value)))
+  } catch (err) {
+    const pruned = compactStateForStorage({
+      ...state.value,
+      snapshots: state.value.snapshots.slice(0, 4).map(snapshot => ({
+        ...snapshot,
+        claims: snapshot.claims.slice(0, 8),
+      })),
+    })
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned))
+    } catch {
+      window.localStorage.removeItem(STORAGE_KEY)
+      console.warn('[trusted-source-autopilot] local snapshot cache cleared after storage quota failure', err)
+    }
+  }
 }
 
 function ensureLoaded() {
   if (loaded) return
   state.value = loadState()
   loaded = true
+}
+
+function truncateForStorage(value: unknown, maxLength = MAX_STORED_CLAIM_TEXT_LENGTH): string {
+  const text = String(value || '').trim()
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
+}
+
+function compactClaimForStorage(claim: TrustedSourceSnapshotClaim): TrustedSourceSnapshotClaim {
+  return {
+    ...claim,
+    value: truncateForStorage(claim.value),
+    previousValue: claim.previousValue ? truncateForStorage(claim.previousValue) : undefined,
+    riskReason: claim.riskReason ? truncateForStorage(claim.riskReason) : undefined,
+    notes: claim.notes ? truncateForStorage(claim.notes) : undefined,
+  }
+}
+
+function compactSnapshotForStorage(snapshot: TrustedSourceSnapshot): TrustedSourceSnapshot {
+  const claims = snapshot.claims.slice(0, MAX_STORED_CLAIMS_PER_SNAPSHOT).map(compactClaimForStorage)
+  return {
+    ...snapshot,
+    claims,
+    changed_fields: snapshot.changed_fields.slice(0, MAX_STORED_CLAIMS_PER_SNAPSHOT),
+    conflicts: snapshot.conflicts.slice(0, 8).map(item => truncateForStorage(item, 180)),
+    redaction_rules: snapshot.redaction_rules.slice(0, 6),
+  }
+}
+
+function compactStateForStorage(input: TrustedSourceAutopilotState): TrustedSourceAutopilotState {
+  return {
+    sources: input.sources.slice(0, MAX_STORED_SOURCES),
+    snapshots: input.snapshots.slice(0, MAX_STORED_SNAPSHOTS).map(compactSnapshotForStorage),
+    importedRunKeys: input.importedRunKeys.slice(0, MAX_STORED_IMPORTED_RUN_KEYS),
+  }
 }
 
 export function loadFullDashboardAutopilotStatus(): FullDashboardAutopilotStatus {
@@ -1058,6 +1148,17 @@ function fullDashboardAutopilotPrompt(): string {
     '4. Market references and price references: ICIS, Argus, S&P Global, SunSirs, ECHEMI, ChemAnalyst, Trade Map. Treat as market reference, not final procurement truth.',
     '5. Public listings such as Alibaba/Made-in-China are weak references only and must stay Reference Only / To Verify.',
     '',
+    `Trusted source discovery registry seed: ${TRUSTED_SOURCE_DISCOVERY_ROOT_COUNT} source roots across ${trustedSourceDiscoveryRootSummaryLines().length} groups.`,
+    '- Treat this registry as search/discovery guidance, not pre-verified dashboard truth.',
+    '- When you discover a concrete URL/source from these roots, include sourceTitle, sourceUrl, sourceTier, lastChecked, confidence, and reviewRequired.',
+    '- Anything discovered outside the registry must enter as Candidate Source / To Verify until source-scored and reviewed.',
+    ...trustedSourceDiscoveryRootPromptLines(16),
+    `Trusted source URL candidate batch 2: ${TRUSTED_SOURCE_BATCH_2_CANDIDATE_COUNT} concrete Tier 1 candidates across ${TRUSTED_SOURCE_BATCH_2_PROVIDER_SUMMARIES.length} providers, ${TRUSTED_SOURCE_BATCH_2_COUNTRY_COUNT} countries/regions, ${TRUSTED_SOURCE_BATCH_2_INDICATOR_COUNT} World Bank indicators, and ${TRUSTED_SOURCE_BATCH_2_HS_CODE_COUNT} HS-code families.`,
+    '- Treat Batch 2 rows as URL-backed research candidates, not as dashboard values.',
+    '- World Bank API endpoints may be fetched automatically, but endpoint values still need parsing, source metadata, and field-level policy checks.',
+    '- UN Comtrade / Comtrade Plus HS-code rows are official sources, but product relevance and consumption/market-size methodology remain review-gated.',
+    ...trustedSourceBatch2ProviderPromptLines(12),
+    '',
     'Output requirements:',
     '- Produce a concise executive summary plus structured sections for each dashboard area.',
     '- Use Markdown tables, source matrices, evidence-gap tables, and Mermaid charts where useful.',
@@ -1293,12 +1394,17 @@ function normalizedClaimNeedsDashboardReview(claim: NormalizedTrustedSourceClaim
   }, sourceRecord).reviewRequired
 }
 
-async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: string): Promise<TrustedSourceRefreshResult> {
+async function runTrustedSourceDataEngine(
+  screen: AutopilotScreen,
+  jobId?: string,
+  options: { stageReviewFinding?: boolean } = {},
+): Promise<TrustedSourceRefreshResult> {
   ensureLoaded()
   const intelligence = useFeasibilityIntelligence()
   const normalizedClaims: NormalizedTrustedSourceClaim[] = []
   const sourceIds = new Set<string>()
   let researchJobFallbacks = 0
+  const stageReviewFinding = options.stageReviewFinding !== false
 
   for (const mapping of SCREEN_FIELD_MAPPINGS[screen]) {
     const internal = internalClaimForField(screen, mapping.field)
@@ -1350,7 +1456,7 @@ async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: strin
   })
 
   const reviewNeeded = normalizedClaims.filter(normalizedClaimNeedsDashboardReview)
-  if (reviewNeeded.length) {
+  if (reviewNeeded.length && stageReviewFinding) {
     const reviewRows = reviewNeeded.slice(0, 10).map(reviewLineForNormalizedClaim)
     intelligence.addResearchFinding({
       summary: [
@@ -1390,13 +1496,15 @@ async function runTrustedSourceDataEngine(screen: AutopilotScreen, jobId?: strin
 async function runFullDashboardDataEngine(jobId?: string): Promise<FullDashboardAutopilotResult> {
   ensureLoaded()
   const intelligence = useFeasibilityIntelligence()
-  const results: TrustedSourceRefreshResult[] = []
+  const resolvedResults = await withBatchedPersist(async () => {
+    const results: TrustedSourceRefreshResult[] = []
+    for (const screen of FULL_DASHBOARD_SCREENS) {
+      results.push(await runTrustedSourceDataEngine(screen, jobId, { stageReviewFinding: false }))
+    }
+    return results
+  })
 
-  for (const screen of FULL_DASHBOARD_SCREENS) {
-    results.push(await runTrustedSourceDataEngine(screen, jobId))
-  }
-
-  const snapshots = results.map(result => result.snapshot)
+  const snapshots = resolvedResults.map(result => result.snapshot)
   const reviewItemCount = snapshots.reduce((total, snapshot) => (
     total + snapshot.claims.filter(claim => claim.reviewRequired).length + snapshot.conflicts.length
   ), 0)
@@ -2001,14 +2109,32 @@ function fullDashboardStatusMessage(status: FullDashboardServerStatus): string {
 
 async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerStatus> {
   ensureLoaded()
-  const counts = dashboardRecordCounts()
+  let counts = dashboardRecordCounts()
 
   try {
     const [jobs, importEnvelope] = await Promise.all([
       listJobs(),
       fetchDashboardAutopilotImportStatus().catch(() => null),
     ])
-    const serverImport = importEnvelope?.autopilotImport
+    let serverImport = importEnvelope?.autopilotImport
+    let autoImportError = ''
+    if (
+      serverImport &&
+      serverImport.latestOutputParseStatus === 'ready' &&
+      !serverImport.latestOutputImported &&
+      !serverImport.latestOutputSkipped
+    ) {
+      try {
+        const imported = await importDashboardAutopilotOutputNow()
+        serverImport = imported.autopilotImport
+        const intelligence = useFeasibilityIntelligence()
+        await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+        hydrateSnapshotsFromServerIntelligenceState(intelligence.state.value)
+        counts = dashboardRecordCounts()
+      } catch (err) {
+        autoImportError = err instanceof Error ? err.message : 'Could not import ready trusted-source output'
+      }
+    }
     const job = jobs.find(isFullDashboardAutopilotJob)
     const jobId = job ? fullDashboardJobId(job) : ''
     if (!job || !jobId) {
@@ -2052,9 +2178,10 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
       latestDueSlotRunError: serverImport?.latestDueSlotRunError || '',
       ...counts,
       message: '',
-      errors: [],
+      errors: autoImportError ? [autoImportError] : [],
     }
     next.message = fullDashboardStatusMessage(next)
+    if (autoImportError) next.message = `${next.message} Auto-import attempt failed: ${autoImportError}`
     return next
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Could not read server autopilot status'

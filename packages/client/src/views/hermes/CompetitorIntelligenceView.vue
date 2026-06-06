@@ -234,7 +234,16 @@ const competitorResearchQueue = [
   'Kao esterquat textile relevance',
   'Transfar CWAS/CWMS equivalent products',
 ]
-const autoVerifyingText = 'No source-backed value yet'
+const autoVerifyingText = 'Awaiting trusted-source import'
+const competitorMetricGapLabel: Record<CompetitorMetricField, string> = {
+  pricingEvidence: 'Trusted public price source not found yet',
+  marketShare: 'No approved company-specific source yet',
+  revenue: 'Official revenue import needed',
+  yearlyGrowth: 'Official growth import needed',
+  traffic: 'Traffic source import needed',
+  rating: 'Rating / recognition source needed',
+  lastUpdated: 'Source date pending',
+}
 type CompetitorSortKey =
   | 'competitor'
   | 'product'
@@ -267,6 +276,7 @@ interface CompetitorComparisonRow {
   evidenceStatus: IntelligenceEvidenceStatus
   nextAction: string
   comparable: Partial<Record<'price' | 'marketShare' | 'revenue' | 'yoyGrowth' | 'traffic' | 'rating' | 'confidence', number>>
+  metricBadgeEligible: Partial<Record<'price' | 'marketShare' | 'revenue' | 'yoyGrowth' | 'traffic' | 'rating', boolean>>
   badges: string[]
 }
 
@@ -287,12 +297,41 @@ interface CompetitorMetricRow {
   sourceUrl?: string
   evidenceStatus: IntelligenceEvidenceStatus
   nextAction: string
+  metricBadgeEligible: Partial<Record<'price' | 'marketShare' | 'revenue' | 'yoyGrowth' | 'traffic' | 'rating', boolean>>
 }
+
+type CompetitorMetricField =
+  | 'pricingEvidence'
+  | 'marketShare'
+  | 'revenue'
+  | 'yearlyGrowth'
+  | 'traffic'
+  | 'rating'
+  | 'lastUpdated'
+type CompetitorMetricEvidence = NonNullable<CompetitorIntelligenceRecord['metricEvidence']>[CompetitorMetricField]
+const competitorMetricFields: CompetitorMetricField[] = [
+  'pricingEvidence',
+  'marketShare',
+  'revenue',
+  'yearlyGrowth',
+  'traffic',
+  'rating',
+  'lastUpdated',
+]
 
 interface CollapsedCompetitorRecord extends CompetitorIntelligenceRecord {
   records: CompetitorIntelligenceRecord[]
   productVariations: string
   sourceCount: number
+}
+
+interface MarketShareChartRow {
+  competitor: CollapsedCompetitorRecord
+  label: string
+  shareLabel: string
+  numericShare: number
+  isAssumption: boolean
+  isSourceBacked: boolean
 }
 
 const competitorCategoryOptions = [
@@ -485,37 +524,261 @@ const pdfGlobalManufacturerShareRows = [
   { rank: 'Archived', manufacturer: 'Kao Corporation', hq: 'Japan', capacity: 'Reference value archived', share: 'Reference value archived' },
   { rank: 'Archived', manufacturer: 'Solvay / Syensqo', hq: 'Belgium', capacity: 'Reference value archived', share: 'Reference value archived' },
 ]
-const marketShareChartRows = computed(() =>
+function metricEvidenceFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField) {
+  const evidence = competitor.metricEvidence?.[field]
+  return evidence && typeof evidence === 'object' ? evidence : null
+}
+
+function metricSourceFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField) {
+  return metricEvidenceFor(competitor, field)?.source || competitor.source || null
+}
+
+function metricStatusFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): IntelligenceEvidenceStatus {
+  const status = String(metricEvidenceFor(competitor, field)?.evidenceStatus || competitor.evidenceStatus || 'To Verify')
+  const allowed: IntelligenceEvidenceStatus[] = [
+    'Missing',
+    'To Verify',
+    'Assumption',
+    'Powerful Assumption',
+    'Source-backed',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+    'Supplier Evidence',
+    'Market Reference',
+    'Trade Proxy',
+    'Candidate Source',
+    'Conflict Detected',
+    'Derived from Assumptions',
+    'Hypothesis',
+    'Reference Only',
+    'User Provided',
+    'User Approved',
+    'Investor Approved',
+    'Approved Assumption',
+    'Verified',
+  ]
+  return allowed.includes(status as IntelligenceEvidenceStatus) ? status as IntelligenceEvidenceStatus : competitor.evidenceStatus
+}
+
+function metricValueFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField, fallback: string | undefined = ''): string {
+  return String(metricEvidenceFor(competitor, field)?.value || fallback || '').trim()
+}
+
+function metricReviewRequiredFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
+  const evidence = metricEvidenceFor(competitor, field)
+  return Boolean(
+    typeof evidence?.reviewRequired === 'boolean'
+      ? evidence.reviewRequired
+      : competitor.reviewRequired,
+  )
+}
+
+function metricStatusCanDriveLeaderBadge(status: IntelligenceEvidenceStatus): boolean {
+  return [
+    'Verified',
+    'User Approved',
+    'Investor Approved',
+    'Source-backed',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+  ].includes(status)
+}
+
+function metricStatusCanDrivePrimaryDisplay(status: IntelligenceEvidenceStatus): boolean {
+  return [
+    'Verified',
+    'User Approved',
+    'Investor Approved',
+    'Source-backed',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+    'Supplier Evidence',
+  ].includes(status)
+}
+
+function metricEvidenceCanDrivePrimaryDisplay(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): boolean {
+  const value = String(evidence?.value || '').trim()
+  if (!value || /^(to verify|missing|awaiting trusted-source import)$/i.test(value)) return false
+  if (!sourceIsUsable(evidence?.source)) return false
+  if (evidence?.reviewRequired) return false
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
+  const status = String(evidence?.evidenceStatus || 'To Verify') as IntelligenceEvidenceStatus
+  if (metricStatusCanDrivePrimaryDisplay(status)) return true
+  return (field === 'traffic' || field === 'rating' || field === 'lastUpdated') && status === 'Market Reference'
+}
+
+function metricEvidenceSortScore(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): number {
+  if (!evidence) return -1
+  let score = 0
+  if (metricEvidenceCanDrivePrimaryDisplay(field, evidence)) score += 1000
+  if (sourceIsUsable(evidence.source)) score += 300
+  if (!evidence.reviewRequired) score += 120
+  const status = String(evidence.evidenceStatus || '')
+  if (status === 'Verified' || status === 'Official Data' || status === 'Trusted Source Auto-Updated') score += 100
+  if (status === 'Source-backed' || status === 'Supplier Evidence') score += 80
+  if (status === 'Market Reference' || status === 'Trade Proxy') score += 40
+  if (evidence.confidence === 'high') score += 30
+  if (evidence.confidence === 'medium') score += 15
+  if (evidence.lastChecked || evidence.sourceDate || evidence.source?.date) score += 10
+  if (comparableNumber(String(evidence.value || '')) !== null) score += 5
+  return score
+}
+
+function bestMetricEvidenceForGroup(
+  group: CompetitorIntelligenceRecord[],
+  field: CompetitorMetricField,
+): CompetitorMetricEvidence | undefined {
+  const candidates = group
+    .map(record => record.metricEvidence?.[field])
+    .filter(Boolean) as CompetitorMetricEvidence[]
+  if (!candidates.length) return undefined
+  return candidates.reduce((best, candidate) => {
+    const candidateScore = metricEvidenceSortScore(field, candidate)
+    const bestScore = metricEvidenceSortScore(field, best)
+    if (candidateScore !== bestScore) return candidateScore > bestScore ? candidate : best
+    const candidateDate = String(candidate?.lastChecked || candidate?.sourceDate || candidate?.source?.date || '')
+    const bestDate = String(best?.lastChecked || best?.sourceDate || best?.source?.date || '')
+    return candidateDate.localeCompare(bestDate) > 0 ? candidate : best
+  })
+}
+
+function mergeMetricEvidenceForGroup(group: CompetitorIntelligenceRecord[]): CompetitorIntelligenceRecord['metricEvidence'] {
+  const metricEvidence: CompetitorIntelligenceRecord['metricEvidence'] = {}
+  for (const field of competitorMetricFields) {
+    const evidence = bestMetricEvidenceForGroup(group, field)
+    if (evidence) metricEvidence[field] = evidence
+  }
+  return Object.keys(metricEvidence).length ? metricEvidence : undefined
+}
+
+function metricCanDrivePrimaryDisplay(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
+  const status = metricStatusFor(competitor, field)
+  if (metricStatusCanDrivePrimaryDisplay(status)) return true
+  if (
+    (field === 'traffic' || field === 'rating' || field === 'lastUpdated') &&
+    status === 'Market Reference' &&
+    !metricReviewRequiredFor(competitor, field)
+  ) {
+    return true
+  }
+  return false
+}
+
+function isCollectiveMarketShareText(value: string): boolean {
+  return /collective|collectively|individual company share not|not company-specific|not published/i.test(value)
+}
+
+function metricCanDriveLeaderBadge(
+  competitor: CompetitorIntelligenceRecord,
+  field: Exclude<CompetitorMetricField, 'lastUpdated'>,
+): boolean {
+  const value = metricValueFor(competitor, field, competitor[field as keyof CompetitorIntelligenceRecord] as string | undefined)
+  if (comparableNumber(value) === null) return false
+  if (!sourceIsUsable(metricSourceFor(competitor, field))) return false
+  if (metricReviewRequiredFor(competitor, field)) return false
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
+  return metricStatusCanDriveLeaderBadge(metricStatusFor(competitor, field))
+}
+
+function metricDisplayValueFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField, fallback: string | undefined = ''): string {
+  const value = metricValueFor(competitor, field, fallback)
+  if (!value || /^(to verify|missing|awaiting trusted-source import)$/i.test(value.trim())) return competitorMetricGapLabel[field]
+  if (field === 'lastUpdated') return autoVerifyText(value)
+  if (!sourceIsUsable(metricSourceFor(competitor, field))) return competitorMetricGapLabel[field]
+  if (metricReviewRequiredFor(competitor, field)) return competitorMetricGapLabel[field]
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return competitorMetricGapLabel[field]
+  if (!metricCanDrivePrimaryDisplay(competitor, field)) return competitorMetricGapLabel[field]
+  return autoVerifyText(value)
+}
+
+function metricIsMissingForPrimaryDisplay(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
+  const value = metricValueFor(competitor, field, competitor[field as keyof CompetitorIntelligenceRecord] as string | undefined)
+  if (!value || /to verify|missing|no source-backed|awaiting trusted-source import|not published|not found yet|source needed|source import needed/i.test(value)) return true
+  if (field === 'lastUpdated') return false
+  if (!sourceIsUsable(metricSourceFor(competitor, field))) return true
+  if (metricReviewRequiredFor(competitor, field)) return true
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return true
+  return !metricCanDrivePrimaryDisplay(competitor, field)
+}
+
+function missingMetricLabelsFor(competitor: CompetitorIntelligenceRecord): string[] {
+  const labels: Partial<Record<CompetitorMetricField, string>> = {
+    pricingEvidence: 'price',
+    marketShare: 'company-specific market share',
+    revenue: 'revenue',
+    yearlyGrowth: 'YoY growth',
+    traffic: 'website traffic',
+    rating: 'rating/recognition',
+  }
+  return (Object.keys(labels) as CompetitorMetricField[])
+    .filter(field => metricIsMissingForPrimaryDisplay(competitor, field))
+    .map(field => labels[field]!)
+}
+
+function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label: string, url?: string } {
+  const metricSources = uniqueValues(
+    (Object.values(competitor.metricEvidence || {}) || [])
+      .map(item => item?.source)
+      .filter(source => sourceIsUsable(source))
+      .map(source => `${source!.title}|${source!.url || ''}|${source!.date || ''}`),
+  )
+  if (metricSources.length > 0) {
+    const first = metricSources[0].split('|')
+    return {
+      label: metricSources.length === 1 ? first[0] : `${metricSources.length} metric sources`,
+      url: first[1] || undefined,
+    }
+  }
+  return {
+    label: competitor.sourceCount && competitor.sourceCount > 1 ? `${competitor.sourceCount} sources` : competitor.source?.title || 'Source search running',
+    url: competitor.source?.url,
+  }
+}
+
+const marketShareChartRows = computed<MarketShareChartRow[]>(() =>
   collapsedCompetitors.value
     .map(competitor => ({
       competitor,
       label: competitor.companyName,
       shareLabel: competitorMarketShareLabel(competitor),
-      numericShare: Number.parseFloat((competitor.marketShare || '').replace(/[^\d.]/g, '')),
+      numericShare: comparableNumber(competitorMarketShareLabel(competitor) || ''),
       isAssumption: competitor.evidenceStatus === 'Assumption' || competitor.evidenceStatus === 'Powerful Assumption',
-      isSourceBacked: sourceIsUsable(competitor.source) && competitor.evidenceStatus !== 'To Verify' && competitor.evidenceStatus !== 'Missing',
+      isSourceBacked: metricCanDriveLeaderBadge(competitor, 'marketShare'),
     }))
-    .filter(row => Number.isFinite(row.numericShare) && row.numericShare > 0 && (row.isAssumption || row.isSourceBacked)),
+    .filter((row): row is MarketShareChartRow => typeof row.numericShare === 'number' && Number.isFinite(row.numericShare) && row.numericShare > 0 && (row.isAssumption || row.isSourceBacked)),
 )
 const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
-  const savedRows: CompetitorMetricRow[] = collapsedCompetitors.value.map(competitor => ({
-    id: `saved-${competitor.id}`,
-    competitor: competitor.companyName,
-    hq: competitor.countryRegion || autoVerifyingText,
-    productFocus: competitor.productVariations || competitor.productEquivalent || autoVerifyingText,
-    priceKg: visibleSensitiveValue(competitor.pricingEvidence),
-    marketShare: autoVerifyText(competitorMarketShareLabel(competitor)),
-    revenue: autoVerifyText(competitor.revenue),
-    yearlyGrowth: autoVerifyText(competitor.yearlyGrowth),
-    traffic: autoVerifyText(competitor.traffic),
-    rating: autoVerifyText(competitor.rating),
-    lastUpdated: competitorLastUpdatedLabel(competitor),
-    confidence: competitorConfidenceLabel(competitor),
-    source: competitor.sourceCount && competitor.sourceCount > 1 ? `${competitor.sourceCount} sources` : competitor.source?.title || 'Source search running',
-    sourceUrl: competitor.source?.url,
-    evidenceStatus: competitor.evidenceStatus,
-    nextAction: competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
-  }))
+  const savedRows: CompetitorMetricRow[] = collapsedCompetitors.value.map(competitor => {
+    const sourceSummary = metricSourceSummary(competitor)
+    return {
+      id: `saved-${competitor.id}`,
+      competitor: competitor.companyName,
+      hq: competitor.countryRegion || autoVerifyingText,
+      productFocus: competitor.productVariations || competitor.productEquivalent || autoVerifyingText,
+      priceKg: visibleSensitiveValue(metricDisplayValueFor(competitor, 'pricingEvidence', competitor.pricingEvidence)),
+      marketShare: metricDisplayValueFor(competitor, 'marketShare', competitorMarketShareLabel(competitor)),
+      revenue: metricDisplayValueFor(competitor, 'revenue', competitor.revenue),
+      yearlyGrowth: metricDisplayValueFor(competitor, 'yearlyGrowth', competitor.yearlyGrowth),
+      traffic: metricDisplayValueFor(competitor, 'traffic', competitor.traffic),
+      rating: metricDisplayValueFor(competitor, 'rating', competitor.rating),
+      lastUpdated: competitorLastUpdatedLabel(competitor),
+      confidence: competitorConfidenceLabel(competitor),
+      source: sourceSummary.label,
+      sourceUrl: sourceSummary.url,
+      evidenceStatus: competitor.evidenceStatus,
+      nextAction: missingMetricLabelsFor(competitor).length
+        ? `Hermes missing-coverage research is chasing: ${missingMetricLabelsFor(competitor).join(', ')}.`
+        : competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
+      metricBadgeEligible: {
+        price: metricCanDriveLeaderBadge(competitor, 'pricingEvidence'),
+        marketShare: metricCanDriveLeaderBadge(competitor, 'marketShare'),
+        revenue: metricCanDriveLeaderBadge(competitor, 'revenue'),
+        yoyGrowth: metricCanDriveLeaderBadge(competitor, 'yearlyGrowth'),
+        traffic: metricCanDriveLeaderBadge(competitor, 'traffic'),
+        rating: metricCanDriveLeaderBadge(competitor, 'rating'),
+      },
+    }
+  })
 
   return collapseCompetitorMetricRows(savedRows)
 })
@@ -534,6 +797,7 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
     const visibleSources = group.flatMap(record => competitorRecordSources(record)).filter(source => sourceIsUsable(source))
     const sourceTitles = uniqueValues(visibleSources.map(source => source.title))
     const notes = uniqueValues(group.map(record => record.notes).filter(Boolean))
+    const metricEvidence = mergeMetricEvidenceForGroup(group)
 
     return {
       ...primary,
@@ -556,6 +820,7 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
       lastUpdated: firstUsefulValue(group.map(record => record.lastUpdated || record.updatedAt || ''), primary.lastUpdated || primary.updatedAt),
       confidence: bestConfidenceValue(group.map(record => record.confidence || ''), primary.confidence || ''),
       evidenceStatus: strongestEvidenceStatus(group.map(record => record.evidenceStatus)),
+      metricEvidence,
       source: visibleSources[0] || primary.source || null,
       notes: notes.length > 1 ? notes.join(' / ') : notes[0] || primary.notes,
       updatedAt: group
@@ -612,6 +877,7 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       evidenceStatus: row.evidenceStatus,
       nextAction: autoVerifyText(row.nextAction),
       comparable,
+      metricBadgeEligible: row.metricBadgeEligible,
       badges: [],
     }
   })
@@ -710,7 +976,7 @@ function competitorRecordSources(record: CompetitorIntelligenceRecord): NonNulla
 
 function isUsefulCompetitorProductVariation(value: string): boolean {
   const normalized = String(value || '').trim()
-  if (!normalized || /no source-backed value yet|source review needed|not published by cited source|source search running/i.test(normalized)) return false
+  if (!normalized || /no source-backed value yet|awaiting trusted-source import|source review needed|not published by cited source|source search running/i.test(normalized)) return false
   if (/company-wide financial context|not textile-softener product-line revenue|financial context/i.test(normalized)) return false
   if (/automated ssl verification failed|page access failed|certificate-chain issue blocked|url identified|candidate identified|category presence only/i.test(normalized)) return false
   return true
@@ -746,7 +1012,7 @@ function uniqueValues(values: Array<string | undefined>): string[] {
 }
 
 function firstUsefulValue(values: string[], fallback: string): string {
-  return values.find(value => value && !/no source-backed value yet|source review needed|not published by cited source|source search running/i.test(value)) || fallback
+  return values.find(value => value && !/no source-backed value yet|awaiting trusted-source import|source review needed|not published by cited source|source search running/i.test(value)) || fallback
 }
 
 function bestMetricValue(values: string[], fallback: string, mode: 'max' | 'min'): string {
@@ -830,7 +1096,10 @@ function confidenceScoreForRow(status: IntelligenceEvidenceStatus, hasSource: bo
 
 function comparableNumber(value: string): number | null {
   const normalized = String(value || '').trim().replace(/\bFY\s*20\d{2}\b/gi, '').replace(/\b20\d{2}\b(?=\s+(?:company|net|sales|revenue|turnover|yoy))/gi, '')
-  if (!normalized || /verify|missing|restricted|source search/i.test(normalized)) return null
+  if (
+    !normalized ||
+    /verify|missing|restricted|awaiting trusted-source import|source search|source needed|source import needed|not found yet|review required|not company-specific|individual (?:share|price|revenue|growth|traffic|rating) not|not published|collective|collectively|tier-1 share context|market-reference context/i.test(normalized)
+  ) return null
   const percent = normalized.match(/([+-]?\d[\d,.]*)\s*%/)
   if (percent) {
     const value = Number.parseFloat(percent[1].replace(/,/g, ''))
@@ -866,7 +1135,7 @@ function comparableNumber(value: string): number | null {
 
 function leaderId(rows: CompetitorComparisonRow[], key: keyof CompetitorComparisonRow['comparable'], mode: 'max' | 'min'): string {
   const sourceBackedRows = rows.filter(row =>
-    row.evidenceState === 'Verified' &&
+    row.metricBadgeEligible[key as keyof CompetitorComparisonRow['metricBadgeEligible']] &&
     typeof row.comparable[key] === 'number' &&
     Number.isFinite(row.comparable[key])
   )
@@ -906,17 +1175,25 @@ function sortIndicator(key: CompetitorSortKey): string {
 }
 
 function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): string {
-  return formatSourcedMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus)
+  return formatSourcedMarketShare(
+    metricValueFor(competitor, 'marketShare', competitor.marketShare),
+    metricSourceFor(competitor, 'marketShare'),
+    metricStatusFor(competitor, 'marketShare'),
+  )
 }
 
 function competitorLastUpdatedLabel(competitor: CompetitorIntelligenceRecord): string {
-  if (!sourceIsUsable(competitor.source)) return autoVerifyingText
-  const value = competitor.lastUpdated || competitor.source?.date || competitor.updatedAt
+  const source = metricSourceFor(competitor, 'lastUpdated')
+  if (!sourceIsUsable(source)) return autoVerifyingText
+  const value = metricValueFor(competitor, 'lastUpdated', competitor.lastUpdated) || source?.date || competitor.updatedAt
   return value ? formatDateTime(value) : autoVerifyingText
 }
 
 function competitorConfidenceLabel(competitor: CompetitorIntelligenceRecord): string {
-  const explicit = String(competitor.confidence || '').trim()
+  const metricConfidences = Object.values(competitor.metricEvidence || {})
+    .map(item => String(item?.confidence || '').trim())
+    .filter(Boolean)
+  const explicit = metricConfidences.find(item => item === 'high') || metricConfidences[0] || String(competitor.confidence || '').trim()
   if (explicit) return explicit
   return confidenceLabelForRow(
     competitor.evidenceStatus,
@@ -939,6 +1216,12 @@ function autoVerifyText(value: string | null | undefined): string {
     .replace(/Missing\s*\/\s*To Verify/g, autoVerifyingText)
     .replace(/Trade Proxy\s*\/\s*To Verify/g, `Trade Proxy / ${autoVerifyingText}`)
     .replace(/\bTo Verify\b/g, autoVerifyingText)
+}
+
+function displayCompetitorNarrative(value: string | null | undefined): string {
+  return autoVerifyText(value)
+    .replace(/Market share:\s*(No source-backed value yet|Awaiting trusted-source import)/gi, 'Market share: no approved company-specific source yet')
+    .replace(/Pricing evidence:\s*(No source-backed value yet|Awaiting trusted-source import)/gi, 'Pricing evidence: no approved source yet')
 }
 
 function displayEvidenceStatus(status: IntelligenceEvidenceStatus): string {
@@ -1073,15 +1356,15 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
     summary: [
       `Competitor: ${competitor.companyName}`,
       `Region: ${competitor.countryRegion}`,
-      `Product equivalent: ${competitor.productEquivalent}`,
-      `Active content: ${competitor.activeContent}`,
-      `Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence}`,
-      `Certifications: ${competitor.certifications}`,
-      `Distribution presence: ${competitor.distributionPresence}`,
-      `Market share: ${competitorMarketShareLabel(competitor)}`,
+      `Product equivalent: ${displayCompetitorNarrative(competitor.productEquivalent)}`,
+      `Active content: ${displayCompetitorNarrative(competitor.activeContent)}`,
+      `Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : displayCompetitorNarrative(competitor.pricingEvidence)}`,
+      `Certifications: ${displayCompetitorNarrative(competitor.certifications)}`,
+      `Distribution presence: ${displayCompetitorNarrative(competitor.distributionPresence)}`,
+      `Market share: ${displayCompetitorNarrative(competitorMarketShareLabel(competitor))}`,
       `Revenue: ${autoVerifyText(competitor.revenue)}`,
       `Yearly growth: ${autoVerifyText(competitor.yearlyGrowth)}`,
-      `Notes: ${competitor.notes}`,
+      `Notes: ${displayCompetitorNarrative(competitor.notes)}`,
     ].join('\n'),
     keyClaim: `Competitor evidence: ${competitor.companyName}`,
     area: 'market',
@@ -1094,7 +1377,7 @@ function stageCompetitorForReview(competitor: CompetitorIntelligenceRecord) {
       ? `Review competitor evidence for ${competitor.companyName} before using it in investor material.`
       : `Collect usable source evidence for ${competitor.companyName}.`,
     suggestedInvestorMaterial: usableSource
-      ? `Competitor evidence for ${competitor.companyName}: ${competitor.productEquivalent}. Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : competitor.pricingEvidence}. Market share: ${competitorMarketShareLabel(competitor)}. Revenue: ${autoVerifyText(competitor.revenue)}. Yearly growth: ${autoVerifyText(competitor.yearlyGrowth)}.`
+      ? `Competitor evidence for ${competitor.companyName}: ${displayCompetitorNarrative(competitor.productEquivalent)}. Pricing evidence: ${redactSensitiveFields.value ? 'Restricted' : displayCompetitorNarrative(competitor.pricingEvidence)}. Market share: ${displayCompetitorNarrative(competitorMarketShareLabel(competitor))}. Revenue: ${autoVerifyText(competitor.revenue)}. Yearly growth: ${autoVerifyText(competitor.yearlyGrowth)}.`
       : '',
     riskNote: usableSource
       ? 'Review source quality before approving this competitor evidence for investor use.'
@@ -1565,7 +1848,7 @@ function addCompetitor() {
       <label>
         Evidence status
         <select v-model="competitorForm.evidenceStatus">
-          <option value="To Verify">No source-backed value yet</option>
+          <option value="To Verify">Awaiting trusted-source import</option>
           <option>Missing</option>
           <option>Assumption</option>
           <option>Powerful Assumption</option>
@@ -1600,8 +1883,8 @@ function addCompetitor() {
         <span>{{ competitor.countryRegion }}</span>
         <span class="market-share-label">{{ autoVerifyText(competitorMarketShareLabel(competitor)) }}</span>
         <span>{{ visibleSensitiveValue(competitor.pricingEvidence) }}</span>
-        <span>{{ autoVerifyText(competitor.productVariations || competitor.productEquivalent) }}</span>
-        <span class="weakness-label">{{ autoVerifyText(competitor.notes) }}</span>
+        <span>{{ displayCompetitorNarrative(competitor.productVariations || competitor.productEquivalent) }}</span>
+        <span class="weakness-label">{{ displayCompetitorNarrative(competitor.notes) }}</span>
         <span>
           {{ competitor.source?.title || 'Source search running' }}
           <small v-if="competitor.sourceCount > 1">+{{ competitor.sourceCount - 1 }} more</small>

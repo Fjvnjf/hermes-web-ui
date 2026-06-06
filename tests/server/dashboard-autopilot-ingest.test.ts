@@ -15,6 +15,7 @@ vi.mock('../../packages/server/src/services/hermes/hermes-path', () => ({
 }))
 
 import {
+  DASHBOARD_AUTOPILOT_IMPORTER_VERSION,
   FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
   FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION,
   FULL_DASHBOARD_AUTOPILOT_SCHEDULE,
@@ -23,12 +24,19 @@ import {
   comtradeImportPayloadToMarketClaimUpdate,
   extractDashboardResearchUpdates,
   ingestFullDashboardAutopilotOutputs,
+  marketReferencePageToCompetitorContextUpdates,
+  marketReferenceFinancialPageToCompetitorUpdate,
+  marketReferencePageToMarketClaimUpdates,
+  marketReferenceTrafficPageToCompetitorUpdate,
   officialCompanyPageToCompetitorFinancialUpdate,
+  officialCompetitorRecognitionPageToUpdate,
   officialCompetitorProductPageToUpdate,
   officialSupplierEvidencePageToUpdate,
+  publicCompetitorPricePageToUpdate,
   readFullDashboardAutopilotImportStatus,
   runDueFullDashboardAutopilot,
   secCompanyfactsToCompetitorFinancialUpdate,
+  trancoRanksPayloadToCompetitorUpdate,
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
 
@@ -99,6 +107,38 @@ const officialCompanySources = {
     sourceUrl: 'https://www.kao.com/global/en/corporate/data/',
     parser: 'kao-glance-2025' as const,
   },
+  syensqo: {
+    companyName: 'Syensqo / Solvay',
+    fieldKeySlug: 'syensqo_solvay',
+    countryRegion: 'Belgium / global',
+    sourceTitle: 'Syensqo fourth quarter and full year 2025 results',
+    sourceUrl: 'https://live.euronext.com/en/products/equities/company-news/2026-02-26-syensqo-fourth-quarter-and-full-year-2025-results',
+    parser: 'syensqo-results-2025' as const,
+  },
+  cht: {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'CHT Group expands Management Team and focuses on Sustainable Growth',
+    sourceUrl: 'https://www.cht.com/en/news-media/article/cht-group-expands-management-team-and-focuses-on-sustainable-growth',
+    parser: 'cht-growth-2024' as const,
+  },
+  zschimmer: {
+    companyName: 'Zschimmer & Schwarz',
+    fieldKeySlug: 'zschimmer_schwarz',
+    countryRegion: 'Germany / global',
+    sourceTitle: 'Zschimmer & Schwarz initiates management change',
+    sourceUrl: 'https://www.zschimmer-schwarz.com/en/news/news-details/zschimmer-schwarz-initiates-management-change',
+    parser: 'zschimmer-turnover-2023' as const,
+  },
+  pulcra: {
+    companyName: 'Pulcra Chemicals',
+    fieldKeySlug: 'pulcra_chemicals',
+    countryRegion: 'Germany / group context',
+    sourceTitle: 'Pulcra Germany GmbH Sustainability Statement 2023',
+    sourceUrl: 'https://www.pulcra-chemicals.com/wp-content/uploads/PULCRA_CSRD_2023.pdf',
+    parser: 'pulcra-csrd-2023' as const,
+  },
 }
 
 const officialProductSources = {
@@ -125,6 +165,108 @@ const officialProductSources = {
     sourceTitle: 'WACKER FINISH WR 1200 official product page',
     sourceUrl: 'https://www.wacker.com/h/en-jo/c/wacker-finish-wr-1200/p/000010891',
     requiredTerms: ['FINISH WR 1200', 'polydimethylsiloxane'],
+  },
+}
+
+const officialRecognitionSources = {
+  evonik: {
+    companyName: 'Evonik Industries',
+    fieldKeySlug: 'evonik_industries',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2025 EcoVadis Gold rating; official Evonik page says top 5% placement among globally assessed companies.',
+    sourceTitle: 'EcoVadis ranks Evonik among the world’s most sustainable companies',
+    sourceUrl: 'https://corporate.evonik.cn/en/media/news/ecovadis-ranks-evonik-among-the-worlds-most-sustainable-companies-289380.html',
+    requiredTerms: ['EcoVadis', 'Gold rating', 'top five percent'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  stepan: {
+    companyName: 'Stepan Company',
+    fieldKeySlug: 'stepan_company',
+    countryRegion: 'United States / global',
+    ratingLabel: '2026 EcoVadis Silver medal; official Stepan page says top 15% globally and 89th percentile among manufacturers of chemical products.',
+    sourceTitle: 'Stepan Achieves a Silver Medal in 2026 EcoVadis Assessment',
+    sourceUrl: 'https://www.stepan.com/content/stepan-dot-com/en/news-events/news---events/Stepan-Achieves-Silver-Medal-in-2026-EcoVadis-Assessment.html',
+    requiredTerms: ['Silver medal', 'top 15%', '89th percentile'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  kao: {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / global',
+    ratingLabel: 'Kao Sustainability Report 2025 release says Kao achieved CDP Triple-A in 2024 and World’s Most Ethical Companies 2025 recognition.',
+    sourceTitle: 'Kao Releases Kao Sustainability Report 2025',
+    sourceUrl: 'https://www.kao.com/global/en/newsroom/news/release/2025/20250613-002/',
+    requiredTerms: ['Triple-A rating', 'World’s Most Ethical Companies', '2025'],
+    recommendedAction: 'Use this as sustainability/ethics recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  archroma: {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    ratingLabel: '2025 adidas adiFormulator Award: Champion status; official Archroma recognition page.',
+    sourceTitle: 'Archroma recognized as top chemicals supplier for the second consecutive year',
+    sourceUrl: 'https://www.archroma.com/news/archroma-recognized-as-top-chemicals-supplier-for-the-second-consecutive-year',
+    requiredTerms: ['Champion status', '2025 adiFormulator Award', 'adidas'],
+    recommendedAction: 'Use this as external-recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  archromaSustainability: {
+    companyName: 'Archroma',
+    fieldKeySlug: 'archroma',
+    countryRegion: 'Switzerland / global',
+    ratingLabel: '2025 EcoVadis Gold rating; official Archroma sustainability page says top 5% in its industry.',
+    sourceTitle: 'Archroma Sustainability',
+    sourceUrl: 'https://www.archroma.com/sustainability',
+    requiredTerms: ['EcoVadis', 'Gold', 'top 5%'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  cht: {
+    companyName: 'CHT Group',
+    fieldKeySlug: 'cht_group',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2025 adidas adiFORMULATOR Award: Champion for the third time in a row; official CHT recognition page.',
+    sourceTitle: 'CHT Group adiFORMULATOR AWARD 2025',
+    sourceUrl: 'https://www.cht.com/en/news-media/article/adiformulator-award-2025',
+    requiredTerms: ['champion', 'adiFORMULATOR AWARD', 'third time in a row'],
+    recommendedAction: 'Use this as external-recognition evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  pulcra: {
+    companyName: 'Pulcra Chemicals',
+    fieldKeySlug: 'pulcra_chemicals',
+    countryRegion: 'Germany / global',
+    ratingLabel: '2025 EcoVadis Silver Medal; official Pulcra page says 92nd percentile / top 8% of chemical companies evaluated by EcoVadis.',
+    sourceTitle: 'Pulcra Chemicals Awarded EcoVadis Silver Medal for the Second Time',
+    sourceUrl: 'https://www.pulcra-chemicals.com/pulcra-chemicals-awarded-ecovadis-silver-medal-for-the-second-time/',
+    requiredTerms: ['EcoVadis Silver Medal', '92%', 'top 8%'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+  zschimmer: {
+    companyName: 'Zschimmer & Schwarz',
+    fieldKeySlug: 'zschimmer_schwarz',
+    countryRegion: 'Germany / global',
+    ratingLabel: 'EcoVadis Silver for ZSL; official Zschimmer & Schwarz page says top 15% of companies assessed worldwide last year.',
+    sourceTitle: 'Outstanding sustainability: ZSL awarded Silver by EcoVadis',
+    sourceUrl: 'https://www.zschimmer-schwarz.com/en/news/news-details/outstanding-sustainability-zsl-awarded-silver-by-ecovadis',
+    requiredTerms: ['EcoVadis', 'Silver', 'top 15 %'],
+    recommendedAction: 'Use this as sustainability-rating evidence only. Do not treat it as customer rating, market share, price, or product-line performance.',
+  },
+}
+
+const marketReferenceTrafficSources = {
+  kao: {
+    companyName: 'Kao Corporation',
+    fieldKeySlug: 'kao_corporation',
+    countryRegion: 'Japan / global',
+    domain: 'kao.com',
+    sourceTitle: 'Semrush website traffic overview - kao.com',
+    sourceUrl: 'https://www.semrush.com/website/kao.com/overview/',
+  },
+  syensqo: {
+    companyName: 'Syensqo / Solvay',
+    fieldKeySlug: 'syensqo_solvay',
+    countryRegion: 'Belgium / global',
+    domain: 'syensqo.com',
+    sourceTitle: 'Semrush website traffic overview - syensqo.com',
+    sourceUrl: 'https://www.semrush.com/website/syensqo.com/overview/',
   },
 }
 
@@ -209,17 +351,31 @@ function writeRunOutput(home: string, jobId: string, fileName: string, payload: 
 
 describe('dashboard autopilot output ingestion', () => {
   const originalHermesHome = process.env.HERMES_HOME
+  const originalComtradeEnv = {
+    UN_COMTRADE_SUBSCRIPTION_KEY: process.env.UN_COMTRADE_SUBSCRIPTION_KEY,
+    COMTRADE_SUBSCRIPTION_KEY: process.env.COMTRADE_SUBSCRIPTION_KEY,
+    UN_COMTRADE_API_KEY: process.env.UN_COMTRADE_API_KEY,
+    COMTRADE_API_KEY: process.env.COMTRADE_API_KEY,
+  }
   let hermesHome = ''
 
   beforeEach(() => {
     execFileMock.mockReset()
     hermesHome = mkdtempSync(join(tmpdir(), 'hermes-dashboard-autopilot-'))
     process.env.HERMES_HOME = hermesHome
+    delete process.env.UN_COMTRADE_SUBSCRIPTION_KEY
+    delete process.env.COMTRADE_SUBSCRIPTION_KEY
+    delete process.env.UN_COMTRADE_API_KEY
+    delete process.env.COMTRADE_API_KEY
   })
 
   afterEach(() => {
     if (originalHermesHome === undefined) delete process.env.HERMES_HOME
     else process.env.HERMES_HOME = originalHermesHome
+    for (const [key, value] of Object.entries(originalComtradeEnv)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
     vi.unstubAllGlobals()
     rmSync(hermesHome, { recursive: true, force: true })
   })
@@ -291,7 +447,7 @@ describe('dashboard autopilot output ingestion', () => {
       evidenceStatus: 'Trade Proxy',
       reviewRequired: true,
       sourceTitle: 'UN Comtrade API: China HS 380991 imports',
-      sourceUrl: 'https://comtradeapi.un.org/public/v1/preview/C/A/HS?cmdCode=380991&flowCode=M&reporterCode=156&period=2023,2024&partnerCode=0&max=100000',
+      sourceUrl: 'https://comtradeapi.un.org/data/v1/get/C/A/HS?cmdCode=380991&flowCode=M&reporterCode=156&period=2023,2024&partnerCode=0&partner2Code=0&customsCode=C00&motCode=0&maxRecords=100000&includeDesc=true',
     }))
     expect(update?.value).toContain('FY2024 official HS 380991 import proxy')
     expect(update?.value).toContain('US$236.608M')
@@ -303,7 +459,7 @@ describe('dashboard autopilot output ingestion', () => {
   it('converts official company financial pages into source-backed competitor metrics', () => {
     const basf = officialCompanyPageToCompetitorFinancialUpdate(
       officialCompanySources.basf,
-      '<p>In the 2025 business year, sales stood at €59,657 million, compared with €61,444 million in the previous year.</p>',
+      '<p>In the 2025 business year, sales stood at €59,657 million , compared with €61,444 million in the previous year.</p>',
       '2026-06-06',
     )
     const evonik = officialCompanyPageToCompetitorFinancialUpdate(
@@ -313,12 +469,32 @@ describe('dashboard autopilot output ingestion', () => {
     )
     const wacker = officialCompanyPageToCompetitorFinancialUpdate(
       officialCompanySources.wacker,
-      '<p>WACKER’s operations are highly international. Of the Group’s €5.49 billion in sales in 2025, (2024: €5.72 billion), 83.2 percent came from international business.</p>',
+      '<p>WACKER’s operations are highly international. Of the Group’s €5.49 billion in sales in 2025, (2024: €5.72 billion ), 83.2 percent came from international business.</p>',
       '2026-06-06',
     )
     const kao = officialCompanyPageToCompetitorFinancialUpdate(
       officialCompanySources.kao,
       '<h3>Consolidated net sales</h3><p>1,688.6 billion yen</p><p>FY2025 ended December 31</p>',
+      '2026-06-06',
+    )
+    const syensqo = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.syensqo,
+      '<h2>FY 2025 Highlights</h2><p>Net sales of €6.14 billion, impacted by year-on-year foreign exchange movements.</p><p>Net sales 1,418 1,598 1,517-11.3%-5.6%-6.5% 6,140 6,563-6.5%-3.2%</p>',
+      '2026-06-06',
+    )
+    const cht = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.cht,
+      '<p>Despite volatile global conditions, the company recorded sales growth to EUR 614.3 million (+2%) and a significant increase in EBIT.</p>',
+      '2026-06-06',
+    )
+    const zschimmer = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.zschimmer,
+      '<p>Zschimmer & Schwarz has grown strongly over the last 15 years, with turnover increasing by 500 million to almost 700 million euros.</p>',
+      '2026-06-06',
+    )
+    const pulcra = officialCompanyPageToCompetitorFinancialUpdate(
+      officialCompanySources.pulcra,
+      '<p>Our revenue for the year decreased by EUR 11.4 million (14.6%) to EUR 66.9 million (previous year: EUR 78.3 million).</p>',
       '2026-06-06',
     )
 
@@ -334,6 +510,12 @@ describe('dashboard autopilot output ingestion', () => {
     }))
     expect(basf?.yearlyGrowth).toEqual(expect.objectContaining({
       value: expect.stringContaining('-2.91%'),
+    }))
+    expect(basf?.lastUpdated).toEqual(expect.objectContaining({
+      value: '2025',
+      sourceUrl: officialCompanySources.basf.sourceUrl,
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
     }))
     expect(evonik?.revenue).toEqual(expect.objectContaining({
       value: 'FY2025 company-wide sales: €14.1B',
@@ -351,6 +533,103 @@ describe('dashboard autopilot output ingestion', () => {
       sourceUrl: officialCompanySources.kao.sourceUrl,
     }))
     expect(kao?.yearlyGrowth).toBeUndefined()
+    expect(syensqo?.revenue).toEqual(expect.objectContaining({
+      value: 'FY2025 company-wide net sales: €6.14B',
+      sourceUrl: officialCompanySources.syensqo.sourceUrl,
+    }))
+    expect(syensqo?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('-6.5%'),
+    }))
+    expect(cht?.revenue).toEqual(expect.objectContaining({
+      value: 'FY2024 company-wide sales: €614.3M (official preliminary figure)',
+      sourceUrl: officialCompanySources.cht.sourceUrl,
+    }))
+    expect(cht?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('+2%'),
+    }))
+    expect(cht?.lastUpdated).toEqual(expect.objectContaining({
+      value: '2024',
+      sourceUrl: officialCompanySources.cht.sourceUrl,
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+    }))
+    expect(zschimmer?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('turnover almost €700M'),
+      sourceUrl: officialCompanySources.zschimmer.sourceUrl,
+    }))
+    expect(zschimmer?.yearlyGrowth).toBeUndefined()
+    expect(pulcra?.revenue).toEqual(expect.objectContaining({
+      value: 'FY2023 Pulcra Germany GmbH net revenue: €66.9M (CSRD statement; previous year €78.3M)',
+      sourceUrl: officialCompanySources.pulcra.sourceUrl,
+    }))
+    expect(pulcra?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('-14.6%'),
+      sourceUrl: officialCompanySources.pulcra.sourceUrl,
+    }))
+  })
+
+  it('converts reputable market-reference financial pages into competitor revenue context', () => {
+    const archroma = marketReferenceFinancialPageToCompetitorUpdate({
+      companyName: 'Archroma',
+      fieldKeySlug: 'archroma',
+      countryRegion: 'Switzerland / global',
+      sourceTitle: 'S&P Global Ratings - Archroma research update',
+      sourceUrl: 'https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3539926',
+      parser: 'spglobal-archroma-2025',
+    }, '<p>The company reported about $1.6 billion in sales in fiscal 2025, with about 48% of group revenue generated in Asia.</p>', '2026-06-06')
+
+    const transfar = marketReferenceFinancialPageToCompetitorUpdate({
+      companyName: 'Transfar',
+      fieldKeySlug: 'transfar',
+      countryRegion: 'China / global',
+      sourceTitle: 'StockAnalysis / S&P Global Market Intelligence - Transfar Zhilian revenue by segment',
+      sourceUrl: 'https://stockanalysis.com/quote/she/002010/financials/metrics/',
+      parser: 'stockanalysis-transfar-2025',
+    }, [
+      'Textile Printing and Dyeing Auxiliaries 7.41B 7.07B 6.25B',
+      'Textile Printing and Dyeing Auxiliaries Growth 4.79% 13.07% 46.20%',
+      'Total 25.08B 26.70B 33.58B',
+      'Total Growth -6.05% -20.49% -9.00%',
+      'Last checked: May 18, 2026',
+    ].join(' '), '2026-06-06')
+
+    expect(archroma).toEqual(expect.objectContaining({
+      companyName: 'Archroma',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+    }))
+    expect(archroma?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2025 company-wide sales: about US$1.6B'),
+      sourceUrl: 'https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3539926',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+    }))
+    expect(archroma?.lastUpdated).toEqual(expect.objectContaining({
+      value: '2026-06-06',
+      sourceUrl: 'https://www.spglobal.com/ratings/en/regulatory/article/-/view/type/HTML/id/3539926',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+    }))
+    expect(transfar).toEqual(expect.objectContaining({
+      companyName: 'Transfar',
+      productEquivalent: expect.stringContaining('Textile Printing and Dyeing Auxiliaries segment: CNY 7.41B'),
+      evidenceStatus: 'Market Reference',
+    }))
+    expect(transfar?.revenue).toEqual(expect.objectContaining({
+      value: expect.stringContaining('FY2025 company-wide revenue: CNY 25.08B'),
+      sourceUrl: 'https://stockanalysis.com/quote/she/002010/financials/metrics/',
+    }))
+    expect(transfar?.yearlyGrowth).toEqual(expect.objectContaining({
+      value: expect.stringContaining('-6.05%'),
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+    }))
+    expect(transfar?.lastUpdated).toEqual(expect.objectContaining({
+      value: 'May 18, 2026',
+      sourceUrl: 'https://stockanalysis.com/quote/she/002010/financials/metrics/',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+    }))
   })
 
   it('converts official competitor product pages into source-backed product context only', () => {
@@ -394,6 +673,284 @@ describe('dashboard autopilot output ingestion', () => {
     expect(officialCompetitorProductPageToUpdate(
       officialProductSources.wacker,
       '<h1>General company page</h1><p>No matching product chemistry here.</p>',
+      '2026-06-06',
+    )).toBeNull()
+  })
+
+  it('converts official competitor recognition pages into rating-column evidence without inventing customer ratings', () => {
+    const evonik = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.evonik,
+      '<h1>EcoVadis ranks Evonik among the world’s most sustainable companies</h1><p>This year, sustainability rating agency EcoVadis has awarded Evonik a Gold rating and says it ranks among the top five percent of companies assessed worldwide.</p>',
+      '2026-06-06',
+    )
+    const stepan = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.stepan,
+      '<h1>Stepan Achieves a Silver Medal in 2026 EcoVadis Assessment</h1><p>Stepan achieved a Silver medal, placing the company in the top 15% globally and in the 89th percentile among manufacturers of chemical products.</p>',
+      '2026-06-06',
+    )
+    const kao = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.kao,
+      '<h1>Kao Releases Kao Sustainability Report 2025</h1><p>Kao was one of eight companies to achieve the CDP Triple-A rating and was selected as one of the World’s Most Ethical Companies 2025.</p>',
+      '2026-06-06',
+    )
+    const archroma = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.archroma,
+      '<h1>Archroma recognized as top chemicals supplier</h1><p>Archroma has been awarded Champion status at the 2025 adiFormulator Award by adidas.</p>',
+      '2026-06-06',
+    )
+    const pulcra = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.pulcra,
+      '<h1>Pulcra Chemicals Awarded EcoVadis Silver Medal</h1><p>Pulcra Chemicals has been awarded the EcoVadis Silver Medal, achieving a percentile rank of 92% and placing among the top 8% of chemical companies evaluated by EcoVadis.</p>',
+      '2026-06-06',
+    )
+    const zschimmer = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.zschimmer,
+      '<h1>Outstanding sustainability: ZSL awarded Silver by EcoVadis</h1><p>ZSL was awarded Silver by EcoVadis, placing it among the top 15 % of companies assessed worldwide last year.</p>',
+      '2026-06-06',
+    )
+    const cht = officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.cht,
+      '<h1>adiFORMULATOR AWARD 2025</h1><p>For the third time in a row, the CHT Group has been recognized as champion of the adiFORMULATOR AWARD by adidas.</p>',
+      '2026-06-06',
+    )
+
+    expect(evonik?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('EcoVadis Gold'),
+      sourceUrl: officialRecognitionSources.evonik.sourceUrl,
+      riskReason: expect.stringContaining('not a customer review rating'),
+    }))
+    expect(stepan?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('89th percentile'),
+      sourceUrl: officialRecognitionSources.stepan.sourceUrl,
+    }))
+    expect(kao?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('Triple-A'),
+      sourceUrl: officialRecognitionSources.kao.sourceUrl,
+    }))
+    expect(archroma).toEqual(expect.objectContaining({
+      companyName: 'Archroma',
+      fieldKey: 'competitor_metrics.archroma.official_recognition_rating',
+      evidenceStatus: 'Official Company Evidence',
+      reviewRequired: false,
+      recommendedAction: expect.stringContaining('external-recognition evidence only'),
+    }))
+    expect(archroma?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('Champion status'),
+      sourceUrl: officialRecognitionSources.archroma.sourceUrl,
+      riskReason: expect.stringContaining('not a customer review rating'),
+    }))
+    expect(cht?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('third time in a row'),
+      sourceUrl: officialRecognitionSources.cht.sourceUrl,
+    }))
+    expect(pulcra?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('92nd percentile'),
+      sourceUrl: officialRecognitionSources.pulcra.sourceUrl,
+    }))
+    expect(zschimmer?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('top 15%'),
+      sourceUrl: officialRecognitionSources.zschimmer.sourceUrl,
+    }))
+    for (const update of [evonik, stepan, kao, archroma, cht, pulcra, zschimmer]) {
+      expect(update?.pricingEvidence).toBeUndefined()
+      expect(update?.marketShare).toBeUndefined()
+      expect(update?.traffic).toBeUndefined()
+    }
+    expect(officialCompetitorRecognitionPageToUpdate(
+      officialRecognitionSources.archroma,
+      '<p>Generic award page without the required source-backed terms.</p>',
+      '2026-06-06',
+    )).toBeNull()
+  })
+
+  it('converts public competitor price pages into review-gated price evidence only', () => {
+    const stepan = publicCompetitorPricePageToUpdate(
+      {
+        companyName: 'Stepan Company',
+        fieldKeySlug: 'stepan_company',
+        countryRegion: 'United States / global',
+        productEquivalent: 'STEPANTEX SP-90 public customs/import price reference; not a current industrial quote.',
+        sourceTitle: 'Zauba - Stepantex Sp 90 imports under HS Code 29051490',
+        sourceUrl: 'https://www.zauba.com/import-STEPANTEX%2BSP%2B90/hs-code-29051490-hs-code.html',
+        parser: 'zauba-stepantex-sp90',
+        requiredTerms: ['stepantex sp 90', 'average import price'],
+        riskReason: 'Historical public import listing only.',
+      },
+      '<h1>Stepantex Sp 90 Imports Under HS Code 29051490</h1><p>Average import price for stepantex sp 90 under HS Code 29051490 was $71.30.</p><table><tr><td>Oct 22 2016</td></tr></table>',
+      '2026-06-06',
+    )
+    const evonik = publicCompetitorPricePageToUpdate(
+      {
+        companyName: 'Evonik Industries',
+        fieldKeySlug: 'evonik_industries',
+        countryRegion: 'Germany / global',
+        productEquivalent: 'VARISOFT EQ 65 public retail/sample price reference; not an industrial textile softener quote.',
+        sourceTitle: 'Wholesale Supplies Plus - Varisoft EQ 65',
+        sourceUrl: 'https://www.wholesalesuppliesplus.com/products/varisoft-eq-65',
+        parser: 'wholesale-varisoft-eq65',
+        requiredTerms: ['varisoft eq 65', 'regular price'],
+        riskReason: 'Retail public listing only.',
+      },
+      '<h1>Varisoft EQ 65</h1><p>Regular price $3.95</p><p>Size: 2 oz ($30.38/lb)</p>',
+      '2026-06-06',
+    )
+
+    expect(stepan?.pricingEvidence).toEqual(expect.objectContaining({
+      value: expect.stringContaining('$71.30'),
+      evidenceStatus: 'Reference Only',
+      reviewRequired: true,
+      dataType: 'price_data',
+      sourceTier: 'Tier 5 - Public listing / weak price reference',
+      riskReason: expect.stringContaining('Historical'),
+    }))
+    expect(evonik?.pricingEvidence).toEqual(expect.objectContaining({
+      value: expect.stringContaining('$3.95'),
+      evidenceStatus: 'Reference Only',
+      reviewRequired: true,
+      dataType: 'price_data',
+      sourceTier: 'Tier 5 - Public listing / weak price reference',
+      riskReason: expect.stringContaining('Retail'),
+    }))
+    expect(stepan?.marketShare).toBeUndefined()
+    expect(evonik?.revenue).toBeUndefined()
+  })
+
+  it('hydrates public competitor price references as review-gated dashboard price cells', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const text = url.includes('zauba.com')
+        ? '<h1>Stepantex Sp 90 Imports Under HS Code 29051490</h1><p>Average import price for stepantex sp 90 under HS Code 29051490 was $71.30.</p><p>Oct 22 2016</p>'
+        : '<h1>Varisoft EQ 65</h1><p>Regular price $3.95</p><p>Size: 2 oz ($30.38/lb)</p>'
+      return { ok: true, text: async () => text }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includePublicPriceEvidenceConnectors: true,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+      includeMarketReferenceTrafficConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result.autoFilledCount).toBeGreaterThanOrEqual(2)
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        pricingEvidence: expect.stringContaining('$71.30'),
+        metricEvidence: expect.objectContaining({
+          pricingEvidence: expect.objectContaining({
+            evidenceStatus: 'Reference Only',
+            reviewRequired: true,
+            sourceTier: 'tier5-public-listing',
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        pricingEvidence: expect.stringContaining('$3.95'),
+        metricEvidence: expect.objectContaining({
+          pricingEvidence: expect.objectContaining({
+            evidenceStatus: 'Reference Only',
+            reviewRequired: true,
+            sourceTier: 'tier5-public-listing',
+          }),
+        }),
+      }),
+    ]))
+  })
+
+  it('converts market-reference traffic pages into competitor traffic and authority metrics only', () => {
+    const update = marketReferenceTrafficPageToCompetitorUpdate(
+      marketReferenceTrafficSources.kao,
+      [
+        '<title>kao.com Website Traffic, Ranking, Analytics [April 2026]</title>',
+        '<p>In April kao.com received 1.17M visits with the average session duration 07:12. Compared to March traffic to kao.com has decreased by -6.34%.</p>',
+        '&quot;authorityScore&quot;:[0,{&quot;value&quot;:[0,60],&quot;valueDiffPercent&quot;:[0,null]}]',
+      ].join(''),
+      '2026-06-06',
+    )
+
+    expect(update).toEqual(expect.objectContaining({
+      companyName: 'Kao Corporation',
+      fieldKey: 'competitor_metrics.kao_corporation.semrush_traffic_authority',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      sourceUrl: marketReferenceTrafficSources.kao.sourceUrl,
+      recommendedAction: expect.stringContaining('directional market-interest evidence'),
+    }))
+    const traffic = update?.traffic as Record<string, unknown> | undefined
+    expect(traffic).toEqual(expect.objectContaining({
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      riskReason: expect.stringContaining('third-party estimate'),
+    }))
+    expect(String(traffic?.value || '')).toContain('1.17M visits')
+    expect(String(traffic?.value || '')).toContain('decreased by -6.34%')
+    expect(update?.rating).toEqual(expect.objectContaining({
+      value: expect.stringContaining('Authority Score: 60'),
+      riskReason: expect.stringContaining('not a product/customer rating'),
+    }))
+    expect(update?.pricingEvidence).toBeUndefined()
+    expect(update?.marketShare).toBeUndefined()
+    expect(update?.revenue).toBeUndefined()
+    expect(marketReferenceTrafficPageToCompetitorUpdate(
+      marketReferenceTrafficSources.kao,
+      '<title>We got lost</title><p>No traffic report.</p>',
+      '2026-06-06',
+    )).toBeNull()
+  })
+
+  it('converts Tranco rank payloads into source-backed competitor traffic-rank signals only', () => {
+    const update = trancoRanksPayloadToCompetitorUpdate(
+      {
+        companyName: 'BASF',
+        fieldKeySlug: 'basf',
+        countryRegion: 'Germany / global',
+        domain: 'basf.com',
+      },
+      {
+        ranks: [
+          { date: '2026-06-04', rank: 6273 },
+          { date: '2026-06-05', rank: 6266 },
+        ],
+      },
+      '2026-06-06',
+    )
+
+    expect(update).toEqual(expect.objectContaining({
+      companyName: 'BASF',
+      fieldKey: 'competitor_metrics.basf.tranco_traffic_rank',
+      value: expect.stringContaining('Tranco daily traffic-rank signal: #6,266'),
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+      sourceUrl: 'https://tranco-list.eu/api/ranks/domain/basf.com',
+      recommendedAction: expect.stringContaining('web-presence rank'),
+    }))
+    expect(update?.traffic).toEqual(expect.objectContaining({
+      value: expect.stringContaining('not monthly visit volume'),
+      sourceTitle: 'Tranco daily domain rank - basf.com',
+      sourceTier: 'Tier 4 - Reputable web ranking reference',
+      sourceDate: '2026-06-05',
+      confidence: 'high',
+      evidenceStatus: 'Market Reference',
+      reviewRequired: false,
+    }))
+    expect(update?.pricingEvidence).toBeUndefined()
+    expect(update?.marketShare).toBeUndefined()
+    expect(update?.revenue).toBeUndefined()
+    expect(trancoRanksPayloadToCompetitorUpdate(
+      {
+        companyName: 'BASF',
+        fieldKeySlug: 'basf',
+        countryRegion: 'Germany / global',
+        domain: 'basf.com',
+      },
+      { ranks: [{ date: 'not-a-date', rank: 'nope' }] },
       '2026-06-06',
     )).toBeNull()
   })
@@ -1061,6 +1618,9 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('Bangladesh')
     expect(prompt).toContain('Stepan Company')
     expect(prompt).toContain('Competitor Metric Columns')
+    expect(prompt).toContain('Investment / IRR')
+    expect(prompt).toContain('Total investment')
+    expect(prompt).toContain('Base scenario')
     expect(prompt).toContain('Evonik Industries - Price evidence')
     expect(prompt).toContain('Evonik Industries - Market share')
     expect(prompt).toContain('Evonik Industries - Revenue')
@@ -1094,6 +1654,154 @@ describe('dashboard autopilot output ingestion', () => {
       missingCoverageFollowUpStarted: false,
     })
     expect(execFileMock).not.toHaveBeenCalled()
+  })
+
+  it('starts missing coverage follow-up even when no new autopilot output file is ready', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    await ensureFullDashboardAutopilotScheduled('default')
+    const intelligenceDir = join(hermesHome, 'dashboard-intelligence')
+    mkdirSync(intelligenceDir, { recursive: true })
+    writeFileSync(join(intelligenceDir, 'state.json'), JSON.stringify({
+      version: 1,
+      profile: 'default',
+      state: {
+        marketClaims: [{
+          id: 'market-claim-official-proxy',
+          label: 'Country-wise consumption growth - China',
+          value: 'Trade proxy signal found',
+          source: {
+            title: 'WITS / World Bank Comtrade',
+            url: 'https://wits.worldbank.org/',
+            date: '2026-06-06',
+          },
+          sourceTier: 'tier1-official',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          reviewRequired: false,
+        }],
+        competitors: [{
+          id: 'competitor-evonik',
+          companyName: 'Evonik Industries',
+          revenue: {
+            value: 'FY2025 company-wide sales source-backed',
+            sourceTitle: 'Evonik 2025 results release',
+            sourceUrl: 'https://www.evonik.com/en/news/press-releases/2026/03/Q4-reporting-2025.html',
+            confidence: 'high',
+            evidenceStatus: 'Official Company Evidence',
+            lastChecked: '2026-06-06',
+          },
+          evidenceStatus: 'Official Company Evidence',
+        }],
+        dataRoomSources: [],
+        researchFindings: [],
+        financialModels: [],
+        presentationMaterials: [],
+        researchJobs: [{
+          id: 'job-full-dashboard-record',
+          title: 'Full Dashboard Trusted Source Autopilot',
+          question: 'Refresh the full feasibility dashboard with trusted source evidence.',
+          status: 'Scheduled Hermes Job',
+          scheduledJobId: 'job-full-dashboard',
+          sourceRequirements: 'Official-first trusted source dashboard refresh.',
+        }],
+      },
+      savedAt: '2026-06-06T00:00:00.000Z',
+      savedBy: { username: 'test', role: 'system' },
+    }, null, 2))
+
+    execFileMock.mockReset()
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'create') {
+        writeMissingCoverageJob(hermesHome, 'job-missing-coverage-1', String(args[args.length - 1] || ''))
+      }
+      cb(null, '', '')
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+      includeMarketReferenceTrafficConnectors: false,
+    })
+
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      filesChecked: 0,
+      missingCoverageFollowUpStarted: true,
+    })
+    const createArgs = execFileMock.mock.calls.find(call => (call[1] as string[])[1] === 'create')?.[1] as string[]
+    expect(createArgs).toBeTruthy()
+    const prompt = createArgs[createArgs.length - 1]
+    expect(prompt).toContain('Do the online research yourself')
+    expect(prompt).toContain('Competitor Metric Columns')
+    expect(prompt).toContain('Investment / IRR')
+    expect(prompt).toContain('Total investment')
+    expect(prompt).toContain('Evonik Industries - Price evidence')
+    expect(prompt).toContain('Evonik Industries - Market share')
+    expect(prompt).toContain('official annual reports')
+    expect(prompt).toContain('companyName must be the actual company only')
+
+    const envelope = await readDashboardIntelligenceState('default')
+    expect(envelope?.state.researchJobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+        status: 'Scheduled Hermes Job',
+        scheduledJobId: 'job-missing-coverage-1',
+        scope: expect.stringContaining('Investment / IRR'),
+        sourceRequirements: expect.stringContaining('Missing coverage signature:'),
+      }),
+    ]))
+    expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-1')).toBe(true)
+  })
+
+  it('reuses a stale missing coverage follow-up job instead of creating duplicates', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    await ensureFullDashboardAutopilotScheduled('default')
+    writeMissingCoverageJob(hermesHome, 'job-missing-coverage-stale', [
+      FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+      'Missing coverage signature: stale-old-signature',
+      'Old missing coverage prompt.',
+    ].join('\n'))
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T07-00-00.md', {
+      dashboard_updates: {
+        marketClaims: [{
+          label: 'Country-wise consumption growth - China',
+          value: 'Trade proxy signal found',
+          sourceTitle: 'WITS / World Bank Comtrade',
+          sourceUrl: 'https://wits.worldbank.org/',
+          sourceTier: 'Tier 1 - Official / regulator / trade source',
+          confidence: 'high',
+          evidenceStatus: 'Official Data',
+          dataType: 'trade_data',
+          reviewRequired: false,
+        }],
+      },
+    })
+
+    execFileMock.mockReset()
+    execFileMock.mockImplementation((_bin, _args: string[], _opts, cb) => {
+      cb(null, '', '')
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+
+    expect(result.missingCoverageFollowUpStarted).toBe(true)
+    expect(execFileMock.mock.calls.some(call => (call[1] as string[])[1] === 'create')).toBe(false)
+    expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ').startsWith('cron edit job-missing-coverage-stale'))).toBe(true)
+    expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-stale')).toBe(true)
+
+    const envelope = await readDashboardIntelligenceState('default')
+    expect(envelope?.state.researchJobs).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME,
+        scheduledJobId: 'job-missing-coverage-stale',
+        sourceRequirements: expect.stringContaining('Missing coverage signature:'),
+      }),
+    ]))
   })
 
   it('imports source-backed outputs from missing coverage follow-up jobs', async () => {
@@ -1342,6 +2050,77 @@ describe('dashboard autopilot output ingestion', () => {
     ])
   })
 
+  it('hydrates review-gated company-specific market-reference share without verifying it', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-06T00-02-12.000000+00-00.md', {
+      dashboard_updates: {
+        competitorRecords: [{
+          fieldKey: 'competitor_metrics.stepan_company.market_share',
+          companyName: 'Stepan Company',
+          countryRegion: 'United States / global',
+          productEquivalent: 'Global esterquat producer context; textile-softener and Chemicon-equivalent product relevance still requires separate product/TDS evidence.',
+          marketShare: {
+            fieldKey: 'competitor_metrics.stepan_company.market_share',
+            value: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+            sourceTitle: '360 Research Reports - Esterquat Market',
+            sourceUrl: 'https://www.360researchreports.com/market-reports/esterquat-market-204218',
+            sourceTier: 'Tier 4 - Paid/reputable market reference',
+            lastChecked: '2026-06-06T00:00:00.000Z',
+            sourceDate: '23 February 2026',
+            confidence: 'medium',
+            evidenceStatus: 'Market Reference',
+            reviewRequired: true,
+            dataType: 'competitor_data',
+            riskReason: 'Company-specific market-reference estimate; not official and not textile-softener-specific.',
+          },
+          sourceTitle: '360 Research Reports - Esterquat Market',
+          sourceUrl: 'https://www.360researchreports.com/market-reports/esterquat-market-204218',
+          sourceTier: 'Tier 4 - Paid/reputable market reference',
+          confidence: 'medium',
+          evidenceStatus: 'Market Reference',
+          reviewRequired: true,
+          recommendedAction: 'Use only as review-gated market-reference context until an owner approves methodology and product scope.',
+        }],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default')
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result.importedRuns).toBe(1)
+    expect(result.stagedReviewCount).toBeGreaterThanOrEqual(1)
+    expect(envelope?.state.competitors).toEqual([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        marketShare: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+        evidenceStatus: 'Market Reference',
+        reviewRequired: true,
+        metricEvidence: expect.objectContaining({
+          marketShare: expect.objectContaining({
+            value: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+            evidenceStatus: 'Market Reference',
+            reviewRequired: true,
+            source: expect.objectContaining({
+              title: '360 Research Reports - Esterquat Market',
+              url: 'https://www.360researchreports.com/market-reports/esterquat-market-204218',
+            }),
+          }),
+        }),
+      }),
+    ])
+    expect(envelope?.state.competitors[0].evidenceStatus).not.toBe('Verified')
+    expect(envelope?.state.researchFindings).toEqual([
+      expect.objectContaining({
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          companyName: 'Stepan Company',
+          marketShare: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+        }),
+      }),
+    ])
+  })
+
   it('hydrates official SEC competitor revenue metrics when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
     const fetchMock = vi.fn(async (url: string) => {
@@ -1350,7 +2129,12 @@ describe('dashboard autopilot output ingestion', () => {
           { year: 2024, value: 2180274000, filed: '2025-02-27', accession: '0000950170-25-029079' },
           { year: 2025, value: 2332114000, filed: '2026-02-26', accession: '0001193125-26-074976' },
         ])
-        : companyfactsPayload('Dow Inc.', 'Revenues', [
+        : url.includes('0000080424')
+          ? companyfactsPayload('PROCTER & GAMBLE Co', 'SalesRevenueNet', [
+            { year: 2024, value: 84039000000, filed: '2024-08-06', accession: '0000080424-24-000081' },
+            { year: 2025, value: 84063000000, filed: '2025-08-05', accession: '0000080424-25-000079' },
+          ])
+          : companyfactsPayload('Dow Inc.', 'Revenues', [
           { year: 2024, value: 42964000000, filed: '2025-02-04', accession: '0001751788-25-000012' },
           { year: 2025, value: 39968000000, filed: '2026-02-03', accession: '0001751788-26-000018' },
         ])
@@ -1365,15 +2149,17 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: true,
       includeOfficialCompanyFinancialConnectors: false,
       includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
       includeOfficialSupplierConnectors: false,
+      includePublicPriceEvidenceConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(result).toMatchObject({
       importedRuns: 0,
-      autoFilledCount: 2,
+      autoFilledCount: 3,
       stagedReviewCount: 0,
     })
     expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
@@ -1399,6 +2185,15 @@ describe('dashboard autopilot output ingestion', () => {
         confidence: 'high',
         reviewRequired: false,
       }),
+      expect.objectContaining({
+        companyName: 'Procter & Gamble',
+        revenue: expect.stringContaining('FY2025 company-wide revenue: US$84.063B'),
+        yearlyGrowth: expect.stringContaining('+0.03%'),
+        evidenceStatus: 'Official Data',
+        sourceTier: 'tier1-official',
+        confidence: 'high',
+        reviewRequired: false,
+      }),
     ]))
   })
 
@@ -1407,11 +2202,16 @@ describe('dashboard autopilot output ingestion', () => {
     const htmlByCompany = new Map([
       ['BASF', '<p>In the 2025 business year, sales stood at €59,657 million, compared with €61,444 million in the previous year.</p>'],
       ['Evonik', '<p>Sales in 2025 decreased by 7 percent to €14.1 billion compared to the previous year.</p>'],
-      ['WACKER', '<p>WACKER’s operations are highly international. Of the Group’s €5.49 billion in sales in 2025, (2024: €5.72 billion), 83.2 percent came from international business.</p>'],
+      ['WACKER', '<p>WACKER’s operations are highly international. Of the Group’s €5.49 billion in sales in 2025, (2024: €5.72 billion ), 83.2 percent came from international business.</p>'],
       ['Kao', '<h3>Consolidated net sales</h3><p>1,688.6 billion yen</p><p>FY2025 ended December 31</p>'],
+      ['Syensqo', '<h2>FY 2025 Highlights</h2><p>Net sales of €6.14 billion, impacted by year-on-year foreign exchange movements.</p><p>Net sales 1,418 1,598 1,517-11.3%-5.6%-6.5% 6,140 6,563-6.5%-3.2%</p>'],
+      ['CHT', '<p>Despite volatile global conditions, the company recorded sales growth to EUR 614.3 million (+2%) and a significant increase in EBIT.</p>'],
+      ['Zschimmer', '<p>Zschimmer & Schwarz has grown strongly over the last 15 years, with turnover increasing by 500 million to almost 700 million euros.</p>'],
+      ['Pulcra', '<p>Our revenue for the year decreased by EUR 11.4 million (14.6%) to EUR 66.9 million (previous year: EUR 78.3 million).</p>'],
+      ['AkzoNobel', '<p>Summary of financial results Revenue 2,613 2,386 (9%) Operating income 192 177 (8%)</p>'],
     ])
     const fetchMock = vi.fn(async (url: string) => {
-      const key = Array.from(htmlByCompany.keys()).find(company => url.includes(company.toLowerCase().split(' ')[0]) || (company === 'WACKER' && url.includes('wacker')))
+      const key = Array.from(htmlByCompany.keys()).find(company => url.includes(company.toLowerCase().split(' ')[0]) || (company === 'WACKER' && url.includes('wacker')) || (company === 'CHT' && url.includes('cht.com')))
       return {
         ok: true,
         text: async () => htmlByCompany.get(key || 'BASF') || '',
@@ -1423,15 +2223,16 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialConnectors: false,
       includeOfficialCompanyFinancialConnectors: true,
       includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
       includeOfficialSupplierConnectors: false,
       includeOfficialTradeConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
 
-    expect(fetchMock).toHaveBeenCalledTimes(4)
+    expect(fetchMock).toHaveBeenCalledTimes(9)
     expect(result).toMatchObject({
       importedRuns: 0,
-      autoFilledCount: 4,
+      autoFilledCount: 9,
       stagedReviewCount: 0,
     })
     expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
@@ -1454,6 +2255,13 @@ describe('dashboard autopilot output ingestion', () => {
         yearlyGrowth: expect.stringContaining('-7%'),
       }),
       expect.objectContaining({
+        companyName: 'AkzoNobel',
+        revenue: 'Q1 2026 company-wide revenue: €2.386B (official reported €2,386 million)',
+        yearlyGrowth: 'Q1 2026 company-wide revenue YoY: -9% vs Q1 2025 €2.613B',
+        evidenceStatus: 'Official Data',
+        reviewRequired: false,
+      }),
+      expect.objectContaining({
         companyName: 'WACKER',
         revenue: expect.stringContaining('FY2025 company-wide sales: €5.49B'),
         yearlyGrowth: expect.stringContaining('-4.02%'),
@@ -1462,6 +2270,26 @@ describe('dashboard autopilot output ingestion', () => {
         companyName: 'Kao Corporation',
         revenue: expect.stringContaining('FY2025 company-wide net sales: ¥1,688.6B'),
         yearlyGrowth: '',
+      }),
+      expect.objectContaining({
+        companyName: 'Syensqo / Solvay',
+        revenue: 'FY2025 company-wide net sales: €6.14B',
+        yearlyGrowth: expect.stringContaining('-6.5%'),
+      }),
+      expect.objectContaining({
+        companyName: 'CHT Group',
+        revenue: 'FY2024 company-wide sales: €614.3M (official preliminary figure)',
+        yearlyGrowth: expect.stringContaining('+2%'),
+      }),
+      expect.objectContaining({
+        companyName: 'Zschimmer & Schwarz',
+        revenue: expect.stringContaining('turnover almost €700M'),
+        yearlyGrowth: '',
+      }),
+      expect.objectContaining({
+        companyName: 'Pulcra Chemicals',
+        revenue: 'FY2023 Pulcra Germany GmbH net revenue: €66.9M (CSRD statement; previous year €78.3M)',
+        yearlyGrowth: expect.stringContaining('-14.6%'),
       }),
     ]))
   })
@@ -1472,8 +2300,15 @@ describe('dashboard autopilot output ingestion', () => {
       ['STEPANTEXSP90', '<title>STEPANTEX® SP-90</title><meta name="description" content="STEPANTEX® SP-90"/>'],
       ['wacker-finish-wr-1200', '<h1>WACKER® FINISH WR 1200</h1><p>Reactive aminoethyl-aminopropyl functional polydimethylsiloxane.</p>'],
       ['tetranyl-l9-90', '<h1>TETRANYL L9-90</h1><p>Esterquat based on European Vegetable Sources for the softener market.</p>'],
+      ['dowsil-2202a-textile-finish', '<h1>DOWSIL™ 2202A Textile Finish</h1><p>Water repellent finishing of fabrics with DOWSIL 2202A Textile Finish.</p>'],
+      ['xiameter-ofx-8417-fluid', '<h1>XIAMETER™ OFX-8417 Fluid</h1><p>Premium amino softener suitable for formulation into microemulsion for textile softener uses.</p>'],
       ['siligen-d2w-liq-c', '<h1>SILIGEN D2W LIQ C</h1><p>Durable silicone softener engineered for cotton with a cross-linkable emulsion.</p>'],
       ['li_tubingal-gep-textile-softener', '<h1>TUBINGAL GEP</h1><p>Innovative silicone-based softener for textile finishing.</p>'],
+      ['pa_tubingal-rise-softener', '<h1>TUBINGAL® RISE</h1><p>First textile softener based on recycled silicones.</p>'],
+      ['productinfo/index/60/155.html', '<h1>TRANSOFT FLA TF-442</h1><p>TRANSOFT FLA TF-442 is a fatty acid ester compound softener flake for textile.</p>'],
+      ['technologies/rucofin', '<h1>RUCOFIN</h1><p>High-performance silicone softeners for textile applications and premium softness.</p>'],
+      ['kundenloesungen/textilindustrie', '<h1>Specialty Chemicals for the Textile Industry</h1><p>Softeners brand family includes ADALIN, ADASIL, AQUASOFT, BELFASIN, BELSOFT, SETILON for textile finishing.</p>'],
+      ['fibre-textile-auxiliaries/textile-auxiliaries', '<h1>TEXTILE AUXILIARIES</h1><p>SOFTENERS are essential for textile finishing, soft handle, and improved physical properties.</p>'],
     ])
     const fetchMock = vi.fn(async (url: string) => {
       const key = Array.from(htmlByProduct.keys()).find(fragment => url.includes(fragment))
@@ -1494,10 +2329,10 @@ describe('dashboard autopilot output ingestion', () => {
     })
     const envelope = await readDashboardIntelligenceState('default')
 
-    expect(fetchMock).toHaveBeenCalledTimes(5)
+    expect(fetchMock).toHaveBeenCalledTimes(12)
     expect(result).toMatchObject({
       importedRuns: 0,
-      autoFilledCount: 5,
+      autoFilledCount: 12,
       stagedReviewCount: 0,
     })
     expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
@@ -1514,6 +2349,13 @@ describe('dashboard autopilot output ingestion', () => {
         sourceTier: 'tier2-company-official',
         confidence: 'high',
         reviewRequired: false,
+        metricEvidence: expect.objectContaining({
+          lastUpdated: expect.objectContaining({
+            value: '2026-06-06',
+            evidenceStatus: 'Source-backed',
+            reviewRequired: false,
+          }),
+        }),
         source: expect.objectContaining({
           title: 'Stepan STEPANTEX SP-90 official product page',
           url: expect.stringContaining('STEPANTEXSP90.html'),
@@ -1526,8 +2368,203 @@ describe('dashboard autopilot output ingestion', () => {
       }),
       expect.objectContaining({
         companyName: 'CHT Group',
-        productEquivalent: expect.stringContaining('TUBINGAL GEP'),
-        activeContent: expect.stringContaining('Silicone-based softener'),
+        productVariations: expect.stringContaining('TUBINGAL GEP'),
+        productEquivalent: expect.stringContaining('TUBINGAL RISE'),
+        activeContent: expect.stringContaining('recycled'),
+        sourceCount: 2,
+      }),
+      expect.objectContaining({
+        companyName: 'Dow',
+        productVariations: expect.stringContaining('DOWSIL 2202A'),
+        productEquivalent: expect.stringContaining('XIAMETER OFX-8417'),
+        activeContent: expect.stringContaining('Premium amino softener'),
+        sourceCount: 2,
+      }),
+      expect.objectContaining({
+        companyName: 'Transfar',
+        productEquivalent: expect.stringContaining('TRANSOFT FLA TF-442'),
+        activeContent: expect.stringContaining('Fatty acid ester'),
+      }),
+      expect.objectContaining({
+        companyName: 'Rudolf Group',
+        productEquivalent: expect.stringContaining('RUCOFIN'),
+        activeContent: expect.stringContaining('Polysiloxane'),
+        pricingEvidence: '',
+        marketShare: '',
+        revenue: '',
+      }),
+      expect.objectContaining({
+        companyName: 'Pulcra Chemicals',
+        productEquivalent: expect.stringContaining('ADALIN'),
+        activeContent: expect.stringContaining('Textile finishing softeners'),
+        pricingEvidence: '',
+        marketShare: '',
+        revenue: '',
+      }),
+      expect.objectContaining({
+        companyName: 'Zschimmer & Schwarz',
+        productEquivalent: expect.stringContaining('Textile softeners'),
+        activeContent: expect.stringContaining('Fatty acid condensate softeners'),
+        pricingEvidence: '',
+        marketShare: '',
+        revenue: '',
+      }),
+    ]))
+  })
+
+  it('hydrates official competitor recognition evidence into the rating column when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const htmlByRecognition = new Map([
+      ['CDP-otorga-a-BASF-el-estatus-de-liderazgo', '<h1>CDP otorga a BASF el estatus de liderazgo</h1><p>BASF recibió la calificación “A” en las categorías de protección del clima y protección de los bosques, y la calificación “A-” en seguridad hídrica. Esto significa que BASF alcanzó el estatus de liderazgo en las tres categorías.</p>'],
+      ['2025-goals.html', '<h1>Dow 2025 Sustainability Goals</h1><p>Dow aligned >89% of innovation portfolio to sustainability outcomes. Record-setting twelve Edison awards were earned in 2024.</p>'],
+      ['ecovadis-ranks-evonik', '<h1>EcoVadis ranks Evonik among the world’s most sustainable companies</h1><p>This year, sustainability rating agency EcoVadis has awarded Evonik a Gold rating and says it ranks among the top five percent of companies assessed worldwide.</p>'],
+      ['Stepan-Achieves-Silver-Medal-in-2026-EcoVadis-Assessment', '<h1>Stepan Achieves a Silver Medal in 2026 EcoVadis Assessment</h1><p>Stepan achieved a Silver medal, placing the company in the top 15% globally and in the 89th percentile among manufacturers of chemical products.</p>'],
+      ['20250613-002', '<h1>Kao Releases Kao Sustainability Report 2025</h1><p>Kao was one of eight companies to achieve the CDP Triple-A rating and was selected as one of the World’s Most Ethical Companies 2025.</p>'],
+      ['archroma-recognized-as-top-chemicals-supplier', '<h1>Archroma recognized as top chemicals supplier</h1><p>Archroma has been awarded Champion status at the 2025 adiFormulator Award by adidas.</p>'],
+      ['archroma.com/sustainability', '<h1>Sustainability</h1><p>Archroma was awarded the EcoVadis Gold rating in 2025 and is within the top 5% in its industry.</p>'],
+      ['adiformulator-award-2025', '<h1>adiFORMULATOR AWARD 2025</h1><p>For the third time in a row, the CHT Group has been recognized as champion of the adiFORMULATOR AWARD by adidas.</p>'],
+      ['upstream-value-chain.html', '<h1>Upstream Value Chain</h1><p>The average EcoVadis score across all WACKER suppliers was 62 points.</p>'],
+      ['energy-use-and-renewable-electricity', '<h1>Energy use and renewable electricity</h1><p>Our progress (2025): CDP A score, 69% renewable electricity in our own operations, and 84 locations are using 100% renewable electricity.</p>'],
+      ['pulcra-chemicals-awarded-ecovadis-silver-medal', '<h1>Pulcra Chemicals Awarded EcoVadis Silver Medal</h1><p>Pulcra Chemicals has been awarded the EcoVadis Silver Medal, achieving a percentile rank of 92% and placing among the top 8% of chemical companies evaluated by EcoVadis.</p>'],
+      ['pg-awards-and-recognitions', '<h1>P&G Awards and Recognitions</h1><p>P&G was recognized as one of Barron’s 100 Most Sustainable Companies, earning the #21 ranking in 2025. The 2024 Advantage Report Global Scorecard ranked P&G the #1 manufacturer for the 10th consecutive year.</p>'],
+      ['rudolf-pcf-program-certified-under-pact-and-aligned-with-tfs', '<h1>RUDOLF PCF Program certified under PACT and aligned with TfS</h1><p>RUDOLF has received one of the first Product Carbon Footprint (PCF) Program certifications from TÜV SÜD based on the PACT Methodology V3 and aligned with TfS PCF Guideline V3.</p>'],
+      ['supporting-key-sustainability-goals-in-chinas-textile-industry-at-ciie', '<h1>Supporting Key Sustainability Goals in China’s Textile Industry at CIIE</h1><p>SGS presented the first SGS green mark bio-based content certificate for a polyester FDY oil product in China to Transfar, along with several ZDHC MRSL Level 3 certifications.</p>'],
+      ['outstanding-sustainability-zsl-awarded-silver-by-ecovadis', '<h1>Outstanding sustainability: ZSL awarded Silver by EcoVadis</h1><p>ZSL was awarded Silver by EcoVadis, placing it among the top 15 % of companies assessed worldwide last year.</p>'],
+    ])
+    const fetchMock = vi.fn(async (url: string) => {
+      const key = Array.from(htmlByRecognition.keys()).find(fragment => url.includes(fragment))
+      return {
+        ok: Boolean(key),
+        status: key ? 200 : 404,
+        text: async () => htmlByRecognition.get(key || '') || '',
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: true,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(15)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 15,
+      stagedReviewCount: 5,
+    })
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'BASF',
+        rating: expect.stringContaining('CDP leadership'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Dow',
+        rating: expect.stringContaining('89%'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        rating: expect.stringContaining('EcoVadis Gold'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        rating: expect.stringContaining('89th percentile'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Kao Corporation',
+        rating: expect.stringContaining('Triple-A'),
+        pricingEvidence: '',
+        marketShare: '',
+      }),
+      expect.objectContaining({
+        companyName: 'Archroma',
+        rating: expect.stringContaining('EcoVadis Gold'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+        sourceTier: 'tier2-company-official',
+        reviewRequired: false,
+        riskReason: expect.stringContaining('customer rating'),
+      }),
+      expect.objectContaining({
+        companyName: 'CHT Group',
+        rating: expect.stringContaining('third time in a row'),
+        evidenceStatus: 'Official Data',
+        source: expect.objectContaining({
+          title: 'CHT Group adiFORMULATOR AWARD 2025',
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'WACKER',
+        rating: expect.stringContaining('62 points'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+      }),
+      expect.objectContaining({
+        companyName: 'AkzoNobel',
+        rating: expect.stringContaining('CDP A score'),
+        pricingEvidence: '',
+        marketShare: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Pulcra Chemicals',
+        rating: expect.stringContaining('92nd percentile'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+      }),
+      expect.objectContaining({
+        companyName: 'Procter & Gamble',
+        rating: expect.stringContaining('#21'),
+        pricingEvidence: '',
+        marketShare: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Rudolf Group',
+        rating: expect.stringContaining('PCF Program certification'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Transfar',
+        rating: expect.stringContaining('SGS Green Mark'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
+        evidenceStatus: 'Official Data',
+      }),
+      expect.objectContaining({
+        companyName: 'Zschimmer & Schwarz',
+        rating: expect.stringContaining('top 15%'),
+        pricingEvidence: '',
+        marketShare: '',
+        traffic: '',
       }),
     ]))
   })
@@ -1676,9 +2713,40 @@ describe('dashboard autopilot output ingestion', () => {
         proposedValue: expect.stringContaining('fabric softener formulations'),
       }),
     ]))
+    expect(envelope?.state.supplierScorecards).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'supplierScorecards',
+        supplier: 'Wilmar Oleochemicals',
+        material: expect.stringMatching(/stearic/i),
+        value: expect.stringContaining('Official Wilmar product page confirms'),
+        pricePerTon: '',
+        quality: 'Quote/TDS/SDS/COA review needed',
+        reliability: 'Quote/TDS/SDS/COA review needed',
+        payment: 'Quote/payment terms needed',
+        score: 'Review needed',
+        reviewRequired: true,
+        dataType: 'document_evidence',
+        source: expect.objectContaining({
+          title: 'Wilmar Rubber Grade Stearic Acid 1807 official product page',
+          url: officialSupplierSources.wilmar.sourceUrl,
+        }),
+      }),
+      expect.objectContaining({
+        dashboardGroup: 'supplierScorecards',
+        supplier: 'BASF',
+        material: 'Triethanolamine / TEOA',
+        value: expect.stringContaining('fabric softener formulations'),
+        pricePerTon: '',
+      }),
+    ]))
     expect(envelope?.state.dataRoomSources).not.toEqual(expect.arrayContaining([
       expect.objectContaining({
         proposedValue: expect.stringMatching(/(?:\\$|usd|cny|rmb)\\s*\\d/i),
+      }),
+    ]))
+    expect(envelope?.state.supplierScorecards).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pricePerTon: expect.stringMatching(/(?:\\$|usd|cny|rmb)\\s*\\d/i),
       }),
     ]))
     expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
@@ -1690,8 +2758,97 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('hydrates official raw-material identity evidence as review-gated dashboard signals', async () => {
+    writeFullDashboardJob(hermesHome)
+    writeRunOutput(hermesHome, 'job-full-dashboard', '2026-06-03T09-00-00.000000+00-00.md', {
+      dashboard_updates: {
+        rawMaterialSignals: [
+          {
+            fieldKey: 'raw.dms.cas',
+            proposedDashboardField: 'DMS chemical identity',
+            field: 'DMS CAS evidence',
+            value: 'PubChem CID 6497; CAS signal 77-78-1; molecular formula C2H6O4S',
+            sourceTitle: 'Dimethyl Sulfate | (CH3O)2SO2 | CID 6497 - PubChem',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
+            sourceTier: 'Tier 1 - Official / regulator / chemical database source',
+            confidence: 'high',
+            evidenceStatus: 'Official Data',
+            dataType: 'regulatory_data',
+            reviewRequired: true,
+          },
+          {
+            fieldKey: 'raw.tea.cas',
+            proposedDashboardField: 'TEA chemical identity',
+            field: 'TEA CAS evidence',
+            value: 'PubChem CID 7618; CAS signal 102-71-6; molecular formula C6H15NO3',
+            sourceTitle: 'Triethanolamine | C6H15NO3 | CID 7618 - PubChem',
+            sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/Triethanolamine',
+            sourceTier: 'Tier 1 - Official / regulator / chemical database source',
+            confidence: 'high',
+            evidenceStatus: 'Official Data',
+            dataType: 'regulatory_data',
+            reviewRequired: true,
+          },
+        ],
+      },
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(result).toMatchObject({
+      importedRuns: 1,
+      autoFilledCount: 0,
+      stagedReviewCount: 2,
+    })
+    expect(envelope?.state.rawMaterialSignals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        material: 'DMS / dimethyl sulfate',
+        value: expect.stringContaining('PubChem CID 6497'),
+        cas: '77-78-1',
+        formula: 'C2H6O4S',
+        pricePerTon: '',
+        priceStatus: 'No approved price yet',
+        dataType: 'regulatory_data',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: expect.stringContaining('Dimethyl Sulfate'),
+          url: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
+        }),
+      }),
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        material: 'TEA',
+        cas: '102-71-6',
+        formula: 'C6H15NO3',
+        pricePerTon: '',
+      }),
+    ]))
+    expect(envelope?.state.rawMaterialSignals).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pricePerTon: expect.stringMatching(/(?:\$|usd|cny|rmb)\s*\d/i),
+      }),
+    ]))
+    expect(envelope?.state.dataRoomSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        proposedValue: expect.stringContaining('PubChem CID 6497'),
+        reviewRequired: true,
+      }),
+    ]))
+  })
+
   it('hydrates official UN Comtrade country import proxies when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
+    process.env.UN_COMTRADE_SUBSCRIPTION_KEY = 'test-comtrade-key'
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => comtradePayload([
@@ -1711,6 +2868,7 @@ describe('dashboard autopilot output ingestion', () => {
     const envelope = await readDashboardIntelligenceState('default')
 
     expect(fetchMock).toHaveBeenCalledTimes(10)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('subscription-key=test-comtrade-key')
     expect(result).toMatchObject({
       importedRuns: 0,
       autoFilledCount: 0,
@@ -1729,6 +2887,9 @@ describe('dashboard autopilot output ingestion', () => {
         }),
       }),
     ]))
+    expect(envelope?.state.marketClaims.every(claim =>
+      !String((claim.source as Record<string, unknown> | undefined)?.url || '').includes('subscription-key='),
+    )).toBe(true)
     expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
       expect.objectContaining({
         keyClaim: expect.stringContaining('Country-wise consumption growth - China'),
@@ -1741,8 +2902,32 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('does not call official UN Comtrade without a configured subscription key', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: true,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.autoFilledCount).toBe(0)
+    expect(result.stagedReviewCount).toBe(0)
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining('official Comtrade connector: subscription key not configured'),
+    ]))
+    expect(envelope?.state.marketClaims || []).toHaveLength(0)
+  })
+
   it('falls back to the latest usable two-year UN Comtrade period when newer annual data is incomplete', async () => {
     writeFullDashboardJob(hermesHome)
+    process.env.UN_COMTRADE_SUBSCRIPTION_KEY = 'test-comtrade-key'
     const fetchMock = vi.fn(async (url: string) => ({
       ok: true,
       json: async () => url.includes('period=2023,2024')
@@ -1766,6 +2951,7 @@ describe('dashboard autopilot output ingestion', () => {
     const envelope = await readDashboardIntelligenceState('default')
 
     expect(fetchMock.mock.calls.length).toBeGreaterThan(10)
+    expect(fetchMock.mock.calls.every(call => String(call[0]).includes('subscription-key=test-comtrade-key'))).toBe(true)
     expect(result).toMatchObject({
       importedRuns: 0,
       autoFilledCount: 0,
@@ -1779,6 +2965,604 @@ describe('dashboard autopilot output ingestion', () => {
       value: expect.stringContaining('FY2024 official HS 380991 import proxy'),
       reviewRequired: true,
     }))
+  })
+
+  it('hydrates reputable market-reference claims without silently approving them', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('futuremarketinsights.com')) {
+        return {
+          ok: true,
+          text: async () => `
+            <article>
+              <p>Page last updated on: October 06, 2025</p>
+              <p>The esterquats market is projected to grow from USD 2.8 billion in 2025 to USD 6.8 billion by 2035, at a CAGR of 9.2%.</p>
+              <p>Insights into the TEA-Quats Product Type Segment The TEA-quats segment is projected to hold 42.9% of the esterquats market revenue share in 2025.</p>
+              <p>Insights into the Liquid Form Segment The liquid form segment is anticipated to account for 61.3% of the esterquats market revenue share in 2025.</p>
+              <p>Analysis of Esterquats Market By Key Countries Country CAGR China 12.4% India 11.5% Germany 10.6% France 9.7% UK 8.7% USA 7.8% Brazil 6.9%.</p>
+              <p>Top Key Players in Esterquats Market: ABITEC Corporation, AkzoNobel, BASF, Clariant, Evonik Industries, Kao Corporation, Stepan Company, Solvay Esterquats Market Key Takeaways</p>
+            </article>
+          `,
+        }
+      }
+      if (url.includes('persistencemarketresearch.com')) {
+        return {
+          ok: true,
+          text: async () => `
+            <article>
+              <p>ID: PMRREP 23521 February 2026 212 Pages</p>
+              <p>The global esterquats market is projected to reach US$ 7.1 billion in 2026 and US$ 14.3 billion by 2033, growing at a CAGR of 10.5% over the forecast period.</p>
+              <p>North America is likely to maintain established dominance, holding 43% share.</p>
+              <p>Asia Pacific experiences the fastest regional growth at 12.4% CAGR in China and 11.5% CAGR in India.</p>
+              <p>Solid and paste esterquats account for approximately 25% of market share.</p>
+              <p>Tallow-based esterquats continue to dominate the market with approximately 68% share.</p>
+              <p>Vegetable oil-based esterquats are steadily gaining traction and currently account for around 32% of the market.</p>
+              <p>Fabric care remains the largest application segment, accounting for approximately 50% of total esterquat demand.</p>
+              <p>Personal care represents the fastest-growing application area, with estimated growth of 14% CAGR.</p>
+              <p>Tier 1 companies such as BASF SE, Evonik Industries AG, Stepan Company, and Kao Corporation collectively account for approximately 50-60% of global market share.</p>
+              <p>Companies Covered in Esterquats Market BASF SE Evonik Industries AG Stepan Company Kao Corporation Akzo Nobel N.V. Floerger GmbH Frequently Asked Questions</p>
+            </article>
+          `,
+        }
+      }
+      if (url.includes('360researchreports.com')) {
+        return {
+          ok: true,
+          text: async () => `
+            <article>
+              <p>Last Updated: 23 February 2026</p>
+              <p>Global Esterquat market value is expected to rise from USD 535.392 million in 2026 to approximately USD 874.1568 million by 2035, progressing at a CAGR of 5.6% between 2026 and 2035.</p>
+              <p>Asia-Pacific holds 41% of global esterquat consumption at 787,200 tons, Europe holds 28%, and North America holds 19%, with these three regions jointly representing 88% of global demand. Middle East & Africa consumes 134,400 tons, contributing 7% of global esterquat demand.</p>
+              <p>The Esterquat Market is segmented by type into TEAQ, DEEDMAC, HEQ, and Others, representing 48%, 32%, 14%, and 6% of global volume respectively.</p>
+              <p>The top 2 manufacturers hold 33% market share collectively, while the top 5 control 57%, and the largest producer alone represents 19%, shaping a consolidated Esterquat Competitive Landscape.</p>
+              <p>China leads with 326,000 tons, India with 154,000 tons, Japan with 98,100 tons, South Korea with 67,000 tons, and Indonesia with 52,400 tons.</p>
+              <p>List of Top Esterquat Companies * Stepan Company * Kao Chemicals * Evonik Industries * BASF SE * Clariant Chemicals Top Two Companies with Highest Share</p>
+              <p>Stepan Company: Stepan Company holds 19% global esterquat share, operates 12 production plants, and manufactures over 410,000 tons annually for household and personal care industries.</p>
+              <p>Evonik Industries: Evonik Industries controls 14% global esterquat share, manages 7 advanced facilities, and supplies more than 268,000 tons yearly to global detergent and cosmetic manufacturers.</p>
+            </article>
+          `,
+        }
+      }
+      if (url.includes('fortunebusinessinsights.com')) {
+        return {
+          ok: true,
+          text: async () => `
+            <article>
+              <p>Last Updated: May 18, 2026</p>
+              <p>The global esterquats market size was valued at USD 2.19 billion in 2025.</p>
+              <p>It is projected to grow from USD 2.34 billion in 2026 to USD 4.23 billion by 2034, exhibiting a CAGR of 7.7%.</p>
+              <p>North America held 40.6% share in 2025.</p>
+              <p>Canada captured 5.08% of the global market share in 2025.</p>
+              <p>The triethanolamine (TEA) segment accounted for 33.6% in 2025.</p>
+              <p>The liquid form segment held 85.6% share in 2025.</p>
+              <p>The fabric softeners segment held 55% share in 2025.</p>
+              <p>List of Top Esterquats Companies AkzoNobel Procter & Gamble Kao Chemicals BASF Stepan Company Evonik Industries Market Size by Form</p>
+              <p>AkzoNobel: 17% Market Share</p>
+              <p>Procter & Gamble: 14% Market Share</p>
+            </article>
+          `,
+        }
+      }
+      if (url.includes('spglobal.com/ratings')) {
+        return {
+          ok: true,
+          text: async () => `
+            <article>
+              <p>Archroma is a Switzerland-based specialty chemicals producer for the textile, paper, and emulsions sectors.</p>
+              <p>The company reported about $1.6 billion in sales in fiscal 2025, with about 48% of group revenue generated in Asia.</p>
+            </article>
+          `,
+        }
+      }
+      if (url.includes('stockanalysis.com/quote/she/002010/financials/metrics')) {
+        return {
+          ok: true,
+          text: async () => `
+            <article>
+              <p>Textile Printing and Dyeing Auxiliaries 7.41B 7.07B 6.25B</p>
+              <p>Textile Printing and Dyeing Auxiliaries Growth 4.79% 13.07% 46.20%</p>
+              <p>Total 25.08B 26.70B 33.58B</p>
+              <p>Total Growth -6.05% -20.49% -9.00%</p>
+              <p>Last checked: May 18, 2026</p>
+            </article>
+          `,
+        }
+      }
+      return {
+        ok: true,
+        text: async () => `
+          <article>
+            <p>Last Updated: September 2024</p>
+            <p>The global esterquats market size was estimated at USD 2441.03 million in 2023 and is projected to grow at a CAGR of 10.3% from 2024 to 2030.</p>
+            <p>The global esterquats market is expected to grow at a compound annual growth rate of 10.3% from 2024 to 2030 to reach USD 4,836.1 million by 2030.</p>
+            <p>Fabric care dominated the esterquats market with a share of 90.8% in 2023.</p>
+            <p>Some key players operating in the esterquats market include Stepan Company, Kao Chemicals Europe, Evonik Industries, AkzoNobel, Chemelco International B.V., ABITEC Corporation, BASF SE, Lubrizol, Italmatch Chemicals, and Clariant Chemicals.</p>
+          </article>
+        `,
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: true,
+      includeMarketReferenceTrafficConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(7)
+    expect(result.importedRuns).toBe(0)
+    expect(result.autoFilledCount).toBeGreaterThanOrEqual(6)
+    expect(result.stagedReviewCount).toBeGreaterThanOrEqual(30)
+    expect(envelope?.state.marketClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Global esterquats market size',
+        value: 'USD 2.8B in 2025 (market-reference estimate)',
+        evidenceStatus: 'Market Reference',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: 'Future Market Insights - Esterquats Market',
+          url: 'https://www.futuremarketinsights.com/reports/esterquats-market',
+          date: 'October 06, 2025',
+        }),
+      }),
+      expect.objectContaining({
+        label: 'Global esterquats CAGR',
+        value: '9.2% CAGR from 2025 to 2035 (market-reference forecast)',
+      }),
+      expect.objectContaining({
+        label: 'Global esterquats market size',
+        value: 'US$ 7.1B in 2026 (market-reference estimate)',
+        source: expect.objectContaining({
+          title: 'Persistence Market Research - Esterquats Market',
+          date: 'February 2026',
+        }),
+      }),
+      expect.objectContaining({
+        label: 'Esterquats fabric-care segment share',
+        value: '90.8% fabric-care share in 2023 (market-reference segment estimate)',
+      }),
+      expect.objectContaining({
+        label: 'Global esterquats market size',
+        value: 'USD 2.19B in 2025 (market-reference estimate)',
+        source: expect.objectContaining({
+          title: 'Fortune Business Insights - Esterquats Market',
+          date: 'May 18, 2026',
+        }),
+      }),
+      expect.objectContaining({
+        label: 'Fabric-softener application share',
+        value: '55% fabric-softener application share in 2025 (market-reference segment estimate)',
+      }),
+      expect.objectContaining({
+        label: 'Esterquats key competitor set',
+        value: 'BASF SE Evonik Industries AG Stepan Company Kao Corporation Akzo Nobel N.V. Floerger GmbH',
+        source: expect.objectContaining({
+          title: 'Persistence Market Research - Esterquats Market',
+        }),
+      }),
+      expect.objectContaining({
+        label: 'Global esterquat market size',
+        value: 'USD 535.392M in 2026 (market-reference estimate)',
+        source: expect.objectContaining({
+          title: '360 Research Reports - Esterquat Market',
+          date: '23 February 2026',
+        }),
+      }),
+      expect.objectContaining({
+        label: 'Country-wise esterquat consumption - China',
+        value: '326,000 tons esterquat consumption (market-reference estimate)',
+      }),
+    ]))
+    expect(envelope?.state.marketClaims.map(claim => String(claim.value))).not.toContain(
+      'Review market-reference methodology and approve only if the source is acceptable for dashboard or investor use.',
+    )
+    expect(envelope?.state.marketClaims.map(claim => String(claim.value)).join('\n')).not.toContain('Frequently Asked Questions Related Reports')
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'BASF',
+        marketShare: 'Collective Tier-1 esterquats share 50-60%; individual company share not published by this source. Review required before ranking or investor use.',
+        evidenceStatus: 'Market Reference',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: 'Persistence Market Research - Esterquats Market',
+          url: 'https://www.persistencemarketresearch.com/market-research/esterquats-market.asp',
+          date: 'February 2026',
+        }),
+        riskReason: expect.stringContaining('collective Tier-1 market-share range'),
+      }),
+      expect.objectContaining({
+        companyName: 'Kao Corporation',
+        marketShare: expect.stringContaining('Review required before ranking'),
+        reviewRequired: true,
+      }),
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        marketShare: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+        reviewRequired: true,
+        metricEvidence: expect.objectContaining({
+          marketShare: expect.objectContaining({
+            value: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+            evidenceStatus: 'Market Reference',
+            reviewRequired: true,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        marketShare: '14% global esterquat share (market-reference estimate; not textile-softener-specific).',
+        reviewRequired: true,
+        metricEvidence: expect.objectContaining({
+          marketShare: expect.objectContaining({
+            value: '14% global esterquat share (market-reference estimate; not textile-softener-specific).',
+            evidenceStatus: 'Market Reference',
+            reviewRequired: true,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'AkzoNobel',
+        marketShare: '17% global esterquats share (Fortune Business Insights market-reference estimate; not textile-softener-specific).',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: 'Fortune Business Insights - Esterquats Market',
+          date: 'May 18, 2026',
+        }),
+        riskReason: expect.stringContaining('Tier-4 market-reference company-share estimate'),
+      }),
+      expect.objectContaining({
+        companyName: 'Procter & Gamble',
+        marketShare: '14% global esterquats share (Fortune Business Insights market-reference estimate; not textile-softener-specific).',
+        reviewRequired: true,
+      }),
+      expect.objectContaining({
+        companyName: 'Archroma',
+        revenue: 'FY2025 company-wide sales: about US$1.6B (S&P Global Ratings research update)',
+        evidenceStatus: 'Market Reference',
+        reviewRequired: false,
+      }),
+      expect.objectContaining({
+        companyName: 'Transfar',
+        revenue: 'FY2025 company-wide revenue: CNY 25.08B (StockAnalysis / S&P Global Market Intelligence)',
+        yearlyGrowth: 'FY2025 company-wide revenue YoY: -6.05%',
+        productEquivalent: expect.stringContaining('Textile Printing and Dyeing Auxiliaries segment: CNY 7.41B'),
+        evidenceStatus: 'Market Reference',
+        reviewRequired: false,
+      }),
+    ]))
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Global esterquats market size'),
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'marketClaims',
+          value: 'USD 2.8B in 2025 (market-reference estimate)',
+        }),
+      }),
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Collective Tier-1 esterquats share 50-60%'),
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          companyName: 'BASF',
+          value: 'Collective Tier-1 esterquats share 50-60%; individual company share not published by this source. Review required before ranking or investor use.',
+        }),
+      }),
+    ]))
+    expect(envelope?.state.presentationMaterials).toEqual([])
+  })
+
+  it('hydrates market-reference traffic estimates into competitor rows without price or share claims', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('r.jina.ai') && url.includes('stepan.com')) {
+        return {
+          ok: true,
+          text: async () => [
+            'Title: stepan.com Website Traffic, Ranking, Analytics [April 2026]',
+            'In April stepan.com received 412.2K visits with the average session duration 02:42. Compared to March traffic to stepan.com has increased by 4.8%.',
+            '"authorityScore":[0,{"value":[0,52],"valueDiffPercent":[0,null]}]',
+          ].join(' '),
+        }
+      }
+      if (url.includes('basf.com')) {
+        return {
+          ok: true,
+          text: async () => [
+            '<title>basf.com Website Traffic, Ranking, Analytics [April 2026]</title>',
+            '<p>In April basf.com received 2.8M visits with the average session duration 03:44. Compared to March traffic to basf.com has decreased by -2.1%.</p>',
+            '&quot;authorityScore&quot;:[0,{&quot;value&quot;:[0,72],&quot;valueDiffPercent&quot;:[0,null]}]',
+          ].join(''),
+        }
+      }
+      if (url.includes('stepan.com')) {
+        return { ok: false, status: 403, text: async () => '' }
+      }
+      if (url.includes('kao.com')) {
+        return {
+          ok: true,
+          text: async () => [
+            '<title>kao.com Website Traffic, Ranking, Analytics [April 2026]</title>',
+            '<p>In April kao.com received 1.17M visits with the average session duration 07:12. Compared to March traffic to kao.com has decreased by -6.34%.</p>',
+            '&quot;authorityScore&quot;:[0,{&quot;value&quot;:[0,60],&quot;valueDiffPercent&quot;:[0,null]}]',
+          ].join(''),
+        }
+      }
+      if (url.includes('syensqo.com')) {
+        return {
+          ok: true,
+          text: async () => [
+            '<title>syensqo.com Website Traffic, Ranking, Analytics [April 2026]</title>',
+            '<p>In April syensqo.com received 87.39K visits with the average session duration 02:10. Compared to March traffic to syensqo.com has increased by 12.4%.</p>',
+            '&quot;authorityScore&quot;:[0,{&quot;value&quot;:[0,37],&quot;valueDiffPercent&quot;:[0,null]}]',
+          ].join(''),
+        }
+      }
+      return { ok: false, status: 404, text: async () => '' }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+      includeMarketReferenceTrafficConnectors: true,
+      includeTrancoTrafficConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(27)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 4,
+      stagedReviewCount: 4,
+    })
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'BASF',
+        traffic: expect.stringContaining('2.8M visits'),
+        rating: expect.stringContaining('Authority Score: 72'),
+        pricingEvidence: '',
+        marketShare: '',
+        evidenceStatus: 'Market Reference',
+        sourceTier: 'tier4-market-reference',
+        reviewRequired: false,
+      }),
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        traffic: expect.stringContaining('412.2K visits'),
+        rating: expect.stringContaining('Authority Score: 52'),
+        pricingEvidence: '',
+        marketShare: '',
+        evidenceStatus: 'Market Reference',
+        sourceTier: 'tier4-market-reference',
+        reviewRequired: false,
+      }),
+      expect.objectContaining({
+        companyName: 'Kao Corporation',
+        traffic: expect.stringContaining('1.17M visits'),
+        rating: expect.stringContaining('Authority Score: 60'),
+        pricingEvidence: '',
+        marketShare: '',
+        evidenceStatus: 'Market Reference',
+        sourceTier: 'tier4-market-reference',
+        reviewRequired: false,
+        riskReason: expect.stringContaining('Traffic and authority'),
+      }),
+      expect.objectContaining({
+        companyName: 'Syensqo / Solvay',
+        traffic: expect.stringContaining('87.39K visits'),
+        rating: expect.stringContaining('Authority Score: 37'),
+      }),
+    ]))
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Semrush website-traffic estimate'),
+        status: 'Pending Review',
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          companyName: 'Kao Corporation',
+        }),
+      }),
+    ]))
+  })
+
+  it('hydrates Tranco traffic-rank signals for all configured competitor domains', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async (url: string) => {
+      const domain = String(url).split('/').pop() || 'unknown.example'
+      const rank = domain.length * 1000
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ranks: [
+            { date: '2026-06-04', rank: rank + 20 },
+            { date: '2026-06-05', rank },
+          ],
+        }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+      includeMarketReferenceTrafficConnectors: false,
+      includeTrancoTrafficConnectors: true,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(15)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 15,
+      stagedReviewCount: 15,
+    })
+    expect(envelope?.state.competitors).toHaveLength(15)
+    expect(envelope?.state.competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'BASF',
+        traffic: expect.stringContaining('Tranco daily traffic-rank signal'),
+        pricingEvidence: '',
+        marketShare: '',
+        revenue: '',
+        evidenceStatus: 'Market Reference',
+        sourceTier: 'tier4-market-reference',
+        reviewRequired: false,
+        metricEvidence: expect.objectContaining({
+          traffic: expect.objectContaining({
+            source: expect.objectContaining({
+              title: 'Tranco daily domain rank - basf.com',
+              url: 'https://tranco-list.eu/api/ranks/domain/basf.com',
+            }),
+            evidenceStatus: 'Market Reference',
+            reviewRequired: false,
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        companyName: 'Pulcra Chemicals',
+        traffic: expect.stringContaining('pulcra-chemicals.com'),
+      }),
+    ]))
+    expect(envelope?.state.researchFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        keyClaim: expect.stringContaining('Tranco daily traffic-rank signal'),
+        dashboardTarget: expect.objectContaining({
+          group: 'competitorRecords',
+          companyName: 'BASF',
+        }),
+      }),
+    ]))
+  })
+
+  it('extracts 360 Research market-reference data and keeps company share review-gated', () => {
+    const source = {
+      fieldKeySlug: 'research360_esterquat',
+      sourceTitle: '360 Research Reports - Esterquat Market',
+      sourceUrl: 'https://www.360researchreports.com/market-reports/esterquat-market-204218',
+      parser: 'research360-esterquat' as const,
+    }
+    const html = `
+      <article>
+        <p>Last Updated: 23 February 2026</p>
+        <p>Global Esterquat market value is expected to rise from USD 535.392 million in 2026 to approximately USD 874.1568 million by 2035, progressing at a CAGR of 5.6% between 2026 and 2035.</p>
+        <p>Asia-Pacific holds 41% of global esterquat consumption at 787,200 tons, Europe holds 28%, and North America holds 19%, with these three regions jointly representing 88% of global demand. Middle East & Africa consumes 134,400 tons, contributing 7% of global esterquat demand.</p>
+        <p>The Esterquat Market is segmented by type into TEAQ, DEEDMAC, HEQ, and Others, representing 48%, 32%, 14%, and 6% of global volume respectively.</p>
+        <p>The top 2 manufacturers hold 33% market share collectively, while the top 5 control 57%, and the largest producer alone represents 19%, shaping a consolidated Esterquat Competitive Landscape.</p>
+        <p>Asia-Pacific is the largest regional market, consuming 787,200 tons, representing 41% of global esterquat volume. China leads with 326,000 tons, India with 154,000 tons, Japan with 98,100 tons, South Korea with 67,000 tons, and Indonesia with 52,400 tons.</p>
+        <p>Europe holds 28% of global esterquat consumption, totaling 537,600 tons. Germany leads with 126,000 tons, followed by the U.K. at 94,000 tons, France at 78,000 tons, Italy at 69,200 tons, and Spain at 56,100 tons.</p>
+        <p>List of Top Esterquat Companies * Stepan Company * Kao Chemicals * Evonik Industries * BASF SE * Clariant Chemicals Top Two Companies with Highest Share</p>
+        <p>Stepan Company: Stepan Company holds 19% global esterquat share, operates 12 production plants, and manufactures over 410,000 tons annually for household and personal care industries.</p>
+        <p>Evonik Industries: Evonik Industries controls 14% global esterquat share, manages 7 advanced facilities, and supplies more than 268,000 tons yearly to global detergent and cosmetic manufacturers.</p>
+      </article>
+    `
+
+    const claims = marketReferencePageToMarketClaimUpdates(source, html, '2026-06-06T00:00:00.000Z')
+    const competitors = marketReferencePageToCompetitorContextUpdates(source, html, '2026-06-06T00:00:00.000Z')
+
+    expect(claims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fieldKey: 'market.esterquats.360_market_size',
+        value: 'USD 535.392M in 2026 (market-reference estimate)',
+        sourceDate: '23 February 2026',
+        reviewRequired: true,
+      }),
+      expect.objectContaining({
+        fieldKey: 'market.esterquats.360_country_consumption.china',
+        value: '326,000 tons esterquat consumption (market-reference estimate)',
+      }),
+      expect.objectContaining({
+        fieldKey: 'market.esterquats.360_top_five_share',
+        value: '57% top-five collective share (market-reference estimate)',
+      }),
+    ]))
+    expect(competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'Stepan Company',
+        marketShare: '19% global esterquat share (market-reference estimate; not textile-softener-specific).',
+        evidenceStatus: 'Market Reference',
+        reviewRequired: true,
+        riskReason: expect.stringContaining('not official'),
+      }),
+      expect.objectContaining({
+        companyName: 'Evonik Industries',
+        marketShare: '14% global esterquat share (market-reference estimate; not textile-softener-specific).',
+        reviewRequired: true,
+      }),
+    ]))
+  })
+
+  it('extracts Fortune market-reference data and keeps company share review-gated', () => {
+    const source = {
+      fieldKeySlug: 'fortune_esterquats',
+      sourceTitle: 'Fortune Business Insights - Esterquats Market',
+      sourceUrl: 'https://www.fortunebusinessinsights.com/esterquats-market-102891',
+      parser: 'fortune-esterquats' as const,
+    }
+    const html = `
+      <article>
+        <p>Last Updated: May 18, 2026</p>
+        <p>The global esterquats market size was valued at USD 2.19 billion in 2025.</p>
+        <p>It is projected to grow from USD 2.34 billion in 2026 to USD 4.23 billion by 2034, exhibiting a CAGR of 7.7%.</p>
+        <p>North America held 40.6% share in 2025.</p>
+        <p>Canada captured 5.08% of the global market share in 2025.</p>
+        <p>The triethanolamine (TEA) segment accounted for 33.6% in 2025.</p>
+        <p>The liquid form segment held 85.6% share in 2025.</p>
+        <p>The fabric softeners segment held 55% share in 2025.</p>
+        <p>List of Top Esterquats Companies AkzoNobel Procter & Gamble Kao Chemicals BASF Stepan Company Evonik Industries Market Size by Form</p>
+        <p>AkzoNobel: 17% Market Share</p>
+        <p>Procter & Gamble: 14% Market Share</p>
+      </article>
+    `
+
+    const claims = marketReferencePageToMarketClaimUpdates(source, html, '2026-06-06T00:00:00.000Z')
+    const competitors = marketReferencePageToCompetitorContextUpdates(source, html, '2026-06-06T00:00:00.000Z')
+
+    expect(claims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fieldKey: 'market.esterquats.fortune_market_size',
+        value: 'USD 2.19B in 2025 (market-reference estimate)',
+        sourceDate: 'May 18, 2026',
+        reviewRequired: true,
+      }),
+      expect.objectContaining({
+        fieldKey: 'market.esterquats.fortune_cagr',
+        value: '7.7% CAGR from 2026 to 2034 (market-reference forecast)',
+      }),
+      expect.objectContaining({
+        fieldKey: 'market.esterquats.fortune_fabric_softener_share',
+        value: '55% fabric-softener application share in 2025 (market-reference segment estimate)',
+      }),
+    ]))
+    expect(competitors).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        companyName: 'AkzoNobel',
+        marketShare: '17% global esterquats share (Fortune Business Insights market-reference estimate; not textile-softener-specific).',
+        evidenceStatus: 'Market Reference',
+        reviewRequired: true,
+        riskReason: expect.stringContaining('not official'),
+      }),
+      expect.objectContaining({
+        companyName: 'Procter & Gamble',
+        marketShare: '14% global esterquats share (Fortune Business Insights market-reference estimate; not textile-softener-specific).',
+        reviewRequired: true,
+      }),
+    ]))
   })
 
   it('imports flat competitor metric arrays by hydrating official metrics and staging weak candidates', async () => {
@@ -2076,7 +3860,7 @@ describe('dashboard autopilot output ingestion', () => {
     ])
     expect(envelope?.state.competitors).toEqual([
       expect.objectContaining({
-        companyName: 'Stepan',
+        companyName: 'Stepan Company',
         productEquivalent: expect.stringContaining('STEPANTEX SP-90'),
         marketShare: '',
         evidenceStatus: 'To Verify',
@@ -2432,7 +4216,7 @@ describe('dashboard autopilot output ingestion', () => {
         reviewRequired: false,
       }),
     ])
-    expect(registry.importerVersion).toContain('official-product-evidence')
+    expect(registry.importerVersion).toBe(DASHBOARD_AUTOPILOT_IMPORTER_VERSION)
     expect(registry.importedRunKeys).toContain(runKey)
     expect(second.importedRuns).toBe(0)
   })

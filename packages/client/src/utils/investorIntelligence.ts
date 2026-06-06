@@ -155,7 +155,7 @@ export function formatSourceReference(source?: SourceReference | null): string {
   return details ? `${title} (${details})` : title
 }
 
-export const AUTOMATIC_VERIFICATION_LABEL = 'No source-backed value yet'
+export const AUTOMATIC_VERIFICATION_LABEL = 'Awaiting trusted-source import'
 
 export function displayEvidenceStatus(status?: string | null): string {
   const normalized = String(status || '').trim()
@@ -171,12 +171,15 @@ export function displayUnresolvedValue(value?: string | number | null): string {
   if (normalized === 'Missing' || normalized === 'Missing / To Verify') return AUTOMATIC_VERIFICATION_LABEL
   if (normalized === 'Trade Proxy / To Verify') return `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`
   return normalized
+    .replace(/Missing\s*\/\s*To Verify/g, AUTOMATIC_VERIFICATION_LABEL)
+    .replace(/Trade Proxy\s*\/\s*To Verify/g, `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`)
+    .replace(/\bTo Verify\b/g, AUTOMATIC_VERIFICATION_LABEL)
 }
 
 export function displayAutomaticVerificationText(text?: string | null): string {
   return String(text || '')
-    .replace(/Missing \/ To Verify/g, AUTOMATIC_VERIFICATION_LABEL)
-    .replace(/Trade Proxy \/ To Verify/g, `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`)
+    .replace(/Missing\s*\/\s*To Verify/g, AUTOMATIC_VERIFICATION_LABEL)
+    .replace(/Trade Proxy\s*\/\s*To Verify/g, `Trade Proxy / ${AUTOMATIC_VERIFICATION_LABEL}`)
     .replace(/\bTo Verify\b/g, AUTOMATIC_VERIFICATION_LABEL)
 }
 
@@ -227,7 +230,14 @@ export function formatSourcedMarketShare(
   const trimmed = value?.trim() || ''
   if (!trimmed) return 'To Verify'
   if (evidenceStatus === 'Assumption' || evidenceStatus === 'Powerful Assumption' || evidenceStatus === 'Approved Assumption') return `${evidenceStatus}: ${trimmed}`
-  if ((evidenceStatus === 'Verified' || evidenceStatus === 'Source-backed' || evidenceStatus === 'User Approved') && sourceIsUsable(source)) return trimmed
+  if ((
+    evidenceStatus === 'Verified' ||
+    evidenceStatus === 'Source-backed' ||
+    evidenceStatus === 'User Approved' ||
+    evidenceStatus === 'Official Data' ||
+    evidenceStatus === 'Trusted Source Auto-Updated'
+  ) && sourceIsUsable(source)) return trimmed
+  if (evidenceStatus === 'Market Reference' && sourceIsUsable(source)) return trimmed
   return 'To Verify'
 }
 
