@@ -15,8 +15,6 @@ import {
   calculatePriceAlert,
   createDefaultRawMaterials,
   isDmsMaterial,
-  latestPriceEntry,
-  materialPriceAlert,
   nowIsoDate,
   sourceTypeStatus,
   type RawMaterialPriceEntry,
@@ -102,6 +100,12 @@ const REVIEW_GATED_PAYMENT_COPY = 'Cost-sensitive: payment evidence required'
 const REVIEW_GATED_QUALITY_COPY = 'Review-gated: TDS/SDS/COA evidence required'
 const REVIEW_GATED_RELIABILITY_COPY = 'Review-gated: reliability evidence required'
 const REVIEW_GATED_SCORE_COPY = 'Review-gated: scoring evidence required'
+const DISPLAYABLE_PRICE_STATUSES: IntelligenceEvidenceStatus[] = [
+  'Verified',
+  'Source-backed',
+  'User Approved',
+  'Investor Approved',
+]
 
 const supplierScorecardRows: SupplierScorecardRow[] = [
   {
@@ -311,12 +315,13 @@ function supplierEvidenceLooksQualityBacked(record: SupplierScorecardRecord): bo
 
 function supplierEvidenceLooksReliabilityBacked(record: SupplierScorecardRecord): boolean {
   const evidenceText = supplierEvidenceText(record)
-  return /reliability|delivery|lead time|performance|supplier audit|scorecard|approved supplier|shipment|on-time|logistics/.test(evidenceText)
+  return /reliability|supplier audit|scorecard|approved supplier|supplier performance|shipment record|on-time|delivery record/.test(evidenceText)
 }
 
 function supplierEvidenceLooksPaymentBacked(record: SupplierScorecardRecord): boolean {
   const evidenceText = supplierEvidenceText(record)
-  return /payment|payment terms|\blc\b|letter of credit|\btt\b|telegraphic transfer|credit terms|invoice|proforma|purchase order|\bpi\b|commercial offer/.test(evidenceText)
+  return supplierEvidenceLooksQuoteBacked(record) &&
+    /payment terms|\blc\b|letter of credit|\btt\b|telegraphic transfer|credit terms|invoice|proforma|purchase order|\bpi\b|commercial offer/.test(evidenceText)
 }
 
 function supplierEvidenceLooksScoreBacked(record: SupplierScorecardRecord): boolean {
@@ -408,7 +413,7 @@ function importedSupplierScoreField(record: SupplierScorecardRecord, value: stri
 }
 
 function supplierTextContainsCommercialValue(text?: string | null): boolean {
-  return /(?:usd|us\$|\$|rmb|cny|¥|eur|€|\/\s*t|\/\s*mt|per\s+(?:ton|mt)|price|quote|quotation|invoice|proforma|payment|payment terms|\blc\b|letter of credit|\btt\b|credit days|\d+\s*\/\s*10|\d+\s*\/\s*100|\bscore\b)/i.test(text || '')
+  return /(?:usd|us\$|\$|rmb|cny|¥|eur|€|\/\s*t|\/\s*mt|per\s+(?:ton|mt)|landed cost|freight|logistics|lead time|delivery terms|delivery record|shipment|moq|price|quote|quotation|invoice|proforma|payment|payment terms|\blc\b|letter of credit|\btt\b|credit days|quality rating|reliability rating|supplier rating|\d+\s*\/\s*10|\d+\s*\/\s*100|\bscore\b|scorecard)/i.test(text || '')
 }
 
 function safeSupplierSourceSummary(record: SupplierScorecardRecord): string {
@@ -614,8 +619,13 @@ const selectedMaterial = computed(() =>
   materials.value.find(item => item.id === selectedMaterialId.value) || materials.value[0],
 )
 
-const selectedLatest = computed(() => selectedMaterial.value ? latestPriceEntry(selectedMaterial.value) : null)
-const selectedAlert = computed(() => selectedMaterial.value ? materialPriceAlert(selectedMaterial.value) : calculatePriceAlert(null, null))
+const selectedApprovedPriceHistory = computed(() =>
+  selectedMaterial.value ? displayablePriceHistory(selectedMaterial.value) : [],
+)
+const selectedLatest = computed(() => selectedApprovedPriceHistory.value[0] || null)
+const selectedAlert = computed(() =>
+  selectedMaterial.value ? priceAlertForHistory(selectedApprovedPriceHistory.value, selectedMaterial.value.alertThresholdPct) : calculatePriceAlert(null, null),
+)
 const selectedIdentitySignal = computed(() => identitySignalForMaterial(selectedMaterial.value))
 
 const summaryCards = computed(() => {
@@ -626,12 +636,12 @@ const summaryCards = computed(() => {
     identityKeys.has(materialIdentityKey(item.name)),
   ).length
   const toVerify = Math.max(0, materials.value.length - sourced)
-  const alerts = materials.value.filter(item => materialPriceAlert(item).triggered).length
+  const alerts = materials.value.filter(item => visibleMaterialPriceAlert(item).triggered).length
   return [
     { label: 'Tracked materials', value: materials.value.length, note: 'No live prices are hardcoded' },
     { label: 'Source-backed identity', value: sourced, note: 'Official identity source; price still needs quote evidence' },
     { label: 'Needs source review', value: toVerify, note: 'Missing or weak evidence checked twice daily' },
-    { label: '5% alerts', value: alerts, note: 'Based on saved price history' },
+    { label: '5% alerts', value: alerts, note: 'Based on approved/source-backed price history' },
   ]
 })
 
@@ -640,7 +650,7 @@ const supplierAutopilotCards = computed(() => [
     icon: '🔎',
     label: 'Search',
     value: supplierAutopilotJobId.value ? 'Scheduled' : 'Auto-checking',
-    note: 'Hermes researches supplier candidates and source gaps automatically.',
+    note: 'Uses the Hermes job scheduler; results stay review-gated until approved.',
   },
   {
     icon: '📥',
@@ -662,16 +672,37 @@ function priceDisplay(value: number | null | undefined, currency: string): strin
   return `${currency} ${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
 }
 
+function canDisplayRawMaterialPriceEntry(entry?: RawMaterialPriceEntry | null): boolean {
+  if (!entry) return false
+  if (!DISPLAYABLE_PRICE_STATUSES.includes(entry.evidenceStatus)) return false
+  return Boolean((entry.rmbPrice || entry.usdPrice) && (entry.source || '').trim() && (entry.sourceDate || '').trim())
+}
+
+function displayablePriceHistory(material: RawMaterialRecord): RawMaterialPriceEntry[] {
+  return material.priceHistory.filter(canDisplayRawMaterialPriceEntry)
+}
+
+function priceAlertForHistory(history: RawMaterialPriceEntry[], thresholdPct: number) {
+  const latest = history[0]
+  const previous = history[1]
+  return calculatePriceAlert(previous?.rmbPrice ?? previous?.usdPrice, latest?.rmbPrice ?? latest?.usdPrice, thresholdPct)
+}
+
+function visibleMaterialPriceAlert(material: RawMaterialRecord) {
+  return priceAlertForHistory(displayablePriceHistory(material), material.alertThresholdPct)
+}
+
 function sensitiveSupplierDisplay(value: string): string {
   if (employeeRedaction.value) return 'Restricted in Employee View'
   return value
 }
 
 function trendLabel(material: RawMaterialRecord, days: number): string {
-  const latest = latestPriceEntry(material)
+  const history = displayablePriceHistory(material)
+  const latest = history[0]
   if (!latest) return 'Limited data available'
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
-  const baseline = material.priceHistory.find(entry => Date.parse(entry.createdAt) <= cutoff) || material.priceHistory[material.priceHistory.length - 1]
+  const baseline = history.find(entry => Date.parse(entry.createdAt) <= cutoff) || history[history.length - 1]
   const alert = calculatePriceAlert(baseline?.rmbPrice ?? baseline?.usdPrice, latest.rmbPrice ?? latest.usdPrice, 0)
   if (!baseline || !alert.percentChange) return 'Limited data available'
   return `${alert.percentChange > 0 ? '+' : ''}${alert.percentChange.toFixed(1)}%`
@@ -729,7 +760,7 @@ function addPriceEntry() {
 }
 
 function taskBody(material: RawMaterialRecord, reason: string): string {
-  const latest = latestPriceEntry(material)
+  const latest = displayablePriceHistory(material)[0]
   return [
     reason,
     `Material: ${material.name}`,
@@ -757,7 +788,7 @@ async function createTask(material: RawMaterialRecord, reason: string) {
     await kanbanStore.createTask({
       title: `Raw material evidence: ${material.name}`,
       body: taskBody(material, reason),
-      priority: material.highRisk || materialPriceAlert(material).triggered ? 3 : 2,
+      priority: material.highRisk || visibleMaterialPriceAlert(material).triggered ? 3 : 2,
       tenant: 'Chemicon China Feasibility',
     })
     message.success('Raw material task created in Kanban')
@@ -1113,7 +1144,7 @@ onMounted(() => {
           v-for="material in materials"
           :key="material.id"
           class="material-row"
-          :class="{ active: selectedMaterial?.id === material.id, risk: material.highRisk, alerting: materialPriceAlert(material).triggered }"
+          :class="{ active: selectedMaterial?.id === material.id, risk: material.highRisk, alerting: visibleMaterialPriceAlert(material).triggered }"
           @click="selectedMaterialId = material.id"
         >
           <strong>{{ material.name }}</strong>
@@ -1226,10 +1257,15 @@ onMounted(() => {
 
         <section class="history-panel">
           <h3>Price history graph</h3>
-          <p v-if="!selectedMaterial.priceHistory.length" class="empty-state-panel">No sourced price history yet. Upload a quote in Documents, create a supplier task, or schedule deeper research before using this value.</p>
-          <div v-for="entry in selectedMaterial.priceHistory.slice(0, 10)" :key="entry.id" class="history-row">
+          <p v-if="!selectedApprovedPriceHistory.length" class="empty-state-panel">
+            No approved or source-backed price history yet. Reference listings and unapproved manual prices stay hidden until source review.
+          </p>
+          <p v-if="selectedMaterial.priceHistory.length && !selectedApprovedPriceHistory.length" class="scorecard-footnote">
+            Saved reference prices exist for this material, but they are not shown as dashboard facts.
+          </p>
+          <div v-for="entry in selectedApprovedPriceHistory.slice(0, 10)" :key="entry.id" class="history-row">
             <span>{{ entry.sourceDate || entry.createdAt.slice(0, 10) }}</span>
-            <div class="bar-track"><div class="bar" :style="{ width: graphWidth(entry, selectedMaterial.priceHistory) }" /></div>
+            <div class="bar-track"><div class="bar" :style="{ width: graphWidth(entry, selectedApprovedPriceHistory) }" /></div>
             <strong>{{ priceDisplay(entry.rmbPrice || entry.usdPrice, entry.rmbPrice ? 'RMB' : 'USD') }}</strong>
             <small>{{ displaySupplierStatus(entry.evidenceStatus) }} / {{ entry.sourceType }}</small>
           </div>

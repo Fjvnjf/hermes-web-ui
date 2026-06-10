@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NAlert, NButton, NTag, useMessage } from 'naive-ui'
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
-import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { useFeasibilityIntelligence, type FinancialModelSnapshot } from '@/composables/useFeasibilityIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
 import { getFrontendAccessRole, shouldRedactForEmployee } from '@/utils/accessControl'
@@ -16,6 +16,7 @@ import {
   defaultExecutiveRefreshState,
   financialOutputStatus,
   nextTwiceDailyRefresh,
+  type ExecutiveKpi,
   type ExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
 import {
@@ -37,6 +38,26 @@ const scenarioNames = ['Lean', 'Base', 'Conservative', 'Aggressive'] as const
 const REVIEW_GATED_MODEL_VALUE = 'Awaiting approved financial model input'
 const REVIEW_GATED_LINE_ITEM_VALUE = 'Awaiting approved line-item model'
 const APPROVED_SOURCE_NEEDED = 'Approved source needed'
+const NO_APPROVED_FINANCIAL_VALUE = 'No approved source-backed value'
+const SOURCE_BACKED_FINANCIAL_STATUSES = new Set<IntelligenceEvidenceStatus>([
+  'Verified',
+  'Source-backed',
+  'Official Data',
+  'Trusted Source Auto-Updated',
+  'Supplier Evidence',
+  'Market Reference',
+])
+const APPROVED_FINANCIAL_STATUSES = new Set<IntelligenceEvidenceStatus>([
+  'User Approved',
+  'Investor Approved',
+  'Approved Assumption',
+])
+const SAVED_ASSUMPTION_FINANCIAL_STATUSES = new Set<IntelligenceEvidenceStatus>([
+  'Assumption',
+  'Powerful Assumption',
+  'Derived from Assumptions',
+  'User Provided',
+])
 
 const role = computed(() => getFrontendAccessRole())
 const redactsFinancials = computed(() => shouldRedactForEmployee(role.value) || role.value === 'investor_viewer' || role.value === 'developer_admin')
@@ -56,16 +77,100 @@ function financialModelForScenario(scenario: string) {
     null
 }
 
+function primaryFinancialOutputStatus(model: FinancialModelSnapshot | null): IntelligenceEvidenceStatus {
+  if (!model) return 'Missing'
+  const sourceAwareStatus = financialOutputStatus(model)
+  if (SOURCE_BACKED_FINANCIAL_STATUSES.has(sourceAwareStatus) || APPROVED_FINANCIAL_STATUSES.has(sourceAwareStatus)) {
+    return sourceAwareStatus
+  }
+  if (SAVED_ASSUMPTION_FINANCIAL_STATUSES.has(model.evidenceStatus) || sourceAwareStatus === 'Derived from Assumptions') {
+    return 'Derived from Assumptions'
+  }
+  return 'To Verify'
+}
+
+function isFiniteFinancialNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function formatPrimaryCurrency(value: number | null | undefined, currency = 'USD'): string {
+  if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function formatPrimaryPercent(value: number | null | undefined): string {
+  if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
+  return `${(value * 100).toFixed(1)}%`
+}
+
+function formatPrimaryPayback(value: number | null | undefined): string {
+  if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
+  return `Year ${value}`
+}
+
+function formatPrimaryRoiFromMoic(value: number | null | undefined): string {
+  if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
+  return `${((value - 1) * 100).toFixed(1)}%`
+}
+
+function formatPrimaryProfitabilityIndex(model: FinancialModelSnapshot | null): string {
+  if (!model || !isFiniteFinancialNumber(model.npv) || !isFiniteFinancialNumber(model.capexTotal) || model.capexTotal <= 0) {
+    return NO_APPROVED_FINANCIAL_VALUE
+  }
+  return `${((model.npv + model.capexTotal) / model.capexTotal).toFixed(2)}x`
+}
+
+function sourceLabelForFinancialModel(model: FinancialModelSnapshot, status: IntelligenceEvidenceStatus): string {
+  const sourceDate = model.source?.date ? ` (${model.source.date})` : ''
+  const sourceTitle = model.source?.title ? `${model.source.title}${sourceDate}` : 'IRR Calculator saved scenario'
+  if (SOURCE_BACKED_FINANCIAL_STATUSES.has(status)) return sourceTitle
+  if (APPROVED_FINANCIAL_STATUSES.has(status)) return `${sourceTitle} / approved financial model`
+  return `${sourceTitle} / saved model assumption`
+}
+
+function normalizePrimaryKpi(item: ExecutiveKpi, model: FinancialModelSnapshot | null): ExecutiveKpi {
+  const primaryStatus = primaryFinancialOutputStatus(model)
+  const label = item.key === 'npv' ? 'NPV (saved model rate)' : item.label
+  if (!model || primaryStatus === 'Missing' || primaryStatus === 'To Verify') {
+    return { ...item, label, evidenceStatus: 'To Verify', sourceLabel: 'No approved financial model' }
+  }
+
+  const value = (() => {
+    if (item.key === 'totalInvestment') return formatPrimaryCurrency(model.capexTotal, model.currency)
+    if (item.key === 'projectIrr') return formatPrimaryPercent(model.irr)
+    if (item.key === 'npv') return formatPrimaryCurrency(model.npv, model.currency)
+    if (item.key === 'payback') return formatPrimaryPayback(model.paybackYear)
+    if (item.key === 'profitabilityIndex') return formatPrimaryProfitabilityIndex(model)
+    if (item.key === 'fiveYearRoi') return formatPrimaryRoiFromMoic(model.investorMoic)
+    return item.value
+  })()
+  const hasDisplayableValue = value !== NO_APPROVED_FINANCIAL_VALUE
+
+  return {
+    ...item,
+    label,
+    value,
+    evidenceStatus: hasDisplayableValue ? primaryStatus : 'To Verify',
+    sourceLabel: hasDisplayableValue ? sourceLabelForFinancialModel(model, primaryStatus) : 'Not calculated from saved model yet',
+    lastUpdated: model.createdAt || item.lastUpdated,
+  }
+}
+
 const selectedFinancialModel = computed(() =>
   financialModelForScenario(selectedScenario.value),
 )
 const selectedFinancialOutputStatus = computed<IntelligenceEvidenceStatus>(() =>
-  selectedFinancialModel.value ? financialOutputStatus(selectedFinancialModel.value) : 'Missing',
+  primaryFinancialOutputStatus(selectedFinancialModel.value),
 )
 const nextUpdateLabel = computed(() => formatDateTime(refreshState.value.nextRun))
 const kpis = computed(() =>
   buildInvestorEconomicsKpis(selectedFinancialModel.value, nextUpdateLabel.value)
     .filter(item => ['totalInvestment', 'projectIrr', 'npv', 'payback', 'profitabilityIndex', 'fiveYearRoi'].includes(item.key))
+    .map(item => normalizePrimaryKpi(item, selectedFinancialModel.value))
     .map(item => redactsFinancials.value
       ? { ...item, value: item.sensitive ? 'Restricted' : item.value, evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus, sourceLabel: item.sensitive ? 'Owner/financial only' : item.sourceLabel }
       : item),
@@ -178,7 +283,9 @@ const modelTotalPercent = computed(() => {
   return selectedFinancialModel.value ? 'Model total' : REVIEW_GATED_MODEL_VALUE
 })
 const modelSourceLabel = computed(() =>
-  selectedFinancialModel.value?.source?.title || (selectedFinancialModel.value ? 'IRR Calculator saved scenario' : APPROVED_SOURCE_NEEDED),
+  selectedFinancialModel.value
+    ? sourceLabelForFinancialModel(selectedFinancialModel.value, selectedFinancialOutputStatus.value)
+    : APPROVED_SOURCE_NEEDED,
 )
 const projectAnalysisDetailCards = computed(() => [
   {
@@ -253,7 +360,7 @@ const scenarioCards = computed(() => [
   const model = financialModelForScenario(card.name)
   return {
     ...card,
-    status: model ? financialOutputStatus(model) : card.status,
+    status: model ? primaryFinancialOutputStatus(model) : card.status,
     detail: model?.scenarioName || card.detail,
   }
 }))
@@ -290,7 +397,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function statusType(status: IntelligenceEvidenceStatus): 'default' | 'success' | 'warning' | 'error' | 'info' {
-  if (status === 'Verified' || status === 'Source-backed' || status === 'User Approved' || status === 'Investor Approved') return 'success'
+  if (SOURCE_BACKED_FINANCIAL_STATUSES.has(status) || APPROVED_FINANCIAL_STATUSES.has(status)) return 'success'
   if (status === 'Assumption' || status === 'Derived from Assumptions' || status === 'Approved Assumption' || status === 'Powerful Assumption') return 'warning'
   if (status === 'Missing' || status === 'To Verify') return 'error'
   return 'info'
@@ -320,13 +427,13 @@ function detailRow(item: string, spec: string) {
 
 function analysisReviewSummary(): string {
   const model = selectedFinancialModel.value
-  const modelKpis = buildInvestorEconomicsKpis(model, nextUpdateLabel.value)
+  const modelKpis = buildInvestorEconomicsKpis(model, nextUpdateLabel.value).map(item => normalizePrimaryKpi(item, model))
   const kpiValue = (key: string) => displayInvestmentValue(modelKpis.find(item => item.key === key)?.value)
   return [
     'Investment Analysis refresh draft',
     `Schedule metadata: ${refreshState.value.scheduleDisplay}`,
     `Scenario: ${model?.scenarioName || `${selectedScenario.value} scenario not filled yet`}`,
-    `Evidence status: ${displayInvestmentStatus(model ? financialOutputStatus(model) : 'Missing')}`,
+    `Evidence status: ${displayInvestmentStatus(selectedFinancialOutputStatus.value)}`,
     `NPV: ${model ? kpiValue('npv') : REVIEW_GATED_MODEL_VALUE}`,
     `IRR: ${model ? kpiValue('projectIrr') : REVIEW_GATED_MODEL_VALUE}`,
     `Payback: ${model ? kpiValue('payback') : REVIEW_GATED_MODEL_VALUE}`,
@@ -340,7 +447,7 @@ function stageAnalysisReview() {
     summary: analysisReviewSummary(),
     keyClaim: 'Investment analysis requires financial evidence review',
     area: 'financial',
-    evidenceStatus: selectedFinancialModel.value ? financialOutputStatus(selectedFinancialModel.value) : 'Missing',
+    evidenceStatus: selectedFinancialOutputStatus.value,
     confidence: 'medium',
     source: selectedFinancialModel.value?.source || null,
     suggestedTask: 'Review financial model inputs, source documents, and assumption labels before investor use.',

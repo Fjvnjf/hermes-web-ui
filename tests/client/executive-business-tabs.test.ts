@@ -15,7 +15,6 @@ import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntellig
 import { canAccessRouteName } from '@/utils/accessControl'
 import {
   EXECUTIVE_REFRESH_SCHEDULE,
-  buildInvestorEconomicsKpis,
   competitorMarketShare,
   defaultExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
@@ -166,6 +165,33 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).not.toContain('No daily brief generated yet')
   })
 
+  it('keeps unsourced financial scenarios out of Executive Overview command cards', () => {
+    useFeasibilityIntelligence().saveFinancialModelSnapshot({
+      scenarioName: 'Unsafe Verified Scenario',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Verified',
+      npv: 125000,
+      irr: 0.18,
+      mirr: 0.14,
+      investorMoic: 2.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 5000,
+      capexTotal: 2500000,
+      yearOneRevenue: 3000000,
+      warnings: ['Inputs still require source evidence.'],
+      source: null,
+    })
+
+    const wrapper = mount(ExecutiveOverviewView)
+    const investmentCard = wrapper.findAll('.command-card')
+      .find(card => card.text().includes('Investment Analysis'))
+
+    expect(investmentCard).toBeTruthy()
+    expect(investmentCard!.text()).toContain('No approved source-backed value')
+    expect(investmentCard!.text()).not.toContain('Unsafe Verified Scenario')
+  })
+
   it('keeps Investment Analysis values in source review until an IRR Calculator snapshot exists', () => {
     useFeasibilityIntelligence().addDataRoomSource({
       checklistLabel: 'Process equipment quote benchmark',
@@ -206,6 +232,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Payback Period')
     expect(wrapper.text()).toContain('Profitability Index')
     expect(wrapper.text()).toContain('5-Year ROI')
+    expect(wrapper.get('.kpi-grid').text()).toContain('NPV (saved model rate)')
+    expect(wrapper.get('.kpi-grid').text()).not.toContain('NPV @ 12%')
     expect(wrapper.text()).toContain('Reference-only project analysis template')
     expect(wrapper.text()).toContain('Scale-Up Esterquat Plant Project Analysis Template')
     expect(wrapper.text()).toContain('Investment Breakdown - Esterquat Plant')
@@ -254,21 +282,30 @@ describe('screenshot-matched executive business tabs', () => {
     })
 
     const wrapper = mount(InvestmentAnalysisView)
-    expect(wrapper.text()).not.toContain('18.0%')
-    expect(wrapper.text()).toContain('No approved source-backed value')
+    const kpiGrid = () => wrapper.get('.kpi-grid').text()
+    expect(kpiGrid()).toContain('18.0%')
+    expect(kpiGrid()).toContain('$125,000')
+    expect(kpiGrid()).toContain('Year 4')
+    expect(kpiGrid()).toContain('1.05x')
+    expect(kpiGrid()).toContain('110.0%')
+    expect(kpiGrid()).toContain('Derived from Assumptions')
+    expect(kpiGrid()).toContain('NPV (saved model rate)')
+    expect(kpiGrid()).not.toContain('NPV @ 12%')
 
     await wrapper.findAll('button').find(button => button.text() === 'Lean')!.trigger('click')
     expect(wrapper.text()).toContain('Scenario not filled yet')
-    expect(wrapper.text()).toContain('No approved source-backed value')
+    expect(kpiGrid()).toContain('No approved source-backed value')
+    expect(kpiGrid()).not.toContain('18.0%')
+    expect(kpiGrid()).not.toContain('$125,000')
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
   })
 
-  it('labels saved financial outputs as Derived from Assumptions for investor safety', () => {
+  it('labels Investment Analysis saved financial outputs as Derived from Assumptions for investor safety', () => {
     useFeasibilityIntelligence().saveFinancialModelSnapshot({
       scenarioName: 'Base',
       projectName: 'Chemicon China Feasibility',
       currency: 'USD',
-      evidenceStatus: 'Assumption',
+      evidenceStatus: 'User Provided',
       npv: 125000,
       irr: 0.18,
       mirr: 0.14,
@@ -282,9 +319,68 @@ describe('screenshot-matched executive business tabs', () => {
     })
 
     const wrapper = mount(InvestmentAnalysisView)
-    expect(wrapper.text()).toContain('No approved source-backed value')
-    expect(wrapper.text()).not.toContain('18.0%')
-    expect(buildInvestorEconomicsKpis(useFeasibilityIntelligence().latestFinancialModel.value, 'Tonight')[1].evidenceStatus).toBe('To Verify')
+    const kpiGrid = wrapper.get('.kpi-grid').text()
+    expect(kpiGrid).toContain('18.0%')
+    expect(kpiGrid).toContain('Derived from Assumptions')
+    expect(kpiGrid).toContain('IRR Calculator saved scenario / saved model assumption')
+    expect(kpiGrid).not.toContain('User Provided')
+    expect(kpiGrid).not.toContain('Verified')
+  })
+
+  it('gates unsupported verified financial snapshots on the primary Investment Analysis surface', () => {
+    useFeasibilityIntelligence().saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Verified',
+      npv: 125000,
+      irr: 0.18,
+      mirr: 0.14,
+      investorMoic: 2.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 5000,
+      capexTotal: 2500000,
+      yearOneRevenue: 3000000,
+      warnings: ['Inputs still require source evidence.'],
+      source: null,
+    })
+
+    const wrapper = mount(InvestmentAnalysisView)
+    const kpiGrid = wrapper.get('.kpi-grid').text()
+    expect(kpiGrid).toContain('No approved source-backed value')
+    expect(kpiGrid).not.toContain('18.0%')
+    expect(kpiGrid).not.toContain('$125,000')
+    expect(kpiGrid).not.toContain('Verified')
+  })
+
+  it('shows Investment Analysis source metadata when a financial snapshot has usable source backing', () => {
+    useFeasibilityIntelligence().saveFinancialModelSnapshot({
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Verified',
+      npv: 125000,
+      irr: 0.18,
+      mirr: 0.14,
+      investorMoic: 2.1,
+      paybackYear: 4,
+      breakEvenVolumeTon: 5000,
+      capexTotal: 2500000,
+      yearOneRevenue: 3000000,
+      warnings: ['Inputs trace to approved workbook.'],
+      source: {
+        title: 'Approved IRR workbook',
+        date: '2026-06-01',
+      },
+    })
+
+    const wrapper = mount(InvestmentAnalysisView)
+    const kpiGrid = wrapper.get('.kpi-grid').text()
+    expect(kpiGrid).toContain('18.0%')
+    expect(kpiGrid).toContain('$125,000')
+    expect(kpiGrid).toContain('Verified')
+    expect(kpiGrid).toContain('Approved IRR workbook (2026-06-01)')
+    expect(kpiGrid).not.toContain('Derived from Assumptions')
   })
 
   it('shows Market Intelligence values and competitor market share as source review when unsourced', () => {
@@ -301,6 +397,15 @@ describe('screenshot-matched executive business tabs', () => {
       evidenceStatus: 'To Verify',
       confidence: 'high',
       source: { title: 'UN Comtrade Plus', url: 'https://comtradeplus.un.org', date: '2024' },
+      lastChecked: '2024-12-31',
+    })
+    intelligence.addMarketClaim({
+      label: 'Review-only market reference size',
+      value: 'USD 9.99B unsupported market-reference estimate',
+      evidenceStatus: 'Market Reference',
+      confidence: 'medium',
+      source: { title: 'Market reference page', url: 'https://example.com/market-reference', date: '2026-01-01' },
+      lastChecked: '2026-01-01',
     })
     intelligence.addCompetitor({
       companyName: 'Example supplier',
@@ -320,7 +425,7 @@ describe('screenshot-matched executive business tabs', () => {
     const marketText = wrapper.text()
     const marketTextLower = marketText.toLowerCase()
 
-    expect(wrapper.get('.summary-card').text()).toContain('1')
+    expect(wrapper.get('.summary-card').text()).toContain('2')
     expect(wrapper.get('.summary-card').text()).toContain('source-attached claims')
     expect(wrapper.text()).toContain('Executive Market Panel')
     expect(wrapper.text()).toContain('Owner research permission active')
@@ -344,6 +449,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(marketTextLower).toContain('global market intelligence')
     expect(wrapper.text()).toContain('Textile Softeners, Esterquats, and Export-Market Signals')
     expect(wrapper.get('.global-market-intelligence').text()).toContain('Country-wise consumption growth - China')
+    expect(wrapper.get('.global-market-intelligence').text()).toContain('Review required')
+    expect(wrapper.get('.global-market-intelligence').text()).not.toContain('USD 9.99B unsupported market-reference estimate')
     expect(wrapper.get('.global-market-intelligence').text()).not.toContain('China textile-chemicals anchor')
     expect(wrapper.get('.global-market-intelligence').text()).not.toContain('Global esterquat reference market')
     expect(wrapper.text()).toContain('Global Opportunity Map')
@@ -352,6 +459,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Auto-imported')
     expect(wrapper.text()).toContain('China: +100.0% YoY trade proxy')
     expect(wrapper.text()).toContain('UN Comtrade Plus')
+    expect(wrapper.get('.country-growth-table').text()).toContain('Confidence: high')
+    expect(wrapper.get('.country-growth-table').text()).toContain('Last checked: 2024-12-31')
     expect(wrapper.get('.market-map-brief').text()).toContain('Trade Proxy')
     expect(wrapper.text()).toContain('official trade data, not direct textile-softener consumption')
     expect(wrapper.text()).toContain('Official trade-proxy import/export signal')
@@ -367,9 +476,10 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Market Segmentation Snapshot')
     expect(wrapper.text()).toContain('Reference value archived')
     expect(wrapper.get('.market-command-panel').text()).not.toContain('65,409')
+    expect(wrapper.get('.market-command-panel').text()).not.toContain('USD 9.99B unsupported market-reference estimate')
     expect(wrapper.text()).not.toContain('$3.2B')
     expect(wrapper.text()).not.toContain('$120M')
-    expect(wrapper.text()).toContain('User Provided')
+    expect(wrapper.text()).toContain('Reference only')
     expect(wrapper.text()).toContain('Market Size / Scope')
     expect(wrapper.text()).toContain('Import Dependence')
     expect(wrapper.text()).toContain('Market Segmentation Table')
@@ -736,6 +846,50 @@ describe('screenshot-matched executive business tabs', () => {
     expect(gammaRows[0].text()).not.toContain('2026-06-06')
   })
 
+  it('does not use company-level source or confidence as primary metric metadata', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'Identity Only Source Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS identity source only',
+      activeContent: '90% active claimed',
+      pricingEvidence: '$12/kg unsupported quote',
+      certifications: 'Official company identity page',
+      distributionPresence: 'Claimed distributor page',
+      marketShare: '19% unsupported estimate',
+      revenue: '$999M unsupported revenue',
+      yearlyGrowth: '+99% unsupported growth',
+      traffic: '9.9M unsupported visits',
+      rating: '5.0 unsupported rating',
+      lastUpdated: '2026-06-06',
+      confidence: 'high',
+      evidenceStatus: 'Verified',
+      source: {
+        title: 'Official identity profile',
+        url: 'https://example.com/identity-only',
+        date: '2026-06-06',
+      },
+      notes: 'Identity source exists, but no metric-level evidence is imported or approved.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    const row = wrapper.findAll('.comparison-grid-row')
+      .filter(item => !item.classes().includes('head') && item.text().includes('Identity Only Source Co'))[0]
+
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('CWAS identity source only')
+    expect(row.text()).toContain('No approved source-backed value')
+    expect(row.text()).toContain('Still missing source-backed fields:')
+    expect(row.text()).not.toContain('Official identity profile')
+    expect(row.text()).not.toContain('$12/kg unsupported quote')
+    expect(row.text()).not.toContain('19% unsupported estimate')
+    expect(row.text()).not.toContain('$999M unsupported revenue')
+    expect(row.text()).not.toContain('+99% unsupported growth')
+    expect(row.text()).not.toContain('9.9M unsupported visits')
+    expect(row.text()).not.toContain('5.0 unsupported rating')
+    expect(row.text()).not.toContain('Identity/product source only')
+  })
+
   it('hydrates competitor records from durable server intelligence on direct tab load', async () => {
     apiRequestMock.mockImplementation(async (url: string) => {
       if (url.includes('/api/hermes/intelligence-state')) {
@@ -833,7 +987,7 @@ describe('screenshot-matched executive business tabs', () => {
     const basfRow = wrapper.findAll('.comparison-grid-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('BASF'))[0]
 
-    expect(basfRow.text()).toContain('Review required')
+    expect(basfRow.text()).toContain('No approved source-backed value')
     expect(basfRow.text()).toContain('Still missing source-backed fields:')
     expect(basfRow.text()).toContain('company-specific market share')
     expect(basfRow.text()).not.toContain('Collective Tier-1 esterquats share 50-60%')
@@ -999,6 +1153,50 @@ describe('screenshot-matched executive business tabs', () => {
         payment: '',
         score: '',
       },
+      {
+        id: 'supplier-import-approved-1',
+        supplier: 'Approved Audit Supplier',
+        material: 'PDMS Silicone Oil',
+        value: 'Approved supplier evidence packet imported for dashboard display.',
+        source: {
+          title: 'Approved supplier audit scorecard quote packet',
+          url: 'https://example.com/approved-supplier-audit',
+          date: '2026-06-06',
+        },
+        sourceTier: 'tier3-supplier-evidence',
+        confidence: 'high',
+        evidenceStatus: 'Supplier Evidence',
+        reviewRequired: false,
+        dataType: 'supplier_quote',
+        pricePerTon: 'USD 2,450/T',
+        quality: 'COA/TDS approved',
+        reliability: 'On-time delivery audited',
+        payment: 'Documentary credit approved',
+        score: '91/100',
+        notes: 'Approved supplier audit scorecard includes COA, TDS, on-time delivery record, proforma invoice, LC payment terms, and scorecard approval.',
+      },
+      {
+        id: 'supplier-import-tds-only-1',
+        supplier: 'TDS Only Supplier',
+        material: 'Acetic Acid',
+        value: 'TDS upload includes a claimed LC 30 days term and 99/100 score, but no commercial source packet.',
+        source: {
+          title: 'Official TDS document',
+          url: 'https://example.com/tds-only',
+          date: '2026-06-06',
+        },
+        sourceTier: 'tier2-company-official',
+        confidence: 'medium',
+        evidenceStatus: 'Source-backed',
+        reviewRequired: false,
+        dataType: 'document_evidence',
+        pricePerTon: 'USD 1,999/T',
+        quality: 'TDS evidence located',
+        reliability: 'Fast delivery',
+        payment: 'LC 30 days',
+        score: '99/100',
+        notes: 'Document source supports identity and TDS review only.',
+      },
     ]
     intelligence.state.value.rawMaterialSignals = [{
       id: 'raw-material-stearic-identity',
@@ -1044,7 +1242,7 @@ describe('screenshot-matched executive business tabs', () => {
     const text = wrapper.text()
 
     expect(text).toContain('Supplier Scorecards - Key Raw Materials')
-    expect(text).toContain('Hermes Autopilot has imported 2 supplier scorecard rows and 1 raw-material signals with source metadata')
+    expect(text).toContain('Hermes Autopilot has imported 4 supplier scorecard rows and 1 raw-material signals with source metadata')
     expect(text).toContain('1 supplier candidate is shown as review-gated scorecard context')
     expect(text).toContain('Uploaded Quote Supplier')
     expect(text).toContain('Stearic Acid TP')
@@ -1060,6 +1258,18 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Cost-sensitive: quote evidence required')
     expect(text).toContain('Cost-sensitive: payment evidence required')
     expect(text).toContain('Review-gated: scoring evidence required')
+    expect(text).toContain('Approved Audit Supplier')
+    expect(text).toContain('USD 2,450/T')
+    expect(text).toContain('COA/TDS approved')
+    expect(text).toContain('On-time delivery audited')
+    expect(text).toContain('Documentary credit approved')
+    expect(text).toContain('91/100')
+    expect(text).toContain('TDS Only Supplier')
+    expect(text).toContain('TDS evidence located')
+    expect(text).not.toContain('USD 1,999/T')
+    expect(text).not.toContain('LC 30 days')
+    expect(text).not.toContain('Fast delivery')
+    expect(text).not.toContain('99/100')
     expect(text).toContain('Collapsed reference-only supplier target template')
     expect(text).toContain('Stearic Acid TP / Stearic acid 1842')
     expect(text).toContain('Triethanolamine / TEA')
@@ -1105,6 +1315,62 @@ describe('screenshot-matched executive business tabs', () => {
       status: 'Scheduled Hermes Job',
       scheduledJobId: 'job-1',
     })
+  })
+
+  it('shows approved raw-material prices while hiding reference-only saved prices', () => {
+    window.localStorage.setItem('hermes.rawMaterialSourcing.v1', JSON.stringify([{
+      id: 'tea',
+      name: 'TEA',
+      cas: '102-71-6',
+      unit: 'MT',
+      sourceType: 'Supplier quote',
+      evidenceStatus: 'User Approved',
+      confidence: 'high',
+      alertThresholdPct: 5,
+      source: 'Owner uploaded supplier quote',
+      sourceDate: '2026-06-06',
+      notes: 'Approved user-entered quote.',
+      highRisk: false,
+      priceHistory: [
+        {
+          id: 'tea-reference-price',
+          materialName: 'TEA',
+          unit: 'MT',
+          rmbPrice: 1180,
+          usdPrice: null,
+          source: 'Alibaba listing',
+          sourceType: 'Alibaba/Made-in-China reference',
+          sourceDate: '2026-06-07',
+          confidence: 'low',
+          evidenceStatus: 'Reference Only',
+          notes: 'Listing only.',
+          createdAt: '2026-06-07T00:00:00.000Z',
+        },
+        {
+          id: 'tea-approved-price',
+          materialName: 'TEA',
+          unit: 'MT',
+          rmbPrice: 1250,
+          usdPrice: null,
+          source: 'Owner uploaded supplier quote',
+          sourceType: 'Supplier quote',
+          sourceDate: '2026-06-06',
+          confidence: 'high',
+          evidenceStatus: 'User Approved',
+          notes: 'Approved by owner.',
+          createdAt: '2026-06-06T00:00:00.000Z',
+        },
+      ],
+    }]))
+
+    const wrapper = mount(RawMaterialSourcingView)
+    const text = wrapper.text()
+
+    expect(text).toContain('Latest RMB')
+    expect(text).toContain('RMB 1,250')
+    expect(text).toContain('User Approved / Supplier quote')
+    expect(text).not.toContain('RMB 1,180')
+    expect(text).not.toContain('Reference Only / Alibaba/Made-in-China reference')
   })
 
   it('stages Sync Now as a Research Result Review item instead of silently approving market or finance facts', async () => {

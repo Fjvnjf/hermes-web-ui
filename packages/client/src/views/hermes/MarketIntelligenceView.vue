@@ -55,6 +55,8 @@ interface CountryConsumptionGrowthRow {
   directSoftenerConsumption: string
   status: IntelligenceEvidenceStatus
   source: string
+  confidence: string
+  lastChecked: string
   nextAction: string
   autoImported?: boolean
 }
@@ -76,9 +78,25 @@ interface GlobalOpportunityRegionRow {
   status: IntelligenceEvidenceStatus
 }
 
+type CompetitorMetricEvidence = NonNullable<CompetitorIntelligenceRecord['metricEvidence']>[keyof NonNullable<CompetitorIntelligenceRecord['metricEvidence']>]
+
 const NO_APPROVED_SOURCE_VALUE = 'No approved source-backed value'
 const MARKET_REVIEW_SOURCE_LABEL = 'Trusted Sources / Research Review'
 const SOURCE_FOUND_REVIEW_REQUIRED = 'Source found - review required'
+const REVIEW_REQUIRED_VALUE = 'Review required'
+const approvedMarketTruthStatuses: IntelligenceEvidenceStatus[] = [
+  'Verified',
+  'Source-backed',
+  'Official Data',
+  'Trusted Source Auto-Updated',
+  'User Approved',
+  'Investor Approved',
+  'Approved Assumption',
+]
+const trustedCountrySignalStatuses: IntelligenceEvidenceStatus[] = [
+  ...approvedMarketTruthStatuses,
+  'Trade Proxy',
+]
 const criticalMarketStatusBlocklist: IntelligenceEvidenceStatus[] = [
   'Missing',
   'To Verify',
@@ -102,6 +120,12 @@ const trackedCountryNames = [
   'USA',
   'Germany',
   'EU',
+  'European Union',
+  'Saudi Arabia',
+  'GCC',
+  'Middle East',
+  'United Arab Emirates',
+  'UAE',
 ]
 
 const claimForm = ref({
@@ -126,7 +150,13 @@ const sections = [
 ]
 
 const claims = computed(() => intelligence.state.value.marketClaims)
-const sourceReadyCount = computed(() => claims.value.filter(claimHasUsableSourceValue).length)
+const sourceReadyCount = computed(() =>
+  claims.value.filter(claim =>
+    claimHasUsableSourceValue(claim) &&
+    !isSensitiveMarketClaim(claim) &&
+    !isPlaceholderOnlyClaim(claim),
+  ).length,
+)
 const claimSubmitLabel = computed(() => editingClaimId.value ? 'Update claim' : 'Save claim')
 const visibleSections = computed(() =>
   sections.filter(section => !redactSensitiveFields.value || !sensitiveMarketTerms.test(section)),
@@ -167,6 +197,11 @@ const targetOpportunityRows = computed(() => [
   opportunityRow('Vietnam', ['vietnam']),
   opportunityRow('India', ['india']),
   opportunityRow('Pakistan', ['pakistan']),
+  opportunityRow('Turkey', ['turkey', 'turkiye']),
+  opportunityRow('Indonesia', ['indonesia']),
+  opportunityRow('EU / Germany', ['eu', 'european union', 'germany']),
+  opportunityRow('United States', ['united states', 'usa']),
+  opportunityRow('GCC / Middle East', ['gcc', 'middle east', 'saudi arabia', 'united arab emirates', 'uae']),
 ])
 const topCompetitorRows = computed(() => {
   const records = intelligence.state.value.competitors
@@ -175,8 +210,7 @@ const topCompetitorRows = computed(() => {
   return records.map(record => {
     const shareEvidence = record.metricEvidence?.marketShare
     const share = shareEvidence?.value?.trim() &&
-      sourceIsUsable(shareEvidence.source) &&
-      !shareEvidence.reviewRequired
+      competitorMetricCanDriveMarketDisplay(shareEvidence, record.evidenceStatus)
       ? shareEvidence.value
       : 'Not published by cited source'
     return {
@@ -199,8 +233,10 @@ const marketAutopilotCards = computed(() => [
   {
     icon: '📊',
     label: 'Market data',
-    value: `${claims.value.length} claims`,
-    note: 'Safe source-backed market records fill this page without manual copy-paste.',
+    value: sourceReadyCount.value ? `${sourceReadyCount.value} source-attached` : 'Waiting',
+    note: sourceReadyCount.value
+      ? 'Source-attached market records fill this page only through review-gated surfaces.'
+      : 'No source-attached market records imported yet.',
   },
   {
     icon: '🌍',
@@ -405,17 +441,21 @@ const importedMarketClaims = computed(() =>
     !isPlaceholderOnlyClaim(claim),
   ),
 )
+const trustedCountryGrowthClaims = computed(() =>
+  importedMarketClaims.value.filter(claimCanDisplayCountryGrowthSignal),
+)
 const globalMarketIntelligenceRows = computed<GlobalMarketSignalRow[]>(() =>
   importedMarketClaims.value.slice(0, 6).map(claim => {
     const status = marketClaimDisplayStatus(claim)
+    const displayAsEvidence = canDisplayMarketClaimAsDashboardTruth(claim) || claimCanDisplayCountryGrowthSignal(claim)
     return {
       signal: claim.proposedDashboardField || claim.label,
-      finding: primaryMarketClaimValue(claim),
+      finding: marketClaimValueForPrimarySurface(claim),
       status,
       source: marketClaimSourceLabel(claim),
-      businessMeaning: criticalMarketClaimIsReviewGated(claim)
-        ? 'Critical market claim is source-attached but review-gated before investor or dashboard use.'
-        : 'Imported trusted-source claim. Confirm scope before treating it as product-specific demand.',
+      businessMeaning: displayAsEvidence
+        ? 'Imported trusted-source signal. Confirm scope before treating it as product-specific demand.'
+        : 'Source is attached, but this claim is review-gated before dashboard or investor use.',
       nextAction: `Review source scope for ${claim.proposedDashboardField || claim.label}.`,
     }
   }),
@@ -426,7 +466,7 @@ const globalOpportunityRegions = computed<GlobalOpportunityRegionRow[]>(() =>
     .slice(0, 6)
     .map(claim => ({
       region: opportunityRegionLabel(claim),
-      demandSignal: primaryMarketClaimValue(claim),
+      demandSignal: marketClaimValueForPrimarySurface(claim),
       verifiedEvidence: marketClaimSourceLabel(claim),
       missingEvidence: criticalMarketClaimIsReviewGated(claim)
         ? 'Review approval required before use as a target, market size, CAGR, import-dependence, or opportunity claim.'
@@ -435,7 +475,7 @@ const globalOpportunityRegions = computed<GlobalOpportunityRegionRow[]>(() =>
     })),
 )
 const autopilotCountryGrowthRows = computed<CountryConsumptionGrowthRow[]>(() =>
-  importedMarketClaims.value.flatMap(countryGrowthRowsFromClaim),
+  trustedCountryGrowthClaims.value.flatMap(countryGrowthRowsFromClaim),
 )
 const displayCountryConsumptionGrowthRows = computed<CountryConsumptionGrowthRow[]>(() => autopilotCountryGrowthRows.value)
 const countryGrowthSummaryCards = computed(() => {
@@ -446,8 +486,7 @@ const countryGrowthSummaryCards = computed(() => {
     row.status === 'Source-backed' ||
     row.status === 'Trusted Source Auto-Updated' ||
     row.status === 'Official Data' ||
-    row.status === 'Trade Proxy' ||
-    row.status === 'Reference Only',
+    row.status === 'Trade Proxy',
   ).length
   return [
     {
@@ -562,7 +601,7 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function statusType(status: IntelligenceEvidenceStatus): 'default' | 'success' | 'warning' | 'error' | 'info' {
-  if (status === 'Verified' || status === 'Source-backed' || status === 'User Approved' || status === 'Investor Approved') return 'success'
+  if (marketStatusIsApprovedDashboardTruth(status)) return 'success'
   if (status === 'Assumption' || status === 'Powerful Assumption' || status === 'Derived from Assumptions' || status === 'Reference Only') return 'warning'
   if (status === 'Missing' || status === 'To Verify') return 'error'
   return 'info'
@@ -584,10 +623,19 @@ function claimHasUsableSourceValue(claim: MarketClaim | null | undefined): boole
   return Boolean(claim?.value?.trim() && sourceIsUsable(claim.source))
 }
 
+function marketStatusIsApprovedDashboardTruth(status?: string | null): boolean {
+  return approvedMarketTruthStatuses.includes(status as IntelligenceEvidenceStatus)
+}
+
+function competitorMetricCanDriveMarketDisplay(item: CompetitorMetricEvidence | null | undefined, fallbackStatus?: IntelligenceEvidenceStatus): boolean {
+  const status = (item?.evidenceStatus || fallbackStatus || 'To Verify') as IntelligenceEvidenceStatus
+  return Boolean(sourceIsUsable(item?.source) && !item?.reviewRequired && marketStatusIsApprovedDashboardTruth(status))
+}
+
 function competitorHasUsableDashboardEvidence(record: CompetitorIntelligenceRecord): boolean {
   const metricEvidence = Object.values(record.metricEvidence || {})
-  if (metricEvidence.some(item => sourceIsUsable(item?.source) && !item?.reviewRequired)) return true
-  return Boolean(sourceIsUsable(record.source) && !record.reviewRequired)
+  if (metricEvidence.some(item => competitorMetricCanDriveMarketDisplay(item, record.evidenceStatus))) return true
+  return Boolean(sourceIsUsable(record.source) && !record.reviewRequired && marketStatusIsApprovedDashboardTruth(record.evidenceStatus))
 }
 
 function claimSearchText(claim: MarketClaim, includeValue = false): string {
@@ -635,15 +683,16 @@ function canDisplayMarketClaimAsDashboardTruth(claim: MarketClaim | null | undef
   if (isSensitiveMarketClaim(claim)) return false
   if (claim.reviewRequired) return false
   const status = marketClaimDisplayStatus(claim)
-  return [
-    'Verified',
-    'Source-backed',
-    'Official Data',
-    'Trusted Source Auto-Updated',
-    'User Approved',
-    'Investor Approved',
-    'Approved Assumption',
-  ].includes(status)
+  return marketStatusIsApprovedDashboardTruth(status)
+}
+
+function claimCanDisplayCountryGrowthSignal(claim: MarketClaim | null | undefined): boolean {
+  if (!claimHasUsableSourceValue(claim) || !claim) return false
+  if (isPlaceholderOnlyClaim(claim) || isSensitiveMarketClaim(claim) || claim.reviewRequired) return false
+  const status = marketClaimDisplayStatus(claim)
+  if (!trustedCountrySignalStatuses.includes(status)) return false
+  const text = `${claim.proposedDashboardField || ''} ${claim.label} ${claim.value || ''}`.trim()
+  return /country|region|province|growth|consumption|trade proxy|import signal|export signal|import|export/i.test(text)
 }
 
 function criticalMarketClaimIsReviewGated(claim: MarketClaim): boolean {
@@ -660,6 +709,19 @@ function primaryMarketClaimValue(claim: MarketClaim): string {
   }
   if (criticalMarketClaimIsReviewGated(claim)) return NO_APPROVED_SOURCE_VALUE
   return marketClaimValue(claim)
+}
+
+function marketClaimValueForPrimarySurface(claim: MarketClaim): string {
+  if (canDisplayMarketClaimAsDashboardTruth(claim) || claimCanDisplayCountryGrowthSignal(claim)) return marketClaimValue(claim)
+  return REVIEW_REQUIRED_VALUE
+}
+
+function marketClaimConfidence(claim: MarketClaim): string {
+  return claim.confidence || 'low'
+}
+
+function marketClaimLastChecked(claim: MarketClaim): string {
+  return claim.lastChecked || claim.source?.date || 'Not recorded'
 }
 
 function opportunityRegionLabel(claim: MarketClaim): string {
@@ -811,7 +873,9 @@ function countryFlag(country: string): string {
   if (normalized.includes('indonesia')) return '🇮🇩'
   if (normalized.includes('united states')) return '🇺🇸'
   if (normalized.includes('germany')) return '🇩🇪'
-  if (normalized === 'eu') return '🇪🇺'
+  if (normalized === 'eu' || normalized.includes('european union')) return '🇪🇺'
+  if (normalized.includes('saudi arabia')) return '🇸🇦'
+  if (normalized.includes('united arab emirates') || normalized === 'uae') return '🇦🇪'
   return '🌐'
 }
 
@@ -822,6 +886,8 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
 
   const source = marketClaimSourceLabel(claim)
   const status = marketClaimDisplayStatus(claim)
+  const confidence = marketClaimConfidence(claim)
+  const lastChecked = marketClaimLastChecked(claim)
   const rows: CountryConsumptionGrowthRow[] = []
   const countryGrowthPattern = new RegExp(`\\b(${trackedCountryNames.join('|')})\\b\\s*:\\s*([^;|]+)`, 'gi')
   for (const match of text.matchAll(countryGrowthPattern)) {
@@ -835,6 +901,8 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
       directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
       status,
       source,
+      confidence,
+      lastChecked,
       nextAction: `Review HS-code fit and direct textile-softener consumption evidence for ${country}.`,
       autoImported: true,
     })
@@ -854,6 +922,8 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
     directSoftenerConsumption: 'No direct public textile-softener consumption value in cited source',
     status,
     source,
+    confidence,
+    lastChecked,
     nextAction: `Review direct textile-softener consumption evidence for ${country}.`,
     autoImported: true,
   }]
@@ -862,6 +932,8 @@ function countryGrowthRowsFromClaim(claim: MarketClaim): CountryConsumptionGrowt
 function normalizeCountryName(country: string): string {
   if (/^turkiye$/i.test(country)) return 'Turkey'
   if (/^usa$/i.test(country)) return 'United States'
+  if (/^eu$/i.test(country)) return 'European Union'
+  if (/^uae$/i.test(country)) return 'United Arab Emirates'
   return country
 }
 
@@ -1289,6 +1361,14 @@ onMounted(() => {
               <dt>Source</dt>
               <dd>{{ row.source }}</dd>
             </div>
+            <div>
+              <dt>Confidence</dt>
+              <dd>{{ row.confidence }}</dd>
+            </div>
+            <div>
+              <dt>Last checked</dt>
+              <dd>{{ row.lastChecked }}</dd>
+            </div>
           </dl>
           <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">Create research task</NButton>
         </article>
@@ -1373,13 +1453,18 @@ onMounted(() => {
         </p>
         <div v-else class="country-growth-table">
           <div class="country-growth-row head">
-            <span>Country</span><span>Growth signal</span><span>Proxy metric</span><span>Source-backed evidence</span><span>Direct softener consumption</span><span>Status</span><span>Next action</span>
+            <span>Country</span><span>Growth signal</span><span>Proxy metric</span><span>Source metadata</span><span>Direct softener consumption</span><span>Status</span><span>Next action</span>
           </div>
           <div v-for="row in displayCountryConsumptionGrowthRows" :key="`${row.country}-${row.source}`" class="country-growth-row">
             <strong>{{ row.country }}<small v-if="row.autoImported">Auto-imported</small></strong>
             <span>{{ displayMarketText(row.growthSignal) }}</span>
             <span>{{ row.proxyMetric }}</span>
-            <span>{{ displayMarketText(row.sourceBackedEvidence) }} <small>Source: {{ row.source }}</small></span>
+            <span>
+              {{ displayMarketText(row.sourceBackedEvidence) }}
+              <small>Source: {{ row.source }}</small>
+              <small>Confidence: {{ row.confidence }}</small>
+              <small>Last checked: {{ row.lastChecked }}</small>
+            </span>
             <strong class="verify-text">{{ displayMarketValue(row.directSoftenerConsumption) }}</strong>
             <NTag size="small" :type="statusType(row.status)">{{ displayMarketStatus(row.status) }}</NTag>
             <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">{{ row.nextAction }}</NButton>
@@ -1444,7 +1529,7 @@ onMounted(() => {
             <span>{{ row.t2024 }}</span>
             <span>{{ row.value2024 }}</span>
             <span>{{ row.usdPerKg }}</span>
-            <NTag size="small" type="warning">User Provided</NTag>
+            <NTag size="small" type="warning">Reference only</NTag>
           </div>
         </div>
         <p class="pdf-source-note">
@@ -1468,7 +1553,7 @@ onMounted(() => {
               <span>{{ row.kt2023 }}</span>
               <span>{{ row.kt2024 }}</span>
               <span>{{ row.change }}</span>
-              <NTag size="small" type="warning">Auto-checking</NTag>
+              <NTag size="small" type="warning">Reference only</NTag>
             </div>
           </div>
         </article>
@@ -1486,7 +1571,7 @@ onMounted(() => {
               <strong>{{ row.segment }}</strong>
               <span>{{ displayMarketValue(row.size) }}</span>
               <span>{{ displayMarketValue(row.growth) }}</span>
-              <NTag size="small" type="warning">User Provided</NTag>
+              <NTag size="small" type="warning">Reference only</NTag>
             </div>
           </div>
         </article>

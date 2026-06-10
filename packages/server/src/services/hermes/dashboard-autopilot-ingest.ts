@@ -423,6 +423,7 @@ interface OfficialChemicalIdentitySource {
   material: string
   fieldKeySlug: string
   query: string
+  aliases?: string[]
   proposedDashboardField: string
   recommendedAction: string
   sensitive?: boolean
@@ -544,6 +545,9 @@ interface PubChemIdentityPayload {
   chemicalName: string
   property: Record<string, unknown> | null
   synonyms: string[]
+  substanceSid?: string
+  lookupName?: string
+  sourceKind?: 'compound' | 'substance'
 }
 
 interface OfficialCompanyFinancialMetric {
@@ -1059,6 +1063,7 @@ const OFFICIAL_CHEMICAL_IDENTITY_SOURCES: OfficialChemicalIdentitySource[] = [
     material: 'PDMS / polydimethylsiloxane',
     fieldKeySlug: 'pdms_polydimethylsiloxane',
     query: 'polydimethylsiloxane',
+    aliases: ['poly(dimethylsiloxane)', 'dimethicone', 'silicone oil'],
     proposedDashboardField: 'PDMS silicone oil chemical identity evidence',
     recommendedAction: 'Use official identity only as silicone-material context. Still collect exact viscosity/grade TDS, SDS, COA, quote, and supplier evidence before product or sourcing decisions.',
     sensitive: true,
@@ -4984,14 +4989,98 @@ function pubChemProperty(raw: unknown): Record<string, unknown> | null {
 }
 
 function pubChemSynonyms(raw: unknown): string[] {
-  if (!isPlainRecord(raw) || !isPlainRecord(raw.InformationList)) return []
+  return pubChemSynonymPayload(raw).synonyms
+}
+
+function pubChemSynonymPayload(raw: unknown): { synonyms: string[], sid: string } {
+  if (!isPlainRecord(raw) || !isPlainRecord(raw.InformationList)) return { synonyms: [], sid: '' }
   const rows = Array.isArray(raw.InformationList.Information) ? raw.InformationList.Information : []
-  const synonyms = isPlainRecord(rows[0]) && Array.isArray(rows[0].Synonym) ? rows[0].Synonym : []
-  return synonyms.map(stringValue).filter(Boolean).slice(0, 120)
+  const row = rows.find(isPlainRecord) || {}
+  const synonyms = isPlainRecord(row) && Array.isArray(row.Synonym) ? row.Synonym : []
+  return {
+    synonyms: synonyms.map(stringValue).filter(Boolean).slice(0, 160),
+    sid: firstString((row as Record<string, unknown>).SID),
+  }
 }
 
 function firstCasNumber(values: string[]): string {
-  return values.find(item => /^\d{2,7}-\d{2}-\d$/.test(item.trim())) || ''
+  for (const item of values) {
+    const match = item.match(/\b\d{2,7}-\d{2}-\d\b/)
+    if (match?.[0]) return match[0]
+  }
+  return ''
+}
+
+function pubChemLookupNames(source: OfficialChemicalIdentitySource): string[] {
+  const seen = new Set<string>()
+  const values = [source.query, ...(source.aliases || [])]
+  return values.filter(value => {
+    const normalized = value.trim()
+    const key = normalized.toLowerCase()
+    if (!normalized || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+async function fetchPubChemIdentityPayload(
+  fetcher: typeof fetch,
+  source: OfficialChemicalIdentitySource,
+  headers: Record<string, string>,
+): Promise<{ payload: PubChemIdentityPayload | null, error: string }> {
+  let lastError = ''
+
+  for (const lookupName of pubChemLookupNames(source)) {
+    const encoded = encodeURIComponent(lookupName)
+    const [propertyResponse, synonymsResponse] = await Promise.all([
+      fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/property/MolecularFormula,MolecularWeight,IUPACName,CanonicalSMILES/JSON`, { headers }),
+      fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/synonyms/JSON`, { headers }),
+    ])
+
+    if (propertyResponse.ok) {
+      const propertyRaw = await propertyResponse.json()
+      const synonymsRaw = synonymsResponse.ok ? await synonymsResponse.json() : { InformationList: { Information: [] } }
+      const property = pubChemProperty(propertyRaw)
+      if (property) {
+        return {
+          payload: {
+            chemicalName: source.query,
+            lookupName,
+            property,
+            synonyms: pubChemSynonyms(synonymsRaw),
+            sourceKind: 'compound',
+          },
+          error: '',
+        }
+      }
+      lastError = `PubChem compound property row empty for ${lookupName}`
+    } else {
+      lastError = `PubChem compound property API returned ${propertyResponse.status || 'unreachable'} for ${lookupName}`
+    }
+
+    const substanceResponse = await fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/substance/name/${encoded}/synonyms/JSON`, { headers })
+    if (substanceResponse.ok) {
+      const synonymPayload = pubChemSynonymPayload(await substanceResponse.json())
+      if (synonymPayload.synonyms.length > 0) {
+        return {
+          payload: {
+            chemicalName: source.query,
+            lookupName,
+            property: null,
+            synonyms: synonymPayload.synonyms,
+            substanceSid: synonymPayload.sid,
+            sourceKind: 'substance',
+          },
+          error: '',
+        }
+      }
+      lastError = `PubChem substance synonym row empty for ${lookupName}`
+    } else {
+      lastError = `PubChem substance synonym API returned ${substanceResponse.status || 'unreachable'} for ${lookupName}`
+    }
+  }
+
+  return { payload: null, error: lastError || 'PubChem identity row unavailable' }
 }
 
 function pubChemIdentityValue(source: OfficialChemicalIdentitySource, payload: PubChemIdentityPayload): string {
@@ -5001,6 +5090,19 @@ function pubChemIdentityValue(source: OfficialChemicalIdentitySource, payload: P
   const molecularWeight = firstString(property.MolecularWeight)
   const iupacName = firstString(property.IUPACName, source.query)
   const cas = firstCasNumber(payload.synonyms)
+  if (!payload.property) {
+    const synonymSample = payload.synonyms
+      .filter(item => item !== cas)
+      .slice(0, 3)
+      .join('; ')
+    return [
+      `PubChem ${source.material}:`,
+      payload.substanceSid ? `SID ${payload.substanceSid};` : 'substance synonym record;',
+      cas ? `CAS signal ${cas};` : 'CAS signal To Verify;',
+      'compound CID unavailable from PubChem name property lookup;',
+      synonymSample ? `synonym evidence ${synonymSample}.` : `lookup ${payload.lookupName || payload.chemicalName}.`,
+    ].filter(Boolean).join(' ')
+  }
   return [
     `PubChem ${source.material}:`,
     cid ? `CID ${cid};` : '',
@@ -5013,9 +5115,10 @@ function pubChemIdentityValue(source: OfficialChemicalIdentitySource, payload: P
 
 function pubChemIdentitySourceUrl(source: OfficialChemicalIdentitySource, payload: PubChemIdentityPayload): string {
   const cid = firstString(payload.property?.CID)
-  return cid
-    ? `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`
-    : `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(source.query)}`
+  if (cid) return `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`
+  const sid = firstString(payload.substanceSid)
+  if (sid) return `https://pubchem.ncbi.nlm.nih.gov/substance/${sid}`
+  return `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(payload.lookupName || source.query)}`
 }
 
 function pubChemIdentityPayloadToRawMaterialUpdate(
@@ -5023,7 +5126,7 @@ function pubChemIdentityPayloadToRawMaterialUpdate(
   payload: PubChemIdentityPayload,
   checkedAt: string,
 ): DashboardResearchUpdateItem | null {
-  if (!payload.property) return null
+  if (!payload.property && payload.synonyms.length === 0) return null
   const value = pubChemIdentityValue(source, payload)
   return {
     fieldKey: `raw_material_identity.${source.fieldKeySlug}.pubchem`,
@@ -5032,7 +5135,9 @@ function pubChemIdentityPayloadToRawMaterialUpdate(
     proposedDashboardField: source.proposedDashboardField,
     field: `${source.material} chemical identity`,
     value,
-    sourceTitle: `PubChem official chemical identity: ${source.material}`,
+    sourceTitle: payload.property
+      ? `PubChem official chemical identity: ${source.material}`
+      : `PubChem official substance synonym identity: ${source.material}`,
     sourceUrl: pubChemIdentitySourceUrl(source, payload),
     sourceTier: 'Tier 1 - Official / regulator / chemical database source',
     sourceDate: checkedAt,
@@ -5043,7 +5148,9 @@ function pubChemIdentityPayloadToRawMaterialUpdate(
     dataType: 'regulatory_data',
     sensitive: source.sensitive === true,
     recommendedAction: source.recommendedAction,
-    riskReason: 'PubChem confirms chemical identity only. This is not SDS/TDS/COA evidence, not supplier quote evidence, not China regulatory approval, not formula approval, and not factory/import/storage/use permission.',
+    riskReason: payload.property
+      ? 'PubChem confirms chemical identity only. This is not SDS/TDS/COA evidence, not supplier quote evidence, not China regulatory approval, not formula approval, and not factory/import/storage/use permission.'
+      : 'PubChem substance synonyms provide identity context only after compound CID lookup failed. This is not formula proof, SDS/TDS/COA evidence, supplier quote evidence, China regulatory approval, or factory/import/storage/use permission.',
   }
 }
 
@@ -6233,6 +6340,54 @@ function sleep(ms: number): Promise<void> {
   return ms > 0 ? new Promise(resolve => setTimeout(resolve, ms)) : Promise.resolve()
 }
 
+interface JsonFetchResult {
+  ok: boolean
+  status: number
+  payload: unknown | null
+  retryAfter: string
+}
+
+function retryAfterHeader(response: Response): string {
+  const headers = response.headers as Headers | undefined
+  if (!headers || typeof headers.get !== 'function') return ''
+  return firstString(headers.get('retry-after'), headers.get('Retry-After'))
+}
+
+function comtradeFetchDelayMs(): number {
+  return process.env.NODE_ENV === 'test' ? 0 : 1250
+}
+
+async function fetchJsonWithCache(
+  fetcher: typeof fetch,
+  url: string,
+  init: RequestInit,
+  cache: Map<string, Promise<JsonFetchResult>>,
+  timeoutMs = SOURCE_FETCH_TIMEOUT_MS,
+): Promise<JsonFetchResult> {
+  const cached = cache.get(url)
+  if (cached) return cached
+  const request = (async () => {
+    const response = await fetchWithTimeout(fetcher, url, init, timeoutMs)
+    const retryAfter = retryAfterHeader(response)
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status || 0,
+        payload: null,
+        retryAfter,
+      }
+    }
+    return {
+      ok: true,
+      status: response.status || 200,
+      payload: await response.json(),
+      retryAfter,
+    }
+  })()
+  cache.set(url, request)
+  return request
+}
+
 function financialMetricEvidence(input: {
   fieldKey: string
   value: string
@@ -6639,27 +6794,17 @@ async function applyOfficialChemicalIdentityEvidence(
   if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official chemical identity connector: fetch is unavailable'] }
 
   for (const source of OFFICIAL_CHEMICAL_IDENTITY_SOURCES) {
-    const encoded = encodeURIComponent(source.query)
     try {
       const headers = {
         'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
         Accept: 'application/json',
       }
-      const [propertyResponse, synonymsResponse] = await Promise.all([
-        fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/property/MolecularFormula,MolecularWeight,IUPACName,CanonicalSMILES/JSON`, { headers }),
-        fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/synonyms/JSON`, { headers }),
-      ])
-      if (!propertyResponse.ok) {
-        errors.push(`${source.material}: PubChem property API returned ${propertyResponse.status}`)
+      const identity = await fetchPubChemIdentityPayload(fetcher, source, headers)
+      if (!identity.payload) {
+        errors.push(`${source.material}: ${identity.error}`)
         continue
       }
-      const propertyRaw = await propertyResponse.json()
-      const synonymsRaw = synonymsResponse.ok ? await synonymsResponse.json() : { InformationList: { Information: [] } }
-      const update = pubChemIdentityPayloadToRawMaterialUpdate(source, {
-        chemicalName: source.query,
-        property: pubChemProperty(propertyRaw),
-        synonyms: pubChemSynonyms(synonymsRaw),
-      }, checkedAt)
+      const update = pubChemIdentityPayloadToRawMaterialUpdate(source, identity.payload, checkedAt)
       if (!update) {
         errors.push(`${source.material}: PubChem identity row unavailable`)
         continue
@@ -6686,23 +6831,35 @@ async function applyOfficialComtradeMarketProxies(
   const fetcher = globalThis.fetch
   if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official Comtrade connector: fetch is unavailable'] }
 
+  const responseCache = new Map<string, Promise<JsonFetchResult>>()
+  let requestCount = 0
+  let rateLimited = false
+
   for (const source of COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES) {
+    if (rateLimited) break
     let imported = false
     let lastError = ''
     try {
       for (const period of latestComtradeCandidatePeriods()) {
-        const response = await fetchWithTimeout(fetcher, comtradeApiRequestUrl(source, period), {
+        if (requestCount > 0) await sleep(comtradeFetchDelayMs())
+        const response = await fetchJsonWithCache(fetcher, comtradeApiRequestUrl(source, period), {
           headers: {
             'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
             Accept: 'application/json',
           },
-        })
+        }, responseCache)
+        requestCount += 1
+        if (response.status === 429) {
+          const retryAfter = response.retryAfter ? ` Retry after ${response.retryAfter}.` : ''
+          errors.push(`${source.country}: UN Comtrade rate limited (HTTP 429) for period ${period}; paused remaining Comtrade fetches for this import cycle.${retryAfter}`)
+          rateLimited = true
+          break
+        }
         if (!response.ok) {
           lastError = `UN Comtrade returned ${response.status} for period ${period}`
           continue
         }
-        const payload = await response.json()
-        const update = comtradeImportPayloadToMarketClaimUpdate(source, payload, checkedAt, period)
+        const update = comtradeImportPayloadToMarketClaimUpdate(source, response.payload, checkedAt, period)
         if (!update) {
           lastError = `UN Comtrade did not return two usable annual rows for period ${period}`
           continue
@@ -6714,7 +6871,7 @@ async function applyOfficialComtradeMarketProxies(
         imported = true
         break
       }
-      if (!imported && lastError) errors.push(`${source.country}: ${lastError}`)
+      if (!imported && !rateLimited && lastError) errors.push(`${source.country}: ${lastError}`)
     } catch (err) {
       errors.push(`${source.country}: ${err instanceof Error ? err.message : 'UN Comtrade connector failed'}`)
     }

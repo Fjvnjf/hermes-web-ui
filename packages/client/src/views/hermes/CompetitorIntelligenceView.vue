@@ -848,21 +848,6 @@ function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label:
       date: first[2] || undefined,
     }
   }
-  if (recordCanDriveSourceDisplay(competitor) && competitor.source) {
-    return {
-      label: `Identity/product source: ${competitor.source.title}`,
-      url: competitor.source.url,
-      date: competitor.source.date,
-    }
-  }
-  const reviewSource = competitor.source
-  if (sourceIsUsable(reviewSource) && competitor.reviewRequired) {
-    return {
-      label: `${reviewSource!.title} (${reviewRequiredText})`,
-      url: reviewSource!.url,
-      date: reviewSource!.date,
-    }
-  }
   return {
     label: noApprovedSourceBackedValue,
   }
@@ -1369,19 +1354,7 @@ function competitorConfidenceLabel(competitor: CompetitorIntelligenceRecord): st
   const hasReviewCandidate = (Object.keys(competitor.metricEvidence || {}) as CompetitorMetricField[])
     .some(field => metricCanShowAsReviewCandidate(competitor, field) && !metricEvidenceCanDrivePrimaryDisplay(field, metricEvidenceFor(competitor, field) || undefined))
   if (metricExplicit) return (competitor.reviewRequired || hasReviewCandidate) ? `${metricExplicit} (${reviewRequiredText})` : metricExplicit
-  if (competitor.reviewRequired && sourceIsUsable(competitor.source)) return `Source found (${reviewRequiredText})`
-  if (!recordCanDriveSourceDisplay(competitor)) return noApprovedSourceBackedValue
-  const metricFieldsWithDisplay = (Object.keys(competitor.metricEvidence || {}) as CompetitorMetricField[])
-    .filter(field => metricCanDrivePrimaryDisplay(competitor, field))
-  if (!metricFieldsWithDisplay.length) return 'Identity/product source only'
-  const explicit = String(competitor.confidence || '').trim()
-  if (explicit) return explicit
-  return confidenceLabelForRow(
-    competitor.evidenceStatus,
-    sourceIsUsable(competitor.source),
-    ['pricingEvidence', 'marketShare', 'revenue', 'yearlyGrowth', 'traffic', 'rating']
-      .some(key => comparableNumber(String(competitor[key as keyof CompetitorIntelligenceRecord] || '')) !== null),
-  )
+  return noApprovedSourceBackedValue
 }
 
 function primaryCompetitorRecord(competitor: CompetitorIntelligenceRecord): CompetitorIntelligenceRecord {
@@ -1755,8 +1728,8 @@ function addCompetitor() {
           <span>Next Action</span>
         </div>
         <div v-if="competitorComparisonRows.length === 0" class="comparison-empty">
-          No competitor records match this filter. Hermes will keep researching twice daily and stage source-backed
-          findings for review.
+          No source-backed competitor metrics match this filter. Import or approve metric evidence before showing
+          company comparisons.
         </div>
         <div
           v-for="row in competitorComparisonRows"
@@ -1920,7 +1893,7 @@ function addCompetitor() {
       <section class="template-panel research-queue-panel" aria-label="Competitor verification queue">
         <div class="template-panel-title">
           <h3>Competitor Verification Queue</h3>
-          <span>Hermes checks twice daily</span>
+          <span>Reference-only follow-up list</span>
         </div>
         <div class="queue-list">
           <span v-for="item in competitorResearchQueue" :key="item">{{ item }}</span>

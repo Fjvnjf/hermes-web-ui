@@ -114,10 +114,52 @@ const fullAutopilotOwnerAction = computed(() => {
   if (!fullAutopilotStatus.value.lastRun) return 'Wait for the first scheduled Hermes research output or run a source snapshot now.'
   return 'Autopilot is running. Keep reviewing staged findings; safe source-backed fields will hydrate from durable server state.'
 })
+
+type AutopilotIssueRow = { label: string; detail: string }
+
+function autopilotIssueLabel(text: string): string {
+  if (/429|rate limit/i.test(text)) return 'Rate limit'
+  if (/PubChem|chemical identity|compound|substance synonym/i.test(text)) return 'Chemical source'
+  if (/Comtrade|trade/i.test(text)) return 'Trade source'
+  if (/SEC|companyfacts|financial|annual report/i.test(text)) return 'Financial source'
+  if (/parse|unparseable|unreadable|dashboard_updates/i.test(text)) return 'Output parse'
+  if (/due slot|run/i.test(text)) return 'Scheduled run'
+  return 'Import warning'
+}
+
+function compactAutopilotIssue(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized
+}
+
+const serverAutopilotIssueRows = computed<AutopilotIssueRow[]>(() => {
+  const status = serverAutopilotStatus.value
+  if (!status) return []
+  const values = [
+    status.lastError,
+    status.latestDueSlotRunError,
+    status.latestOutputParseError,
+    ...status.errors,
+  ].map(value => value?.trim()).filter(Boolean) as string[]
+  const seen = new Set<string>()
+  return values
+    .map(value => ({
+      label: autopilotIssueLabel(value),
+      detail: compactAutopilotIssue(value),
+    }))
+    .filter(row => {
+      const key = `${row.label}:${row.detail}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .slice(0, 5)
+})
+
 const easyAutopilotState = computed(() => {
   const serverStatus = serverAutopilotStatus.value
   const pendingReview = serverStatus?.pendingReviewCount ?? fullAutopilotReviewCount.value
-  const hasServerWarning = Boolean(serverStatus?.lastError || serverStatus?.errors.length)
+  const hasServerWarning = serverAutopilotIssueRows.value.length > 0
   const hasImportedData = importedIntelligenceTotal.value > 0 || Boolean(serverStatus?.latestOutputImported)
 
   if (!fullAutopilotStatus.value.enabled && !serverStatus?.scheduled) {
@@ -130,11 +172,14 @@ const easyAutopilotState = computed(() => {
     }
   }
   if (hasServerWarning) {
+    const firstIssue = serverAutopilotIssueRows.value[0]
     return {
       tone: 'warning',
       label: 'Needs attention',
       title: 'Autopilot needs a quick check',
-      body: serverStatus?.message || 'Hermes reported a job or import warning. Existing dashboard data is preserved.',
+      body: firstIssue
+        ? `${firstIssue.label}: ${firstIssue.detail}`
+        : serverStatus?.message || 'Hermes reported a job or import warning. Existing dashboard data is preserved.',
       action: 'Refresh status, then inspect Jobs or the Review Queue.',
     }
   }
@@ -818,6 +863,12 @@ async function bootstrapTrustedSourcesView() {
           <p class="server-autopilot-message">
             {{ serverAutopilotStatus?.message || 'Reading the Hermes Jobs and Cron History APIs for live autopilot status.' }}
           </p>
+          <ul v-if="serverAutopilotIssueRows.length" class="server-autopilot-issues" aria-label="Autopilot import issues">
+            <li v-for="issue in serverAutopilotIssueRows" :key="`${issue.label}-${issue.detail}`">
+              <span>{{ issue.label }}</span>
+              <strong>{{ issue.detail }}</strong>
+            </li>
+          </ul>
           <div class="server-autopilot-grid">
             <article>
               <span>Job</span>
@@ -1973,6 +2024,39 @@ async function bootstrapTrustedSourcesView() {
   line-height: 1.45;
 }
 
+.server-autopilot-issues {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    grid-template-columns: minmax(96px, 0.24fr) minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    padding: 8px;
+    border: 1px solid rgba(var(--danger-rgb), 0.22);
+    border-radius: 7px;
+    background: rgba(var(--danger-rgb), 0.055);
+  }
+
+  span {
+    color: $warning;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    overflow-wrap: anywhere;
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.38;
+  }
+}
+
 .server-autopilot-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2467,6 +2551,10 @@ async function bootstrapTrustedSourcesView() {
     article {
       min-height: 0;
     }
+  }
+
+  .server-autopilot-issues li {
+    grid-template-columns: 1fr;
   }
 }
 </style>

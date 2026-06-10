@@ -62,6 +62,30 @@ const approvedFindings = computed(() => findings.value.filter(item => item.statu
 const sourceBackedFindings = computed(() => findings.value.filter(item => hasUsableSource(item)).length)
 const weakOrMissingFindings = computed(() => findings.value.filter(item => needsEvidenceReview(item)).length)
 const appliedDashboardUpdates = computed(() => findings.value.filter(item => item.dashboardAppliedAt).length)
+const sourceBackedPendingFindings = computed(() => pendingFindings.value.filter(item => hasUsableSource(item)).length)
+const criticalReviewFindings = computed(() => pendingFindings.value.filter(item => isCriticalReviewFinding(item)).length)
+const jobImportStatusRows = computed(() =>
+  Object.entries(jobOutputStatus.value)
+    .filter(([, status]) => status.trim())
+    .slice(0, 3),
+)
+const reviewQueueStatusRows = computed(() => [
+  {
+    label: 'Source-backed pending',
+    value: String(sourceBackedPendingFindings.value),
+    detail: 'Pending findings with a source title plus URL or date. Owner approval is still required before dashboard truth changes.',
+  },
+  {
+    label: 'Critical review-gated',
+    value: String(criticalReviewFindings.value),
+    detail: 'Market size, growth, pricing, supplier, financial, regulatory, and investor-impact claims remain staged.',
+  },
+  {
+    label: 'Job import messages',
+    value: String(jobImportStatusRows.value.length),
+    detail: jobImportStatusRows.value[0]?.[1] || 'No scheduled job output import warnings in this browser session.',
+  },
+])
 
 const reviewGateSteps = computed(() => [
   {
@@ -98,6 +122,26 @@ function needsEvidenceReview(item: ResearchReviewFinding): boolean {
   return item.evidenceStatus === 'Missing' ||
     item.evidenceStatus === 'To Verify' ||
     !hasUsableSource(item)
+}
+
+function isCriticalReviewFinding(item: ResearchReviewFinding): boolean {
+  const target = item.dashboardTarget
+  if (target?.sensitive || target?.reviewRequired || item.reviewRequired) return true
+  const text = [
+    item.keyClaim,
+    item.summary,
+    item.area,
+    item.dataType,
+    item.riskReason,
+    item.riskNote,
+    target?.group,
+    target?.dataType,
+    target?.proposedDashboardField,
+    target?.field,
+    target?.fieldKey,
+    target?.riskReason,
+  ].map(value => textValue(value)).join(' ')
+  return /market\s*size|cagr|growth|market\s*share|supplier|price|quote|irr|npv|financial|regulatory|permission|permit|investor|presentation|dms/i.test(text)
 }
 
 function textValue(value?: string | null): string {
@@ -771,6 +815,14 @@ async function createTask(item: ResearchReviewFinding) {
       </article>
     </section>
 
+    <section class="review-queue-status-strip" aria-label="Review queue source and gate status">
+      <article v-for="row in reviewQueueStatusRows" :key="row.label">
+        <span>{{ row.label }}</span>
+        <strong>{{ row.value }}</strong>
+        <small>{{ row.detail }}</small>
+      </article>
+    </section>
+
     <section class="job-panel">
       <div class="panel-head">
         <div>
@@ -911,7 +963,7 @@ async function createTask(item: ResearchReviewFinding) {
         v-for="item in findings"
         :key="item.id"
         class="finding-card"
-        :class="{ critical: needsEvidenceReview(item) }"
+        :class="{ critical: needsEvidenceReview(item) || isCriticalReviewFinding(item) }"
       >
         <div class="finding-main">
           <div class="finding-title">
@@ -1142,6 +1194,44 @@ async function createTask(item: ResearchReviewFinding) {
   border-radius: 999px;
   background: rgba(var(--accent-primary-rgb), 0.08);
   font-size: 17px;
+}
+
+.review-queue-status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+
+  article {
+    display: grid;
+    gap: 7px;
+    min-height: 118px;
+    padding: 13px;
+    border: 1px solid rgba(var(--warning-rgb), 0.28);
+    border-radius: $radius-sm;
+    background:
+      linear-gradient(135deg, rgba(var(--warning-rgb), 0.08), rgba(var(--accent-info-rgb), 0.035)),
+      $bg-card;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  strong {
+    color: $warning;
+    font-size: 24px;
+    line-height: 1.1;
+  }
+
+  small {
+    overflow-wrap: anywhere;
+    color: $text-secondary;
+    line-height: 1.45;
+  }
 }
 
 .job-panel,
@@ -1378,7 +1468,8 @@ async function createTask(item: ResearchReviewFinding) {
     grid-template-columns: 1fr;
   }
 
-  .review-gate-strip {
+  .review-gate-strip,
+  .review-queue-status-strip {
     grid-template-columns: 1fr;
   }
 

@@ -131,6 +131,11 @@ function normalizedDashboardCompetitorKey(value: string): string {
     .trim()
 }
 
+const latestFinancialSnapshot = intelligence.latestFinancialModel
+const latestDashboardFinancialSnapshot = computed(() =>
+  financialSnapshotIsDashboardSafe(latestFinancialSnapshot.value) ? latestFinancialSnapshot.value : null
+)
+
 const investorSnapshot = computed(() => [
   {
     label: 'Investor Readiness',
@@ -169,9 +174,11 @@ const investorSnapshot = computed(() => [
   },
   {
     label: 'Financial Model',
-    value: intelligence.latestFinancialModel.value?.scenarioName || 'None',
-    note: intelligence.latestFinancialModel.value?.evidenceStatus || 'No saved snapshot',
-    tone: intelligence.latestFinancialModel.value ? 'info' : 'warn',
+    value: latestDashboardFinancialSnapshot.value?.scenarioName || 'No approved financial snapshot',
+    note: latestDashboardFinancialSnapshot.value
+      ? formatDashboardSourceMetadata(latestDashboardFinancialSnapshot.value, 'Approved financial scenario', 'owner approved')
+      : 'Review-gated financial model',
+    tone: latestDashboardFinancialSnapshot.value ? 'info' : 'warn',
     to: { name: 'hermes.investmentCalculator' },
   },
   {
@@ -205,10 +212,6 @@ const openResearchJobs = computed(() =>
   intelligence.state.value.researchJobs
     .filter(job => job.status === 'Task Created' || job.status === 'Manual Research Job')
     .slice(0, 4),
-)
-const latestFinancialSnapshot = intelligence.latestFinancialModel
-const latestDashboardFinancialSnapshot = computed(() =>
-  financialSnapshotIsDashboardSafe(latestFinancialSnapshot.value) ? latestFinancialSnapshot.value : null
 )
 const deckMaterialsNeedingEvidence = computed(() =>
   intelligence.state.value.presentationMaterials

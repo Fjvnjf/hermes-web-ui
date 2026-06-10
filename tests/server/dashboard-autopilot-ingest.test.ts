@@ -3139,6 +3139,83 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
+  it('falls back to PubChem substance synonyms for PDMS without approving formula, price, or regulatory facts', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async (url: string) => {
+      const requestUrl = String(url)
+      if (requestUrl.includes('/substance/name/polydimethylsiloxane/synonyms/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            InformationList: {
+              Information: [
+                {
+                  SID: 11528383,
+                  Synonym: [
+                    'Polydimethylsiloxane',
+                    'Dimethylpolysiloxane',
+                    'POLYDIMETHYLSILOXANE (SILICONE) (ALSO CALLED POLYDIMETHYLSILOXANE RUBBER (63394-02-5))',
+                  ],
+                },
+              ],
+            },
+          }),
+        }
+      }
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialChemicalIdentityConnectors: true,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+    const pdmsSignal = envelope?.state.rawMaterialSignals.find(signal => signal.material === 'PDMS / polydimethylsiloxane')
+
+    expect(fetchMock).toHaveBeenCalledTimes(12)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 1,
+    })
+    expect(pdmsSignal).toEqual(expect.objectContaining({
+      dashboardGroup: 'rawMaterialSignals',
+      material: 'PDMS / polydimethylsiloxane',
+      value: expect.stringContaining('compound CID unavailable'),
+      cas: '63394-02-5',
+      formula: '',
+      pricePerTon: '',
+      priceStatus: 'No approved price yet',
+      reviewRequired: true,
+      dataType: 'regulatory_data',
+      source: expect.objectContaining({
+        title: 'PubChem official substance synonym identity: PDMS / polydimethylsiloxane',
+        url: 'https://pubchem.ncbi.nlm.nih.gov/substance/11528383',
+      }),
+    }))
+    expect(String(pdmsSignal?.value || '')).not.toContain('molecular formula')
+    expect(String(pdmsSignal?.riskReason || '')).toContain('not formula proof')
+    expect(envelope?.state.dataRoomSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        proposedValue: expect.stringContaining('compound CID unavailable'),
+        reviewRequired: true,
+      }),
+    ]))
+    expect(envelope?.state.presentationMaterials).toHaveLength(0)
+  })
+
   it('hydrates official UN Comtrade country import proxies when no Hermes output file is ready', async () => {
     writeFullDashboardJob(hermesHome)
     process.env.UN_COMTRADE_SUBSCRIPTION_KEY = 'test-comtrade-key'
@@ -3242,6 +3319,43 @@ describe('dashboard autopilot output ingestion', () => {
     expect(envelope?.state.marketClaims.every(claim =>
       !String((claim.source as Record<string, unknown> | undefined)?.url || '').includes('subscription-key='),
     )).toBe(true)
+  })
+
+  it('pauses UN Comtrade imports after a 429 rate limit instead of repeating country fetches', async () => {
+    writeFullDashboardJob(hermesHome)
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: {
+        get: (name: string) => name.toLowerCase() === 'retry-after' ? '60' : null,
+      },
+      json: async () => ({ error: 'rate limited' }),
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: true,
+      includeMarketReferenceConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 0,
+    })
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining('UN Comtrade rate limited (HTTP 429)'),
+    ]))
+    expect(result.errors.join('\n')).toContain('paused remaining Comtrade fetches')
+    expect(result.errors.join('\n')).toContain('Retry after 60')
+    expect(envelope?.state.marketClaims || []).toHaveLength(0)
+    expect(envelope?.state.researchFindings || []).toHaveLength(0)
   })
 
   it('falls back to the latest usable two-year UN Comtrade period when newer annual data is incomplete', async () => {
