@@ -680,6 +680,72 @@ describe('screenshot-matched executive business tabs', () => {
     expect(gammaRows[0].text()).not.toContain('2026-06-06')
   })
 
+  it('hydrates competitor records from durable server intelligence on direct tab load', async () => {
+    apiRequestMock.mockImplementation(async (url: string) => {
+      if (url.includes('/api/hermes/intelligence-state')) {
+        return {
+          ok: true,
+          profile: 'default',
+          savedAt: '2026-06-06T09:00:00.000Z',
+          state: {
+            competitors: [
+              {
+                id: 'server-competitor-1',
+                companyName: 'Server Hydrated Co',
+                countryRegion: 'Germany',
+                productEquivalent: 'Silicone softener product family',
+                activeContent: 'Official product source-backed',
+                pricingEvidence: '',
+                certifications: 'Official source-backed',
+                distributionPresence: 'Official source-backed',
+                revenue: 'FY2025 company-wide revenue: EUR 6.4B',
+                yearlyGrowth: '+4.2% YoY source-backed',
+                traffic: '',
+                rating: 'Official recognition source-backed',
+                lastUpdated: '2026-06-06',
+                confidence: 'high',
+                evidenceStatus: 'Official Data',
+                source: {
+                  title: 'Official annual report',
+                  url: 'https://example.com/annual-report',
+                  date: '2026-06-06',
+                },
+                metricEvidence: {
+                  revenue: {
+                    value: 'FY2025 company-wide revenue: EUR 6.4B',
+                    source: {
+                      title: 'Official annual report',
+                      url: 'https://example.com/annual-report',
+                      date: '2026-06-06',
+                    },
+                    evidenceStatus: 'Official Data',
+                    confidence: 'high',
+                    reviewRequired: false,
+                  },
+                },
+                notes: 'Loaded from server state on direct Competitor tab open.',
+                updatedAt: '2026-06-06T09:00:00.000Z',
+              },
+            ],
+          },
+        }
+      }
+      if (url.includes('/api/hermes/jobs')) return { jobs: [] }
+      return {}
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    await flushPromises()
+
+    const row = wrapper.findAll('.comparison-grid-row')
+      .filter(item => !item.classes().includes('head') && item.text().includes('Server Hydrated Co'))[0]
+
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('FY2025 company-wide revenue: EUR 6.4B')
+    expect(row.text()).toContain('Official annual report')
+    expect(row.text()).toContain('high')
+  })
+
   it('shows collective market-share context without promoting it to a company-specific leader badge', async () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.addCompetitor({
@@ -712,7 +778,7 @@ describe('screenshot-matched executive business tabs', () => {
       .filter(row => !row.classes().includes('head') && row.text().includes('BASF'))[0]
 
     expect(basfRow.text()).toContain('Review required')
-    expect(basfRow.text()).toContain('Review required for:')
+    expect(basfRow.text()).toContain('Still missing source-backed fields:')
     expect(basfRow.text()).toContain('company-specific market share')
     expect(basfRow.text()).not.toContain('Collective Tier-1 esterquats share 50-60%')
     expect(basfRow.text()).not.toContain('individual company share not published')
@@ -764,9 +830,9 @@ describe('screenshot-matched executive business tabs', () => {
       .filter(item => !item.classes().includes('head') && item.text().includes('Review Share Co'))[0]
 
     expect(row.text()).toContain('Review required')
-    expect(row.text()).toContain('Review required for:')
+    expect(row.text()).toContain('Review source-backed candidates before using:')
     expect(row.text()).toContain('company-specific market share')
-    expect(row.text()).not.toContain('19% global esterquat share')
+    expect(row.text()).toContain('Source found - review required: 19% global esterquat share')
     expect(row.text()).not.toContain('💰 Highest Revenue')
     expect(row.text()).toContain('No source-backed leader badge')
     expect(row.text()).not.toContain('🥇 Market Leader')
@@ -825,7 +891,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(row.text()).toContain('1.17M visits')
     expect(row.text()).toContain('Official sustainability recognition')
     expect(row.text()).toContain('Review required')
-    expect(row.text()).not.toContain('14% global esterquat share')
+    expect(row.text()).toContain('Source found - review required: 14% global esterquat share')
     expect(row.text()).not.toContain('🥇 Market Leader')
     expect(wrapper.findAll('.market-share-panel .share-row')
       .filter(item => item.text().includes('Traffic Evidence Co'))).toHaveLength(0)
@@ -923,7 +989,7 @@ describe('screenshot-matched executive business tabs', () => {
 
     expect(text).toContain('Supplier Scorecards - Key Raw Materials')
     expect(text).toContain('Hermes Autopilot has imported 2 supplier scorecard rows and 1 raw-material signals with source metadata')
-    expect(text).toContain('1 supplier candidate remains staged outside the primary scorecard')
+    expect(text).toContain('1 supplier candidate is shown as review-gated scorecard context')
     expect(text).toContain('Uploaded Quote Supplier')
     expect(text).toContain('Stearic Acid TP')
     expect(text).toContain('USD 1,235/T')
@@ -950,9 +1016,9 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Dow')
     expect(text).toContain('WACKER')
     expect(text).not.toContain('No imported supplier scorecard rows yet')
-    expect(text).not.toContain('Official Supplier Candidate')
-    expect(text).not.toContain('Official supplier product catalog')
-    expect(text).not.toContain('Quote/TDS requested; price Awaiting trusted-source import')
+    expect(text).toContain('Official Supplier Candidate')
+    expect(text).toContain('Official supplier product catalog')
+    expect(text).toContain('Source found - review required: Quote/TDS requested; price Awaiting trusted-source import')
     expect(text).not.toContain('No approved quote yet')
     expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
     expect(text).toContain('Supplier scorecard schedule is being checked automatically')

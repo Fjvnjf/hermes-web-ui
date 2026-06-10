@@ -441,13 +441,47 @@ const importedSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
     }),
 )
 
+const sourceReviewSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
+  intelligence.state.value.dataRoomSources
+    .filter(isAutopilotSupplierRecord)
+    .map(record => {
+      const sourceTitle = record.source?.title || record.proposedDashboardField || 'Source metadata pending review'
+      const sourceUrl = record.source?.url
+      const sourceDate = record.source?.date || record.updatedAt || ''
+      const confidence = record.confidence ? `confidence: ${record.confidence}` : ''
+      const sourceTier = record.sourceTier || 'source tier pending review'
+      const proposed = record.proposedValue || record.notes || 'Source-backed supplier/material candidate staged for review.'
+      return {
+        supplier: record.supplier || 'Supplier candidate',
+        region: 'Research review candidate',
+        material: record.material || 'Raw material candidate',
+        pricePerTon: REVIEW_GATED_PRICE_COPY,
+        quality: REVIEW_GATED_QUALITY_COPY,
+        reliability: REVIEW_GATED_RELIABILITY_COPY,
+        payment: REVIEW_GATED_PAYMENT_COPY,
+        score: REVIEW_GATED_SCORE_COPY,
+        evidenceStatus: record.evidenceStatus,
+        sourceTitle,
+        sourceUrl,
+        sourceMeta: [
+          `Source metadata: ${sourceTier}`,
+          confidence,
+          sourceDate ? `date: ${sourceDate}` : '',
+        ].filter(Boolean).join(' / '),
+        sourceSummary: `Source found - review required: ${proposed}`,
+        nextAction: record.riskReason || `Review supplier evidence before using price, payment, reliability, or score for ${record.supplier} / ${record.material}.`,
+        highRisk: isDmsMaterial(`${record.supplier || ''} ${record.material || ''}`),
+      }
+    }),
+)
+
 const sourceReviewSupplierCandidateCount = computed(() =>
   intelligence.state.value.dataRoomSources.filter(isAutopilotSupplierRecord).length,
 )
 
 const displayedSupplierScorecardRows = computed(() => {
   const byKey = new Map<string, SupplierScorecardRow>()
-  for (const row of importedSupplierScorecardRows.value) {
+  for (const row of [...importedSupplierScorecardRows.value, ...sourceReviewSupplierScorecardRows.value]) {
     const key = supplierRecordKey(row)
     if (!byKey.has(key)) byKey.set(key, row)
   }
@@ -529,7 +563,7 @@ const supplierAutopilotCards = computed(() => [
     icon: '📥',
     label: 'Stage',
     value: `${importedSupplierScorecardRows.value.length} rows`,
-    note: `${importedRawMaterialIdentitySignals.value.length} raw-material signals linked; review candidates stay outside primary scorecards.`,
+    note: `${importedRawMaterialIdentitySignals.value.length} raw-material signals linked; review candidates appear with gated values.`,
   },
   {
     icon: '✅',
@@ -886,7 +920,7 @@ onMounted(() => {
           </p>
           <p v-if="sourceReviewSupplierCandidateCount" class="autopilot-note">
             {{ sourceReviewSupplierCandidateCount }} supplier candidate{{ sourceReviewSupplierCandidateCount === 1 ? '' : 's' }}
-            {{ sourceReviewSupplierCandidateCount === 1 ? 'remains' : 'remain' }} staged outside the primary scorecard until trusted-source import or uploaded supplier evidence creates a supplierScorecards record.
+            {{ sourceReviewSupplierCandidateCount === 1 ? 'is' : 'are' }} shown as review-gated scorecard context until trusted-source import or uploaded supplier evidence creates a fully actionable supplierScorecards record.
           </p>
           <p class="autopilot-note">
             {{ supplierAutopilotStatus }}<span v-if="supplierAutopilotJobId"> · Job {{ supplierAutopilotJobId }}</span>

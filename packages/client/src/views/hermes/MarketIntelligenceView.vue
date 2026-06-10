@@ -72,6 +72,7 @@ interface GlobalOpportunityRegionRow {
 
 const NO_APPROVED_SOURCE_VALUE = 'No approved source-backed value'
 const MARKET_REVIEW_SOURCE_LABEL = 'Trusted Sources / Research Review'
+const SOURCE_FOUND_REVIEW_REQUIRED = 'Source found - review required'
 const criticalMarketStatusBlocklist: IntelligenceEvidenceStatus[] = [
   'Missing',
   'To Verify',
@@ -589,6 +590,7 @@ function marketClaimDisplayStatus(claim: MarketClaim | null | undefined): Intell
   if (!claim) return 'To Verify'
   const normalized = normalizedMarketClaimStatus(claim)
   if (!claimHasUsableSourceValue(claim)) return normalized
+  if (claim.reviewRequired) return 'Candidate Source'
   if (normalized !== 'To Verify' && normalized !== 'Missing') return normalized
 
   const trace = [
@@ -614,6 +616,9 @@ function criticalMarketClaimIsReviewGated(claim: MarketClaim): boolean {
 }
 
 function primaryMarketClaimValue(claim: MarketClaim): string {
+  if (criticalMarketClaimIsReviewGated(claim) && claimHasUsableSourceValue(claim)) {
+    return `${SOURCE_FOUND_REVIEW_REQUIRED}: ${marketClaimValue(claim)}`
+  }
   if (criticalMarketClaimIsReviewGated(claim)) return NO_APPROVED_SOURCE_VALUE
   return marketClaimValue(claim)
 }
@@ -625,23 +630,37 @@ function opportunityRegionLabel(claim: MarketClaim): string {
 }
 
 function findMarketClaim(keywords: string[]): MarketClaim | null {
-  return claims.value.find(claim => {
+  const matches = claims.value.filter(claim => {
     const haystack = claimSearchText(claim)
     return keywords.some(keyword => haystack.includes(keyword))
-  }) || null
+  })
+  if (!matches.length) return null
+  return matches
+    .map(claim => ({
+      claim,
+      score: (
+        claimHasUsableSourceValue(claim) && !isPlaceholderOnlyClaim(claim) ? 1000 : 0
+      ) + (
+        keywords.some(keyword => String(claim.proposedDashboardField || '').toLowerCase().includes(keyword)) ? 120 : 0
+      ) + (
+        keywords.some(keyword => String(claim.fieldKey || '').toLowerCase().includes(keyword)) ? 80 : 0
+      ) + (
+        criticalMarketClaimIsReviewGated(claim) ? 30 : 0
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)[0].claim
 }
 
 function marketMetric(label: string, claim: MarketClaim | null) {
   const fallback = sourceBackedMarketMetric(label)
   const useClaim = Boolean(claim && claimHasUsableSourceValue(claim) && !isPlaceholderOnlyClaim(claim))
-  const canShowClaimValue = Boolean(useClaim && !criticalMarketClaimIsReviewGated(claim!))
   const sensitivityClaim = claim || { label, value: fallback?.value || '', evidenceStatus: fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus }
   return {
     label,
     value: isSensitiveMarketClaim(sensitivityClaim)
       ? 'Restricted'
-      : canShowClaimValue
-        ? marketClaimValue(claim!)
+      : useClaim
+        ? primaryMarketClaimValue(claim!)
         : fallback?.value || NO_APPROVED_SOURCE_VALUE,
     evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus,
     sourceLabel: useClaim ? marketClaimSourceLabel(claim!) : fallback?.sourceLabel || MARKET_REVIEW_SOURCE_LABEL,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, useMessage } from 'naive-ui'
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
@@ -237,6 +237,7 @@ const competitorResearchQueue = [
 const autoVerifyingText = 'Awaiting trusted-source import'
 const noApprovedSourceBackedValue = 'No approved source-backed value'
 const reviewRequiredText = 'Review required'
+const sourceFoundReviewRequiredText = 'Source found - review required'
 const competitorMetricGapLabel: Record<CompetitorMetricField, string> = {
   pricingEvidence: noApprovedSourceBackedValue,
   marketShare: noApprovedSourceBackedValue,
@@ -366,6 +367,7 @@ const competitorCategoryFilter = ref('All')
 const competitorEvidenceFilter = ref<CompetitorEvidenceFilter>('All')
 const competitorSortKey = ref<CompetitorSortKey>('competitor')
 const competitorSortDirection = ref<'asc' | 'desc'>('asc')
+const hydrationWarning = ref('')
 const competitorSourcePack = [
   {
     title: 'Transfar Chemicals official site',
@@ -626,6 +628,23 @@ function metricEvidenceCanDrivePrimaryDisplay(field: CompetitorMetricField, evid
   return metricStatusCanDriveReferenceDisplay(status, field)
 }
 
+function metricEvidenceCanShowAsReviewCandidate(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): boolean {
+  const value = String(field === 'lastUpdated'
+    ? evidence?.value || evidence?.lastChecked || evidence?.sourceDate || evidence?.source?.date || ''
+    : evidence?.value || '').trim()
+  if (!value || /^(to verify|missing|awaiting trusted-source import)$/i.test(value)) return false
+  if (!sourceIsUsable(evidence?.source)) return false
+  return true
+}
+
+function metricCanShowAsReviewCandidate(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
+  const evidence = metricEvidenceFor(competitor, field)
+  if (metricEvidenceCanShowAsReviewCandidate(field, evidence || undefined)) return true
+  const value = metricValueFor(competitor, field, competitor[field as keyof CompetitorIntelligenceRecord] as string | undefined)
+  if (metricValueIsUnresolved(value)) return false
+  return sourceIsUsable(metricSourceFor(competitor, field))
+}
+
 function metricEvidenceSortScore(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): number {
   if (!evidence) return -1
   let score = 0
@@ -723,10 +742,16 @@ function metricCanDriveLeaderBadge(
 function metricDisplayValueFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField, fallback: string | undefined = ''): string {
   const value = metricValueFor(competitor, field, fallback)
   if (metricValueIsUnresolved(value)) return competitorMetricGapLabel[field]
+  if (metricReviewRequiredFor(competitor, field) && metricCanShowAsReviewCandidate(competitor, field)) {
+    return `${sourceFoundReviewRequiredText}: ${autoVerifyText(value)}`
+  }
   if (metricReviewRequiredFor(competitor, field)) return reviewRequiredText
+  if (field === 'marketShare' && isCollectiveMarketShareText(value) && metricCanShowAsReviewCandidate(competitor, field)) {
+    return `${sourceFoundReviewRequiredText}: ${autoVerifyText(value)}`
+  }
   if (field === 'marketShare' && isCollectiveMarketShareText(value)) return reviewRequiredText
   if (!sourceIsUsable(metricSourceFor(competitor, field))) return competitorMetricGapLabel[field]
-  if (!metricCanDrivePrimaryDisplay(competitor, field)) return reviewRequiredText
+  if (!metricCanDrivePrimaryDisplay(competitor, field)) return `${sourceFoundReviewRequiredText}: ${autoVerifyText(value)}`
   if (field === 'lastUpdated') return autoVerifyText(value)
   return autoVerifyText(value)
 }
@@ -736,8 +761,8 @@ function metricIsMissingForPrimaryDisplay(competitor: CompetitorIntelligenceReco
   if (!value || /to verify|missing|no source-backed|awaiting trusted-source import|not published|not found yet|source needed|source import needed/i.test(value)) return true
   if (field === 'lastUpdated') return false
   if (!sourceIsUsable(metricSourceFor(competitor, field))) return true
-  if (metricReviewRequiredFor(competitor, field)) return true
-  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return true
+  if (metricReviewRequiredFor(competitor, field)) return false
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
   return !metricCanDrivePrimaryDisplay(competitor, field)
 }
 
@@ -791,15 +816,35 @@ function competitorProductVariationsForDisplay(competitor: CompetitorIntelligenc
 }
 
 function competitorNextActionFor(competitor: CompetitorIntelligenceRecord): string {
+  const reviewLabelByField: Partial<Record<CompetitorMetricField, string>> = {
+    pricingEvidence: 'price',
+    marketShare: 'company-specific market share',
+    revenue: 'revenue',
+    yearlyGrowth: 'YoY growth',
+    traffic: 'website traffic',
+    rating: 'rating/recognition',
+  }
+  const reviewLabels = (Object.keys(competitorMetricGapLabel) as CompetitorMetricField[])
+    .filter(field => field !== 'lastUpdated')
+    .filter(field => metricCanShowAsReviewCandidate(competitor, field) && !metricCanDriveLeaderBadge(competitor, field as Exclude<CompetitorMetricField, 'lastUpdated'>))
+    .map(field => reviewLabelByField[field])
+    .filter(Boolean)
   const missingLabels = missingMetricLabelsFor(competitor)
-  if (missingLabels.length) return `Review required for: ${missingLabels.join(', ')}.`
+  const actions = [
+    reviewLabels.length ? `Review source-backed candidates before using: ${reviewLabels.join(', ')}.` : '',
+    missingLabels.length ? `Still missing source-backed fields: ${missingLabels.join(', ')}.` : '',
+  ].filter(Boolean)
+  if (actions.length) return actions.join(' ')
   return 'All shown competitor metrics have usable sources; keep monitoring for changes.'
 }
 
 function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label: string, url?: string, date?: string } {
   const metricSources = uniqueValues(
     (Object.entries(competitor.metricEvidence || {}) || [])
-      .filter(([field, item]) => metricEvidenceCanDrivePrimaryDisplay(field as CompetitorMetricField, item))
+      .filter(([field, item]) => (
+        metricEvidenceCanDrivePrimaryDisplay(field as CompetitorMetricField, item) ||
+        metricEvidenceCanShowAsReviewCandidate(field as CompetitorMetricField, item)
+      ))
       .map(([, item]) => item?.source)
       .filter(source => sourceIsUsable(source))
       .map(source => `${source!.title}|${source!.url || ''}|${source!.date || ''}`),
@@ -819,8 +864,13 @@ function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label:
       date: competitor.source.date,
     }
   }
-  if (sourceIsUsable(competitor.source) && competitor.reviewRequired) {
-    return { label: reviewRequiredText }
+  const reviewSource = competitor.source
+  if (sourceIsUsable(reviewSource) && competitor.reviewRequired) {
+    return {
+      label: `${reviewSource!.title} (${reviewRequiredText})`,
+      url: reviewSource!.url,
+      date: reviewSource!.date,
+    }
   }
   return {
     label: noApprovedSourceBackedValue,
@@ -971,7 +1021,12 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       sourceUrl: row.sourceUrl,
       sourceDate: row.sourceDate,
       confidence: row.confidence || confidenceLabelForRow(row.evidenceStatus, hasSource, hasComparableData),
-      evidenceState: evidenceStateForRow(row.evidenceStatus, hasSource, hasComparableData, row.priceKg),
+      evidenceState: evidenceStateForRow(
+        row.evidenceStatus,
+        hasSource,
+        hasComparableData,
+        [row.priceKg, row.marketShare, row.revenue, row.yearlyGrowth, row.traffic, row.rating, row.lastUpdated, row.confidence].join(' '),
+      ),
       evidenceStatus: row.evidenceStatus,
       nextAction: autoVerifyText(row.nextAction),
       comparable,
@@ -1190,6 +1245,7 @@ function evidenceStateForRow(
 ): CompetitorEvidenceFilter {
   if (/restricted/i.test(priceText)) return 'Restricted'
   if (!hasSource) return 'Auto-checking'
+  if (/review required/i.test(priceText)) return 'Review needed'
   if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return 'Review needed'
   if (
     hasComparableData &&
@@ -1301,22 +1357,28 @@ function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): s
 }
 
 function competitorLastUpdatedLabel(competitor: CompetitorIntelligenceRecord): string {
-  if (metricReviewRequiredFor(competitor, 'lastUpdated')) return reviewRequiredText
   const source = metricSourceFor(competitor, 'lastUpdated')
   if (!sourceIsUsable(source)) return noApprovedSourceBackedValue
   const value = metricValueFor(competitor, 'lastUpdated', competitor.lastUpdated) || source?.date || competitor.updatedAt
-  if (!metricCanDrivePrimaryDisplay(competitor, 'lastUpdated')) return reviewRequiredText
+  if (metricReviewRequiredFor(competitor, 'lastUpdated') || !metricCanDrivePrimaryDisplay(competitor, 'lastUpdated')) {
+    return value ? `${formatDateTime(value)} (${reviewRequiredText})` : reviewRequiredText
+  }
   return value ? formatDateTime(value) : noApprovedSourceBackedValue
 }
 
 function competitorConfidenceLabel(competitor: CompetitorIntelligenceRecord): string {
   const metricConfidences = Object.entries(competitor.metricEvidence || {})
-    .filter(([field, item]) => metricEvidenceCanDrivePrimaryDisplay(field as CompetitorMetricField, item))
+    .filter(([field, item]) => (
+      metricEvidenceCanDrivePrimaryDisplay(field as CompetitorMetricField, item) ||
+      metricEvidenceCanShowAsReviewCandidate(field as CompetitorMetricField, item)
+    ))
     .map(([, item]) => String(item?.confidence || '').trim())
     .filter(Boolean)
   const metricExplicit = metricConfidences.find(item => item === 'high') || metricConfidences[0]
-  if (metricExplicit) return metricExplicit
-  if (competitor.reviewRequired && sourceIsUsable(competitor.source)) return reviewRequiredText
+  const hasReviewCandidate = (Object.keys(competitor.metricEvidence || {}) as CompetitorMetricField[])
+    .some(field => metricCanShowAsReviewCandidate(competitor, field) && !metricEvidenceCanDrivePrimaryDisplay(field, metricEvidenceFor(competitor, field) || undefined))
+  if (metricExplicit) return (competitor.reviewRequired || hasReviewCandidate) ? `${metricExplicit} (${reviewRequiredText})` : metricExplicit
+  if (competitor.reviewRequired && sourceIsUsable(competitor.source)) return `Source found (${reviewRequiredText})`
   if (!recordCanDriveSourceDisplay(competitor)) return noApprovedSourceBackedValue
   const explicit = String(competitor.confidence || '').trim()
   if (explicit) return explicit
@@ -1396,6 +1458,16 @@ function syncCompetitorsNow() {
   }
   message.success('Competitor refresh staged for research review')
 }
+
+onMounted(async () => {
+  const before = intelligence.state.value.competitors.length
+  await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+  const error = intelligence.serverSyncStatus.value.error
+  hydrationWarning.value = error ? `Server intelligence sync warning: ${error}` : ''
+  if (!before && intelligence.state.value.competitors.length) {
+    message.success('Loaded trusted-source competitor records from durable Hermes intelligence')
+  }
+})
 
 function resetCompetitorForm() {
   competitorForm.value = {
@@ -1626,6 +1698,7 @@ function addCompetitor() {
             Price, market share, revenue, growth, traffic, and rating are not treated as facts unless a usable source
             and confidence state exist.
           </p>
+          <p v-if="hydrationWarning" class="sync-warning">{{ hydrationWarning }}</p>
         </div>
         <div class="comparison-actions">
           <NButton size="small" type="primary" @click="syncCompetitorsNow">Sync Now</NButton>
