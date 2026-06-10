@@ -1846,7 +1846,7 @@ describe('investor readiness pages', () => {
     expect(claim.source?.title).toBe('Official textile source')
     expect(claim.sourceTier).toBe('tier1-official')
     expect(claim.dataType).toBe('company_data')
-    expect(claim.reviewRequired).toBe(true)
+    expect(claim.reviewRequired).toBe(false)
     expect(claim.riskReason).toBe('Market scope needs owner review before dashboard use.')
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Source-backed')
   })
@@ -1887,7 +1887,7 @@ describe('investor readiness pages', () => {
 
     const targetPanel = wrapper.get('.target-review-panel')
     expect(targetPanel.text()).toContain('Dashboard store')
-    expect(targetPanel.text()).toContain('Data-room evidence for supplierScorecards review')
+    expect(targetPanel.text()).toContain('Supplier scorecard dashboard row plus data-room audit copy')
     expect(targetPanel.text()).toContain('Proposed dashboard field')
     expect(targetPanel.text()).toContain('Stearic Acid TP supplier scorecard')
     expect(targetPanel.text()).toContain('Field key')
@@ -1900,14 +1900,29 @@ describe('investor readiness pages', () => {
     expect(targetPanel.text()).toContain('Risk reason')
     expect(targetPanel.text()).toContain('Cost-sensitive supplier quote must stay review-gated.')
     expect(wrapper.get('.source-link').attributes('href')).toBe('https://example.com/uploaded-supplier-quote')
-    expect(wrapper.text()).toContain('Supplier scorecard approval currently saves a source-linked data-room record')
+    expect(wrapper.text()).toContain('Supplier scorecard approval creates a durable supplierScorecards row plus a source-linked data-room audit copy')
 
     const approveButton = wrapper.findAll('button').find(button => button.text() === 'Approve selected updates')
     expect(approveButton).toBeTruthy()
     await approveButton!.trigger('click')
 
     expect(intelligence.state.value.researchFindings[0].dashboardAppliedAt).toBeTruthy()
-    expect(intelligence.state.value.supplierScorecards).toHaveLength(0)
+    expect(intelligence.state.value.supplierScorecards).toHaveLength(1)
+    expect(intelligence.state.value.supplierScorecards[0]).toMatchObject({
+      dashboardGroup: 'supplierScorecards',
+      fieldKey: 'supplierScorecards.stearicAcidTp.uploadedQuote',
+      supplier: 'Uploaded Quote Supplier',
+      material: 'Stearic Acid TP',
+      value: 'Supplier evidence approved; price/payment/score remain in data-room audit.',
+      sourceTier: 'tier3-supplier-evidence',
+      dataType: 'supplier_quote',
+      confidence: 'high',
+      reviewRequired: true,
+      riskReason: 'Cost-sensitive supplier quote must stay review-gated.',
+      pricePerTon: '',
+      payment: '',
+      score: '',
+    })
     expect(intelligence.state.value.dataRoomSources[0]).toMatchObject({
       dashboardGroup: 'supplierScorecards',
       fieldKey: 'supplierScorecards.stearicAcidTp.uploadedQuote',
@@ -1975,7 +1990,21 @@ describe('investor readiness pages', () => {
     expect(competitor.sourceTier).toBe('tier2-company-official')
     expect(competitor.dataType).toBe('competitor_data')
     expect(competitor.confidence).toBe('high')
-    expect(competitor.reviewRequired).toBe(true)
+    expect(competitor.reviewRequired).toBe(false)
+    expect(competitor.metricEvidence?.revenue).toMatchObject({
+      value: '$80M source-backed',
+      source: { title: 'Official competitor product page', url: 'https://example.com/product' },
+      evidenceStatus: 'Source-backed',
+      confidence: 'high',
+      reviewRequired: false,
+    })
+    expect(competitor.metricEvidence?.yearlyGrowth).toMatchObject({
+      value: '+6% source-backed',
+      source: { title: 'Official competitor product page', url: 'https://example.com/product' },
+      evidenceStatus: 'Source-backed',
+      confidence: 'high',
+      reviewRequired: false,
+    })
     expect(competitor.riskReason).toBe('Competitor growth requires review before business use.')
     expect(formatMarketShare(competitor.marketShare)).toBe('To Verify')
   })
@@ -3017,7 +3046,8 @@ describe('investor readiness pages', () => {
     expect(wrapper.text()).toContain('Critical Risks')
     expect(wrapper.text()).toContain('Trending Products')
     expect(wrapper.text()).toContain('Hermes Status')
-    expect(wrapper.text()).toContain('$500')
+    expect(wrapper.text()).not.toContain('$500')
+    expect(wrapper.text()).toContain('No approved revenue model')
     expect(wrapper.findAll('.snapshot-metric-card')).toHaveLength(7)
     expect(wrapper.text()).toContain('Visual Intelligence Snapshot')
     expect(wrapper.text()).toContain('Business picture from source-backed dashboard state')

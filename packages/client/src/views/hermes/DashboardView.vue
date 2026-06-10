@@ -10,7 +10,7 @@ import {
   type DashboardAutopilotImportStatus,
 } from '@/api/hermes/intelligence-state'
 import { getActiveProfileName, hasApiKey } from '@/api/client'
-import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import { useFeasibilityIntelligence, type FinancialModelSnapshot } from '@/composables/useFeasibilityIntelligence'
 import { useAppStore } from '@/stores/hermes/app'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedExecutiveIntelligenceBoard.vue'
@@ -207,6 +207,9 @@ const openResearchJobs = computed(() =>
     .slice(0, 4),
 )
 const latestFinancialSnapshot = intelligence.latestFinancialModel
+const latestDashboardFinancialSnapshot = computed(() =>
+  financialSnapshotIsDashboardSafe(latestFinancialSnapshot.value) ? latestFinancialSnapshot.value : null
+)
 const deckMaterialsNeedingEvidence = computed(() =>
   intelligence.state.value.presentationMaterials
     .filter(material => !isPresentationMaterialAllowed(material))
@@ -274,8 +277,20 @@ function formatDashboardSourceMetadata(
   return `Source: ${sourceLabel} / Confidence: ${confidence} / Last checked: ${lastChecked} / Review: ${reviewState}`
 }
 
+function financialSnapshotIsDashboardSafe(model?: FinancialModelSnapshot | null): boolean {
+  if (!model || !Number.isFinite(model.yearOneRevenue) || model.yearOneRevenue <= 0) return false
+  const status = String(model.evidenceStatus || '').toLowerCase()
+  if (/verified|official data|trusted source|source-backed|supplier evidence|market reference/.test(status)) {
+    return sourceIsUsable(model.source)
+  }
+  if (/user approved|approved assumption|investor approved/.test(status)) {
+    return true
+  }
+  return false
+}
+
 const executiveSnapshotCards = computed(() => {
-  const financial = latestFinancialSnapshot.value
+  const financial = latestDashboardFinancialSnapshot.value
   const growthClaim = sourceBackedGrowthClaim.value
   const productSignal = sourceBackedProductSignal.value
   const firstCompetitorRecord = sourceBackedCompetitorRecords.value[0] || null
@@ -644,7 +659,7 @@ const autoCheckingLabel = displayAutomaticVerificationText('To Verify')
 
 const revenueTrendRows = computed(() => {
   const rows = intelligence.state.value.financialModels
-    .filter(model => Number.isFinite(model.yearOneRevenue) && model.yearOneRevenue > 0)
+    .filter(model => financialSnapshotIsDashboardSafe(model))
     .slice(0, 5)
     .map(model => ({
       id: model.id,
@@ -1791,9 +1806,9 @@ onMounted(() => {
               </div>
               <div class="triage-list">
                 <RouterLink v-if="canUseInvestmentCalculator" class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
-                  <span>{{ latestFinancialSnapshot?.scenarioName || 'No saved financial snapshot' }}</span>
+                  <span>{{ latestDashboardFinancialSnapshot?.scenarioName || 'No approved financial snapshot' }}</span>
                   <small>
-                    {{ latestFinancialSnapshot ? `${displayEvidenceStatus(latestFinancialSnapshot.evidenceStatus)} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
+                    {{ latestDashboardFinancialSnapshot ? `${displayEvidenceStatus(latestDashboardFinancialSnapshot.evidenceStatus)} / ${latestDashboardFinancialSnapshot.warnings.length} warning${latestDashboardFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Approve a sourced or user-approved scenario before discussing investor returns.' }}
                   </small>
                 </RouterLink>
                 <template v-if="canUseInvestorPresentation">

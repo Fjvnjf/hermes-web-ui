@@ -78,6 +78,17 @@ vi.mock('vue-router', async (importOriginal) => {
   }
 })
 
+function metricEvidence(value: string, source: { title: string, url?: string, date?: string }, evidenceStatus = 'Source-backed', confidence = 'high') {
+  return {
+    value,
+    source,
+    evidenceStatus,
+    confidence,
+    reviewRequired: false,
+    lastChecked: source.date,
+  } as const
+}
+
 describe('screenshot-matched executive business tabs', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -243,8 +254,8 @@ describe('screenshot-matched executive business tabs', () => {
     })
 
     const wrapper = mount(InvestmentAnalysisView)
-    expect(wrapper.text()).toContain('18.0%')
-    expect(wrapper.text()).toContain('Derived from Assumptions')
+    expect(wrapper.text()).not.toContain('18.0%')
+    expect(wrapper.text()).toContain('No approved source-backed value')
 
     await wrapper.findAll('button').find(button => button.text() === 'Lean')!.trigger('click')
     expect(wrapper.text()).toContain('Scenario not filled yet')
@@ -271,9 +282,9 @@ describe('screenshot-matched executive business tabs', () => {
     })
 
     const wrapper = mount(InvestmentAnalysisView)
-    expect(wrapper.text()).toContain('Derived from Assumptions')
-    expect(wrapper.text()).toContain('18.0%')
-    expect(buildInvestorEconomicsKpis(useFeasibilityIntelligence().latestFinancialModel.value, 'Tonight')[1].evidenceStatus).toBe('Derived from Assumptions')
+    expect(wrapper.text()).toContain('No approved source-backed value')
+    expect(wrapper.text()).not.toContain('18.0%')
+    expect(buildInvestorEconomicsKpis(useFeasibilityIntelligence().latestFinancialModel.value, 'Tonight')[1].evidenceStatus).toBe('To Verify')
   })
 
   it('shows Market Intelligence values and competitor market share as source review when unsourced', () => {
@@ -367,7 +378,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Target Countries / Provinces')
     expect(wrapper.text()).toContain('Research HS Codes')
     expect(wrapper.text()).toContain('No approved source-backed value')
-    expect(wrapper.text()).toContain('Example supplier')
+    expect(wrapper.text()).not.toContain('Example supplier')
     expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
@@ -415,6 +426,15 @@ describe('screenshot-matched executive business tabs', () => {
       confidence: 'high',
       evidenceStatus: 'Source-backed',
       source: { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' },
+      metricEvidence: {
+        pricingEvidence: metricEvidence('$24/kg source-backed', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+        marketShare: metricEvidence('7% source-backed', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+        revenue: metricEvidence('$42M source-backed', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+        yearlyGrowth: metricEvidence('+8% source-backed', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+        traffic: metricEvidence('1.2M visits source-backed', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+        rating: metricEvidence('4.8 source-backed', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+        lastUpdated: metricEvidence('2026-06-05', { title: 'Official annual profile', url: 'https://example.com/annual-profile', date: '2026-06-05' }),
+      },
       notes: 'Revenue and growth should appear when source-backed.',
     })
     const wrapper = mount(CompetitorIntelligenceView)
@@ -432,7 +452,6 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Last Updated')
     expect(wrapper.text()).toContain('Confidence')
     expect(wrapper.text()).toContain('No source-backed leader badge')
-    expect(wrapper.text()).not.toContain('🥇 Market Leader')
     expect(wrapper.text()).not.toContain('📈 Fastest Growth')
     expect(wrapper.text()).not.toContain('💰 Highest Revenue')
     expect(wrapper.text()).not.toContain('🔥 Most Competitive Pricing')
@@ -506,6 +525,14 @@ describe('screenshot-matched executive business tabs', () => {
       confidence: 'high',
       evidenceStatus: 'Source-backed',
       source: { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' },
+      metricEvidence: {
+        pricingEvidence: metricEvidence('$24/kg source-backed', { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' }),
+        marketShare: metricEvidence('7% source-backed', { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' }),
+        revenue: metricEvidence('$42M source-backed', { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' }),
+        traffic: metricEvidence('1.2M visits source-backed', { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' }),
+        rating: metricEvidence('4.8 source-backed', { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' }),
+        lastUpdated: metricEvidence('2026-06-05', { title: 'Official annual profile', url: 'https://example.com/alpha', date: '2026-06-05' }),
+      },
       notes: 'Source-backed competitor record.',
     })
     intelligence.addCompetitor({
@@ -525,6 +552,15 @@ describe('screenshot-matched executive business tabs', () => {
       confidence: 'medium',
       evidenceStatus: 'Source-backed',
       source: { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' },
+      metricEvidence: {
+        pricingEvidence: metricEvidence('$22/kg source-backed', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+        marketShare: metricEvidence('6% source-backed', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+        revenue: metricEvidence('FY2024 company-wide net sales: US$2,180,274,000', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+        yearlyGrowth: metricEvidence('FY2024 net sales YoY: -6.26% vs FY2023 US$2,325,768,000', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+        traffic: metricEvidence('950K visits source-backed', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+        rating: metricEvidence('4.6 source-backed', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+        lastUpdated: metricEvidence('2026-06-04', { title: 'Official product variation page', url: 'https://example.com/alpha-cwms', date: '2026-06-04' }),
+      },
       notes: 'Second product variation should not duplicate the company row.',
     })
     intelligence.addCompetitor({
@@ -544,6 +580,11 @@ describe('screenshot-matched executive business tabs', () => {
       confidence: 'high',
       evidenceStatus: 'Official Data',
       source: { title: 'SEC Companyfacts: Alpha Source Co Revenues', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000000.json', date: '2026-02-26' },
+      metricEvidence: {
+        revenue: metricEvidence('FY2025 company-wide revenue: US$2.332B (SEC reported US$2,332,114,000)', { title: 'SEC Companyfacts: Alpha Source Co Revenues', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000000.json', date: '2026-02-26' }, 'Official Data'),
+        yearlyGrowth: metricEvidence('+6.96% source-backed', { title: 'SEC Companyfacts: Alpha Source Co Revenues', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000000.json', date: '2026-02-26' }, 'Official Data'),
+        lastUpdated: metricEvidence('2026-02-26', { title: 'SEC Companyfacts: Alpha Source Co Revenues', url: 'https://data.sec.gov/api/xbrl/companyfacts/CIK0000000000.json', date: '2026-02-26' }, 'Official Data'),
+      },
       notes: 'Latest official company-wide metric should beat older exact-dollar formatting.',
     })
     intelligence.addCompetitor({
@@ -559,6 +600,12 @@ describe('screenshot-matched executive business tabs', () => {
       yearlyGrowth: '+3% source-backed',
       evidenceStatus: 'Source-backed',
       source: { title: 'Official company profile', url: 'https://example.com/beta' },
+      metricEvidence: {
+        pricingEvidence: metricEvidence('$36/kg source-backed', { title: 'Official company profile', url: 'https://example.com/beta', date: '2026-06-05' }),
+        marketShare: metricEvidence('4% source-backed', { title: 'Official company profile', url: 'https://example.com/beta', date: '2026-06-05' }),
+        revenue: metricEvidence('$12M source-backed', { title: 'Official company profile', url: 'https://example.com/beta', date: '2026-06-05' }),
+        yearlyGrowth: metricEvidence('+3% source-backed', { title: 'Official company profile', url: 'https://example.com/beta', date: '2026-06-05' }),
+      },
       notes: 'Source-backed silicone competitor record.',
     })
 
@@ -612,7 +659,7 @@ describe('screenshot-matched executive business tabs', () => {
     const evidenceSelect = wrapper.findAll('.comparison-filter-bar select')[1]
     await evidenceSelect.setValue('Auto-checking')
     await flushPromises()
-    expect(panel().text()).toContain('No competitor records match this filter')
+    expect(panel().text()).toContain('Beta Source Co')
     expect(panel().text()).not.toContain('WACKER')
     expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(panel().text()).not.toContain('$18-22')
@@ -638,6 +685,15 @@ describe('screenshot-matched executive business tabs', () => {
       confidence: 'high',
       evidenceStatus: 'Source-backed',
       source: { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' },
+      metricEvidence: {
+        pricingEvidence: metricEvidence('$24/kg source-backed', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+        marketShare: metricEvidence('7% source-backed', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+        revenue: metricEvidence('$42M source-backed', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+        yearlyGrowth: metricEvidence('+8% source-backed', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+        traffic: metricEvidence('1.2M visits source-backed', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+        rating: metricEvidence('4.8 source-backed', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+        lastUpdated: metricEvidence('2026-06-05', { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' }),
+      },
       notes: 'Approved source-backed competitor record.',
     })
     intelligence.addCompetitor({
@@ -992,11 +1048,11 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('1 supplier candidate is shown as review-gated scorecard context')
     expect(text).toContain('Uploaded Quote Supplier')
     expect(text).toContain('Stearic Acid TP')
-    expect(text).toContain('USD 1,235/T')
-    expect(text).toContain('TDS/SDS uploaded')
-    expect(text).toContain('Distributor delivery record uploaded')
-    expect(text).toContain('LC at sight')
-    expect(text).toContain('82/100')
+    expect(text).not.toContain('USD 1,235/T')
+    expect(text).not.toContain('TDS/SDS uploaded')
+    expect(text).not.toContain('Distributor delivery record uploaded')
+    expect(text).not.toContain('LC at sight')
+    expect(text).not.toContain('82/100')
     expect(text).toContain('Uploaded supplier quote packet')
     expect(text).toContain('Source metadata: tier3-supplier-evidence / confidence: high / date: 2026-06-05')
     expect(text).toContain('Raw-material identity source: PubChem stearic acid identity / 2026-06-02')
@@ -1018,7 +1074,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).not.toContain('No imported supplier scorecard rows yet')
     expect(text).toContain('Official Supplier Candidate')
     expect(text).toContain('Official supplier product catalog')
-    expect(text).toContain('Source found - review required: Quote/TDS requested; price Awaiting trusted-source import')
+    expect(text).toContain('Source found - review required: Supplier evidence staged for review. Commercial values are hidden until approved for dashboard use.')
     expect(text).not.toContain('No approved quote yet')
     expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
     expect(text).toContain('Supplier scorecard schedule is being checked automatically')

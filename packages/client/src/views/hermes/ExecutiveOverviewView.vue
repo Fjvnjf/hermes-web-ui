@@ -5,9 +5,11 @@ import PinnedExecutiveIntelligenceBoard from '@/components/intelligence/PinnedEx
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { canAccessRouteName, getFrontendAccessRole } from '@/utils/accessControl'
+import { resolveSourceBackedDashboardRecords } from '@/utils/dashboardSourceResolver'
 import {
   EXECUTIVE_REFRESH_SCHEDULE,
   defaultExecutiveRefreshState,
+  financialOutputStatus,
 } from '@/utils/executiveIntelligence'
 import { displayAutomaticVerificationText, displayUnresolvedValue } from '@/utils/investorIntelligence'
 
@@ -15,6 +17,40 @@ const intelligence = useFeasibilityIntelligence()
 const frontendRole = computed(() => getFrontendAccessRole())
 const refreshState = computed(() => defaultExecutiveRefreshState())
 const canUseRoute = (routeName: string) => canAccessRouteName(routeName, frontendRole.value)
+const sourceBackedMarketClaimCount = computed(() =>
+  resolveSourceBackedDashboardRecords(intelligence.state.value, [{
+    group: 'marketClaims',
+    fields: [
+      'Market Size / Scope',
+      'Growth Rate',
+      'Import Dependence',
+      'Our Target',
+      'Opportunity Score',
+      'Country-wise Consumption Growth',
+      'Market Segmentation',
+      'Export Opportunity',
+      'Target Countries',
+      'Target Provinces',
+    ],
+  }]).length
+)
+const safeFinancialScenarioName = computed(() => {
+  const model = intelligence.latestFinancialModel.value
+  if (!model) return ''
+  const status = financialOutputStatus(model)
+  if ([
+    'Verified',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+    'Source-backed',
+    'User Approved',
+    'Approved Assumption',
+    'Investor Approved',
+  ].includes(status)) {
+    return model.scenarioName
+  }
+  return ''
+})
 
 const commandCards = computed(() => [
   {
@@ -26,14 +62,14 @@ const commandCards = computed(() => [
   },
   {
     label: 'Market Intelligence',
-    value: displayUnresolvedValue(String(intelligence.state.value.marketClaims.length || 'To Verify')),
+    value: sourceBackedMarketClaimCount.value ? String(sourceBackedMarketClaimCount.value) : 'No approved source-backed value',
     detail: 'Source-backed claims only; missing values stay in source review.',
     routeName: 'hermes.marketIntelligence',
     tone: 'cyan',
   },
   {
     label: 'Investment Analysis',
-    value: displayUnresolvedValue(intelligence.latestFinancialModel.value?.scenarioName || 'To Verify'),
+    value: displayUnresolvedValue(safeFinancialScenarioName.value || 'No approved source-backed value'),
     detail: 'Financial outputs remain derived from assumptions until approved.',
     routeName: 'hermes.investmentAnalysis',
     tone: 'green',

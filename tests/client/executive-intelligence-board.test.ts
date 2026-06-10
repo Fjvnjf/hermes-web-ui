@@ -74,14 +74,14 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(wrapper.text()).toContain('Investor Economics Panel')
     expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).toContain('Trusted Sources / Research Review')
-    expect(wrapper.text()).toContain('No saved IRR scenario')
+    expect(wrapper.text()).toContain('No approved financial model')
     expect(wrapper.text()).not.toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toContain('fake CAGR')
     expect(wrapper.text()).not.toContain('fake market share')
   })
 
-  it('labels financial outputs as Derived from Assumptions unless source-backed', () => {
+  it('keeps unapproved financial assumptions out of primary KPI numbers', () => {
     const intelligence = useFeasibilityIntelligence()
     intelligence.saveFinancialModelSnapshot({
       scenarioName: 'Base',
@@ -101,9 +101,10 @@ describe('Pinned Executive Intelligence Board', () => {
 
     const wrapper = mount(PinnedExecutiveIntelligenceBoard)
 
-    expect(wrapper.text()).toContain('18.0%')
-    expect(wrapper.text()).toContain('Derived from Assumptions')
-    expect(wrapper.text()).toContain('IRR Calculator local scenario')
+    expect(wrapper.text()).not.toContain('18.0%')
+    expect(wrapper.text()).not.toContain('$3,000,000')
+    expect(wrapper.text()).toContain('No approved source-backed value')
+    expect(wrapper.text()).toContain('No approved financial model')
   })
 
   it('keeps market and competitor values source-gated with source-review defaults', () => {
@@ -146,11 +147,11 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(wrapper.text()).toContain('Market size')
     expect(wrapper.text()).toContain('No source-backed claim captured yet')
     expect(wrapper.text()).not.toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
-    expect(wrapper.text()).toContain('Unknown supplier')
+    expect(wrapper.text()).not.toContain('Unknown supplier')
     expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
-    expect(wrapper.text()).toContain('Powerful Assumption: 12%')
+    expect(wrapper.text()).not.toContain('Powerful Assumption: 12%')
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
     expect(competitorMarketShare('12%', null, 'Powerful Assumption')).toBe('Powerful Assumption: 12%')
   })
@@ -299,5 +300,26 @@ describe('Pinned Executive Intelligence Board', () => {
 
     expect(kpis.find(item => item.key === 'projectIrr')?.evidenceStatus).toBe('Source-backed')
     expect(kpis.find(item => item.key === 'capacity')?.value).toBe('No approved capacity evidence')
+
+    const unsourcedVerified = buildInvestorEconomicsKpis({
+      id: 'unsourced-verified-model',
+      scenarioName: 'Base',
+      projectName: 'Chemicon China Feasibility',
+      currency: 'USD',
+      evidenceStatus: 'Verified',
+      npv: 1000,
+      irr: 0.1,
+      mirr: 0.09,
+      paybackYear: 3,
+      breakEvenVolumeTon: 100,
+      capexTotal: 5000,
+      yearOneRevenue: 8000,
+      warnings: [],
+      source: null,
+      createdAt: '2026-05-30T00:00:00.000Z',
+    }, 'Tonight')
+
+    expect(unsourcedVerified.find(item => item.key === 'projectIrr')?.evidenceStatus).toBe('To Verify')
+    expect(unsourcedVerified.find(item => item.key === 'projectIrr')?.value).toBe('No approved source-backed value')
   })
 })

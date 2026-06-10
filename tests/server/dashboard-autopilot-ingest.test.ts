@@ -37,6 +37,7 @@ import {
   runDueFullDashboardAutopilot,
   secCompanyfactsToCompetitorFinancialUpdate,
   trancoRanksPayloadToCompetitorUpdate,
+  worldBankIndicatorPayloadToMarketClaimUpdate,
 } from '../../packages/server/src/services/hermes/dashboard-autopilot-ingest'
 import { readDashboardIntelligenceState } from '../../packages/server/src/services/hermes/intelligence-state'
 
@@ -72,6 +73,21 @@ function comtradePayload(rows: Array<{ year: number; primaryValue: number; netWe
       isAggregate: true,
     })),
   }
+}
+
+function worldBankPayload(rows: Array<{ year: number; value: number; indicator?: string; country?: string }>) {
+  return [
+    { page: 1, pages: 1, per_page: 80, total: rows.length },
+    rows.map(row => ({
+      indicator: { id: 'mock', value: row.indicator || 'Mock indicator' },
+      country: { id: 'mock-country', value: row.country || 'Mock country' },
+      date: String(row.year),
+      value: row.value,
+      unit: '',
+      obs_status: '',
+      decimal: 1,
+    })),
+  ]
 }
 
 const officialCompanySources = {
@@ -447,13 +463,45 @@ describe('dashboard autopilot output ingestion', () => {
       evidenceStatus: 'Trade Proxy',
       reviewRequired: true,
       sourceTitle: 'UN Comtrade API: China HS 380991 imports',
-      sourceUrl: 'https://comtradeapi.un.org/data/v1/get/C/A/HS?cmdCode=380991&flowCode=M&reporterCode=156&period=2023,2024&partnerCode=0&partner2Code=0&customsCode=C00&motCode=0&maxRecords=100000&includeDesc=true',
+      sourceUrl: 'https://comtradeapi.un.org/public/v1/preview/C/A/HS?cmdCode=380991&flowCode=M&reporterCode=156&period=2023,2024&partnerCode=0&partner2Code=0&customsCode=C00&motCode=0&maxRecords=100000&includeDesc=true',
     }))
     expect(update?.value).toContain('FY2024 official HS 380991 import proxy')
     expect(update?.value).toContain('US$236.608M')
     expect(update?.value).toContain('65,409 MT')
     expect(update?.value).toContain('YoY value +21.23%')
     expect(update?.riskReason).toContain('not direct textile-softener consumption')
+  })
+
+  it('converts World Bank official indicators into source-backed country context without direct demand claims', () => {
+    const update = worldBankIndicatorPayloadToMarketClaimUpdate({
+      country: 'Bangladesh',
+      countryCode: 'BD',
+      fieldKeySlug: 'bangladesh',
+      indicator: 'NV.IND.MANF.CD',
+      indicatorKind: 'manufacturing_value_added_usd',
+      label: 'Manufacturing value added',
+    }, worldBankPayload([
+      { year: 2023, value: 109_000_000_000, indicator: 'Manufacturing, value added (current US$)', country: 'Bangladesh' },
+      { year: 2024, value: 118_250_000_000, indicator: 'Manufacturing, value added (current US$)', country: 'Bangladesh' },
+    ]), '2026-06-06')
+
+    expect(update).toEqual(expect.objectContaining({
+      fieldKey: 'market.country_context.bangladesh.world_bank_manufacturing-value-added-usd',
+      label: 'Country context - Bangladesh',
+      proposedDashboardField: 'Bangladesh World Bank Manufacturing value added',
+      sourceTitle: 'World Bank API: Bangladesh - Manufacturing, value added (current US$)',
+      sourceUrl: 'https://api.worldbank.org/v2/country/BD/indicator/NV.IND.MANF.CD?format=json&per_page=80',
+      sourceTier: 'Tier 1 - Official / statistical source',
+      sourceDate: '2024',
+      confidence: 'high',
+      evidenceStatus: 'Official Data',
+      reviewRequired: false,
+      dataType: 'trade_data',
+      recommendedAction: expect.stringContaining('Keep market size'),
+    }))
+    expect(update?.value).toContain('2024 manufacturing value added US$118.25B')
+    expect(update?.value).toContain('not direct textile-softener demand')
+    expect(update?.riskReason).toContain('official industrial context')
   })
 
   it('converts official company financial pages into source-backed competitor metrics', () => {
@@ -1758,6 +1806,94 @@ describe('dashboard autopilot output ingestion', () => {
     expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-1')).toBe(true)
   })
 
+  it('starts missing coverage follow-up when only supplier or raw-material rows exist', async () => {
+    writeFullDashboardJob(hermesHome, 'job-full-dashboard')
+    await ensureFullDashboardAutopilotScheduled('default')
+    const intelligenceDir = join(hermesHome, 'dashboard-intelligence')
+    mkdirSync(intelligenceDir, { recursive: true })
+    writeFileSync(join(intelligenceDir, 'state.json'), JSON.stringify({
+      version: 1,
+      profile: 'default',
+      state: {
+        marketClaims: [],
+        competitors: [],
+        rawMaterialSignals: [{
+          id: 'raw-material-signal-stearic',
+          dashboardGroup: 'rawMaterialSignals',
+          material: 'Stearic acid',
+          value: 'Official supplier product evidence imported',
+          source: {
+            title: 'Wilmar official product page',
+            url: 'https://www.wilmar-international.com/oleochemicals/products/home-care/rubber-grade-stearic-acid-1807',
+          },
+          evidenceStatus: 'Official Data',
+          confidence: 'high',
+          reviewRequired: false,
+        }],
+        supplierScorecards: [{
+          id: 'supplier-scorecard-stearic',
+          dashboardGroup: 'supplierScorecards',
+          supplier: 'Wilmar',
+          material: 'Stearic acid',
+          value: 'Official supplier evidence imported',
+          source: {
+            title: 'Wilmar official product page',
+            url: 'https://www.wilmar-international.com/oleochemicals/products/home-care/rubber-grade-stearic-acid-1807',
+          },
+          evidenceStatus: 'Official Data',
+          confidence: 'high',
+          reviewRequired: false,
+        }],
+        dataRoomSources: [],
+        researchFindings: [],
+        financialModels: [],
+        presentationMaterials: [],
+        researchJobs: [{
+          id: 'job-full-dashboard-record',
+          title: 'Full Dashboard Trusted Source Autopilot',
+          question: 'Refresh the full feasibility dashboard with trusted source evidence.',
+          status: 'Scheduled Hermes Job',
+          scheduledJobId: 'job-full-dashboard',
+          sourceRequirements: 'Official-first trusted source dashboard refresh.',
+        }],
+      },
+      savedAt: '2026-06-06T00:00:00.000Z',
+      savedBy: { username: 'test', role: 'system' },
+    }, null, 2))
+
+    execFileMock.mockReset()
+    execFileMock.mockImplementation((_bin, args: string[], _opts, cb) => {
+      if (args[1] === 'create') {
+        writeMissingCoverageJob(hermesHome, 'job-missing-coverage-raw', String(args[args.length - 1] || ''))
+      }
+      cb(null, '', '')
+    })
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialRecognitionConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+      includeMarketReferenceTrafficConnectors: false,
+    })
+
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      filesChecked: 0,
+      missingCoverageFollowUpStarted: true,
+    })
+    const createArgs = execFileMock.mock.calls.find(call => (call[1] as string[])[1] === 'create')?.[1] as string[]
+    expect(createArgs).toBeTruthy()
+    const prompt = createArgs[createArgs.length - 1]
+    expect(prompt).toContain('Raw Materials / Supplier Scorecards')
+    expect(prompt).toContain('Triethanolamine / TEA')
+    expect(prompt).toContain('Competitor Metric Columns')
+    expect(execFileMock.mock.calls.some(call => (call[1] as string[]).join(' ') === 'cron run job-missing-coverage-raw')).toBe(true)
+  })
+
   it('reuses a stale missing coverage follow-up job instead of creating duplicates', async () => {
     writeFullDashboardJob(hermesHome, 'job-full-dashboard')
     await ensureFullDashboardAutopilotScheduled('default')
@@ -2151,8 +2287,10 @@ describe('dashboard autopilot output ingestion', () => {
       includeOfficialProductConnectors: false,
       includeOfficialRecognitionConnectors: false,
       includeOfficialSupplierConnectors: false,
+      includeOfficialChemicalIdentityConnectors: false,
       includePublicPriceEvidenceConnectors: false,
       includeOfficialTradeConnectors: false,
+      includeOfficialWorldBankConnectors: false,
     })
     const envelope = await readDashboardIntelligenceState('default')
 
@@ -2823,7 +2961,7 @@ describe('dashboard autopilot output ingestion', () => {
       expect.objectContaining({
         dashboardGroup: 'rawMaterialSignals',
         material: 'DMS / dimethyl sulfate',
-        value: expect.stringContaining('PubChem CID 6497'),
+        value: expect.stringContaining('CID 6497'),
         cas: '77-78-1',
         formula: 'C2H6O4S',
         pricePerTon: '',
@@ -2851,7 +2989,151 @@ describe('dashboard autopilot output ingestion', () => {
     expect(envelope?.state.dataRoomSources).toEqual(expect.arrayContaining([
       expect.objectContaining({
         dashboardGroup: 'rawMaterialSignals',
-        proposedValue: expect.stringContaining('PubChem CID 6497'),
+        proposedValue: expect.stringContaining('CID 6497'),
+        reviewRequired: true,
+      }),
+    ]))
+  })
+
+  it('hydrates official PubChem raw-material identities when no Hermes output file is ready', async () => {
+    writeFullDashboardJob(hermesHome)
+    const pubChemRows = new Map([
+      ['dimethyl%20sulfate', {
+        CID: 6497,
+        MolecularFormula: 'C2H6O4S',
+        MolecularWeight: 126.13,
+        IUPACName: 'dimethyl sulfate',
+        CanonicalSMILES: 'COS(=O)(=O)OC',
+        synonyms: ['77-78-1', 'dimethyl sulfate'],
+      }],
+      ['triethanolamine', {
+        CID: 7618,
+        MolecularFormula: 'C6H15NO3',
+        MolecularWeight: 149.19,
+        IUPACName: '2-[bis(2-hydroxyethyl)amino]ethanol',
+        CanonicalSMILES: 'C(CO)N(CCO)CCO',
+        synonyms: ['102-71-6', 'triethanolamine'],
+      }],
+      ['stearic%20acid', {
+        CID: 5281,
+        MolecularFormula: 'C18H36O2',
+        MolecularWeight: 284.5,
+        IUPACName: 'octadecanoic acid',
+        CanonicalSMILES: 'CCCCCCCCCCCCCCCCCC(=O)O',
+        synonyms: ['57-11-4', 'stearic acid'],
+      }],
+      ['polydimethylsiloxane', {
+        CID: 24764,
+        MolecularFormula: 'C6H18OSi2',
+        MolecularWeight: 162.38,
+        IUPACName: 'dimethyl-bis(trimethylsilyloxy)silane',
+        CanonicalSMILES: 'C[Si](C)(O[Si](C)(C)C)O[Si](C)(C)C',
+        synonyms: ['63148-62-9', 'polydimethylsiloxane'],
+      }],
+    ])
+    const rowForUrl = (url: string) => {
+      for (const [needle, row] of pubChemRows) {
+        if (url.includes(needle)) return row
+      }
+      throw new Error(`unexpected PubChem URL ${url}`)
+    }
+    const fetchMock = vi.fn(async (url: string) => {
+      const row = rowForUrl(String(url))
+      if (String(url).includes('/synonyms/')) {
+        return {
+          ok: true,
+          json: async () => ({
+            InformationList: {
+              Information: [
+                { CID: row.CID, Synonym: row.synonyms },
+              ],
+            },
+          }),
+        }
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          PropertyTable: {
+            Properties: [
+              {
+                CID: row.CID,
+                MolecularFormula: row.MolecularFormula,
+                MolecularWeight: row.MolecularWeight,
+                IUPACName: row.IUPACName,
+                CanonicalSMILES: row.CanonicalSMILES,
+              },
+            ],
+          },
+        }),
+      }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialChemicalIdentityConnectors: true,
+      includeOfficialTradeConnectors: false,
+      includeMarketReferenceConnectors: false,
+    })
+    const envelope = await readDashboardIntelligenceState('default')
+
+    expect(fetchMock).toHaveBeenCalledTimes(8)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 4,
+    })
+    expect(envelope?.state.rawMaterialSignals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        material: 'DMS / dimethyl sulfate',
+        value: expect.stringContaining('CID 6497'),
+        cas: '77-78-1',
+        formula: 'C2H6O4S',
+        pricePerTon: '',
+        priceStatus: 'No approved price yet',
+        dataType: 'regulatory_data',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: 'PubChem official chemical identity: DMS / dimethyl sulfate',
+          url: 'https://pubchem.ncbi.nlm.nih.gov/compound/6497',
+        }),
+      }),
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        material: 'TEA / triethanolamine',
+        cas: '102-71-6',
+        formula: 'C6H15NO3',
+        pricePerTon: '',
+      }),
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        material: 'Stearic acid',
+        cas: '57-11-4',
+        formula: 'C18H36O2',
+        pricePerTon: '',
+      }),
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        material: 'PDMS / polydimethylsiloxane',
+        cas: '63148-62-9',
+        pricePerTon: '',
+        reviewRequired: true,
+      }),
+    ]))
+    expect(envelope?.state.rawMaterialSignals).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        pricePerTon: expect.stringMatching(/(?:\$|usd|cny|rmb)\s*\d/i),
+      }),
+    ]))
+    expect(envelope?.state.dataRoomSources).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        dashboardGroup: 'rawMaterialSignals',
+        proposedValue: expect.stringContaining('CID 6497'),
         reviewRequired: true,
       }),
     ]))
@@ -2913,9 +3195,15 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
   })
 
-  it('does not call official UN Comtrade without a configured subscription key', async () => {
+  it('hydrates official UN Comtrade country import proxies through the public preview API without a subscription key', async () => {
     writeFullDashboardJob(hermesHome)
-    const fetchMock = vi.fn()
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => comtradePayload([
+        { year: 2023, primaryValue: 195169270, netWeightKg: 51660671.263 },
+        { year: 2024, primaryValue: 236608417, netWeightKg: 65408986.289 },
+      ]),
+    }))
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await ingestFullDashboardAutopilotOutputs('default', {
@@ -2927,13 +3215,33 @@ describe('dashboard autopilot output ingestion', () => {
     })
     const envelope = await readDashboardIntelligenceState('default')
 
-    expect(fetchMock).not.toHaveBeenCalled()
-    expect(result.autoFilledCount).toBe(0)
-    expect(result.stagedReviewCount).toBe(0)
-    expect(result.errors).toEqual(expect.arrayContaining([
-      expect.stringContaining('official Comtrade connector: subscription key not configured'),
+    expect(fetchMock).toHaveBeenCalledTimes(10)
+    expect(fetchMock.mock.calls.every(call => String(call[0]).includes('comtradeapi.un.org/public/v1/preview/C/A/HS'))).toBe(true)
+    expect(fetchMock.mock.calls.every(call => !String(call[0]).includes('subscription-key='))).toBe(true)
+    expect(result).toMatchObject({
+      importedRuns: 0,
+      autoFilledCount: 0,
+      stagedReviewCount: 10,
+    })
+    expect(result.errors).not.toEqual(expect.arrayContaining([
+      expect.stringContaining('subscription key not configured'),
     ]))
-    expect(envelope?.state.marketClaims || []).toHaveLength(0)
+    expect(envelope?.state.marketClaims).toHaveLength(10)
+    expect(envelope?.state.marketClaims).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Country-wise consumption growth - China',
+        value: expect.stringContaining('FY2024 official HS 380991 import proxy: US$236.608M'),
+        evidenceStatus: 'Trade Proxy',
+        reviewRequired: true,
+        source: expect.objectContaining({
+          title: 'UN Comtrade API: China HS 380991 imports',
+          url: expect.stringContaining('comtradeapi.un.org/public/v1/preview/C/A/HS'),
+        }),
+      }),
+    ]))
+    expect(envelope?.state.marketClaims.every(claim =>
+      !String((claim.source as Record<string, unknown> | undefined)?.url || '').includes('subscription-key='),
+    )).toBe(true)
   })
 
   it('falls back to the latest usable two-year UN Comtrade period when newer annual data is incomplete', async () => {

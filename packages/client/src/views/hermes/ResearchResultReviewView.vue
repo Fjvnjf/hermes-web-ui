@@ -113,8 +113,8 @@ function dashboardStoreLabel(target: ResearchReviewDashboardTarget): string {
   if (target.group === 'marketClaims') return 'Market Intelligence claims'
   if (target.group === 'competitorRecords') return 'Competitor Intelligence records'
   if (target.group === 'investorMaterialCandidates') return 'Investor presentation draft candidates'
-  if (target.group === 'supplierScorecards') return 'Data-room evidence for supplierScorecards review'
-  if (target.group === 'rawMaterialSignals') return 'Data-room evidence for raw-material signals'
+  if (target.group === 'supplierScorecards') return 'Supplier scorecard dashboard row plus data-room audit copy'
+  if (target.group === 'rawMaterialSignals') return 'Raw-material dashboard signal plus data-room audit copy'
   if (target.group === 'regulatoryFindings') return 'Data-room evidence for regulatory findings'
   if (target.group === 'financialEvidence') return 'Data-room evidence for financial evidence'
   if (target.group === 'suggestedTasks') return 'Suggested research task'
@@ -943,7 +943,7 @@ async function createTask(item: ResearchReviewFinding) {
               </div>
             </div>
             <p v-if="isSupplierScorecardTarget(item)" class="target-warning">
-              Supplier scorecard approval currently saves a source-linked data-room record; durable supplierScorecards rows are populated by trusted-source import or uploaded supplier evidence, not this review action.
+              Supplier scorecard approval creates a durable supplierScorecards row plus a source-linked data-room audit copy. Commercial quote, payment, and score text remains review-gated unless explicitly approved for dashboard use.
             </p>
           </div>
           <small v-if="item.riskNote">Risk: {{ item.riskNote }}</small>

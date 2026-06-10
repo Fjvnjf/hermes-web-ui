@@ -77,6 +77,7 @@ export interface CompetitorIntelligenceRecord {
   confidence?: 'low' | 'medium' | 'high' | string
   reviewRequired?: boolean
   riskReason?: string
+  recommendedAction?: string
   notes: string
   updatedAt: string
 }
@@ -154,6 +155,7 @@ export interface ResearchReviewDashboardTarget {
   traffic?: string
   rating?: string
   lastUpdated?: string
+  recommendedAction?: string
   supplier?: string
   material?: string
   section?: string
@@ -433,7 +435,9 @@ function mergeState(raw: Partial<FeasibilityIntelligenceState> | null): Feasibil
           id: (claim as MarketClaim).id || idFrom('market', `${(claim as MarketClaim).label || 'claim'}-${index}`),
         }))
       : [],
-    competitors: Array.isArray(raw.competitors) ? raw.competitors : [],
+    competitors: Array.isArray(raw.competitors)
+      ? raw.competitors.map((record, index) => normalizeCompetitorRecord(record, index))
+      : [],
     presentationMaterials: Array.isArray(raw.presentationMaterials)
       ? raw.presentationMaterials.map((material, index) => normalizePresentationMaterial(material, index))
       : [],
@@ -845,6 +849,52 @@ function sourceReferencesEqual(a?: SourceReference | null, b?: SourceReference |
     (a.date || '').trim() === (b.date || '').trim()
 }
 
+type CompetitorMetricKey = keyof NonNullable<CompetitorIntelligenceRecord['metricEvidence']>
+
+const competitorMetricKeys: CompetitorMetricKey[] = [
+  'pricingEvidence',
+  'marketShare',
+  'revenue',
+  'yearlyGrowth',
+  'traffic',
+  'rating',
+  'lastUpdated',
+]
+
+function normalizeCompetitorRecord(record: CompetitorIntelligenceRecord, index = 0): CompetitorIntelligenceRecord {
+  const source = record.source || null
+  const sources = Array.isArray(record.sources) ? record.sources.filter(sourceIsUsable) : []
+  const metricEvidence = { ...(record.metricEvidence || {}) }
+  const hasMetricSource = Object.values(metricEvidence).some(evidence =>
+    sourceIsUsable(evidence?.source) && evidence?.reviewRequired !== true,
+  )
+  return {
+    ...record,
+    id: record.id || idFrom('competitor', `${record.companyName || 'competitor'}-${index}`),
+    companyName: record.companyName || 'Competitor to verify',
+    countryRegion: record.countryRegion || 'To Verify',
+    productEquivalent: record.productEquivalent || 'To Verify',
+    activeContent: record.activeContent || 'To Verify',
+    pricingEvidence: record.pricingEvidence || '',
+    certifications: record.certifications || 'To Verify',
+    distributionPresence: record.distributionPresence || 'To Verify',
+    marketShare: record.marketShare?.trim() || '',
+    revenue: record.revenue?.trim() || '',
+    yearlyGrowth: record.yearlyGrowth?.trim() || '',
+    traffic: record.traffic?.trim() || '',
+    rating: record.rating?.trim() || '',
+    lastUpdated: record.lastUpdated?.trim() || '',
+    metricEvidence,
+    evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(source) && !hasMetricSource
+      ? 'To Verify'
+      : record.evidenceStatus || 'To Verify',
+    source,
+    sources,
+    sourceCount: sources.length || record.sourceCount,
+    updatedAt: record.updatedAt || nowIso(),
+  }
+}
+
 function normalizePresentationMaterial(material: PresentationMaterial, index = 0): PresentationMaterial {
   return {
     ...material,
@@ -886,6 +936,37 @@ function nonEmpty(value?: string | null): string {
   return value?.trim() || ''
 }
 
+function approvedFindingStatus(finding: ResearchReviewFinding, requestedStatus: IntelligenceEvidenceStatus): IntelligenceEvidenceStatus {
+  if (requestedStatus === 'Verified' && !sourceIsUsable(finding.source)) return 'To Verify'
+  if (requestedStatus === 'To Verify' && sourceIsUsable(finding.source)) return 'User Approved'
+  return requestedStatus
+}
+
+function competitorMetricEvidenceFromTarget(
+  target: ResearchReviewDashboardTarget,
+  finding: ResearchReviewFinding,
+): CompetitorIntelligenceRecord['metricEvidence'] {
+  const source = finding.source || null
+  const metricEvidence: CompetitorIntelligenceRecord['metricEvidence'] = {}
+  for (const key of competitorMetricKeys) {
+    const value = nonEmpty(target[key])
+    if (!value) continue
+    metricEvidence[key] = {
+      value,
+      source,
+      sourceTier: target.sourceTier,
+      evidenceStatus: finding.evidenceStatus,
+      confidence: finding.confidence,
+      reviewRequired: false,
+      dataType: target.dataType,
+      lastChecked: finding.reviewedAt || nowIso(),
+      sourceDate: source?.date,
+      riskReason: target.riskReason || finding.riskNote,
+    }
+  }
+  return metricEvidence
+}
+
 function dataRoomLabelForTarget(finding: ResearchReviewFinding): string {
   const target = finding.dashboardTarget
   return nonEmpty(target?.proposedDashboardField) ||
@@ -907,6 +988,19 @@ function dataRoomNotesForTarget(finding: ResearchReviewFinding): string {
     finding.riskNote ? `Risk note: ${finding.riskNote}` : '',
     'Saved automatically from an approved Full Dashboard Autopilot finding. Keep the displayed evidence status and source label with this item.',
   ].filter(Boolean).join('\n')
+}
+
+function targetIsCommercialReviewGated(target: ResearchReviewDashboardTarget): boolean {
+  return target.sensitive === true ||
+    target.dataType === 'supplier_quote' ||
+    target.dataType === 'price_data' ||
+    target.reviewRequired === true ||
+    target.reportedReviewRequired === true
+}
+
+function safeDashboardValueForTarget(target: ResearchReviewDashboardTarget, fallback = 'Source-backed evidence approved; commercial value remains in data-room audit.'): string {
+  if (targetIsCommercialReviewGated(target)) return fallback
+  return nonEmpty(target.value)
 }
 
 export function useFeasibilityIntelligence() {
@@ -1090,19 +1184,49 @@ export function useFeasibilityIntelligence() {
   }
 
   function addCompetitor(record: Omit<CompetitorIntelligenceRecord, 'id' | 'updatedAt'>) {
-    const saved: CompetitorIntelligenceRecord = {
+    const saved = normalizeCompetitorRecord({
       ...record,
       id: idFrom('competitor', record.companyName || 'unknown'),
-      marketShare: record.marketShare?.trim() || '',
-      revenue: record.revenue?.trim() || '',
-      yearlyGrowth: record.yearlyGrowth?.trim() || '',
-      traffic: record.traffic?.trim() || '',
-      rating: record.rating?.trim() || '',
-      lastUpdated: record.lastUpdated?.trim() || '',
-      evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source) ? 'To Verify' : record.evidenceStatus,
+      updatedAt: nowIso(),
+    })
+    state.value.competitors = [saved, ...state.value.competitors]
+    persist()
+    return saved
+  }
+
+  function addRawMaterialSignal(record: Omit<RawMaterialSignalRecord, 'id' | 'updatedAt'>) {
+    const saved: RawMaterialSignalRecord = {
+      ...record,
+      id: idFrom('raw-material-signal', `${record.material || record.label || 'material'}-${record.fieldKey || record.proposedDashboardField || ''}`),
+      dashboardGroup: record.dashboardGroup || 'rawMaterialSignals',
+      evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source)
+        ? 'To Verify'
+        : record.evidenceStatus,
+      pricePerTon: record.pricePerTon?.trim() || '',
+      priceStatus: record.priceStatus?.trim() || 'No approved price yet',
       updatedAt: nowIso(),
     }
-    state.value.competitors = [saved, ...state.value.competitors]
+    state.value.rawMaterialSignals = [saved, ...state.value.rawMaterialSignals]
+    persist()
+    return saved
+  }
+
+  function addSupplierScorecard(record: Omit<SupplierScorecardRecord, 'id' | 'updatedAt'>) {
+    const saved: SupplierScorecardRecord = {
+      ...record,
+      id: idFrom('supplier-scorecard', `${record.supplier || 'supplier'}-${record.material || record.fieldKey || ''}`),
+      dashboardGroup: record.dashboardGroup || 'supplierScorecards',
+      evidenceStatus: record.evidenceStatus === 'Verified' && !sourceIsUsable(record.source)
+        ? 'To Verify'
+        : record.evidenceStatus,
+      pricePerTon: record.pricePerTon?.trim() || '',
+      quality: record.quality?.trim() || '',
+      reliability: record.reliability?.trim() || '',
+      payment: record.payment?.trim() || '',
+      score: record.score?.trim() || '',
+      updatedAt: nowIso(),
+    }
+    state.value.supplierScorecards = [saved, ...state.value.supplierScorecards]
     persist()
     return saved
   }
@@ -1264,7 +1388,7 @@ export function useFeasibilityIntelligence() {
         source: current.source || null,
         sourceTier: target.sourceTier,
         dataType: target.dataType,
-        reviewRequired: target.reviewRequired,
+        reviewRequired: false,
         riskReason: target.riskReason || current.riskNote,
         lastChecked: current.reviewedAt || nowIso(),
       })
@@ -1287,13 +1411,15 @@ export function useFeasibilityIntelligence() {
         traffic: nonEmpty(target.traffic),
         rating: nonEmpty(target.rating),
         lastUpdated: nonEmpty(target.lastUpdated),
+        metricEvidence: competitorMetricEvidenceFromTarget(target, current),
         evidenceStatus: current.evidenceStatus,
         source: current.source || null,
         sourceTier: target.sourceTier,
         dataType: target.dataType,
         confidence: current.confidence,
-        reviewRequired: target.reviewRequired,
+        reviewRequired: false,
         riskReason: target.riskReason || current.riskNote,
+        recommendedAction: target.recommendedAction || current.suggestedTask,
         notes: [
           nonEmpty(target.value) || current.summary,
           `Approved from Research Result Review: ${current.keyClaim}`,
@@ -1313,9 +1439,108 @@ export function useFeasibilityIntelligence() {
         })
         applied = true
       }
+    } else if (target.group === 'rawMaterialSignals') {
+      const reviewGated = targetIsCommercialReviewGated(target)
+      addRawMaterialSignal({
+        fieldKey: nonEmpty(target.fieldKey),
+        dashboardGroup: target.group,
+        group: target.group,
+        material: nonEmpty(target.material) || nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
+        label: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
+        value: safeDashboardValueForTarget(target, 'Source-backed raw-material evidence approved; commercial value remains in data-room audit.'),
+        source: current.source || null,
+        sourceTier: target.sourceTier,
+        lastChecked: current.reviewedAt || nowIso(),
+        confidence: current.confidence,
+        evidenceStatus: current.evidenceStatus,
+        reviewRequired: reviewGated ? target.reviewRequired : false,
+        reportedReviewRequired: target.reportedReviewRequired,
+        dataType: target.dataType,
+        pricePerTon: reviewGated ? '' : '',
+        priceStatus: reviewGated ? 'Commercial value remains review-gated' : 'No approved price yet',
+        riskReason: target.riskReason || current.riskNote,
+        notes: reviewGated
+          ? [
+              current.summary,
+              'Approved into raw-material signals without exposing price/cost text in primary dashboard fields.',
+              target.sourceTier ? `Source tier: ${target.sourceTier}` : '',
+              current.riskNote ? `Risk note: ${current.riskNote}` : '',
+            ].filter(Boolean).join('\n')
+          : dataRoomNotesForTarget(current),
+      })
+      addDataRoomSource({
+        checklistLabel: dataRoomLabelForTarget(current),
+        fieldKey: nonEmpty(target.fieldKey),
+        area: current.area,
+        dashboardGroup: target.group,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || dataRoomLabelForTarget(current),
+        supplier: nonEmpty(target.supplier),
+        material: nonEmpty(target.material),
+        proposedValue: nonEmpty(target.value),
+        sourceTier: target.sourceTier,
+        dataType: target.dataType,
+        confidence: current.confidence,
+        reviewRequired: reviewGated ? target.reviewRequired : false,
+        riskReason: target.riskReason || current.riskNote,
+        evidenceStatus: current.evidenceStatus,
+        source: current.source || null,
+        notes: dataRoomNotesForTarget(current),
+      })
+      applied = true
+    } else if (target.group === 'supplierScorecards') {
+      const reviewGated = targetIsCommercialReviewGated(target)
+      addSupplierScorecard({
+        fieldKey: nonEmpty(target.fieldKey),
+        dashboardGroup: target.group,
+        group: target.group,
+        supplier: nonEmpty(target.supplier) || 'Supplier candidate',
+        material: nonEmpty(target.material) || nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || current.keyClaim,
+        value: safeDashboardValueForTarget(target, 'Supplier evidence approved; price/payment/score remain in data-room audit.'),
+        source: current.source || null,
+        sourceTier: target.sourceTier,
+        lastChecked: current.reviewedAt || nowIso(),
+        confidence: current.confidence,
+        evidenceStatus: current.evidenceStatus,
+        reviewRequired: reviewGated ? target.reviewRequired : false,
+        reportedReviewRequired: target.reportedReviewRequired,
+        dataType: target.dataType,
+        pricePerTon: '',
+        quality: '',
+        reliability: '',
+        payment: '',
+        score: '',
+        riskReason: target.riskReason || current.riskNote,
+        notes: reviewGated
+          ? [
+              current.summary,
+              'Approved into supplier scorecards without exposing price/payment/score text in primary dashboard fields.',
+              target.sourceTier ? `Source tier: ${target.sourceTier}` : '',
+              current.riskNote ? `Risk note: ${current.riskNote}` : '',
+            ].filter(Boolean).join('\n')
+          : dataRoomNotesForTarget(current),
+      })
+      addDataRoomSource({
+        checklistLabel: dataRoomLabelForTarget(current),
+        fieldKey: nonEmpty(target.fieldKey),
+        area: current.area,
+        dashboardGroup: target.group,
+        proposedDashboardField: nonEmpty(target.proposedDashboardField) || nonEmpty(target.field) || dataRoomLabelForTarget(current),
+        supplier: nonEmpty(target.supplier),
+        material: nonEmpty(target.material),
+        proposedValue: nonEmpty(target.value),
+        sourceTier: target.sourceTier,
+        dataType: target.dataType,
+        confidence: current.confidence,
+        reviewRequired: reviewGated ? target.reviewRequired : false,
+        riskReason: target.riskReason || current.riskNote,
+        evidenceStatus: current.evidenceStatus,
+        source: current.source || null,
+        notes: dataRoomNotesForTarget(current),
+      })
+      applied = true
     } else if (
-      target.group === 'rawMaterialSignals' ||
-      target.group === 'supplierScorecards' ||
       target.group === 'regulatoryFindings' ||
       target.group === 'financialEvidence'
     ) {
@@ -1331,7 +1556,11 @@ export function useFeasibilityIntelligence() {
         sourceTier: target.sourceTier,
         dataType: target.dataType,
         confidence: current.confidence,
-        reviewRequired: target.reviewRequired,
+        reviewRequired: target.sensitive === true ||
+          target.dataType === 'supplier_quote' ||
+          target.dataType === 'price_data'
+          ? target.reviewRequired
+          : false,
         riskReason: target.riskReason || current.riskNote,
         evidenceStatus: current.evidenceStatus,
         source: current.source || null,
@@ -1367,9 +1596,7 @@ export function useFeasibilityIntelligence() {
     if (index === -1) return null
     const current = state.value.researchFindings[index]
     const requestedStatus = options.evidenceStatus || current.evidenceStatus
-    const evidenceStatus = requestedStatus === 'Verified' && !sourceIsUsable(current.source)
-      ? 'To Verify'
-      : requestedStatus
+    const evidenceStatus = approvedFindingStatus(current, requestedStatus)
     const approved: ResearchReviewFinding = {
       ...current,
       evidenceStatus,
@@ -1533,6 +1760,8 @@ export function useFeasibilityIntelligence() {
     addCompetitor,
     updateCompetitor,
     removeCompetitor,
+    addRawMaterialSignal,
+    addSupplierScorecard,
     addPresentationMaterial,
     updatePresentationMaterial,
     removePresentationMaterial,

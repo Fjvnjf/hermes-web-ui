@@ -6,10 +6,20 @@ import { useJobsStore } from '@/stores/hermes/jobs'
 import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
 import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 import {
+  canAccessRouteName,
+  getFrontendAccessRole,
+  restrictedFieldLabel,
+  shouldRedactForEmployee,
+} from '@/utils/accessControl'
+import {
   EXECUTIVE_REFRESH_SCHEDULE,
   nextTwiceDailyRefresh,
 } from '@/utils/executiveIntelligence'
-import type { AutopilotScreen, TrustedSourceSnapshotClaim } from '@/utils/trustedSources'
+import {
+  isSensitiveAutopilotDataType,
+  type AutopilotScreen,
+  type TrustedSourceSnapshotClaim,
+} from '@/utils/trustedSources'
 import {
   displayAutomaticVerificationText,
   displayEvidenceStatus,
@@ -30,9 +40,12 @@ const intelligence = useFeasibilityIntelligence()
 const drawerOpen = ref(false)
 const saving = ref(false)
 const selectedClaim = ref<TrustedSourceSnapshotClaim | null>(null)
+const frontendRole = computed(() => getFrontendAccessRole())
+const redactsSensitiveClaims = computed(() => shouldRedactForEmployee(frontendRole.value) || frontendRole.value !== 'owner')
 
 const screenSnapshots = computed(() => autopilot.snapshotsForScreen(props.screen))
 const latestSnapshot = computed(() => autopilot.lastSnapshotForScreen(props.screen))
+const visibleSnapshotClaims = computed(() => (latestSnapshot.value?.claims || []).filter(claim => !claimRestrictedForRole(claim)))
 const activeSources = computed(() => autopilot.activeSourcesForScreen(props.screen))
 const needsReviewCount = computed(() => screenSnapshots.value.filter(snapshot => snapshot.review_required || snapshot.conflicts.length).length)
 const lastSuccessfulRefresh = computed(() => latestSnapshot.value?.generated_at || null)
@@ -191,6 +204,7 @@ function dataRoomMatchesScreen(record: typeof intelligence.state.value.dataRoomS
   if (props.screen === 'investment') return record.dashboardGroup === 'financialEvidence' || record.area === 'financial'
   if (props.screen === 'competitor') return record.dashboardGroup === 'competitorRecords'
   if (props.screen === 'market') return record.dashboardGroup === 'rawMaterialSignals' || record.area === 'market'
+  if (props.screen === 'rawMaterials') return record.dashboardGroup === 'rawMaterialSignals' || record.dashboardGroup === 'supplierScorecards' || record.area === 'factory'
   return true
 }
 
@@ -204,6 +218,15 @@ function metricsForScreen(): DurableMetric[] {
       metric('Market claims', intelligence.state.value.marketClaims.length, 'Country, demand, growth, customer, and source-backed market signals.'),
       metric('Trade / raw material signals', intelligence.state.value.dataRoomSources.filter(dataRoomMatchesScreen).length, 'Source records that can support market and supply context.'),
       metric('Needs review', pendingReviewFindings.value.length, 'Weak, conflicting, critical, or sensitive market findings waiting for approval.', pendingReviewFindings.value.length ? 'review' : 'empty'),
+    ]
+  }
+
+  if (props.screen === 'rawMaterials') {
+    return [
+      metric('Raw material signals', intelligence.state.value.rawMaterialSignals.length, 'Official identity, regulatory, and material-context imports.'),
+      metric('Supplier scorecards', intelligence.state.value.supplierScorecards.length, 'Supplier/material context imported with commercial fields gated.'),
+      metric('Evidence sources', intelligence.state.value.dataRoomSources.filter(dataRoomMatchesScreen).length, 'Supplier quote, price, SDS, TDS, COA, and audit evidence staged for review.'),
+      metric('Needs review', pendingReviewFindings.value.length, 'Supplier, price, payment, score, DMS, and raw-material findings waiting for approval.', pendingReviewFindings.value.length ? 'review' : 'empty'),
     ]
   }
 
@@ -256,9 +279,31 @@ function displayAutopilotText(text?: string | null): string {
   return displayAutomaticVerificationText(text)
 }
 
+function claimRestrictedForRole(claim: TrustedSourceSnapshotClaim): boolean {
+  if (!redactsSensitiveClaims.value) return false
+  const text = [
+    claim.label,
+    claim.value,
+    claim.fieldKey,
+    claim.dataType,
+    claim.sourceTier,
+    claim.riskReason,
+    claim.notes,
+  ].filter(Boolean).join(' ').toLowerCase()
+  return claim.sensitive ||
+    isSensitiveAutopilotDataType(claim.dataType) ||
+    /price|cost|costing|margin|supplier quote|formula|raw material ratio|product-development|product development|irr|npv|payback|investor term|api key|secret/.test(text)
+}
+
 function openDrawer(claim?: TrustedSourceSnapshotClaim) {
-  selectedClaim.value = claim || latestSnapshot.value?.claims[0] || null
+  selectedClaim.value = claim && !claimRestrictedForRole(claim)
+    ? claim
+    : visibleSnapshotClaims.value[0] || null
   drawerOpen.value = true
+}
+
+function canShowRouteLink(route: { name?: string } | null | undefined): boolean {
+  return Boolean(route?.name && canAccessRouteName(route.name, frontendRole.value))
 }
 
 function disableSelectedSource() {
@@ -302,7 +347,24 @@ async function createResearchJob() {
 }
 
 async function syncNow() {
-  await createResearchJob()
+  saving.value = true
+  try {
+    const result = await autopilot.runFullDashboardImportNow()
+    if (!result.imported && !result.staged) {
+      await autopilot.runTrustedSourceDataEngine(props.screen)
+    }
+    if (result.errors.length) {
+      message.warning(`${result.message} Some sources need attention: ${result.errors.slice(0, 2).join('; ')}`)
+    } else {
+      message.success(result.message)
+    }
+  } catch {
+    saving.value = false
+    await createResearchJob()
+    return
+  } finally {
+    saving.value = false
+  }
 }
 </script>
 
@@ -342,14 +404,14 @@ async function syncNow() {
           {{ screenActionSummary.primary }}
         </NButton>
         <RouterLink
-          v-else-if="screenActionSummary.primaryRoute"
+          v-else-if="screenActionSummary.primaryRoute && canShowRouteLink(screenActionSummary.primaryRoute)"
           class="autopilot-link primary"
           :to="screenActionSummary.primaryRoute"
         >
           {{ screenActionSummary.primary }}
         </RouterLink>
         <RouterLink
-          v-if="screenActionSummary.secondaryRoute"
+          v-if="screenActionSummary.secondaryRoute && canShowRouteLink(screenActionSummary.secondaryRoute)"
           class="autopilot-link"
           :to="screenActionSummary.secondaryRoute"
         >
@@ -421,7 +483,13 @@ async function syncNow() {
         <div class="autopilot-actions">
           <NButton size="small" type="primary" :loading="saving" @click="syncNow">Run Source Check Now</NButton>
           <NButton size="small" secondary @click="openDrawer()">View Sources</NButton>
-          <RouterLink class="autopilot-link" :to="{ name: 'hermes.researchResultReview' }">View Review Queue</RouterLink>
+          <RouterLink
+            v-if="canAccessRouteName('hermes.researchResultReview', frontendRole)"
+            class="autopilot-link"
+            :to="{ name: 'hermes.researchResultReview' }"
+          >
+            View Review Queue
+          </RouterLink>
           <NButton size="small" secondary :loading="saving" @click="createResearchJob">Create Research Job</NButton>
           <RouterLink class="autopilot-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
         </div>
@@ -450,14 +518,20 @@ async function syncNow() {
       </div>
     </div>
 
-    <div v-if="latestSnapshot?.claims.length" class="claim-strip">
+    <div v-if="visibleSnapshotClaims.length" class="claim-strip">
       <p class="claim-strip-title">Tracked fields</p>
-      <button v-for="claim in latestSnapshot.claims" :key="claim.id" type="button" @click="openDrawer(claim)">
+      <button v-for="claim in visibleSnapshotClaims" :key="claim.id" type="button" @click="openDrawer(claim)">
         <span>{{ claim.label }}</span>
         <strong>{{ displayAutopilotValue(claim.value) }}</strong>
         <NTag size="small" :type="tagType(claim.evidenceStatus)">{{ displayAutopilotStatus(claim.evidenceStatus) }}</NTag>
       </button>
     </div>
+    <p
+      v-else-if="latestSnapshot?.claims.length && redactsSensitiveClaims"
+      class="sensitive-note"
+    >
+      {{ restrictedFieldLabel(frontendRole) }}. Sensitive source-backed fields are hidden in this role view.
+    </p>
 
     <NDrawer v-model:show="drawerOpen" :width="520" placement="right">
       <NDrawerContent title="Trusted Source Details">

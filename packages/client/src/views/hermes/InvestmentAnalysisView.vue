@@ -41,8 +41,23 @@ const APPROVED_SOURCE_NEEDED = 'Approved source needed'
 const role = computed(() => getFrontendAccessRole())
 const redactsFinancials = computed(() => shouldRedactForEmployee(role.value) || role.value === 'investor_viewer' || role.value === 'developer_admin')
 const latestFinancialModel = intelligence.latestFinancialModel
+function normalizedScenarioLabel(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b(scenario|case|model|draft)\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function financialModelForScenario(scenario: string) {
+  const target = normalizedScenarioLabel(scenario)
+  return intelligence.state.value.financialModels.find(model => normalizedScenarioLabel(model.scenarioName) === target) ||
+    intelligence.state.value.financialModels.find(model => normalizedScenarioLabel(model.scenarioName).split(' ').includes(target)) ||
+    null
+}
+
 const selectedFinancialModel = computed(() =>
-  intelligence.state.value.financialModels.find(model => model.scenarioName.toLowerCase().includes(selectedScenario.value.toLowerCase())) || null,
+  financialModelForScenario(selectedScenario.value),
 )
 const selectedFinancialOutputStatus = computed<IntelligenceEvidenceStatus>(() =>
   selectedFinancialModel.value ? financialOutputStatus(selectedFinancialModel.value) : 'Missing',
@@ -235,10 +250,10 @@ const scenarioCards = computed(() => [
   { name: 'Conservative', status: 'Missing', detail: 'Use the IRR Calculator to save downside assumptions before investor use.' },
   { name: 'Aggressive', status: 'Missing', detail: 'Upside case must stay assumption-labeled until source-backed.' },
 ].map(card => {
-  const model = intelligence.state.value.financialModels.find(item => item.scenarioName.toLowerCase().includes(card.name.toLowerCase()))
+  const model = financialModelForScenario(card.name)
   return {
     ...card,
-    status: model ? evidenceStatus.value : card.status,
+    status: model ? financialOutputStatus(model) : card.status,
     detail: model?.scenarioName || card.detail,
   }
 }))

@@ -75,13 +75,31 @@ export function defaultExecutiveRefreshState(now = new Date()): ExecutiveRefresh
 
 export function financialOutputStatus(snapshot: FinancialModelSnapshot | null): IntelligenceEvidenceStatus {
   if (!snapshot) return 'To Verify'
+  const status = snapshot.evidenceStatus
   if (
-    (snapshot.evidenceStatus === 'Verified' || snapshot.evidenceStatus === 'Source-backed') &&
+    (
+      status === 'Verified' ||
+      status === 'Source-backed' ||
+      status === 'Official Data' ||
+      status === 'Trusted Source Auto-Updated' ||
+      status === 'Supplier Evidence' ||
+      status === 'Market Reference'
+    ) &&
     sourceIsUsable(snapshot.source)
   ) {
-    return snapshot.evidenceStatus
+    return status
   }
-  return 'Derived from Assumptions'
+  if (
+    status === 'User Approved' ||
+    status === 'Investor Approved' ||
+    status === 'Approved Assumption'
+  ) {
+    return status
+  }
+  if (status === 'Assumption' || status === 'Powerful Assumption' || status === 'Derived from Assumptions') {
+    return 'Derived from Assumptions'
+  }
+  return 'To Verify'
 }
 
 export function formatExecutiveCurrency(value: number | null | undefined, currency = 'USD'): string {
@@ -98,6 +116,26 @@ export function formatExecutivePercent(value: number | null | undefined): string
   return `${(value * 100).toFixed(1)}%`
 }
 
+function financialKpiCanDisplayValue(snapshot: FinancialModelSnapshot | null, outputStatus: IntelligenceEvidenceStatus): snapshot is FinancialModelSnapshot {
+  if (!snapshot) return false
+  return [
+    'Verified',
+    'Source-backed',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+    'Supplier Evidence',
+    'Market Reference',
+    'User Approved',
+    'Investor Approved',
+    'Approved Assumption',
+  ].includes(outputStatus)
+}
+
+function formatExecutiveRoiFromMoic(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value <= 0) return 'No approved source-backed scenario'
+  return `${((value - 1) * 100).toFixed(1)}%`
+}
+
 export function buildInvestorEconomicsKpis(
   snapshot: FinancialModelSnapshot | null,
   nextUpdate: string,
@@ -106,52 +144,53 @@ export function buildInvestorEconomicsKpis(
   const sourceLabel = snapshot?.source?.title || (snapshot ? 'IRR Calculator local scenario' : 'No saved IRR scenario')
   const lastUpdated = snapshot?.createdAt || 'Not available'
   const outputStatus = financialOutputStatus(snapshot)
+  const canDisplayValue = financialKpiCanDisplayValue(snapshot, outputStatus)
 
   return [
     {
       key: 'totalInvestment',
       label: 'Total Investment',
-      value: formatExecutiveCurrency(snapshot?.capexTotal, currency),
-      evidenceStatus: outputStatus,
-      sourceLabel,
-      lastUpdated,
+      value: canDisplayValue ? formatExecutiveCurrency(snapshot.capexTotal, currency) : 'No approved source-backed value',
+      evidenceStatus: canDisplayValue ? outputStatus : 'To Verify',
+      sourceLabel: canDisplayValue ? sourceLabel : 'No approved financial model',
+      lastUpdated: canDisplayValue ? lastUpdated : 'Not available',
       nextUpdate,
       sensitive: true,
     },
     {
       key: 'projectIrr',
       label: 'Project IRR',
-      value: formatExecutivePercent(snapshot?.irr),
-      evidenceStatus: outputStatus,
-      sourceLabel,
-      lastUpdated,
+      value: canDisplayValue ? formatExecutivePercent(snapshot.irr) : 'No approved source-backed value',
+      evidenceStatus: canDisplayValue ? outputStatus : 'To Verify',
+      sourceLabel: canDisplayValue ? sourceLabel : 'No approved financial model',
+      lastUpdated: canDisplayValue ? lastUpdated : 'Not available',
       nextUpdate,
       sensitive: true,
     },
     {
       key: 'npv',
       label: 'NPV @ 12%',
-      value: snapshot ? formatExecutiveCurrency(snapshot.npv, currency) : 'No approved source-backed scenario',
-      evidenceStatus: outputStatus,
-      sourceLabel,
-      lastUpdated,
+      value: canDisplayValue ? formatExecutiveCurrency(snapshot.npv, currency) : 'No approved source-backed value',
+      evidenceStatus: canDisplayValue ? outputStatus : 'To Verify',
+      sourceLabel: canDisplayValue ? sourceLabel : 'No approved financial model',
+      lastUpdated: canDisplayValue ? lastUpdated : 'Not available',
       nextUpdate,
       sensitive: true,
     },
     {
       key: 'payback',
       label: 'Payback Period',
-      value: snapshot?.paybackYear ? `Year ${snapshot.paybackYear}` : 'No approved source-backed scenario',
-      evidenceStatus: outputStatus,
-      sourceLabel,
-      lastUpdated,
+      value: canDisplayValue && snapshot.paybackYear ? `Year ${snapshot.paybackYear}` : 'No approved source-backed value',
+      evidenceStatus: canDisplayValue && snapshot.paybackYear ? outputStatus : 'To Verify',
+      sourceLabel: canDisplayValue && snapshot.paybackYear ? sourceLabel : 'No approved financial model',
+      lastUpdated: canDisplayValue && snapshot.paybackYear ? lastUpdated : 'Not available',
       nextUpdate,
       sensitive: true,
     },
     {
       key: 'profitabilityIndex',
       label: 'Profitability Index',
-      value: 'No approved source-backed scenario',
+      value: 'No approved source-backed value',
       evidenceStatus: 'To Verify',
       sourceLabel: 'Not calculated yet',
       lastUpdated: 'Not available',
@@ -161,10 +200,10 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'revenueTarget',
       label: 'Revenue Target',
-      value: formatExecutiveCurrency(snapshot?.yearOneRevenue, currency),
-      evidenceStatus: outputStatus,
-      sourceLabel,
-      lastUpdated,
+      value: canDisplayValue ? formatExecutiveCurrency(snapshot.yearOneRevenue, currency) : 'No approved source-backed value',
+      evidenceStatus: canDisplayValue ? outputStatus : 'To Verify',
+      sourceLabel: canDisplayValue ? sourceLabel : 'No approved financial model',
+      lastUpdated: canDisplayValue ? lastUpdated : 'Not available',
       nextUpdate,
       sensitive: true,
     },
@@ -191,12 +230,10 @@ export function buildInvestorEconomicsKpis(
     {
       key: 'fiveYearRoi',
       label: '5-Year ROI',
-      value: snapshot?.investorMoic && Number.isFinite(snapshot.investorMoic)
-        ? `${snapshot.investorMoic.toFixed(2)}x MOIC`
-        : 'No approved source-backed scenario',
-      evidenceStatus: snapshot?.investorMoic ? outputStatus : 'To Verify',
-      sourceLabel: snapshot?.investorMoic ? sourceLabel : 'Not calculated yet',
-      lastUpdated: snapshot?.investorMoic ? lastUpdated : 'Not available',
+      value: canDisplayValue ? formatExecutiveRoiFromMoic(snapshot.investorMoic) : 'No approved source-backed value',
+      evidenceStatus: canDisplayValue && snapshot.investorMoic ? outputStatus : 'To Verify',
+      sourceLabel: canDisplayValue && snapshot.investorMoic ? sourceLabel : 'Not calculated yet',
+      lastUpdated: canDisplayValue && snapshot.investorMoic ? lastUpdated : 'Not available',
       nextUpdate,
       sensitive: true,
     },

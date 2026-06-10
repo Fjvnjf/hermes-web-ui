@@ -277,8 +277,7 @@ function hasSupplierSourceMetadata(record: SupplierScorecardRecord): boolean {
     record.source?.url?.trim() ||
     record.sourceDate?.trim() ||
     record.lastChecked?.trim() ||
-    record.updatedAt?.trim() ||
-    record.notes?.trim(),
+    record.updatedAt?.trim(),
   )
 }
 
@@ -301,6 +300,31 @@ function supplierSourceMeta(record: SupplierScorecardRecord, identitySignal?: Ra
 }
 
 function supplierEvidenceLooksQuoteBacked(record: SupplierScorecardRecord): boolean {
+  const evidenceText = supplierEvidenceText(record)
+  return /supplier[_ -]?quote|quotation|quote|invoice|proforma|purchase order|\bpi\b|price offer|commercial offer|distributor quote|paid source/.test(evidenceText)
+}
+
+function supplierEvidenceLooksQualityBacked(record: SupplierScorecardRecord): boolean {
+  const evidenceText = supplierEvidenceText(record)
+  return /\bcoa\b|\btds\b|\bsds\b|certificate of analysis|technical data sheet|safety data sheet|quality|grade|specification|supplier evidence|official product page/.test(evidenceText)
+}
+
+function supplierEvidenceLooksReliabilityBacked(record: SupplierScorecardRecord): boolean {
+  const evidenceText = supplierEvidenceText(record)
+  return /reliability|delivery|lead time|performance|supplier audit|scorecard|approved supplier|shipment|on-time|logistics/.test(evidenceText)
+}
+
+function supplierEvidenceLooksPaymentBacked(record: SupplierScorecardRecord): boolean {
+  const evidenceText = supplierEvidenceText(record)
+  return /payment|payment terms|\blc\b|letter of credit|\btt\b|telegraphic transfer|credit terms|invoice|proforma|purchase order|\bpi\b|commercial offer/.test(evidenceText)
+}
+
+function supplierEvidenceLooksScoreBacked(record: SupplierScorecardRecord): boolean {
+  const evidenceText = supplierEvidenceText(record)
+  return /supplier audit|scorecard|approved supplier score|vendor rating|supplier performance|quality score|reliability score/.test(evidenceText)
+}
+
+function supplierEvidenceText(record: SupplierScorecardRecord): string {
   const evidenceText = [
     record.dataType,
     record.sourceTier,
@@ -311,7 +335,7 @@ function supplierEvidenceLooksQuoteBacked(record: SupplierScorecardRecord): bool
     record.value,
     record.notes,
   ].filter(Boolean).join(' ').toLowerCase()
-  return /supplier[_ -]?quote|quote|invoice|proforma|purchase order|\bpi\b|coa|tds|sds|supplier evidence|distributor|uploaded|paid source/.test(evidenceText)
+  return evidenceText
 }
 
 function isReviewOnlySupplierStatus(record: SupplierScorecardRecord): boolean {
@@ -320,13 +344,51 @@ function isReviewOnlySupplierStatus(record: SupplierScorecardRecord): boolean {
 
 function canDisplaySensitiveSupplierValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
   if (isUnresolvedSupplierValue(value)) return false
+  if (record.reviewRequired || record.reportedReviewRequired) return false
   if (!hasSupplierSourceMetadata(record)) return false
   if (isReviewOnlySupplierStatus(record)) return false
   return supplierEvidenceLooksQuoteBacked(record)
 }
 
-function importedSupplierField(value: string | number | null | undefined, fallback: string): string {
-  if (isUnresolvedSupplierValue(value)) return fallback
+function canDisplaySupplierQualityValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
+  if (isUnresolvedSupplierValue(value)) return false
+  if (record.reviewRequired || record.reportedReviewRequired) return false
+  if (!hasSupplierSourceMetadata(record)) return false
+  if (isReviewOnlySupplierStatus(record)) return false
+  return supplierEvidenceLooksQualityBacked(record)
+}
+
+function canDisplaySupplierReliabilityValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
+  if (isUnresolvedSupplierValue(value)) return false
+  if (record.reviewRequired || record.reportedReviewRequired) return false
+  if (!hasSupplierSourceMetadata(record)) return false
+  if (isReviewOnlySupplierStatus(record)) return false
+  return supplierEvidenceLooksReliabilityBacked(record)
+}
+
+function canDisplaySupplierPaymentValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
+  if (isUnresolvedSupplierValue(value)) return false
+  if (record.reviewRequired || record.reportedReviewRequired) return false
+  if (!hasSupplierSourceMetadata(record)) return false
+  if (isReviewOnlySupplierStatus(record)) return false
+  return supplierEvidenceLooksPaymentBacked(record)
+}
+
+function canDisplaySupplierScoreValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
+  if (isUnresolvedSupplierValue(value)) return false
+  if (record.reviewRequired || record.reportedReviewRequired) return false
+  if (!hasSupplierSourceMetadata(record)) return false
+  if (isReviewOnlySupplierStatus(record)) return false
+  return supplierEvidenceLooksScoreBacked(record)
+}
+
+function importedSupplierQualityField(record: SupplierScorecardRecord, value: string | number | null | undefined, fallback: string): string {
+  if (!canDisplaySupplierQualityValue(record, value)) return fallback
+  return displaySupplierValue(value)
+}
+
+function importedSupplierReliabilityField(record: SupplierScorecardRecord, value: string | number | null | undefined, fallback: string): string {
+  if (!canDisplaySupplierReliabilityValue(record, value)) return fallback
   return displaySupplierValue(value)
 }
 
@@ -335,11 +397,27 @@ function importedSensitiveSupplierField(record: SupplierScorecardRecord, value: 
   return displaySupplierValue(value)
 }
 
-function importedSupplierScoreField(record: SupplierScorecardRecord, value: string | number | null | undefined): string {
-  if (isUnresolvedSupplierValue(value) || !hasSupplierSourceMetadata(record) || isReviewOnlySupplierStatus(record)) {
-    return REVIEW_GATED_SCORE_COPY
-  }
+function importedSupplierPaymentField(record: SupplierScorecardRecord, value: string | number | null | undefined): string {
+  if (!canDisplaySupplierPaymentValue(record, value)) return REVIEW_GATED_PAYMENT_COPY
   return displaySupplierValue(value)
+}
+
+function importedSupplierScoreField(record: SupplierScorecardRecord, value: string | number | null | undefined): string {
+  if (!canDisplaySupplierScoreValue(record, value)) return REVIEW_GATED_SCORE_COPY
+  return displaySupplierValue(value)
+}
+
+function supplierTextContainsCommercialValue(text?: string | null): boolean {
+  return /(?:usd|us\$|\$|rmb|cny|¥|eur|€|\/\s*t|\/\s*mt|per\s+(?:ton|mt)|price|quote|quotation|invoice|proforma|payment|payment terms|\blc\b|letter of credit|\btt\b|credit days|\d+\s*\/\s*10|\d+\s*\/\s*100|\bscore\b)/i.test(text || '')
+}
+
+function safeSupplierSourceSummary(record: SupplierScorecardRecord): string {
+  const text = [record.value, record.notes].filter(Boolean).join(' ')
+  if (!text.trim()) return 'Imported supplier/material context. Missing price, payment, score, quality, and reliability fields stay review-gated.'
+  if (record.reviewRequired || record.reportedReviewRequired || supplierTextContainsCommercialValue(text)) {
+    return 'Supplier evidence imported. Commercial values are hidden until approved for dashboard use.'
+  }
+  return text
 }
 
 const importedRawMaterialIdentitySignals = computed<RawMaterialIdentitySignalRow[]>(() => {
@@ -414,7 +492,6 @@ const importedSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
   intelligence.state.value.supplierScorecards
     .filter(record => record.supplier?.trim() && record.material?.trim())
     .map(record => {
-      const value = record.value || ''
       const identitySignal = identitySignalForMaterialName(record.material)
       const sourceTitle = record.source?.title || record.proposedDashboardField || 'Source metadata pending review'
       const sourceUrl = record.source?.url
@@ -423,16 +500,16 @@ const importedSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
         region: 'Trusted-source import',
         material: record.material,
         pricePerTon: importedSensitiveSupplierField(record, record.pricePerTon, REVIEW_GATED_PRICE_COPY),
-        quality: importedSupplierField(record.quality, REVIEW_GATED_QUALITY_COPY),
-        reliability: importedSupplierField(record.reliability, REVIEW_GATED_RELIABILITY_COPY),
-        payment: importedSensitiveSupplierField(record, record.payment, REVIEW_GATED_PAYMENT_COPY),
+        quality: importedSupplierQualityField(record, record.quality, REVIEW_GATED_QUALITY_COPY),
+        reliability: importedSupplierReliabilityField(record, record.reliability, REVIEW_GATED_RELIABILITY_COPY),
+        payment: importedSupplierPaymentField(record, record.payment),
         score: importedSupplierScoreField(record, record.score),
         evidenceStatus: record.evidenceStatus,
         sourceTitle,
         sourceUrl,
         sourceMeta: supplierSourceMeta(record, identitySignal),
         sourceSummary: [
-          value || record.notes || 'Imported supplier/material context. Missing price, payment, score, quality, and reliability fields stay review-gated.',
+          safeSupplierSourceSummary(record),
           record.riskReason || '',
         ].filter(Boolean).join(' '),
         nextAction: record.riskReason || record.notes || `Review quote, TDS, SDS, COA, payment terms, and delivery evidence for ${record.supplier} / ${record.material}.`,
@@ -450,7 +527,13 @@ const sourceReviewSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
       const sourceDate = record.source?.date || record.updatedAt || ''
       const confidence = record.confidence ? `confidence: ${record.confidence}` : ''
       const sourceTier = record.sourceTier || 'source tier pending review'
-      const proposed = record.proposedValue || record.notes || 'Source-backed supplier/material candidate staged for review.'
+      const proposedText = [record.proposedValue, record.notes].filter(Boolean).join(' ')
+      const proposed = record.reviewRequired ||
+        record.dataType === 'supplier_quote' ||
+        record.dataType === 'price_data' ||
+        supplierTextContainsCommercialValue(proposedText)
+        ? 'Supplier evidence staged for review. Commercial values are hidden until approved for dashboard use.'
+        : record.proposedValue || record.notes || 'Source-backed supplier/material candidate staged for review.'
       return {
         supplier: record.supplier || 'Supplier candidate',
         region: 'Research review candidate',

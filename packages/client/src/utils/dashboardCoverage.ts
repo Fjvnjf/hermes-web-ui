@@ -1,4 +1,5 @@
 import type { FeasibilityIntelligenceState } from '@/composables/useFeasibilityIntelligence'
+import { normalizedMarketClaimStatus } from '@/utils/investorIntelligence'
 
 export interface CoverageTarget {
   label: string
@@ -43,6 +44,9 @@ type CompetitorMetricField =
   | 'traffic'
   | 'rating'
   | 'lastUpdated'
+  | 'source'
+  | 'confidence'
+  | 'recommendedAction'
 
 const PLACEHOLDER_PATTERN = /^(to verify|missing|missing \/ to verify|research required|api-ready|reference only|trade proxy|no source-backed value yet|no approved source-backed value|awaiting trusted-source import|source search running|auto-checking|review required|restricted)$/i
 
@@ -58,7 +62,25 @@ const COMPETITOR_METRIC_REQUIREMENTS: Array<{
   { label: 'Traffic', field: 'traffic', aliases: ['traffic', 'website traffic', 'monthly visits'] },
   { label: 'Rating', field: 'rating', aliases: ['rating', 'review rating', 'customer rating'] },
   { label: 'Last updated / source date', field: 'lastUpdated', aliases: ['last updated', 'source date', 'last checked'] },
+  { label: 'Source metadata', field: 'source', aliases: ['source', 'source title', 'source url', 'source metadata'] },
+  { label: 'Confidence', field: 'confidence', aliases: ['confidence', 'confidence score'] },
+  { label: 'Next action', field: 'recommendedAction', aliases: ['next action', 'recommended action', 'suggested task'] },
 ]
+
+type EvidenceBackedCompetitorMetricField = Exclude<CompetitorMetricField, 'source' | 'confidence' | 'recommendedAction'>
+const EVIDENCE_BACKED_COMPETITOR_METRICS: EvidenceBackedCompetitorMetricField[] = [
+  'pricingEvidence',
+  'marketShare',
+  'revenue',
+  'yearlyGrowth',
+  'traffic',
+  'rating',
+  'lastUpdated',
+]
+
+function isEvidenceBackedCompetitorMetricField(field: CompetitorMetricField | undefined): field is EvidenceBackedCompetitorMetricField {
+  return Boolean(field && EVIDENCE_BACKED_COMPETITOR_METRICS.includes(field as EvidenceBackedCompetitorMetricField))
+}
 
 const COMPETITOR_COMPANY_TARGETS = [
   target('Evonik Industries', 'evonik'),
@@ -176,7 +198,23 @@ export function coverageTextHasAlias(text: string, alias: string): boolean {
 }
 
 function sourceIsUsable(source?: { title?: string; url?: string; date?: string } | null): boolean {
-  return Boolean(source?.title && (source.url || source.date))
+  const title = source?.title?.trim()
+  if (!title || /^source missing$/i.test(title)) return false
+  return Boolean(source?.url?.trim() || source?.date?.trim())
+}
+
+function coverageStatusIsSourceBacked(status?: string | null): boolean {
+  return [
+    'Verified',
+    'User Approved',
+    'Investor Approved',
+    'Approved Assumption',
+    'Source-backed',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+    'Supplier Evidence',
+    'Official Company Evidence',
+  ].includes(String(status || '').trim())
 }
 
 function coverageValueIsUsable(value: unknown): boolean {
@@ -240,10 +278,16 @@ function competitorMetricValue(
     rating?: string
     lastUpdated?: string
     updatedAt?: string
-    source?: { date?: string } | null
+    source?: { title?: string; url?: string; date?: string } | null
+    confidence?: string
+    recommendedAction?: string
+    suggestedTask?: string
   },
   field: CompetitorMetricField,
 ): string {
+  if (field === 'source') return record.source?.title || record.source?.date || ''
+  if (field === 'confidence') return record.confidence || ''
+  if (field === 'recommendedAction') return record.recommendedAction || record.suggestedTask || ''
   if (field === 'lastUpdated') return record.lastUpdated || record.updatedAt || record.source?.date || ''
   return String(record[field] || '')
 }
@@ -267,33 +311,116 @@ function competitorMetricCandidateHasStrongCoverageEvidence(
   return String(findingRecord.confidence || targetRecord.confidence || '').toLowerCase() !== 'low'
 }
 
-function competitorMetricCovered(state: FeasibilityIntelligenceState, target: CoverageTarget): boolean {
-  if (!target.metric) return false
+function competitorMetricEvidenceCovered(
+  record: FeasibilityIntelligenceState['competitors'][number],
+  field: EvidenceBackedCompetitorMetricField,
+): boolean {
+  const evidence = record.metricEvidence?.[field]
+  if (!evidence || evidence.reviewRequired) return false
+  return sourceIsUsable(evidence.source) &&
+    coverageStatusIsSourceBacked(String(evidence.evidenceStatus || record.evidenceStatus)) &&
+    coverageValueIsUsable(competitorMetricValue({
+      ...record,
+      [field]: evidence.value || '',
+      source: evidence.source || record.source,
+    }, field))
+}
 
-  const approvedRecord = state.competitors.some(record =>
-    recordMatchesCompanyTarget(record, target) &&
-    sourceIsUsable(record.source) &&
-    coverageValueIsUsable(competitorMetricValue(record, target.metric!)),
-  )
+function competitorMetricCovered(state: FeasibilityIntelligenceState, target: CoverageTarget): boolean {
+  const targetMetric = target.metric
+  if (!targetMetric) return false
+
+  const approvedRecord = state.competitors.some(record => {
+    if (!recordMatchesCompanyTarget(record, target)) return false
+    if (targetMetric === 'source') return sourceIsUsable(record.source) ||
+      Object.values(record.metricEvidence || {}).some(evidence => sourceIsUsable(evidence?.source))
+    if (targetMetric === 'confidence') return sourceIsUsable(record.source) &&
+      coverageValueIsUsable(record.confidence)
+    if (targetMetric === 'recommendedAction') return coverageValueIsUsable(record.recommendedAction || record.riskReason || record.notes)
+    return isEvidenceBackedCompetitorMetricField(targetMetric) &&
+      competitorMetricEvidenceCovered(record, targetMetric)
+  })
   if (approvedRecord) return true
 
   return state.researchFindings.some(finding => {
     if (finding.status !== 'Pending Review' && finding.status !== 'To Verify') return false
     const dashboardTarget = finding.dashboardTarget
     if (!dashboardTarget || dashboardTarget.group !== 'competitorRecords') return false
+    const dashboardMetricRecord = {
+      ...(dashboardTarget as unknown as Record<string, unknown>),
+      source: finding.source,
+      confidence: finding.confidence,
+      recommendedAction: dashboardTarget.recommendedAction || finding.suggestedTask,
+    }
     return dashboardTargetMatchesCompanyTarget(dashboardTarget, target) &&
       sourceIsUsable(finding.source) &&
       competitorMetricCandidateHasStrongCoverageEvidence(finding, dashboardTarget) &&
-      coverageValueIsUsable(competitorMetricValue(dashboardTarget, target.metric!))
+      coverageValueIsUsable(competitorMetricValue(dashboardMetricRecord, targetMetric))
   })
+}
+
+function textRecordMatchesTarget(values: Array<string | undefined | null>, target: CoverageTarget): boolean {
+  const text = normalizeCoverageAlias(values.filter(Boolean).join(' '))
+  return target.aliases.some(alias => coverageTextHasAlias(text, alias))
+}
+
+function marketTargetCovered(state: FeasibilityIntelligenceState, target: CoverageTarget): boolean {
+  const sourceBackedClaim = state.marketClaims.some(claim =>
+    textRecordMatchesTarget([
+      claim.label,
+      claim.value,
+      claim.fieldKey,
+      claim.proposedDashboardField,
+      claim.source?.title,
+    ], target) &&
+    sourceIsUsable(claim.source) &&
+    claim.reviewRequired !== true &&
+    coverageStatusIsSourceBacked(normalizedMarketClaimStatus(claim)),
+  )
+  if (sourceBackedClaim) return true
+
+  const sourceBackedDataRoomRecord = state.dataRoomSources.some(record =>
+    (record.area === 'market' || record.dashboardGroup === 'marketClaims') &&
+    textRecordMatchesTarget([
+      record.checklistLabel,
+      record.proposedValue,
+      record.fieldKey,
+      record.proposedDashboardField,
+      record.notes,
+      record.source?.title,
+    ], target) &&
+    sourceIsUsable(record.source) &&
+    record.reviewRequired !== true &&
+    coverageStatusIsSourceBacked(record.evidenceStatus),
+  )
+  if (sourceBackedDataRoomRecord) return true
+
+  return state.researchFindings.some(finding =>
+    (finding.area === 'market' || finding.dashboardTarget?.group === 'marketClaims') &&
+    finding.status === 'Approved' &&
+    textRecordMatchesTarget([
+      finding.keyClaim,
+      finding.summary,
+      finding.dashboardTarget?.value,
+      finding.dashboardTarget?.field,
+      finding.dashboardTarget?.fieldKey,
+      finding.dashboardTarget?.proposedDashboardField,
+      finding.source?.title,
+    ], target) &&
+    sourceIsUsable(finding.source) &&
+    finding.dashboardTarget?.reviewRequired !== true &&
+    coverageStatusIsSourceBacked(finding.evidenceStatus),
+  )
 }
 
 function coverageTargetSatisfied(
   state: FeasibilityIntelligenceState,
   target: CoverageTarget,
   text: string,
+  scope: CoverageTextScope,
 ): boolean {
   if (target.metric) return competitorMetricCovered(state, target)
+  if (scope === 'market') return marketTargetCovered(state, target)
   return target.aliases.some(alias => coverageTextHasAlias(text, alias))
 }
 
@@ -391,7 +518,7 @@ export function buildDashboardCoverageRows(
 ): CoverageRow[] {
   const rows = requirements.map(row => {
     const text = coverageTextForScope(state, row.textScope)
-    const missingTargets = row.targets.filter(item => !coverageTargetSatisfied(state, item, text))
+    const missingTargets = row.targets.filter(item => !coverageTargetSatisfied(state, item, text, row.textScope))
     const coveredCount = row.targets.length - missingTargets.length
     const status: CoverageRow['status'] = missingTargets.length === 0 ? 'covered' : coveredCount > 0 ? 'partial' : 'missing'
     return {
@@ -405,7 +532,7 @@ export function buildDashboardCoverageRows(
 
   const competitorMetricTargets = competitorMetricCoverageTargetsForState(state)
   if (competitorMetricTargets.length) {
-    const missingTargets = competitorMetricTargets.filter(item => !coverageTargetSatisfied(state, item, ''))
+    const missingTargets = competitorMetricTargets.filter(item => !coverageTargetSatisfied(state, item, '', 'competitor'))
     rows.push({
       area: 'Competitor Metric Columns',
       fills: 'Source-backed competitor price, share, revenue, growth, traffic, rating, date, and confidence fields',

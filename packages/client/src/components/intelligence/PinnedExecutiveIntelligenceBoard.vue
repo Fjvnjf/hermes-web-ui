@@ -27,6 +27,8 @@ import {
   displayUnresolvedValue,
   formatSourceReference,
   normalizedMarketClaimStatus,
+  sourceIsUsable,
+  type IntelligenceEvidenceStatus,
   type MarketClaim,
   type SourceReference,
 } from '@/utils/investorIntelligence'
@@ -71,18 +73,26 @@ const investmentBreakdown = computed(() => buildInvestmentBreakdownRows())
 const marketSizeClaim = computed(() => findMarketClaim(['market size', 'demand', 'market value', 'consumption']))
 const growthClaim = computed(() => findMarketClaim(['growth', 'cagr']))
 const importDependenceClaim = computed(() => findMarketClaim(['import', 'dependence', 'dependency']))
-const marketSegments = computed(() => intelligence.state.value.marketClaims.slice(0, 5))
+const marketSegments = computed(() => intelligence.state.value.marketClaims.filter(canDisplayBoardMarketClaim).slice(0, 5))
 const competitorRows = computed(() => {
-  const records = intelligence.state.value.competitors.slice(0, 5)
+  const records = intelligence.state.value.competitors
+    .filter(canDisplayBoardCompetitorShare)
+    .slice(0, 5)
   return records.map((competitor, index) => ({
     rank: String(index + 1),
     manufacturer: competitor.companyName || 'No approved competitor name',
     hq: competitor.countryRegion || 'No approved source-backed value',
     productEquivalent: competitor.productEquivalent || 'No approved source-backed value',
     capacity: 'Not published by cited source',
-    marketShare: competitorMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus),
+    marketShare: canDisplayBoardCompetitorShare(competitor)
+      ? competitorMarketShare(
+          competitor.marketShare,
+          competitor.metricEvidence?.marketShare?.source || competitor.source,
+          (competitor.metricEvidence?.marketShare?.evidenceStatus || competitor.evidenceStatus) as IntelligenceEvidenceStatus,
+        )
+      : 'No approved source-backed value',
     sourceLabel: boardSourceMetadata(competitor),
-    evidenceStatus: competitor.evidenceStatus,
+    evidenceStatus: canDisplayBoardCompetitorShare(competitor) ? competitor.evidenceStatus : 'To Verify',
   }))
 })
 const topCountries = computed(() => exportMarkets.value.slice(0, 4))
@@ -169,11 +179,28 @@ function boardMarketClaimValue(claim: MarketClaim | null): string {
 
 function canDisplayBoardMarketClaim(claim: MarketClaim | null): boolean {
   if (!claim?.value?.trim()) return false
+  if (claim.reviewRequired) return false
   const status = normalizedMarketClaimStatus(claim)
-  if (['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated', 'Supplier Evidence', 'Trade Proxy', 'Market Reference'].includes(status)) {
-    return Boolean(claim.source?.title?.trim() && (claim.source.url?.trim() || claim.source.date?.trim()))
+  if (['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated', 'Supplier Evidence', 'Trade Proxy'].includes(status)) {
+    return sourceIsUsable(claim.source)
   }
-  return ['User Approved', 'Investor Approved', 'Approved Assumption', 'Powerful Assumption'].includes(status)
+  return ['User Approved', 'Investor Approved', 'Approved Assumption'].includes(status)
+}
+
+function canDisplayBoardCompetitorShare(competitor: {
+  marketShare?: string | null
+  reviewRequired?: boolean
+  metricEvidence?: { marketShare?: { source?: SourceReference | null, evidenceStatus?: string, reviewRequired?: boolean } }
+  source?: SourceReference | null
+  evidenceStatus?: string
+}): boolean {
+  if (!competitor.marketShare?.trim() || competitor.reviewRequired) return false
+  const shareEvidence = competitor.metricEvidence?.marketShare
+  if (shareEvidence?.reviewRequired) return false
+  const status = String(shareEvidence?.evidenceStatus || competitor.evidenceStatus || '')
+  if (['Approved Assumption', 'User Approved', 'Investor Approved'].includes(status)) return true
+  return sourceIsUsable(shareEvidence?.source || competitor.source) &&
+    ['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated'].includes(status)
 }
 
 type BoardMetadataRecord = {

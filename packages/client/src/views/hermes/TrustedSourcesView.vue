@@ -242,9 +242,11 @@ const importedIntelligenceRows = computed(() => [
   },
   {
     label: 'Supplier and data-room sources',
-    count: intelligence.state.value.dataRoomSources.length,
+    count: intelligence.state.value.dataRoomSources.length +
+      intelligence.state.value.rawMaterialSignals.length +
+      intelligence.state.value.supplierScorecards.length,
     route: { name: 'hermes.rawMaterialSourcing' },
-    note: 'Supplier, regulatory, financial, and document evidence candidates with source labels.',
+    note: 'Review-gated supplier, raw-material identity, regulatory, financial, and document evidence candidates with source labels.',
   },
   {
     label: 'Research review findings',
@@ -501,32 +503,53 @@ async function runFullDashboardSnapshotNow() {
 }
 
 async function importLatestDashboardResearchOutput(showMessages = true) {
-  if (!fullAutopilotStatus.value.scheduledJobId) {
-    if (showMessages) message.warning('Hermes is still checking the scheduled job id. Use Check Autopilot Health only if the schedule remains unavailable.')
-    return
-  }
   importingLatestOutput.value = true
   try {
-    const result = await autopilot.importLatestFullDashboardRunOutput(fullAutopilotStatus.value.scheduledJobId)
-    if (result.runImported || showMessages) {
-      updateFullAutopilotStatus({
-        lastRun: result.runImported ? new Date().toISOString() : fullAutopilotStatus.value.lastRun,
-        lastStatus: `${result.message}. Auto-filled: ${result.autoFilledCount}. Needs review: ${result.reviewItemCount}.`,
-      })
-    }
+    const result = await autopilot.runFullDashboardImportNow()
+    updateFullAutopilotStatus({
+      lastRun: new Date().toISOString(),
+      lastStatus: `${result.message}. Auto-filled: ${result.imported}. Needs review: ${result.staged}.`,
+    })
     if (!showMessages) return
-    if (result.runImported) {
+    if (result.imported || result.staged) {
       message.success('Latest Hermes research output imported into the source-gated dashboard pipeline')
+    } else if (result.errors.length) {
+      message.warning(`${result.message} Some sources need attention: ${result.errors.slice(0, 2).join('; ')}`)
     } else {
       message.warning(result.message)
     }
     void refreshServerAutopilotStatus()
   } catch (err) {
-    const detail = err instanceof Error ? err.message : 'Unknown import error'
-    updateFullAutopilotStatus({
-      lastStatus: `Could not import latest Hermes research output: ${detail}`,
-    })
-    if (showMessages) message.error(`Could not import latest Hermes research output: ${detail}`)
+    const serverImportDetail = err instanceof Error ? err.message : 'Unknown server import error'
+    if (!fullAutopilotStatus.value.scheduledJobId) {
+      updateFullAutopilotStatus({
+        lastStatus: `Could not import latest Hermes research output: ${serverImportDetail}`,
+      })
+      if (showMessages) message.error(`Could not import latest Hermes research output: ${serverImportDetail}`)
+      return
+    }
+    try {
+      const result = await autopilot.importLatestFullDashboardRunOutput(fullAutopilotStatus.value.scheduledJobId)
+      if (result.runImported || showMessages) {
+        updateFullAutopilotStatus({
+          lastRun: result.runImported ? new Date().toISOString() : fullAutopilotStatus.value.lastRun,
+          lastStatus: `${result.message}. Auto-filled: ${result.autoFilledCount}. Needs review: ${result.reviewItemCount}.`,
+        })
+      }
+      if (!showMessages) return
+      if (result.runImported) {
+        message.success('Latest Hermes research output imported into the source-gated dashboard pipeline')
+      } else {
+        message.warning(result.message)
+      }
+      void refreshServerAutopilotStatus()
+    } catch (fallbackErr) {
+      const fallbackDetail = fallbackErr instanceof Error ? fallbackErr.message : 'Unknown fallback import error'
+      updateFullAutopilotStatus({
+        lastStatus: `Could not import latest Hermes research output: ${serverImportDetail}; fallback failed: ${fallbackDetail}`,
+      })
+      if (showMessages) message.error(`Could not import latest Hermes research output: ${fallbackDetail}`)
+    }
   } finally {
     importingLatestOutput.value = false
   }

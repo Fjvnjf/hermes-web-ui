@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import {
+  type CompetitorIntelligenceRecord,
   type DataRoomSourceRecord,
   type EvidenceArea,
   type FeasibilityIntelligenceState,
@@ -1037,6 +1038,12 @@ function applyTrustedSourceClaim(input: ApplyTrustedSourceClaimInput): TrustedSo
       evidenceStatus,
       confidence: sourceRecord.confidence_default,
       source: input.source,
+      sourceTier: update.sourceTier,
+      dataType: input.dataType,
+      reviewRequired,
+      riskReason: update.riskReason,
+      proposedDashboardField: input.label,
+      fieldKey: update.fieldKey,
       lastChecked: nowIso().slice(0, 10),
     })
   }
@@ -1768,19 +1775,114 @@ function applySafeDashboardResearchItem(group: DashboardResearchUpdateGroup, ite
   if (claim.reviewRequired || claim.sensitive) return false
   const intelligence = useFeasibilityIntelligence()
 
-  if (group === 'marketClaims' || group === 'rawMaterialSignals') {
+  if (group === 'marketClaims') {
     intelligence.addMarketClaim({
+      fieldKey: claim.fieldKey,
+      dashboardGroup: group,
+      proposedDashboardField: asText(item.proposedDashboardField || item.label || item.title, claim.label),
       label: claim.label,
       value: claim.value,
       evidenceStatus: claim.evidenceStatus,
       confidence: claim.confidence,
       source: claim.source,
+      sourceTier: claim.sourceTier,
+      dataType: claim.dataType,
+      reviewRequired: claim.reviewRequired,
+      riskReason: claim.riskReason,
       lastChecked: claim.lastChecked?.slice(0, 10) || nowIso().slice(0, 10),
     })
     return true
   }
 
+  if (group === 'rawMaterialSignals') {
+    intelligence.addRawMaterialSignal({
+      fieldKey: claim.fieldKey,
+      dashboardGroup: group,
+      group,
+      material: asText(item.material || item.label || item.title || item.proposedDashboardField, claim.label),
+      label: claim.label,
+      proposedDashboardField: asText(item.proposedDashboardField || item.label || item.title, claim.label),
+      value: claim.value,
+      source: claim.source,
+      sourceTier: claim.sourceTier,
+      sourceDate: claim.source.date,
+      lastChecked: claim.lastChecked?.slice(0, 10) || nowIso().slice(0, 10),
+      confidence: claim.confidence,
+      evidenceStatus: claim.evidenceStatus,
+      reviewRequired: claim.reviewRequired,
+      dataType: claim.dataType,
+      pricePerTon: '',
+      priceStatus: 'No approved price yet',
+      riskReason: claim.riskReason,
+      notes: [
+        item.notes ? asText(item.notes) : '',
+        item.recommendedAction ? `Next action: ${asText(item.recommendedAction)}` : '',
+        'Imported by Full Dashboard Trusted Source Autopilot as source-backed raw-material context. Price, supplier score, formula approval, and regulatory permission are not auto-approved.',
+      ].filter(Boolean).join('\n'),
+    })
+    return true
+  }
+
+  if (group === 'supplierScorecards') {
+    intelligence.addSupplierScorecard({
+      fieldKey: claim.fieldKey,
+      dashboardGroup: group,
+      group,
+      supplier: asText(item.supplier || item.title || item.label, 'Supplier to review'),
+      material: asText(item.material || item.proposedDashboardField || item.label, claim.label),
+      proposedDashboardField: asText(item.proposedDashboardField || item.label || item.title, claim.label),
+      value: claim.value,
+      source: claim.source,
+      sourceTier: claim.sourceTier,
+      sourceDate: claim.source.date,
+      lastChecked: claim.lastChecked?.slice(0, 10) || nowIso().slice(0, 10),
+      confidence: claim.confidence,
+      evidenceStatus: claim.evidenceStatus,
+      reviewRequired: claim.reviewRequired,
+      dataType: claim.dataType,
+      pricePerTon: '',
+      quality: '',
+      reliability: '',
+      payment: '',
+      score: '',
+      riskReason: claim.riskReason,
+      notes: [
+        item.notes ? asText(item.notes) : '',
+        item.recommendedAction ? `Next action: ${asText(item.recommendedAction)}` : '',
+        'Imported by Full Dashboard Trusted Source Autopilot as supplier context. Prices, payment terms, and scores require quote/document evidence.',
+      ].filter(Boolean).join('\n'),
+    })
+    return true
+  }
+
   if (group === 'competitorRecords' && item.companyName) {
+    const metricEvidence: NonNullable<CompetitorIntelligenceRecord['metricEvidence']> = {}
+    const addMetricEvidence = (
+      field: keyof NonNullable<CompetitorIntelligenceRecord['metricEvidence']>,
+      value: unknown,
+    ) => {
+      const text = asText(value, '')
+      if (!text) return
+      metricEvidence[field] = {
+        value: text,
+        source: claim.source,
+        sourceTier: claim.sourceTier,
+        evidenceStatus: claim.evidenceStatus,
+        confidence: claim.confidence,
+        reviewRequired: claim.reviewRequired,
+        dataType: claim.dataType,
+        lastChecked: claim.lastChecked,
+        sourceDate: claim.source.date,
+        riskReason: claim.riskReason,
+      }
+    }
+    addMetricEvidence('pricingEvidence', item.pricingEvidence)
+    addMetricEvidence('marketShare', item.marketShare)
+    addMetricEvidence('revenue', item.revenue)
+    addMetricEvidence('yearlyGrowth', item.yearlyGrowth)
+    addMetricEvidence('traffic', item.traffic)
+    addMetricEvidence('rating', item.rating)
+    addMetricEvidence('lastUpdated', item.lastChecked || item.sourceDate)
     intelligence.addCompetitor({
       companyName: asText(item.companyName),
       countryRegion: asText(item.countryRegion, 'To Verify'),
@@ -1789,12 +1891,13 @@ function applySafeDashboardResearchItem(group: DashboardResearchUpdateGroup, ite
       pricingEvidence: asText(item.pricingEvidence, 'To Verify'),
       certifications: asText(item.certifications, 'To Verify'),
       distributionPresence: asText(item.distributionPresence, 'To Verify'),
-      marketShare: '',
+      marketShare: asText(item.marketShare, ''),
       revenue: asText(item.revenue, ''),
       yearlyGrowth: asText(item.yearlyGrowth, ''),
       traffic: asText(item.traffic, ''),
       rating: asText(item.rating, ''),
       lastUpdated: asText(item.lastChecked || item.sourceDate, ''),
+      metricEvidence: Object.keys(metricEvidence).length ? metricEvidence : undefined,
       evidenceStatus: claim.evidenceStatus,
       source: claim.source,
       sourceTier: claim.sourceTier,
@@ -2085,6 +2188,8 @@ function dashboardRecordCounts(): { dashboardRecordCount: number; pendingReviewC
   const dashboardRecordCount =
     intelligence.state.value.marketClaims.length +
     intelligence.state.value.competitors.length +
+    intelligence.state.value.rawMaterialSignals.length +
+    intelligence.state.value.supplierScorecards.length +
     intelligence.state.value.dataRoomSources.length +
     intelligence.state.value.researchJobs.length
   const pendingReviewCount = intelligence.pendingResearchFindings.value.length
@@ -2284,6 +2389,33 @@ function resetTrustedSourceAutopilotForTests() {
   persist()
 }
 
+async function runFullDashboardImportNow(): Promise<{
+  imported: number
+  staged: number
+  errors: string[]
+  message: string
+}> {
+  ensureLoaded()
+  const imported = await importDashboardAutopilotOutputNow()
+  const intelligence = useFeasibilityIntelligence()
+  await intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+  hydrateSnapshotsFromServerIntelligenceState(intelligence.state.value)
+  const autoFilled = imported.importResult.autoFilledCount || 0
+  const staged = imported.importResult.stagedReviewCount || 0
+  const importedRuns = imported.importResult.importedRuns || 0
+  const errors = imported.importResult.errors || []
+  return {
+    imported: autoFilled,
+    staged,
+    errors,
+    message: [
+      importedRuns ? `${importedRuns} Hermes output run${importedRuns === 1 ? '' : 's'} imported` : '',
+      autoFilled ? `${autoFilled} source-backed dashboard record${autoFilled === 1 ? '' : 's'} updated` : '',
+      staged ? `${staged} review-gated finding${staged === 1 ? '' : 's'} staged` : '',
+    ].filter(Boolean).join('; ') || 'Trusted-source import checked; no new source-backed dashboard records were available yet.',
+  }
+}
+
 export function useTrustedSourceAutopilot() {
   ensureLoaded()
 
@@ -2318,6 +2450,7 @@ export function useTrustedSourceAutopilot() {
     applyTrustedSourceClaim,
     createRefreshSnapshot,
     ensureFullDashboardAutopilotScheduled,
+    runFullDashboardImportNow,
     importDashboardResearchOutput,
     importEnabledFullDashboardRunOutput,
     importLatestFullDashboardRunOutput,

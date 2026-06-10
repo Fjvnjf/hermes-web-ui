@@ -17,7 +17,7 @@ export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source 
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
 export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-10-dashboard-targets-v7'
 export const FULL_DASHBOARD_MISSING_COVERAGE_JOB_NAME = 'Full Dashboard Missing Coverage Follow-up'
-export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-07-official-private-company-coverage-v21'
+export const DASHBOARD_AUTOPILOT_IMPORTER_VERSION = 'dashboard-autopilot-ingest-v2026-06-07-world-bank-market-context-v22'
 
 const execFileAsync = promisify(execFile)
 const CREATE_TIMEOUT_MS = 60_000
@@ -419,6 +419,15 @@ interface OfficialSupplierEvidenceSource {
   recommendedAction: string
 }
 
+interface OfficialChemicalIdentitySource {
+  material: string
+  fieldKeySlug: string
+  query: string
+  proposedDashboardField: string
+  recommendedAction: string
+  sensitive?: boolean
+}
+
 type PublicCompetitorPriceParser = 'zauba-stepantex-sp90' | 'wholesale-varisoft-eq65'
 
 interface PublicCompetitorPriceSource {
@@ -446,6 +455,31 @@ interface ComtradeMarketProxySource {
   country: string
   reporterCode: string
   fieldKeySlug: string
+}
+
+type WorldBankIndicatorKind =
+  | 'gdp_annual_change'
+  | 'manufacturing_value_added_usd'
+  | 'manufacturing_value_added_share'
+  | 'merchandise_exports_usd'
+  | 'merchandise_imports_usd'
+  | 'logistics_performance_index'
+
+interface WorldBankIndicatorSource {
+  country: string
+  countryCode: string
+  fieldKeySlug: string
+  indicator: string
+  indicatorKind: WorldBankIndicatorKind
+  label: string
+}
+
+interface WorldBankIndicatorMetric {
+  year: number
+  value: number
+  indicatorName: string
+  countryName: string
+  sourceUpdated: string
 }
 
 type MarketReferenceParser =
@@ -504,6 +538,12 @@ interface ComtradeAnnualImportMetric {
   netWeightKg: number
   isReported: boolean
   isAggregate: boolean
+}
+
+interface PubChemIdentityPayload {
+  chemicalName: string
+  property: Record<string, unknown> | null
+  synonyms: string[]
 }
 
 interface OfficialCompanyFinancialMetric {
@@ -992,6 +1032,39 @@ const OFFICIAL_SUPPLIER_EVIDENCE_SOURCES: OfficialSupplierEvidenceSource[] = [
   },
 ]
 
+const OFFICIAL_CHEMICAL_IDENTITY_SOURCES: OfficialChemicalIdentitySource[] = [
+  {
+    material: 'DMS / dimethyl sulfate',
+    fieldKeySlug: 'dms_dimethyl_sulfate',
+    query: 'dimethyl sulfate',
+    proposedDashboardField: 'DMS chemical identity / CAS evidence',
+    recommendedAction: 'Use official identity only as CAS/formula context. Still collect SDS, TDS, China regulatory/import/storage/use guidance, and supplier documentation before any business or product-development decision.',
+    sensitive: true,
+  },
+  {
+    material: 'TEA / triethanolamine',
+    fieldKeySlug: 'tea_triethanolamine',
+    query: 'triethanolamine',
+    proposedDashboardField: 'TEA chemical identity / CAS evidence',
+    recommendedAction: 'Use official identity only as raw-material identity context. Still collect current quote, SDS, TDS, COA, and supplier delivery/payment terms before supplier scoring or costing.',
+  },
+  {
+    material: 'Stearic acid',
+    fieldKeySlug: 'stearic_acid',
+    query: 'stearic acid',
+    proposedDashboardField: 'Stearic acid chemical identity / CAS evidence',
+    recommendedAction: 'Use official identity only as raw-material identity context. Still collect quote, grade, TDS, SDS, COA, and supplier evidence before price or supplier scoring.',
+  },
+  {
+    material: 'PDMS / polydimethylsiloxane',
+    fieldKeySlug: 'pdms_polydimethylsiloxane',
+    query: 'polydimethylsiloxane',
+    proposedDashboardField: 'PDMS silicone oil chemical identity evidence',
+    recommendedAction: 'Use official identity only as silicone-material context. Still collect exact viscosity/grade TDS, SDS, COA, quote, and supplier evidence before product or sourcing decisions.',
+    sensitive: true,
+  },
+]
+
 const PUBLIC_COMPETITOR_PRICE_SOURCES: PublicCompetitorPriceSource[] = [
   {
     companyName: 'Stepan Company',
@@ -1031,6 +1104,59 @@ const COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES: ComtradeMarketProxySource[] = [
 ]
 
 const COMTRADE_TEXTILE_FINISHING_HS_CODE = '380991'
+
+const WORLD_BANK_COUNTRY_CONTEXT_COUNTRIES = [
+  { country: 'China', countryCode: 'CN', fieldKeySlug: 'china' },
+  { country: 'Bangladesh', countryCode: 'BD', fieldKeySlug: 'bangladesh' },
+  { country: 'India', countryCode: 'IN', fieldKeySlug: 'india' },
+  { country: 'Vietnam', countryCode: 'VN', fieldKeySlug: 'vietnam' },
+  { country: 'Pakistan', countryCode: 'PK', fieldKeySlug: 'pakistan' },
+  { country: 'Turkey', countryCode: 'TR', fieldKeySlug: 'turkey' },
+  { country: 'Indonesia', countryCode: 'ID', fieldKeySlug: 'indonesia' },
+  { country: 'Germany', countryCode: 'DE', fieldKeySlug: 'germany' },
+  { country: 'United States', countryCode: 'US', fieldKeySlug: 'united_states' },
+  { country: 'Saudi Arabia', countryCode: 'SA', fieldKeySlug: 'saudi_arabia' },
+]
+
+const WORLD_BANK_COUNTRY_CONTEXT_INDICATORS: Array<Omit<WorldBankIndicatorSource, 'country' | 'countryCode' | 'fieldKeySlug'>> = [
+  {
+    indicator: 'NY.GDP.MKTP.KD.ZG',
+    indicatorKind: 'gdp_annual_change',
+    label: 'GDP annual change',
+  },
+  {
+    indicator: 'NV.IND.MANF.CD',
+    indicatorKind: 'manufacturing_value_added_usd',
+    label: 'Manufacturing value added',
+  },
+  {
+    indicator: 'NV.IND.MANF.ZS',
+    indicatorKind: 'manufacturing_value_added_share',
+    label: 'Manufacturing share of GDP',
+  },
+  {
+    indicator: 'TX.VAL.MRCH.CD.WT',
+    indicatorKind: 'merchandise_exports_usd',
+    label: 'Merchandise exports',
+  },
+  {
+    indicator: 'TM.VAL.MRCH.CD.WT',
+    indicatorKind: 'merchandise_imports_usd',
+    label: 'Merchandise imports',
+  },
+  {
+    indicator: 'LP.LPI.OVRL.XQ',
+    indicatorKind: 'logistics_performance_index',
+    label: 'Logistics performance index',
+  },
+]
+
+const WORLD_BANK_COUNTRY_CONTEXT_SOURCES: WorldBankIndicatorSource[] = WORLD_BANK_COUNTRY_CONTEXT_COUNTRIES.flatMap(country =>
+  WORLD_BANK_COUNTRY_CONTEXT_INDICATORS.map(indicator => ({
+    ...country,
+    ...indicator,
+  })),
+)
 
 const MARKET_REFERENCE_SOURCES: MarketReferenceSource[] = [
   {
@@ -1261,8 +1387,10 @@ interface IngestOptions {
   includeOfficialProductConnectors?: boolean
   includeOfficialRecognitionConnectors?: boolean
   includeOfficialSupplierConnectors?: boolean
+  includeOfficialChemicalIdentityConnectors?: boolean
   includePublicPriceEvidenceConnectors?: boolean
   includeOfficialTradeConnectors?: boolean
+  includeOfficialWorldBankConnectors?: boolean
   includeMarketReferenceConnectors?: boolean
   includeMarketReferenceTrafficConnectors?: boolean
   includeTrancoTrafficConnectors?: boolean
@@ -2008,6 +2136,8 @@ function missingCoverageRowsForState(state: DashboardIntelligenceState): Array<C
 function dashboardHasImportedIntelligence(state: DashboardIntelligenceState): boolean {
   return state.marketClaims.length > 0 ||
     state.competitors.length > 0 ||
+    state.rawMaterialSignals.length > 0 ||
+    state.supplierScorecards.length > 0 ||
     state.dataRoomSources.length > 0 ||
     state.researchFindings.length > 0 ||
     state.financialModels.length > 0 ||
@@ -3335,8 +3465,8 @@ function sourceFromItem(item: DashboardResearchUpdateItem): Record<string, unkno
   const title = firstString(item.sourceTitle, item.sourceName)
   const url = firstString(item.sourceUrl)
   const date = firstString(item.sourceDate, item.lastChecked)
-  if (!title && !url && !date) return null
-  const source: Record<string, unknown> = { title: title || 'Source missing' }
+  if (!title) return null
+  const source: Record<string, unknown> = { title }
   if (url) source.url = url
   if (date) source.date = date
   return source
@@ -4720,6 +4850,22 @@ function comtradeApiUrl(source: ComtradeMarketProxySource, period = '2023,2024')
   ].join('')
 }
 
+function comtradePublicPreviewApiUrl(source: ComtradeMarketProxySource, period = '2023,2024'): string {
+  return [
+    'https://comtradeapi.un.org/public/v1/preview/C/A/HS',
+    `?cmdCode=${COMTRADE_TEXTILE_FINISHING_HS_CODE}`,
+    '&flowCode=M',
+    `&reporterCode=${source.reporterCode}`,
+    `&period=${period}`,
+    '&partnerCode=0',
+    '&partner2Code=0',
+    '&customsCode=C00',
+    '&motCode=0',
+    '&maxRecords=100000',
+    '&includeDesc=true',
+  ].join('')
+}
+
 function comtradeSubscriptionKey(): string {
   return firstString(
     process.env.UN_COMTRADE_SUBSCRIPTION_KEY,
@@ -4730,9 +4876,13 @@ function comtradeSubscriptionKey(): string {
 }
 
 function comtradeApiRequestUrl(source: ComtradeMarketProxySource, period = '2023,2024'): string {
-  const baseUrl = comtradeApiUrl(source, period)
   const key = comtradeSubscriptionKey()
+  const baseUrl = key ? comtradeApiUrl(source, period) : comtradePublicPreviewApiUrl(source, period)
   return key ? `${baseUrl}&subscription-key=${encodeURIComponent(key)}` : baseUrl
+}
+
+function worldBankIndicatorApiUrl(source: WorldBankIndicatorSource): string {
+  return `https://api.worldbank.org/v2/country/${encodeURIComponent(source.countryCode)}/indicator/${encodeURIComponent(source.indicator)}?format=json&per_page=80`
 }
 
 function annualRevenueMetricsFromSecCompanyfacts(
@@ -4802,6 +4952,99 @@ function annualImportMetricsFromComtrade(payload: unknown): ComtradeAnnualImport
     if (!existing || metric.primaryValue > existing.primaryValue) byYear.set(year, metric)
   }
   return Array.from(byYear.values()).sort((left, right) => left.year - right.year)
+}
+
+function worldBankIndicatorMetricsFromPayload(payload: unknown): WorldBankIndicatorMetric[] {
+  const rows = Array.isArray(payload) && Array.isArray(payload[1]) ? payload[1] : []
+  return rows
+    .filter(isPlainRecord)
+    .map(row => {
+      const year = Number(row.date)
+      const value = Number(row.value)
+      const indicator = isPlainRecord(row.indicator) ? row.indicator : {}
+      const country = isPlainRecord(row.country) ? row.country : {}
+      return {
+        year,
+        value,
+        indicatorName: firstString(indicator.value),
+        countryName: firstString(country.value),
+        sourceUpdated: firstString(row.lastupdated),
+      }
+    })
+    .filter(metric => Number.isFinite(metric.year) && Number.isFinite(metric.value))
+    .sort((left, right) => left.year - right.year)
+}
+
+function pubChemProperty(raw: unknown): Record<string, unknown> | null {
+  if (!isPlainRecord(raw)) return null
+  const rows = isPlainRecord(raw.PropertyTable) && Array.isArray(raw.PropertyTable.Properties)
+    ? raw.PropertyTable.Properties
+    : []
+  return isPlainRecord(rows[0]) ? rows[0] : null
+}
+
+function pubChemSynonyms(raw: unknown): string[] {
+  if (!isPlainRecord(raw) || !isPlainRecord(raw.InformationList)) return []
+  const rows = Array.isArray(raw.InformationList.Information) ? raw.InformationList.Information : []
+  const synonyms = isPlainRecord(rows[0]) && Array.isArray(rows[0].Synonym) ? rows[0].Synonym : []
+  return synonyms.map(stringValue).filter(Boolean).slice(0, 120)
+}
+
+function firstCasNumber(values: string[]): string {
+  return values.find(item => /^\d{2,7}-\d{2}-\d$/.test(item.trim())) || ''
+}
+
+function pubChemIdentityValue(source: OfficialChemicalIdentitySource, payload: PubChemIdentityPayload): string {
+  const property = payload.property || {}
+  const cid = firstString(property.CID)
+  const formula = firstString(property.MolecularFormula)
+  const molecularWeight = firstString(property.MolecularWeight)
+  const iupacName = firstString(property.IUPACName, source.query)
+  const cas = firstCasNumber(payload.synonyms)
+  return [
+    `PubChem ${source.material}:`,
+    cid ? `CID ${cid};` : '',
+    cas ? `CAS signal ${cas};` : 'CAS signal To Verify;',
+    formula ? `molecular formula ${formula};` : '',
+    molecularWeight ? `MW ${molecularWeight};` : '',
+    `IUPAC ${iupacName}.`,
+  ].filter(Boolean).join(' ')
+}
+
+function pubChemIdentitySourceUrl(source: OfficialChemicalIdentitySource, payload: PubChemIdentityPayload): string {
+  const cid = firstString(payload.property?.CID)
+  return cid
+    ? `https://pubchem.ncbi.nlm.nih.gov/compound/${cid}`
+    : `https://pubchem.ncbi.nlm.nih.gov/#query=${encodeURIComponent(source.query)}`
+}
+
+function pubChemIdentityPayloadToRawMaterialUpdate(
+  source: OfficialChemicalIdentitySource,
+  payload: PubChemIdentityPayload,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  if (!payload.property) return null
+  const value = pubChemIdentityValue(source, payload)
+  return {
+    fieldKey: `raw_material_identity.${source.fieldKeySlug}.pubchem`,
+    label: source.material,
+    material: source.material,
+    proposedDashboardField: source.proposedDashboardField,
+    field: `${source.material} chemical identity`,
+    value,
+    sourceTitle: `PubChem official chemical identity: ${source.material}`,
+    sourceUrl: pubChemIdentitySourceUrl(source, payload),
+    sourceTier: 'Tier 1 - Official / regulator / chemical database source',
+    sourceDate: checkedAt,
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Official Data',
+    reviewRequired: true,
+    dataType: 'regulatory_data',
+    sensitive: source.sensitive === true,
+    recommendedAction: source.recommendedAction,
+    riskReason: 'PubChem confirms chemical identity only. This is not SDS/TDS/COA evidence, not supplier quote evidence, not China regulatory approval, not formula approval, and not factory/import/storage/use permission.',
+  }
 }
 
 function officialCompanyFinancialMetricFromText(
@@ -5289,7 +5532,9 @@ export function comtradeImportPayloadToMarketClaimUpdate(
 
   const valueGrowth = ((latest.primaryValue - previous.primaryValue) / previous.primaryValue) * 100
   const weightGrowth = ((latest.netWeightKg - previous.netWeightKg) / previous.netWeightKg) * 100
-  const sourceUrl = comtradeApiUrl(source, period)
+  const sourceUrl = comtradeSubscriptionKey()
+    ? comtradeApiUrl(source, period)
+    : comtradePublicPreviewApiUrl(source, period)
   const value = [
     `FY${latest.year} official HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} import proxy:`,
     `${formatUsdCompact(latest.primaryValue)} import value;`,
@@ -5314,6 +5559,67 @@ export function comtradeImportPayloadToMarketClaimUpdate(
     dataType: 'trade_data',
     riskReason: 'Official import data is useful market evidence, but it is not direct textile-softener consumption or product-line demand proof.',
     recommendedAction: `Review HS ${COMTRADE_TEXTILE_FINISHING_HS_CODE} fit and collect direct textile-softener demand evidence for ${source.country}.`,
+  }
+}
+
+function worldBankIndicatorValueText(source: WorldBankIndicatorSource, metric: WorldBankIndicatorMetric): string {
+  const country = metric.countryName || source.country
+  if (source.indicatorKind === 'gdp_annual_change') {
+    return `${country}: ${metric.year} GDP annual change ${formatSignedPercent(metric.value)} from World Bank official indicator ${source.indicator}. This is macro context, not direct textile-softener consumption.`
+  }
+  if (source.indicatorKind === 'manufacturing_value_added_usd') {
+    return `${country}: ${metric.year} manufacturing value added ${formatUsdCompact(metric.value)} from World Bank official indicator ${source.indicator}. This is industrial-market context, not direct textile-softener demand.`
+  }
+  if (source.indicatorKind === 'manufacturing_value_added_share') {
+    return `${country}: ${metric.year} manufacturing value added ${metric.value.toFixed(2).replace(/\.?0+$/, '')}% of GDP from World Bank official indicator ${source.indicator}. This is industrial-market context, not direct textile-softener demand.`
+  }
+  if (source.indicatorKind === 'merchandise_exports_usd') {
+    return `${country}: ${metric.year} merchandise exports ${formatUsdCompact(metric.value)} from World Bank official indicator ${source.indicator}. This is trade context, not direct textile-softener demand.`
+  }
+  if (source.indicatorKind === 'merchandise_imports_usd') {
+    return `${country}: ${metric.year} merchandise imports ${formatUsdCompact(metric.value)} from World Bank official indicator ${source.indicator}. This is trade context, not direct textile-softener demand.`
+  }
+  return `${country}: ${metric.year} logistics performance index ${metric.value.toFixed(2).replace(/\.?0+$/, '')} from World Bank official indicator ${source.indicator}. This is logistics context, not direct textile-softener demand.`
+}
+
+function worldBankIndicatorRiskReason(source: WorldBankIndicatorSource): string {
+  if (source.indicatorKind === 'gdp_annual_change') {
+    return 'World Bank GDP growth is official macro evidence. It helps country prioritization but does not prove textile-softener consumption or product-specific market growth.'
+  }
+  if (source.indicatorKind === 'manufacturing_value_added_usd' || source.indicatorKind === 'manufacturing_value_added_share') {
+    return 'World Bank manufacturing value-added data is official industrial context. It does not prove textile-softener demand, customer readiness, or cationic/silicone softener segment size.'
+  }
+  if (source.indicatorKind === 'merchandise_exports_usd' || source.indicatorKind === 'merchandise_imports_usd') {
+    return 'World Bank merchandise trade data is official country trade context. It is not an HS-specific textile-softener import/export value and should not be used as product demand proof.'
+  }
+  return 'World Bank logistics performance data is official logistics context. It does not prove delivery cost, supplier reliability, or product demand.'
+}
+
+export function worldBankIndicatorPayloadToMarketClaimUpdate(
+  source: WorldBankIndicatorSource,
+  payload: unknown,
+  checkedAt: string,
+): DashboardResearchUpdateItem | null {
+  const metrics = worldBankIndicatorMetricsFromPayload(payload)
+  const latest = metrics[metrics.length - 1]
+  if (!latest) return null
+  const sourceUrl = worldBankIndicatorApiUrl(source)
+  return {
+    fieldKey: `market.country_context.${source.fieldKeySlug}.world_bank_${slug(source.indicatorKind)}`,
+    label: `Country context - ${source.country}`,
+    proposedDashboardField: `${source.country} World Bank ${source.label}`,
+    value: worldBankIndicatorValueText(source, latest),
+    sourceTitle: `World Bank API: ${source.country} - ${latest.indicatorName || source.label}`,
+    sourceUrl,
+    sourceTier: 'Tier 1 - Official / statistical source',
+    sourceDate: String(latest.year),
+    lastChecked: checkedAt,
+    confidence: 'high',
+    evidenceStatus: 'Official Data',
+    reviewRequired: false,
+    dataType: 'trade_data',
+    riskReason: worldBankIndicatorRiskReason(source),
+    recommendedAction: `Use as official ${source.country} context. Keep market size, country-specific textile-softener demand, competitor share, price, and investor claims in Research Review until directly sourced.`,
   }
 }
 
@@ -6322,6 +6628,54 @@ async function applyOfficialSupplierEvidence(
   return { autoFilledCount, stagedReviewCount, errors }
 }
 
+async function applyOfficialChemicalIdentityEvidence(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official chemical identity connector: fetch is unavailable'] }
+
+  for (const source of OFFICIAL_CHEMICAL_IDENTITY_SOURCES) {
+    const encoded = encodeURIComponent(source.query)
+    try {
+      const headers = {
+        'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+        Accept: 'application/json',
+      }
+      const [propertyResponse, synonymsResponse] = await Promise.all([
+        fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/property/MolecularFormula,MolecularWeight,IUPACName,CanonicalSMILES/JSON`, { headers }),
+        fetchWithTimeout(fetcher, `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/${encoded}/synonyms/JSON`, { headers }),
+      ])
+      if (!propertyResponse.ok) {
+        errors.push(`${source.material}: PubChem property API returned ${propertyResponse.status}`)
+        continue
+      }
+      const propertyRaw = await propertyResponse.json()
+      const synonymsRaw = synonymsResponse.ok ? await synonymsResponse.json() : { InformationList: { Information: [] } }
+      const update = pubChemIdentityPayloadToRawMaterialUpdate(source, {
+        chemicalName: source.query,
+        property: pubChemProperty(propertyRaw),
+        synonyms: pubChemSynonyms(synonymsRaw),
+      }, checkedAt)
+      if (!update) {
+        errors.push(`${source.material}: PubChem identity row unavailable`)
+        continue
+      }
+      const runKey = `official-pubchem-identity/${source.fieldKeySlug}/${firstString(update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { rawMaterialSignals: [update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${source.material}: ${err instanceof Error ? err.message : 'PubChem connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
 async function applyOfficialComtradeMarketProxies(
   state: DashboardIntelligenceState,
   checkedAt: string,
@@ -6331,13 +6685,6 @@ async function applyOfficialComtradeMarketProxies(
   const errors: string[] = []
   const fetcher = globalThis.fetch
   if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official Comtrade connector: fetch is unavailable'] }
-  if (!comtradeSubscriptionKey()) {
-    return {
-      autoFilledCount,
-      stagedReviewCount,
-      errors: ['official Comtrade connector: subscription key not configured; set UN_COMTRADE_SUBSCRIPTION_KEY or COMTRADE_SUBSCRIPTION_KEY to import current official trade data'],
-    }
-  }
 
   for (const source of COMTRADE_TEXTILE_FINISHING_IMPORT_SOURCES) {
     let imported = false
@@ -6370,6 +6717,61 @@ async function applyOfficialComtradeMarketProxies(
       if (!imported && lastError) errors.push(`${source.country}: ${lastError}`)
     } catch (err) {
       errors.push(`${source.country}: ${err instanceof Error ? err.message : 'UN Comtrade connector failed'}`)
+    }
+  }
+
+  return { autoFilledCount, stagedReviewCount, errors }
+}
+
+async function applyOfficialWorldBankMarketContext(
+  state: DashboardIntelligenceState,
+  checkedAt: string,
+): Promise<OfficialConnectorResult> {
+  let autoFilledCount = 0
+  let stagedReviewCount = 0
+  const errors: string[] = []
+  const fetcher = globalThis.fetch
+  if (typeof fetcher !== 'function') return { autoFilledCount, stagedReviewCount, errors: ['official World Bank connector: fetch is unavailable'] }
+
+  const fetchedUpdates = await Promise.all(WORLD_BANK_COUNTRY_CONTEXT_SOURCES.map(async (source) => {
+    try {
+      const response = await fetchWithTimeout(fetcher, worldBankIndicatorApiUrl(source), {
+        headers: {
+          'User-Agent': 'Hermes Web UI dashboard intelligence connector admin@localhost',
+          Accept: 'application/json',
+        },
+      })
+      if (!response.ok) {
+        return { source, update: null, error: `${source.country} ${source.label}: World Bank API returned ${response.status}` }
+      }
+      const payload = await response.json()
+      const update = worldBankIndicatorPayloadToMarketClaimUpdate(source, payload, checkedAt)
+      if (!update) {
+        return { source, update: null, error: `${source.country} ${source.label}: World Bank API did not return a usable annual value` }
+      }
+      return { source, update, error: '' }
+    } catch (err) {
+      return {
+        source,
+        update: null,
+        error: `${source.country} ${source.label}: ${err instanceof Error ? err.message : 'World Bank connector failed'}`,
+      }
+    }
+  }))
+
+  for (const item of fetchedUpdates) {
+    if (item.error) {
+      errors.push(item.error)
+      continue
+    }
+    if (!item.update) continue
+    try {
+      const runKey = `official-world-bank/${item.source.fieldKeySlug}/${item.source.indicator}/${firstString(item.update.sourceDate, checkedAt)}`
+      const result = applyDashboardUpdates(state, { marketClaims: [item.update] }, runKey, checkedAt)
+      autoFilledCount += result.autoFilledCount
+      stagedReviewCount += result.stagedReviewCount
+    } catch (err) {
+      errors.push(`${item.source.country} ${item.source.label}: ${err instanceof Error ? err.message : 'World Bank connector failed'}`)
     }
   }
 
@@ -6575,8 +6977,10 @@ export async function ingestFullDashboardAutopilotOutputs(
   const officialProductConnectorsEnabled = options.includeOfficialProductConnectors ?? officialConnectorsEnabled
   const officialRecognitionConnectorsEnabled = options.includeOfficialRecognitionConnectors ?? officialConnectorsEnabled
   const officialSupplierConnectorsEnabled = options.includeOfficialSupplierConnectors ?? officialConnectorsEnabled
+  const officialChemicalIdentityConnectorsEnabled = options.includeOfficialChemicalIdentityConnectors ?? officialConnectorsEnabled
   const publicPriceEvidenceConnectorsEnabled = options.includePublicPriceEvidenceConnectors ?? officialConnectorsEnabled
   const officialTradeConnectorsEnabled = options.includeOfficialTradeConnectors ?? officialConnectorsEnabled
+  const officialWorldBankConnectorsEnabled = options.includeOfficialWorldBankConnectors ?? officialConnectorsEnabled
   const marketReferenceConnectorsEnabled = options.includeMarketReferenceConnectors ?? process.env.NODE_ENV !== 'test'
   const marketReferenceTrafficConnectorsEnabled = options.includeMarketReferenceTrafficConnectors ?? marketReferenceConnectorsEnabled
   const trancoTrafficConnectorsEnabled = options.includeTrancoTrafficConnectors ?? marketReferenceTrafficConnectorsEnabled
@@ -6610,6 +7014,12 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.stagedReviewCount += officialSupplier.stagedReviewCount
     result.errors.push(...officialSupplier.errors.map(error => `official source connector: ${error}`))
   }
+  if (officialChemicalIdentityConnectorsEnabled) {
+    const officialChemicalIdentity = await applyOfficialChemicalIdentityEvidence(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialChemicalIdentity.autoFilledCount
+    result.stagedReviewCount += officialChemicalIdentity.stagedReviewCount
+    result.errors.push(...officialChemicalIdentity.errors.map(error => `official source connector: ${error}`))
+  }
   if (publicPriceEvidenceConnectorsEnabled) {
     const publicPriceEvidence = await applyPublicCompetitorPriceEvidence(state, new Date().toISOString().slice(0, 10))
     result.autoFilledCount += publicPriceEvidence.autoFilledCount
@@ -6621,6 +7031,12 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.autoFilledCount += officialTrade.autoFilledCount
     result.stagedReviewCount += officialTrade.stagedReviewCount
     result.errors.push(...officialTrade.errors.map(error => `official source connector: ${error}`))
+  }
+  if (officialWorldBankConnectorsEnabled) {
+    const officialWorldBank = await applyOfficialWorldBankMarketContext(state, new Date().toISOString().slice(0, 10))
+    result.autoFilledCount += officialWorldBank.autoFilledCount
+    result.stagedReviewCount += officialWorldBank.stagedReviewCount
+    result.errors.push(...officialWorldBank.errors.map(error => `official source connector: ${error}`))
   }
   if (marketReferenceConnectorsEnabled) {
     const marketReference = await applyMarketReferenceEvidence(state, new Date().toISOString().slice(0, 10))

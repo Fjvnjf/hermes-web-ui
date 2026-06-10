@@ -7,6 +7,7 @@ import {
   type CompetitorIntelligenceRecord,
   useFeasibilityIntelligence,
 } from '@/composables/useFeasibilityIntelligence'
+import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { formatSourcedMarketShare, sourceIsUsable, type IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
 import { redactForEmployee, shouldRedactForEmployee } from '@/utils/accessControl'
@@ -15,7 +16,9 @@ import { defaultExecutiveRefreshState, nextTwiceDailyRefresh, type ExecutiveRefr
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
+const autopilot = useTrustedSourceAutopilot()
 const creating = ref('')
+const syncingCompetitors = ref(false)
 const editingCompetitorId = ref<string | null>(null)
 const redactSensitiveFields = computed(() => shouldRedactForEmployee())
 const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
@@ -541,11 +544,13 @@ function metricEvidenceFor(competitor: CompetitorIntelligenceRecord, field: Comp
 function metricSourceFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField) {
   const evidence = metricEvidenceFor(competitor, field)
   if (evidence) return evidence.source || null
-  return competitor.source || null
+  return null
 }
 
 function metricStatusFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): IntelligenceEvidenceStatus {
-  const status = String(metricEvidenceFor(competitor, field)?.evidenceStatus || competitor.evidenceStatus || 'To Verify')
+  const evidence = metricEvidenceFor(competitor, field)
+  if (!evidence) return 'To Verify'
+  const status = String(evidence.evidenceStatus || 'To Verify')
   const allowed: IntelligenceEvidenceStatus[] = [
     'Missing',
     'To Verify',
@@ -581,11 +586,8 @@ function metricValueFor(competitor: CompetitorIntelligenceRecord, field: Competi
 
 function metricReviewRequiredFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
   const evidence = metricEvidenceFor(competitor, field)
-  return Boolean(
-    typeof evidence?.reviewRequired === 'boolean'
-      ? evidence.reviewRequired
-      : competitor.reviewRequired,
-  )
+  if (!evidence) return true
+  return Boolean(evidence.reviewRequired)
 }
 
 function metricStatusCanDriveLeaderBadge(status: IntelligenceEvidenceStatus): boolean {
@@ -639,10 +641,7 @@ function metricEvidenceCanShowAsReviewCandidate(field: CompetitorMetricField, ev
 
 function metricCanShowAsReviewCandidate(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
   const evidence = metricEvidenceFor(competitor, field)
-  if (metricEvidenceCanShowAsReviewCandidate(field, evidence || undefined)) return true
-  const value = metricValueFor(competitor, field, competitor[field as keyof CompetitorIntelligenceRecord] as string | undefined)
-  if (metricValueIsUnresolved(value)) return false
-  return sourceIsUsable(metricSourceFor(competitor, field))
+  return metricEvidenceCanShowAsReviewCandidate(field, evidence || undefined)
 }
 
 function metricEvidenceSortScore(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): number {
@@ -690,9 +689,8 @@ function mergeMetricEvidenceForGroup(group: CompetitorIntelligenceRecord[]): Com
 }
 
 function metricCanDrivePrimaryDisplay(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
-  const status = metricStatusFor(competitor, field)
-  if (metricStatusCanDrivePrimaryDisplay(status)) return true
-  return metricStatusCanDriveReferenceDisplay(status, field) && !metricReviewRequiredFor(competitor, field)
+  const evidence = metricEvidenceFor(competitor, field)
+  return metricEvidenceCanDrivePrimaryDisplay(field, evidence || undefined)
 }
 
 function metricRawRecordValue(record: CompetitorIntelligenceRecord, field: CompetitorMetricField): string {
@@ -706,14 +704,7 @@ function metricValueIsUnresolved(value: string): boolean {
 
 function recordMetricCanDrivePrimaryDisplay(record: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
   const evidence = metricEvidenceFor(record, field)
-  if (evidence) return metricEvidenceCanDrivePrimaryDisplay(field, evidence)
-  const value = metricRawRecordValue(record, field)
-  if (metricValueIsUnresolved(value)) return false
-  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
-  if (!sourceIsUsable(record.source)) return false
-  if (metricReviewRequiredFor(record, field)) return false
-  const status = metricStatusFor(record, field)
-  return metricStatusCanDrivePrimaryDisplay(status) || metricStatusCanDriveReferenceDisplay(status, field)
+  return metricEvidenceCanDrivePrimaryDisplay(field, evidence || undefined)
 }
 
 function recordCanDriveSourceDisplay(record: CompetitorIntelligenceRecord): boolean {
@@ -733,13 +724,13 @@ function metricCanDriveLeaderBadge(
 ): boolean {
   const value = metricValueFor(competitor, field, competitor[field as keyof CompetitorIntelligenceRecord] as string | undefined)
   if (comparableNumber(value) === null) return false
-  if (!sourceIsUsable(metricSourceFor(competitor, field))) return false
-  if (metricReviewRequiredFor(competitor, field)) return false
   if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
-  return metricStatusCanDriveLeaderBadge(metricStatusFor(competitor, field))
+  return metricCanDrivePrimaryDisplay(competitor, field) && metricStatusCanDriveLeaderBadge(metricStatusFor(competitor, field))
 }
 
 function metricDisplayValueFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField, fallback: string | undefined = ''): string {
+  const evidence = metricEvidenceFor(competitor, field)
+  if (!evidence) return competitorMetricGapLabel[field]
   const value = metricValueFor(competitor, field, fallback)
   if (metricValueIsUnresolved(value)) return competitorMetricGapLabel[field]
   if (metricReviewRequiredFor(competitor, field) && metricCanShowAsReviewCandidate(competitor, field)) {
@@ -859,7 +850,7 @@ function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label:
   }
   if (recordCanDriveSourceDisplay(competitor) && competitor.source) {
     return {
-      label: competitor.source.title,
+      label: `Identity/product source: ${competitor.source.title}`,
       url: competitor.source.url,
       date: competitor.source.date,
     }
@@ -1249,7 +1240,7 @@ function evidenceStateForRow(
   if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return 'Review needed'
   if (
     hasComparableData &&
-    ['Verified', 'User Approved', 'Investor Approved', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated'].includes(status)
+    ['Verified', 'User Approved', 'Investor Approved'].includes(status)
   ) return 'Verified'
   return 'Auto-checking'
 }
@@ -1380,6 +1371,9 @@ function competitorConfidenceLabel(competitor: CompetitorIntelligenceRecord): st
   if (metricExplicit) return (competitor.reviewRequired || hasReviewCandidate) ? `${metricExplicit} (${reviewRequiredText})` : metricExplicit
   if (competitor.reviewRequired && sourceIsUsable(competitor.source)) return `Source found (${reviewRequiredText})`
   if (!recordCanDriveSourceDisplay(competitor)) return noApprovedSourceBackedValue
+  const metricFieldsWithDisplay = (Object.keys(competitor.metricEvidence || {}) as CompetitorMetricField[])
+    .filter(field => metricCanDrivePrimaryDisplay(competitor, field))
+  if (!metricFieldsWithDisplay.length) return 'Identity/product source only'
   const explicit = String(competitor.confidence || '').trim()
   if (explicit) return explicit
   return confidenceLabelForRow(
@@ -1433,30 +1427,50 @@ function formatDateTime(value: string | null | undefined): string {
   return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-function syncCompetitorsNow() {
-  const saved = intelligence.addResearchFinding({
-    summary: [
-      'Competitor Intelligence refresh draft',
-      `Competitor records: ${competitors.value.length}`,
-      'Unsupported market share, price, revenue, and yearly growth stay out of dashboard truth until usable source evidence is attached.',
-      'Pricing and formula-sensitive fields remain restricted where required.',
-    ].join('\n'),
-    keyClaim: 'Competitor intelligence requires source review',
-    area: 'market',
-    evidenceStatus: 'To Verify',
-    confidence: 'medium',
-    source: null,
-    suggestedTask: 'Review competitor evidence, product equivalents, pricing proof, source links, and market-share labels.',
-    riskNote: 'No competitor market share or price should be used as fact until source-backed or visibly assumption-labeled.',
-  })
-  refreshState.value = {
-    ...refreshState.value,
-    lastRun: new Date().toISOString(),
-    nextRun: nextTwiceDailyRefresh(),
-    lastStatus: `Research review draft staged: ${saved.keyClaim}`,
-    resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + 1,
+async function syncCompetitorsNow() {
+  syncingCompetitors.value = true
+  try {
+    const result = await autopilot.runFullDashboardImportNow()
+    refreshState.value = {
+      ...refreshState.value,
+      lastRun: new Date().toISOString(),
+      nextRun: nextTwiceDailyRefresh(),
+      lastStatus: result.message,
+      resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + result.staged,
+    }
+    if (result.errors.length) {
+      message.warning(`${result.message} Some sources need attention: ${result.errors.slice(0, 2).join('; ')}`)
+    } else {
+      message.success(result.message)
+    }
+  } catch (err) {
+    const saved = intelligence.addResearchFinding({
+      summary: [
+        'Competitor Intelligence refresh draft',
+        `Competitor records: ${competitors.value.length}`,
+        'The server trusted-source importer was unavailable, so this was staged for review instead of pretending data was imported.',
+        'Unsupported market share, price, revenue, and yearly growth stay out of dashboard truth until usable source evidence is attached.',
+        'Pricing and formula-sensitive fields remain restricted where required.',
+      ].join('\n'),
+      keyClaim: 'Competitor intelligence requires source review',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+      suggestedTask: 'Review competitor evidence, product equivalents, pricing proof, source links, and market-share labels.',
+      riskNote: err instanceof Error ? `Trusted-source import fallback: ${err.message}` : 'Trusted-source import fallback was used.',
+    })
+    refreshState.value = {
+      ...refreshState.value,
+      lastRun: new Date().toISOString(),
+      nextRun: nextTwiceDailyRefresh(),
+      lastStatus: `Research review draft staged: ${saved.keyClaim}`,
+      resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + 1,
+    }
+    message.warning('Trusted-source import unavailable; competitor refresh staged for research review')
+  } finally {
+    syncingCompetitors.value = false
   }
-  message.success('Competitor refresh staged for research review')
 }
 
 onMounted(async () => {
@@ -1681,7 +1695,7 @@ function addCompetitor() {
         <span>Next update: {{ formatDateTime(refreshState.nextRun) }}</span>
         <span>Status: {{ refreshState.lastStatus }}</span>
         <span>Needs review: {{ refreshState.resultNeedsReviewCount }}</span>
-        <NButton size="tiny" type="primary" @click="syncCompetitorsNow">Sync Now</NButton>
+        <NButton size="tiny" type="primary" :loading="syncingCompetitors" @click="syncCompetitorsNow">Sync Now</NButton>
         <RouterLink class="header-link" :to="{ name: 'hermes.marketIntelligence' }">Market Intelligence</RouterLink>
       </div>
     </header>
@@ -1701,7 +1715,7 @@ function addCompetitor() {
           <p v-if="hydrationWarning" class="sync-warning">{{ hydrationWarning }}</p>
         </div>
         <div class="comparison-actions">
-          <NButton size="small" type="primary" @click="syncCompetitorsNow">Sync Now</NButton>
+          <NButton size="small" type="primary" :loading="syncingCompetitors" @click="syncCompetitorsNow">Sync Now</NButton>
           <RouterLink class="template-link" :to="{ name: 'hermes.researchResultReview' }">Review Queue</RouterLink>
           <RouterLink class="template-link" :to="{ name: 'hermes.trustedSources' }">Trusted Sources</RouterLink>
         </div>
@@ -1862,7 +1876,7 @@ function addCompetitor() {
             <h3>Competitor Landscape - China Softener Market</h3>
             <p>Public-source competitor presence; unsupported shares and prices stay queued for source review.</p>
           </div>
-          <NButton size="small" secondary @click="syncCompetitorsNow">Sync / stage review</NButton>
+          <NButton size="small" secondary :loading="syncingCompetitors" @click="syncCompetitorsNow">Sync / stage review</NButton>
         </div>
         <div class="template-landscape-table">
           <div class="template-landscape-row head">
@@ -2135,7 +2149,7 @@ function addCompetitor() {
       </NButton>
       <RouterLink class="header-link" :to="{ name: 'hermes.researchResultReview' }">Add to Investor Review</RouterLink>
       <RouterLink class="header-link" :to="{ name: 'hermes.feasibility' }">Compare with CWAS/CWMS</RouterLink>
-      <NButton size="small" secondary @click="syncCompetitorsNow">Schedule Deeper Research</NButton>
+      <NButton size="small" secondary :loading="syncingCompetitors" @click="syncCompetitorsNow">Schedule Deeper Research</NButton>
     </section>
 
     <section class="detail-grid">

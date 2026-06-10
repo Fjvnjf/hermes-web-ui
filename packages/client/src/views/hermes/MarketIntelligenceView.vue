@@ -3,7 +3,11 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { NButton, NTag, useMessage } from 'naive-ui'
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
-import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import {
+  type CompetitorIntelligenceRecord,
+  useFeasibilityIntelligence,
+} from '@/composables/useFeasibilityIntelligence'
+import { useTrustedSourceAutopilot } from '@/composables/useTrustedSourceAutopilot'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import {
   canAccessRouteName,
@@ -32,9 +36,11 @@ import {
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const intelligence = useFeasibilityIntelligence()
+const autopilot = useTrustedSourceAutopilot()
 const creating = ref('')
 const creatingClaimTaskId = ref('')
 const editingClaimId = ref<string | null>(null)
+const syncingMarket = ref(false)
 const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
 const growthPeriod = ref('5 years')
 const frontendRole = computed(() => getFrontendAccessRole())
@@ -133,7 +139,7 @@ const visibleClaims = computed(() =>
 )
 const marketSizeClaim = computed(() => findMarketClaim(['market size / scope', 'market size', 'market value', 'total addressable market', 'market scope']))
 const growthClaim = computed(() => findMarketClaim(['growth rate', 'market growth', 'cagr']))
-const competitorClaimCount = computed(() => intelligence.state.value.competitors.length)
+const competitorClaimCount = computed(() => intelligence.state.value.competitors.filter(competitorHasUsableDashboardEvidence).length)
 const executiveMarketMetrics = computed(() => [
   marketMetric('Market Size / Scope', marketSizeClaim.value),
   marketMetric('Growth Rate', growthClaim.value),
@@ -163,15 +169,25 @@ const targetOpportunityRows = computed(() => [
   opportunityRow('Pakistan', ['pakistan']),
 ])
 const topCompetitorRows = computed(() => {
-  const records = intelligence.state.value.competitors.slice(0, 5)
-  return records.map(record => ({
-    company: record.companyName || 'Hermes source search running',
-    region: record.countryRegion || 'Hermes source search running',
-    product: record.productEquivalent || 'Hermes source search running',
-    share: record.marketShare?.trim() && record.source?.title ? record.marketShare : 'Not published by cited source',
-    source: record.source?.title || 'Source search running',
-    status: record.evidenceStatus,
-  }))
+  const records = intelligence.state.value.competitors
+    .filter(competitorHasUsableDashboardEvidence)
+    .slice(0, 5)
+  return records.map(record => {
+    const shareEvidence = record.metricEvidence?.marketShare
+    const share = shareEvidence?.value?.trim() &&
+      sourceIsUsable(shareEvidence.source) &&
+      !shareEvidence.reviewRequired
+      ? shareEvidence.value
+      : 'Not published by cited source'
+    return {
+      company: record.companyName || 'Hermes source search running',
+      region: record.countryRegion || 'Hermes source search running',
+      product: record.productEquivalent || 'Hermes source search running',
+      share,
+      source: record.source?.title || 'Source search running',
+      status: record.evidenceStatus,
+    }
+  })
 })
 const marketAutopilotCards = computed(() => [
   {
@@ -419,7 +435,7 @@ const globalOpportunityRegions = computed<GlobalOpportunityRegionRow[]>(() =>
     })),
 )
 const autopilotCountryGrowthRows = computed<CountryConsumptionGrowthRow[]>(() =>
-  claims.value.flatMap(countryGrowthRowsFromClaim),
+  importedMarketClaims.value.flatMap(countryGrowthRowsFromClaim),
 )
 const displayCountryConsumptionGrowthRows = computed<CountryConsumptionGrowthRow[]>(() => autopilotCountryGrowthRows.value)
 const countryGrowthSummaryCards = computed(() => {
@@ -568,6 +584,12 @@ function claimHasUsableSourceValue(claim: MarketClaim | null | undefined): boole
   return Boolean(claim?.value?.trim() && sourceIsUsable(claim.source))
 }
 
+function competitorHasUsableDashboardEvidence(record: CompetitorIntelligenceRecord): boolean {
+  const metricEvidence = Object.values(record.metricEvidence || {})
+  if (metricEvidence.some(item => sourceIsUsable(item?.source) && !item?.reviewRequired)) return true
+  return Boolean(sourceIsUsable(record.source) && !record.reviewRequired)
+}
+
 function claimSearchText(claim: MarketClaim, includeValue = false): string {
   return [
     claim.fieldKey,
@@ -607,6 +629,23 @@ function marketClaimDisplayStatus(claim: MarketClaim | null | undefined): Intell
   return claim.reviewRequired ? 'Candidate Source' : 'Source-backed'
 }
 
+function canDisplayMarketClaimAsDashboardTruth(claim: MarketClaim | null | undefined): boolean {
+  if (!claimHasUsableSourceValue(claim) || !claim) return false
+  if (isPlaceholderOnlyClaim(claim)) return false
+  if (isSensitiveMarketClaim(claim)) return false
+  if (claim.reviewRequired) return false
+  const status = marketClaimDisplayStatus(claim)
+  return [
+    'Verified',
+    'Source-backed',
+    'Official Data',
+    'Trusted Source Auto-Updated',
+    'User Approved',
+    'Investor Approved',
+    'Approved Assumption',
+  ].includes(status)
+}
+
 function criticalMarketClaimIsReviewGated(claim: MarketClaim): boolean {
   const text = claimSearchText(claim, true)
   const isCritical = /\b(market size|market value|growth rate|market growth|cagr|import dependence|import share|target market|our target|opportunity score|market opportunity)\b/i.test(text)
@@ -631,6 +670,7 @@ function opportunityRegionLabel(claim: MarketClaim): string {
 
 function findMarketClaim(keywords: string[]): MarketClaim | null {
   const matches = claims.value.filter(claim => {
+    if (!canDisplayMarketClaimAsDashboardTruth(claim)) return false
     const haystack = claimSearchText(claim)
     return keywords.some(keyword => haystack.includes(keyword))
   })
@@ -832,32 +872,52 @@ function inferCountryGrowthProxyMetric(claim: MarketClaim): string {
   return 'Trusted-source market claim'
 }
 
-function syncMarketNow() {
-  const saved = intelligence.addResearchFinding({
-    summary: [
-      'Market Intelligence refresh draft',
-      `Refresh job: ${EXECUTIVE_REFRESH_JOB_NAME}`,
-      `Last updated: ${formatDateTime(refreshState.value.lastRun)}`,
-      `Claims available: ${claims.value.length}`,
-      `Competitor records: ${competitorClaimCount.value}`,
-      'Every unsourced market value remains in source review.',
-    ].join('\n'),
-    keyClaim: 'Market intelligence requires source review',
-    area: 'market',
-    evidenceStatus: 'To Verify',
-    confidence: 'medium',
-    source: null,
-    suggestedTask: 'Review market size, growth, pricing, customer segment, and competitor evidence before investor use.',
-    riskNote: 'Unsourced market values must not be used as verified investor claims.',
-  })
-  persistRefreshState({
-    lastRun: new Date().toISOString(),
-    nextRun: nextTwiceDailyRefresh(),
-    lastStatus: 'Market refresh staged for Research Result Review',
-    resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + 1,
-    localOnly: true,
-  })
-  message.success(`Research review draft staged: ${saved.keyClaim}`)
+async function syncMarketNow() {
+  syncingMarket.value = true
+  try {
+    const result = await autopilot.runFullDashboardImportNow()
+    persistRefreshState({
+      lastRun: new Date().toISOString(),
+      nextRun: nextTwiceDailyRefresh(),
+      lastStatus: result.message,
+      resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + result.staged,
+      localOnly: false,
+    })
+    if (result.errors.length) {
+      message.warning(`${result.message} Some sources need attention: ${result.errors.slice(0, 2).join('; ')}`)
+    } else {
+      message.success(result.message)
+    }
+  } catch (err) {
+    const saved = intelligence.addResearchFinding({
+      summary: [
+        'Market Intelligence refresh draft',
+        `Refresh job: ${EXECUTIVE_REFRESH_JOB_NAME}`,
+        `Last updated: ${formatDateTime(refreshState.value.lastRun)}`,
+        `Claims available: ${claims.value.length}`,
+        `Competitor records: ${competitorClaimCount.value}`,
+        'The server trusted-source importer was unavailable, so this was staged for review instead of pretending data was imported.',
+        'Every unsourced market value remains in source review.',
+      ].join('\n'),
+      keyClaim: 'Market intelligence requires source review',
+      area: 'market',
+      evidenceStatus: 'To Verify',
+      confidence: 'medium',
+      source: null,
+      suggestedTask: 'Review market size, growth, pricing, customer segment, and competitor evidence before investor use.',
+      riskNote: err instanceof Error ? `Trusted-source import fallback: ${err.message}` : 'Trusted-source import fallback was used.',
+    })
+    persistRefreshState({
+      lastRun: new Date().toISOString(),
+      nextRun: nextTwiceDailyRefresh(),
+      lastStatus: `Research review draft staged: ${saved.keyClaim}`,
+      resultNeedsReviewCount: refreshState.value.resultNeedsReviewCount + 1,
+      localOnly: true,
+    })
+    message.warning('Trusted-source import unavailable; market refresh staged for research review')
+  } finally {
+    syncingMarket.value = false
+  }
 }
 
 function isSensitiveMarketClaim(claim: MarketClaim): boolean {
@@ -1115,7 +1175,10 @@ function removeClaim(claim: MarketClaim) {
   else message.error('Market claim was not found')
 }
 
-onMounted(loadRefreshState)
+onMounted(() => {
+  loadRefreshState()
+  void intelligence.hydrateFeasibilityIntelligenceFromServer({ seedServerIfEmpty: false })
+})
 </script>
 
 <template>
@@ -1243,7 +1306,7 @@ onMounted(loadRefreshState)
           </p>
         </div>
         <NButton size="small" type="primary" secondary @click="createResearchTask('Global textile softener market validation')">
-          Create global research task
+            Create research task
         </NButton>
       </div>
 
@@ -1556,7 +1619,7 @@ onMounted(loadRefreshState)
           <span>Next update: {{ formatDateTime(refreshState.nextRun) }}</span>
           <span>Status: {{ refreshState.lastStatus }}</span>
           <span>Needs review: {{ refreshState.resultNeedsReviewCount }}</span>
-          <NButton size="tiny" type="primary" @click="syncMarketNow">Sync Now</NButton>
+          <NButton size="tiny" type="primary" :loading="syncingMarket" @click="syncMarketNow">Sync Now</NButton>
         </div>
       </div>
 

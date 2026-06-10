@@ -30,12 +30,16 @@ export interface DashboardSourceTarget {
   fields: string[]
 }
 
-const SOURCE_BACKED_STATUSES = new Set<IntelligenceEvidenceStatus>([
+const SOURCE_BACKED_STATUSES = new Set<string>([
   'Verified',
+  'User Approved',
+  'Investor Approved',
+  'Approved Assumption',
   'Source-backed',
   'Official Data',
   'Trusted Source Auto-Updated',
   'Supplier Evidence',
+  'Official Company Evidence',
 ])
 
 const COMPETITOR_AGGREGATE_FIELDS = new Set([
@@ -43,7 +47,6 @@ const COMPETITOR_AGGREGATE_FIELDS = new Set([
   normalizeDashboardField('Competitor Landscape Table'),
   normalizeDashboardField('Source Coverage / Confidence'),
 ])
-const COMPETITOR_MARKET_SHARE_FIELD = normalizeDashboardField('Market Share Chart')
 
 export function normalizeDashboardField(value: string): string {
   return String(value || '')
@@ -65,23 +68,28 @@ export function dashboardFieldMatches(value: string, fields: string[]): boolean 
 }
 
 export function hasSourceBackedDashboardStatus(status?: string | null): boolean {
-  return SOURCE_BACKED_STATUSES.has(String(status || '').trim() as IntelligenceEvidenceStatus)
+  return SOURCE_BACKED_STATUSES.has(String(status || '').trim())
 }
 
 function sourceBackedSource(source?: SourceReference | null): SourceReference | null {
+  if (/^source missing$/i.test(source?.title?.trim() || '')) return null
   return sourceIsUsable(source) ? source! : null
 }
 
 function sourceBackedMarketClaim(claim: MarketClaim): boolean {
+  if (claim.reviewRequired) return false
   return Boolean(sourceBackedSource(claim.source) && hasSourceBackedDashboardStatus(normalizedMarketClaimStatus(claim)))
 }
 
 function sourceBackedDataRoomSource(record: DataRoomSourceRecord): boolean {
+  if (record.reviewRequired) return false
   return Boolean(sourceBackedSource(record.source) && hasSourceBackedDashboardStatus(record.evidenceStatus))
 }
 
 function sourceBackedCompetitor(record: CompetitorIntelligenceRecord): boolean {
-  return Boolean(sourceBackedSource(record.source) && hasSourceBackedDashboardStatus(record.evidenceStatus))
+  if (record.reviewRequired) return false
+  if (sourceBackedSource(record.source) && hasSourceBackedDashboardStatus(record.evidenceStatus)) return true
+  return Boolean(sourceBackedCompetitorMetricEvidence(record))
 }
 
 function targetFieldsForGroup(targets: DashboardSourceTarget[], group: ResearchReviewDashboardTargetGroup): string[] {
@@ -94,15 +102,41 @@ function anyDashboardFieldMatches(values: Array<string | undefined>, fields: str
   return values.some(value => value ? dashboardFieldMatches(value, fields) : false)
 }
 
+function sourceBackedCompetitorMetricEvidence(
+  record: CompetitorIntelligenceRecord,
+  fields: string[] = [],
+): NonNullable<CompetitorIntelligenceRecord['metricEvidence']>[keyof NonNullable<CompetitorIntelligenceRecord['metricEvidence']>] | null {
+  const normalizedFields = new Set(fields.map(normalizeDashboardField))
+  const candidates = [
+    { field: normalizeDashboardField('Market Share Chart'), evidence: record.metricEvidence?.marketShare },
+    { field: normalizeDashboardField('Revenue'), evidence: record.metricEvidence?.revenue },
+    { field: normalizeDashboardField('YoY Growth'), evidence: record.metricEvidence?.yearlyGrowth },
+    { field: normalizeDashboardField('Traffic'), evidence: record.metricEvidence?.traffic },
+    { field: normalizeDashboardField('Rating'), evidence: record.metricEvidence?.rating },
+    { field: normalizeDashboardField('Price'), evidence: record.metricEvidence?.pricingEvidence },
+    { field: normalizeDashboardField('Last Updated'), evidence: record.metricEvidence?.lastUpdated },
+  ]
+  for (const candidate of candidates) {
+    if (fields.length > 0 && !normalizedFields.has(candidate.field) && ![...normalizedFields].some(field => COMPETITOR_AGGREGATE_FIELDS.has(field))) continue
+    const evidence = candidate.evidence
+    if (!evidence || evidence.reviewRequired) continue
+    if (sourceBackedSource(evidence.source) && hasSourceBackedDashboardStatus(String(evidence.evidenceStatus || record.evidenceStatus))) return evidence
+  }
+  return null
+}
+
 function competitorMatchesDashboardFields(record: CompetitorIntelligenceRecord, fields: string[]): boolean {
   const normalizedFields = new Set(fields.map(normalizeDashboardField))
   if ([...normalizedFields].some(field => COMPETITOR_AGGREGATE_FIELDS.has(field))) return true
-  return normalizedFields.has(COMPETITOR_MARKET_SHARE_FIELD) && Boolean(record.marketShare?.trim())
+  if (sourceBackedCompetitorMetricEvidence(record, fields)) return true
+  return false
 }
 
 function competitorValueForDashboardFields(record: CompetitorIntelligenceRecord, fields: string[]): string {
+  const metricEvidence = sourceBackedCompetitorMetricEvidence(record, fields)
+  if (metricEvidence?.value?.trim()) return metricEvidence.value.trim()
   const normalizedFields = new Set(fields.map(normalizeDashboardField))
-  if (normalizedFields.has(COMPETITOR_MARKET_SHARE_FIELD) && record.marketShare?.trim()) return record.marketShare.trim()
+  if (![...normalizedFields].some(field => COMPETITOR_AGGREGATE_FIELDS.has(field))) return ''
   return record.productEquivalent || record.notes || 'Source-backed competitor profile'
 }
 
@@ -151,16 +185,21 @@ export function resolveSourceBackedDashboardRecords(
       })),
     ...state.competitors
       .filter(record => competitorFields.length > 0 && sourceBackedCompetitor(record) && competitorMatchesDashboardFields(record, competitorFields))
-      .map((record): SourceBackedDashboardRecord => ({
-        id: record.id,
-        label: record.companyName,
-        value: competitorValueForDashboardFields(record, competitorFields),
-        source: sourceBackedSource(record.source)!,
-        evidenceStatus: record.evidenceStatus,
-        recordType: 'competitor',
-        dashboardGroup: 'competitorRecords',
-        original: record,
-      })),
+      .map((record): SourceBackedDashboardRecord => {
+        const metricEvidence = sourceBackedCompetitorMetricEvidence(record, competitorFields)
+        const metricSource = sourceBackedSource(metricEvidence?.source)
+        const recordSource = sourceBackedSource(record.source)
+        return {
+          id: record.id,
+          label: record.companyName,
+          value: competitorValueForDashboardFields(record, competitorFields),
+          source: metricSource || recordSource!,
+          evidenceStatus: metricEvidence?.evidenceStatus as IntelligenceEvidenceStatus || record.evidenceStatus,
+          recordType: 'competitor',
+          dashboardGroup: 'competitorRecords',
+          original: record,
+        }
+      }),
   ]
 }
 
