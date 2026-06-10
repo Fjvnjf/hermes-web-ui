@@ -238,7 +238,7 @@ const competitorResearchQueue = [
   'Transfar CWAS/CWMS equivalent products',
 ]
 const autoVerifyingText = 'Awaiting trusted-source import'
-const noApprovedSourceBackedValue = 'No approved source-backed value'
+const noApprovedSourceBackedValue = 'Review-gated empty state - No approved source-backed value'
 const reviewRequiredText = 'Review required'
 const sourceFoundReviewRequiredText = 'Source found - review required'
 const competitorMetricGapLabel: Record<CompetitorMetricField, string> = {
@@ -355,16 +355,16 @@ const competitorCategoryOptions = [
 ]
 const competitorEvidenceOptions: CompetitorEvidenceFilter[] = ['All', 'Verified', 'Auto-checking', 'Review needed', 'Restricted']
 const competitorTableColumns: Array<{ key: CompetitorSortKey; label: string }> = [
-  { key: 'competitor', label: 'Competitor' },
-  { key: 'product', label: 'Product' },
-  { key: 'price', label: 'Price' },
-  { key: 'marketShare', label: 'Market Share' },
-  { key: 'revenue', label: 'Revenue' },
-  { key: 'yoyGrowth', label: 'YoY Growth' },
-  { key: 'traffic', label: 'Traffic' },
-  { key: 'rating', label: 'Rating' },
-  { key: 'lastUpdated', label: 'Last Updated' },
-  { key: 'confidence', label: 'Confidence' },
+  { key: 'competitor', label: 'COMPANY' },
+  { key: 'product', label: 'PRODUCT VARIATIONS' },
+  { key: 'price', label: 'PRICE' },
+  { key: 'marketShare', label: 'MARKET SHARE' },
+  { key: 'revenue', label: 'REVENUE' },
+  { key: 'yoyGrowth', label: 'YOY GROWTH' },
+  { key: 'traffic', label: 'TRAFFIC' },
+  { key: 'rating', label: 'RATING' },
+  { key: 'lastUpdated', label: 'LAST UPDATED' },
+  { key: 'confidence', label: 'CONFIDENCE' },
 ]
 const competitorCategoryFilter = ref('All')
 const competitorEvidenceFilter = ref<CompetitorEvidenceFilter>('All')
@@ -1723,9 +1723,9 @@ function addCompetitor() {
           >
             {{ column.label }}{{ sortIndicator(column.key) }}
           </button>
-          <span>Source</span>
-          <span>Leader</span>
-          <span>Next Action</span>
+          <span>SOURCE</span>
+          <span>LEADER</span>
+          <span>NEXT ACTION</span>
         </div>
         <div v-if="competitorComparisonRows.length === 0" class="comparison-empty">
           No source-backed competitor metrics match this filter. Import or approve metric evidence before showing

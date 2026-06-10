@@ -66,6 +66,9 @@ interface GlobalMarketSignalRow {
   finding: string
   status: IntelligenceEvidenceStatus
   source: string
+  confidence: string
+  lastChecked: string
+  reviewState: string
   businessMeaning: string
   nextAction: string
 }
@@ -76,6 +79,30 @@ interface GlobalOpportunityRegionRow {
   verifiedEvidence: string
   missingEvidence: string
   status: IntelligenceEvidenceStatus
+  confidence: string
+  lastChecked: string
+}
+
+interface MarketSegmentRow {
+  label: string
+  value: string
+  growth: string
+  source: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence: string
+  lastChecked: string
+  reviewState: string
+}
+
+interface TargetOpportunityRow {
+  label: string
+  score: string
+  period: string
+  source: string
+  evidenceStatus: IntelligenceEvidenceStatus
+  confidence: string
+  lastChecked: string
+  reviewState: string
 }
 
 type CompetitorMetricEvidence = NonNullable<CompetitorIntelligenceRecord['metricEvidence']>[keyof NonNullable<CompetitorIntelligenceRecord['metricEvidence']>]
@@ -91,7 +118,6 @@ const approvedMarketTruthStatuses: IntelligenceEvidenceStatus[] = [
   'Trusted Source Auto-Updated',
   'User Approved',
   'Investor Approved',
-  'Approved Assumption',
 ]
 const trustedCountrySignalStatuses: IntelligenceEvidenceStatus[] = [
   ...approvedMarketTruthStatuses,
@@ -152,9 +178,7 @@ const sections = [
 const claims = computed(() => intelligence.state.value.marketClaims)
 const sourceReadyCount = computed(() =>
   claims.value.filter(claim =>
-    claimHasUsableSourceValue(claim) &&
-    !isSensitiveMarketClaim(claim) &&
-    !isPlaceholderOnlyClaim(claim),
+    claimCanDisplayOnPrimaryMarketSurface(claim),
   ).length,
 )
 const claimSubmitLabel = computed(() => editingClaimId.value ? 'Update claim' : 'Save claim')
@@ -181,28 +205,23 @@ const executiveMarketMetrics = computed(() => [
     value: competitorClaimCount.value ? String(competitorClaimCount.value) : 'No approved source-backed value',
     evidenceStatus: competitorClaimCount.value ? 'Source-backed' as IntelligenceEvidenceStatus : 'Reference Only' as IntelligenceEvidenceStatus,
     sourceLabel: competitorClaimCount.value ? 'Competitor Intelligence records' : 'Trusted Sources / Research Review',
+    confidence: competitorClaimCount.value ? 'record-level' : 'Not recorded',
+    lastChecked: competitorClaimCount.value ? 'See Competitor Intelligence records' : 'Not recorded',
+    reviewState: competitorClaimCount.value ? 'Approved source-backed record' : 'Review-gated empty state',
   },
 ])
-const marketSegments = computed(() => [
-  marketSegment('Textile Softeners Total', ['textile softeners total', 'textile softener market']),
-  marketSegment('Cationic / Ester Quat', ['cationic', 'ester quat', 'esterquat']),
-  marketSegment('Silicone Softeners', ['silicone softener']),
-  marketSegment('Non-ionic', ['non-ionic', 'nonionic']),
-  marketSegment('CWAS / CWMS Target Segment', ['cwas', 'cwms', 'target segment']),
-  marketSegment('Export Opportunity', ['export opportunity', 'export market']),
-])
-const targetOpportunityRows = computed(() => [
-  opportunityRow('China provinces', ['china province', 'jiangsu', 'zhejiang', 'guangdong']),
-  opportunityRow('Bangladesh', ['bangladesh']),
-  opportunityRow('Vietnam', ['vietnam']),
-  opportunityRow('India', ['india']),
-  opportunityRow('Pakistan', ['pakistan']),
-  opportunityRow('Turkey', ['turkey', 'turkiye']),
-  opportunityRow('Indonesia', ['indonesia']),
-  opportunityRow('EU / Germany', ['eu', 'european union', 'germany']),
-  opportunityRow('United States', ['united states', 'usa']),
-  opportunityRow('GCC / Middle East', ['gcc', 'middle east', 'saudi arabia', 'united arab emirates', 'uae']),
-])
+const marketSegments = computed<MarketSegmentRow[]>(() =>
+  displayableMarketClaims.value
+    .filter(claimCanDriveSegmentationRow)
+    .slice(0, 6)
+    .map(marketSegment),
+)
+const targetOpportunityRows = computed<TargetOpportunityRow[]>(() =>
+  displayableMarketClaims.value
+    .filter(claimCanDriveTargetOpportunityRow)
+    .slice(0, 10)
+    .map(opportunityRow),
+)
 const topCompetitorRows = computed(() => {
   const records = intelligence.state.value.competitors
     .filter(competitorHasUsableDashboardEvidence)
@@ -233,10 +252,10 @@ const marketAutopilotCards = computed(() => [
   {
     icon: '📊',
     label: 'Market data',
-    value: sourceReadyCount.value ? `${sourceReadyCount.value} source-attached` : 'Waiting',
+    value: sourceReadyCount.value ? `${sourceReadyCount.value} approved` : 'Waiting',
     note: sourceReadyCount.value
-      ? 'Source-attached market records fill this page only through review-gated surfaces.'
-      : 'No source-attached market records imported yet.',
+      ? 'Approved imported market records are available for primary surfaces.'
+      : 'No reviewed trusted-source market records imported yet.',
   },
   {
     icon: '🌍',
@@ -272,10 +291,10 @@ const sourceBackedTemplateKpis = [
   },
   {
     label: 'Import Dependence',
-    value: 'Trade-proxy source connected',
-    status: 'Trade Proxy' as IntelligenceEvidenceStatus,
+    value: 'Reference archived pending trusted-source import',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'WTO / World Bank WITS trade data',
-    note: 'Use WITS/UN Comtrade for import/export research; no direct textile-softener HS code is approved yet.',
+    note: 'Reference only. Import a reviewed WITS/UN Comtrade claim before showing import dependence.',
   },
   {
     label: 'Chemicon Target',
@@ -323,9 +342,9 @@ const sourceBackedSegments = [
   },
   {
     segment: 'Silicone / Non-ionic Textile Softeners',
-    size: 'Official competitor product pages confirm active segment',
-    growth: 'No cited public CAGR for this exact segment',
-    status: 'Candidate Source' as IntelligenceEvidenceStatus,
+    size: 'Reference archived pending trusted-source import',
+    growth: 'Reference archived pending trusted-source import',
+    status: 'Reference Only' as IntelligenceEvidenceStatus,
     source: 'WACKER / RUDOLF / Archroma official product pages',
   },
 ]
@@ -441,11 +460,14 @@ const importedMarketClaims = computed(() =>
     !isPlaceholderOnlyClaim(claim),
   ),
 )
+const displayableMarketClaims = computed(() =>
+  importedMarketClaims.value.filter(claimCanDisplayOnPrimaryMarketSurface),
+)
 const trustedCountryGrowthClaims = computed(() =>
   importedMarketClaims.value.filter(claimCanDisplayCountryGrowthSignal),
 )
 const globalMarketIntelligenceRows = computed<GlobalMarketSignalRow[]>(() =>
-  importedMarketClaims.value.slice(0, 6).map(claim => {
+  displayableMarketClaims.value.slice(0, 6).map(claim => {
     const status = marketClaimDisplayStatus(claim)
     const displayAsEvidence = canDisplayMarketClaimAsDashboardTruth(claim) || claimCanDisplayCountryGrowthSignal(claim)
     return {
@@ -453,6 +475,9 @@ const globalMarketIntelligenceRows = computed<GlobalMarketSignalRow[]>(() =>
       finding: marketClaimValueForPrimarySurface(claim),
       status,
       source: marketClaimSourceLabel(claim),
+      confidence: marketClaimConfidence(claim),
+      lastChecked: marketClaimLastChecked(claim),
+      reviewState: claim.reviewRequired ? 'Review required' : 'Approved for primary market surface',
       businessMeaning: displayAsEvidence
         ? 'Imported trusted-source signal. Confirm scope before treating it as product-specific demand.'
         : 'Source is attached, but this claim is review-gated before dashboard or investor use.',
@@ -461,7 +486,7 @@ const globalMarketIntelligenceRows = computed<GlobalMarketSignalRow[]>(() =>
   }),
 )
 const globalOpportunityRegions = computed<GlobalOpportunityRegionRow[]>(() =>
-  importedMarketClaims.value
+  displayableMarketClaims.value
     .filter(claim => /country|region|province|target|export|opportunit|trade proxy|import signal/i.test(claimSearchText(claim, true)))
     .slice(0, 6)
     .map(claim => ({
@@ -472,6 +497,8 @@ const globalOpportunityRegions = computed<GlobalOpportunityRegionRow[]>(() =>
         ? 'Review approval required before use as a target, market size, CAGR, import-dependence, or opportunity claim.'
         : 'Direct textile-softener consumption proof still needs review unless the source explicitly proves it.',
       status: marketClaimDisplayStatus(claim),
+      confidence: marketClaimConfidence(claim),
+      lastChecked: marketClaimLastChecked(claim),
     })),
 )
 const autopilotCountryGrowthRows = computed<CountryConsumptionGrowthRow[]>(() =>
@@ -660,21 +687,9 @@ function marketClaimDisplayStatus(claim: MarketClaim | null | undefined): Intell
   if (!claim) return 'To Verify'
   const normalized = normalizedMarketClaimStatus(claim)
   if (!claimHasUsableSourceValue(claim)) return normalized
-  if (claim.reviewRequired) return 'Candidate Source'
+  if (claim.reviewRequired) return normalized !== 'To Verify' && normalized !== 'Missing' ? normalized : 'Candidate Source'
   if (normalized !== 'To Verify' && normalized !== 'Missing') return normalized
-
-  const trace = [
-    claim.label,
-    claim.value,
-    claim.dataType,
-    claim.sourceTier,
-    claim.source?.title,
-    claim.source?.url,
-  ].filter(Boolean).join(' ').toLowerCase()
-
-  if (/trade|proxy|import|export|hs\\s*\\d+|comtrade|wits/.test(trace)) return 'Trade Proxy'
-  if (/tier\\s*1|tier1|official|government|regulator|statistical|un\\s+comtrade|world bank|wto/.test(trace)) return 'Official Data'
-  return claim.reviewRequired ? 'Candidate Source' : 'Source-backed'
+  return normalized
 }
 
 function canDisplayMarketClaimAsDashboardTruth(claim: MarketClaim | null | undefined): boolean {
@@ -684,6 +699,10 @@ function canDisplayMarketClaimAsDashboardTruth(claim: MarketClaim | null | undef
   if (claim.reviewRequired) return false
   const status = marketClaimDisplayStatus(claim)
   return marketStatusIsApprovedDashboardTruth(status)
+}
+
+function claimCanDisplayOnPrimaryMarketSurface(claim: MarketClaim | null | undefined): boolean {
+  return canDisplayMarketClaimAsDashboardTruth(claim) || claimCanDisplayCountryGrowthSignal(claim)
 }
 
 function claimCanDisplayCountryGrowthSignal(claim: MarketClaim | null | undefined): boolean {
@@ -724,6 +743,14 @@ function marketClaimLastChecked(claim: MarketClaim): string {
   return claim.lastChecked || claim.source?.date || 'Not recorded'
 }
 
+function marketClaimReviewState(claim: MarketClaim | null | undefined): string {
+  if (!claim) return 'Review-gated empty state'
+  if (claim.reviewRequired) return 'Review required'
+  if (claimCanDisplayOnPrimaryMarketSurface(claim)) return 'Approved for primary market surface'
+  if (claimHasUsableSourceValue(claim)) return 'Review required'
+  return 'Awaiting trusted-source import'
+}
+
 function opportunityRegionLabel(claim: MarketClaim): string {
   const label = claim.proposedDashboardField || claim.label
   const country = trackedCountryNames.find(name => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(`${label} ${claim.value || ''}`))
@@ -755,7 +782,7 @@ function findMarketClaim(keywords: string[]): MarketClaim | null {
 
 function marketMetric(label: string, claim: MarketClaim | null) {
   const fallback = sourceBackedMarketMetric(label)
-  const useClaim = Boolean(claim && claimHasUsableSourceValue(claim) && !isPlaceholderOnlyClaim(claim))
+  const useClaim = Boolean(claim && canDisplayMarketClaimAsDashboardTruth(claim))
   const sensitivityClaim = claim || { label, value: fallback?.value || '', evidenceStatus: fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus }
   return {
     label,
@@ -766,33 +793,49 @@ function marketMetric(label: string, claim: MarketClaim | null) {
         : fallback?.value || NO_APPROVED_SOURCE_VALUE,
     evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback?.evidenceStatus || 'Reference Only' as IntelligenceEvidenceStatus,
     sourceLabel: useClaim ? marketClaimSourceLabel(claim!) : fallback?.sourceLabel || MARKET_REVIEW_SOURCE_LABEL,
+    confidence: useClaim ? marketClaimConfidence(claim!) : 'Not recorded',
+    lastChecked: useClaim ? marketClaimLastChecked(claim!) : 'Not recorded',
+    reviewState: useClaim ? marketClaimReviewState(claim!) : 'Review-gated empty state',
   }
 }
 
-function marketSegment(label: string, keywords: string[]) {
-  const claim = findMarketClaim(keywords)
-  const fallback = sourceBackedMarketSegment(label)
-  const useClaim = Boolean(claim && claimHasUsableSourceValue(claim) && !isPlaceholderOnlyClaim(claim))
+function marketSegment(claim: MarketClaim): MarketSegmentRow {
+  const label = claim.proposedDashboardField || claim.label
+  const claimValue = primaryMarketClaimValue(claim)
+  const isGrowthClaim = /growth|cagr/i.test(claimSearchText(claim, true))
   return {
     label,
-    value: useClaim ? primaryMarketClaimValue(claim!) : fallback.value,
-    growth: useClaim && claim?.value?.toLowerCase().includes('growth') ? primaryMarketClaimValue(claim!) : fallback.growth,
-    source: useClaim ? marketClaimSourceLabel(claim!) : fallback.source,
-    evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback.evidenceStatus,
+    value: isGrowthClaim ? NO_APPROVED_SOURCE_VALUE : claimValue,
+    growth: isGrowthClaim ? claimValue : NO_APPROVED_SOURCE_VALUE,
+    source: marketClaimSourceLabel(claim),
+    evidenceStatus: marketClaimDisplayStatus(claim),
+    confidence: marketClaimConfidence(claim),
+    lastChecked: marketClaimLastChecked(claim),
+    reviewState: marketClaimReviewState(claim),
   }
 }
 
-function opportunityRow(label: string, keywords: string[]) {
-  const claim = findMarketClaim(keywords)
-  const fallback = sourceBackedOpportunityRow(label)
-  const useClaim = Boolean(claim && claimHasUsableSourceValue(claim) && !isPlaceholderOnlyClaim(claim))
+function opportunityRow(claim: MarketClaim): TargetOpportunityRow {
   return {
-    label,
-    score: useClaim ? primaryMarketClaimValue(claim!) : fallback.score,
+    label: opportunityRegionLabel(claim),
+    score: primaryMarketClaimValue(claim),
     period: growthPeriod.value,
-    source: useClaim ? marketClaimSourceLabel(claim!) : fallback.source,
-    evidenceStatus: useClaim ? marketClaimDisplayStatus(claim!) : fallback.evidenceStatus,
+    source: marketClaimSourceLabel(claim),
+    evidenceStatus: marketClaimDisplayStatus(claim),
+    confidence: marketClaimConfidence(claim),
+    lastChecked: marketClaimLastChecked(claim),
+    reviewState: marketClaimReviewState(claim),
   }
+}
+
+function claimCanDriveSegmentationRow(claim: MarketClaim): boolean {
+  if (!canDisplayMarketClaimAsDashboardTruth(claim)) return false
+  return /segment|segmentation|textile softener|softeners total|cationic|ester\s*quat|esterquat|silicone|non-ionic|nonionic|fabric care|export opportunity/i.test(claimSearchText(claim, true))
+}
+
+function claimCanDriveTargetOpportunityRow(claim: MarketClaim): boolean {
+  if (!canDisplayMarketClaimAsDashboardTruth(claim)) return false
+  return /country|region|province|target|export|opportunit|import dependence|import share|market opportunity/i.test(claimSearchText(claim, true))
 }
 
 function sourceBackedMarketMetric(label: string): { value: string; evidenceStatus: IntelligenceEvidenceStatus; sourceLabel: string } | null {
@@ -818,48 +861,6 @@ function sourceBackedMarketMetric(label: string): { value: string; evidenceStatu
     }
   }
   return null
-}
-
-function sourceBackedMarketSegment(label: string): { value: string; growth: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
-  const normalized = label.toLowerCase()
-  if (normalized.includes('silicone') || normalized.includes('non-ionic')) {
-    return {
-      value: NO_APPROVED_SOURCE_VALUE,
-      growth: NO_APPROVED_SOURCE_VALUE,
-      source: MARKET_REVIEW_SOURCE_LABEL,
-      evidenceStatus: 'Reference Only',
-    }
-  }
-  if (normalized.includes('cwas') || normalized.includes('cwms')) {
-    return {
-      value: NO_APPROVED_SOURCE_VALUE,
-      growth: NO_APPROVED_SOURCE_VALUE,
-      source: MARKET_REVIEW_SOURCE_LABEL,
-      evidenceStatus: 'Reference Only',
-    }
-  }
-  if (normalized.includes('export')) {
-    return {
-      value: NO_APPROVED_SOURCE_VALUE,
-      growth: NO_APPROVED_SOURCE_VALUE,
-      source: MARKET_REVIEW_SOURCE_LABEL,
-      evidenceStatus: 'Reference Only',
-    }
-  }
-  return {
-    value: NO_APPROVED_SOURCE_VALUE,
-    growth: NO_APPROVED_SOURCE_VALUE,
-    source: MARKET_REVIEW_SOURCE_LABEL,
-    evidenceStatus: 'Reference Only',
-  }
-}
-
-function sourceBackedOpportunityRow(_label: string): { score: string; source: string; evidenceStatus: IntelligenceEvidenceStatus } {
-  return {
-    score: 'No approved source-backed value',
-    source: 'Trusted Sources / Research Review',
-    evidenceStatus: 'Reference Only',
-  }
 }
 
 function countryFlag(country: string): string {
@@ -1003,6 +1004,9 @@ function isSensitiveMarketClaim(claim: MarketClaim): boolean {
 
 function visibleClaimValue(claim: MarketClaim): string {
   if (isSensitiveMarketClaim(claim)) return 'Restricted'
+  if (!claimCanDisplayOnPrimaryMarketSurface(claim) && claimHasUsableSourceValue(claim) && !isPlaceholderOnlyClaim(claim)) {
+    return REVIEW_REQUIRED_VALUE
+  }
   return displayMarketValue(claim.value)
 }
 
@@ -1272,8 +1276,8 @@ onMounted(() => {
       </div>
       <div class="summary-card">
         <strong>{{ sourceReadyCount }}</strong>
-        <span>source-attached claims</span>
-        <small>source title plus URL/date required</small>
+        <span>approved source claims</span>
+        <small>usable source plus review approval required</small>
       </div>
       <div class="header-links">
         <RouterLink v-if="canUseRoute('hermes.rawMaterialSourcing')" :to="{ name: 'hermes.rawMaterialSourcing' }">Raw materials</RouterLink>
@@ -1401,6 +1405,9 @@ onMounted(() => {
           </div>
           <p>{{ displayMarketText(row.finding) }}</p>
           <small>Source: {{ row.source }}</small>
+          <small>Confidence: {{ row.confidence }}</small>
+          <small>Last checked: {{ row.lastChecked }}</small>
+          <small>Review state: {{ row.reviewState }}</small>
           <strong>Business meaning</strong>
           <span>{{ displayMarketText(row.businessMeaning) }}</span>
           <NButton size="tiny" secondary @click="createResearchTask(row.nextAction)">
@@ -1422,7 +1429,7 @@ onMounted(() => {
         </p>
         <div v-else class="global-opportunity-table">
           <div class="global-opportunity-row head">
-            <span>Region / cluster</span><span>Demand signal</span><span>Verified evidence</span><span>Missing evidence</span><span>Status</span>
+            <span>Region / cluster</span><span>Demand signal</span><span>Verified evidence</span><span>Missing evidence</span><span>Status</span><span>Review metadata</span>
           </div>
           <div v-for="region in globalOpportunityRegions" :key="region.region" class="global-opportunity-row">
             <strong>{{ region.region }}</strong>
@@ -1430,6 +1437,7 @@ onMounted(() => {
             <span>{{ displayMarketText(region.verifiedEvidence) }}</span>
             <span>{{ displayMarketText(region.missingEvidence) }}</span>
             <NTag size="small" :type="statusType(region.status)">{{ displayMarketStatus(region.status) }}</NTag>
+            <small>Confidence: {{ region.confidence }} / Last checked: {{ region.lastChecked }}</small>
           </div>
         </div>
       </article>
@@ -1714,6 +1722,9 @@ onMounted(() => {
           <strong>{{ displayMarketValue(metric.value) }}</strong>
           <NTag size="small" :type="statusType(metric.evidenceStatus)">{{ displayMarketStatus(metric.evidenceStatus) }}</NTag>
           <small>{{ metric.sourceLabel }}</small>
+          <small>Confidence: {{ metric.confidence }}</small>
+          <small>Last checked: {{ metric.lastChecked }}</small>
+          <small>Review state: {{ metric.reviewState }}</small>
         </article>
       </div>
 
@@ -1727,11 +1738,16 @@ onMounted(() => {
         <div class="segmentation-row head">
           <span>Segment</span><span>Size / Value</span><span>Growth</span><span>Source</span><span>Evidence Status</span>
         </div>
-        <div v-for="segment in marketSegments" :key="segment.label" class="segmentation-row">
+        <div v-for="segment in marketSegments" :key="`${segment.label}-${segment.source}`" class="segmentation-row">
           <span>{{ segment.label }}</span>
           <span>{{ displayMarketValue(segment.value) }}</span>
           <span>{{ displayMarketValue(segment.growth) }}</span>
-          <span>{{ segment.source }}</span>
+          <span>
+            {{ segment.source }}
+            <small>Confidence: {{ segment.confidence }}</small>
+            <small>Last checked: {{ segment.lastChecked }}</small>
+            <small>{{ segment.reviewState }}</small>
+          </span>
           <NTag size="small" :type="statusType(segment.evidenceStatus)">{{ displayMarketStatus(segment.evidenceStatus) }}</NTag>
         </div>
         <div v-if="!marketSegments.length" class="segmentation-row">
@@ -1759,11 +1775,17 @@ onMounted(() => {
             </select>
           </label>
         </div>
-        <div class="target-grid">
-          <article v-for="row in targetOpportunityRows" :key="row.label">
+        <p v-if="!targetOpportunityRows.length" class="empty-state">
+          No approved source-backed target region, import-dependence, or opportunity-score value yet. Target rows stay empty until a trusted-source claim clears review.
+        </p>
+        <div v-else class="target-grid">
+          <article v-for="row in targetOpportunityRows" :key="`${row.label}-${row.source}`">
             <span>{{ row.label }}</span>
             <strong>{{ displayMarketValue(row.score) }}</strong>
             <small>{{ row.period }} / {{ row.source }}</small>
+            <small>Confidence: {{ row.confidence }}</small>
+            <small>Last checked: {{ row.lastChecked }}</small>
+            <small>{{ row.reviewState }}</small>
             <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayMarketStatus(row.evidenceStatus) }}</NTag>
           </article>
         </div>
@@ -1866,7 +1888,7 @@ onMounted(() => {
     <section class="claims-panel">
       <h3>Verified / Auto-Verification Claims</h3>
       <div class="claim-row head">
-        <span>Claim</span><span>Value</span><span>Source</span><span>Status</span><span>Last checked</span><span>Action</span>
+        <span>Claim</span><span>Value</span><span>Source</span><span>Status</span><span>Review metadata</span><span>Action</span>
       </div>
       <p v-if="claims.length === 0" class="empty-state">
         No market claims saved yet. Add source-backed claims here, or create research tasks from the cards above.
@@ -1874,11 +1896,15 @@ onMounted(() => {
       <div v-for="{ claim, restricted } in visibleClaims" :key="claim.id || claim.label" class="claim-row">
         <span>{{ restricted ? 'Restricted market claim' : claim.label }}</span>
         <span>{{ visibleClaimValue(claim) }}</span>
-        <span>{{ restricted ? 'Restricted' : (claim.source?.title || 'Source search running') }}</span>
+        <span>{{ restricted ? 'Restricted' : marketClaimSourceLabel(claim) }}</span>
         <span class="status-badge" :class="restricted ? 'restricted' : marketClaimDisplayStatus(claim).toLowerCase().replace(/\s+/g, '-')">
           {{ restricted ? 'Restricted' : displayMarketStatus(marketClaimDisplayStatus(claim)) }}
         </span>
-        <span>{{ restricted ? 'Restricted' : (claim.lastChecked || 'Not checked') }}</span>
+        <span>
+          {{ restricted ? 'Restricted' : marketClaimReviewState(claim) }}
+          <small v-if="!restricted">Confidence: {{ marketClaimConfidence(claim) }}</small>
+          <small v-if="!restricted">Last checked: {{ marketClaimLastChecked(claim) }}</small>
+        </span>
         <span class="row-actions">
           <span v-if="restricted" class="restricted-badge">Restricted</span>
           <button v-if="!restricted" type="button" @click="startEditClaim(claim)">Edit claim</button>
@@ -2361,10 +2387,10 @@ onMounted(() => {
 
 .global-opportunity-row {
   display: grid;
-  grid-template-columns: minmax(170px, 0.9fr) minmax(190px, 1fr) minmax(230px, 1.25fr) minmax(260px, 1.35fr) minmax(120px, auto);
+  grid-template-columns: minmax(170px, 0.9fr) minmax(190px, 1fr) minmax(230px, 1.25fr) minmax(260px, 1.35fr) minmax(120px, auto) minmax(180px, 0.8fr);
   gap: 10px;
   align-items: center;
-  min-width: 980px;
+  min-width: 1160px;
   padding: 10px 0;
   border-top: 1px solid $border-color;
   color: $text-secondary;

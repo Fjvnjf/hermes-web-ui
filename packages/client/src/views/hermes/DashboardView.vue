@@ -32,6 +32,7 @@ import {
 import { canAccessRouteName, getFrontendAccessRole, type FrontendAccessRole } from '@/utils/accessControl'
 import {
   buildDashboardCoverageRows,
+  dashboardCoverageRequirements,
   missingDashboardCoverageTargetCount,
 } from '@/utils/dashboardCoverage'
 import {
@@ -376,10 +377,15 @@ const canUseResearchReview = computed(() => canUseRouteName('hermes.researchResu
 const canUseInvestorPresentation = computed(() => canUseRouteName('hermes.investorPresentation'))
 const canUseInvestmentCalculator = computed(() => canUseRouteName('hermes.investmentCalculator'))
 const showFinancialDeckPanel = computed(() => canUseInvestorPresentation.value || canUseInvestmentCalculator.value)
+const dashboardSourceRecordTargets = dashboardCoverageRequirements.map(requirement => ({
+  group: coverageGroupForArea(requirement.area),
+  fields: requirement.targets.map(target => target.label),
+}))
+const sourceBackedDashboardRecords = computed(() =>
+  resolveSourceBackedDashboardRecords(intelligence.state.value, dashboardSourceRecordTargets)
+)
 const importedDashboardRecordCount = computed(() =>
-  intelligence.state.value.marketClaims.length +
-  intelligence.state.value.competitors.length +
-  intelligence.state.value.dataRoomSources.length
+  sourceBackedDashboardRecords.value.length
 )
 const autopilotReviewQueueCount = computed(() =>
   autopilotImportStatus.value?.pendingOutputCount || intelligence.pendingResearchFindings.value.length
@@ -421,19 +427,19 @@ const automaticResearchState = computed(() => {
   if (!status) {
     return {
       tone: 'info',
-      label: 'Checking',
-      title: 'Automatic research status is loading',
-      body: 'Hermes is checking the trusted-source schedule and imported dashboard intelligence.',
-      action: 'Refresh Home if this remains unavailable.',
+      label: 'Awaiting import',
+      title: 'Trusted-source import status is loading',
+      body: 'Awaiting trusted-source import before any dashboard values are treated as business truth.',
+      action: 'Refresh Home or open Trusted Sources if this remains unavailable.',
     }
   }
   if (status.jobCount === 0) {
     return {
       tone: 'warn',
-      label: 'Auto-starting',
-      title: 'Hermes is setting up automatic research',
-      body: 'Owner sessions automatically check and create the twice-daily trusted-source research job. No manual searching is needed.',
-      action: 'No manual searching needed. Hermes will keep trying to connect the source job; use Autopilot Status only for troubleshooting.',
+      label: 'Review required',
+      title: 'Trusted-source import is not connected yet',
+      body: 'Awaiting trusted-source import. Dashboard values stay empty until trusted-source output is available or approved user data exists.',
+      action: 'Open Trusted Sources or Jobs to connect a source import before relying on dashboard values.',
     }
   }
   if (status.latestDueSlotRunError || ['unparseable', 'unreadable'].includes(status.latestOutputParseStatus)) {
@@ -449,9 +455,9 @@ const automaticResearchState = computed(() => {
     return {
       tone: 'warn',
       label: `${reviewCount} to review`,
-      title: 'Hermes found source-backed items for review',
-      body: 'Safe fields can hydrate automatically. Critical market, supplier, finance, regulatory, and investor claims wait for owner approval.',
-      action: 'No manual searching needed. Review what Hermes staged and approve only the evidence-backed items you trust.',
+      title: 'Review-gated items are waiting',
+      body: 'Source-backed and candidate records stay staged until owner review decides what can become dashboard truth.',
+      action: 'Review staged items and approve only the evidence-backed values you trust.',
     }
   }
   if (status.importedRunCount > 0 || status.latestOutputImported) {
@@ -486,8 +492,8 @@ const automaticResearchCards = computed(() => [
     value: autopilotImportStatus.value?.latestOutputImported
       ? 'Source import completed'
       : autopilotImportStatus.value?.latestOutputParseStatus === 'ready'
-        ? 'Ready for review'
-        : 'Auto-checking',
+        ? 'Review required'
+        : 'Awaiting trusted-source import',
     note: autopilotImportStatus.value?.registryUpdatedAt
       ? `Registry updated ${formatAutopilotTimestamp(autopilotImportStatus.value.registryUpdatedAt)}`
       : autopilotImportStatus.value?.latestOutputAt
@@ -498,7 +504,7 @@ const automaticResearchCards = computed(() => [
     label: '🔄 Next Source Refresh',
     value: autopilotImportStatus.value?.latestDueSlotAt
       ? formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)
-      : '07:00 / 19:00 local time',
+      : 'Awaiting trusted-source import',
     note: autopilotImportStatus.value?.latestDueSlotSatisfied
       ? 'Latest due slot satisfied'
       : autopilotImportStatus.value?.latestDueSlotAt
@@ -520,8 +526,8 @@ const automaticResearchPromiseCards = [
   },
   {
     icon: '📥',
-    title: 'Safe facts fill themselves',
-    detail: 'Low-risk source-backed records hydrate the dashboard with source, date, confidence, and evidence labels.',
+    title: 'Source-backed records fill approved fields',
+    detail: 'Low-risk source-backed records can hydrate the dashboard with source, date, confidence, and evidence labels.',
   },
   {
     icon: '🧾',
@@ -585,7 +591,7 @@ const automaticResearchFlow = computed(() => {
       title: 'Research online',
       detail: hasJob
         ? 'Hermes is scheduled to search official, company, trade, and uploaded evidence sources twice daily.'
-        : 'Hermes is checking and creating the twice-daily source search automatically for owner sessions.',
+        : 'Awaiting trusted-source import setup before any missing value can fill the dashboard.',
       state: state(hasJob && !hasError, !hasJob || hasError),
     },
     {
@@ -625,7 +631,7 @@ const automaticFillDestinations = computed(() => [
     icon: '🏭',
     title: 'Competitors',
     fill: 'Company profiles, product equivalents, strengths, source links',
-    gate: 'Market share and price claims wait for verified source evidence',
+    gate: 'Market share and price claims wait for source-backed evidence',
     to: { name: 'hermes.competitorIntelligence' },
   },
   {
@@ -658,7 +664,7 @@ const automaticFillDestinations = computed(() => [
   },
 ].filter(destination => canUseRouteTarget(destination.to)))
 
-const autoCheckingLabel = displayAutomaticVerificationText('To Verify')
+const autoCheckingLabel = 'Awaiting trusted-source import'
 
 const revenueTrendRows = computed(() => {
   const rows = intelligence.state.value.financialModels
@@ -869,6 +875,16 @@ function coverageRouteName(area: string): string {
   if (/regulatory|data room/i.test(area)) return 'hermes.regulatory'
   if (/reports|presentation/i.test(area)) return 'hermes.investorPresentation'
   return 'hermes.trustedSources'
+}
+
+function coverageGroupForArea(area: string) {
+  if (/market intelligence/i.test(area)) return 'marketClaims' as const
+  if (/competitor/i.test(area)) return 'competitorRecords' as const
+  if (/raw materials|supplier/i.test(area)) return 'rawMaterialSignals' as const
+  if (/investment|irr/i.test(area)) return 'financialEvidence' as const
+  if (/regulatory|data room/i.test(area)) return 'regulatoryFindings' as const
+  if (/reports|presentation/i.test(area)) return 'investorMaterialCandidates' as const
+  return 'evidenceGaps' as const
 }
 
 function coverageIcon(area: string): string {
@@ -1329,7 +1345,7 @@ onMounted(() => {
       <section class="executive-brief-card executive-card gold" aria-label="Executive command brief">
         <div>
           <p class="executive-eyebrow">Executive Command Brief</p>
-          <h3>Continue from the most important verified workflow</h3>
+          <h3>Continue from the most important source-backed workflow</h3>
           <p>
             This Home view summarizes real Hermes workspace state only: live routes, capture activity, readiness
             status, tasks, files, jobs, and model state. No fake business metrics are added here.
@@ -1364,7 +1380,7 @@ onMounted(() => {
           <div>
             <p class="executive-eyebrow">📊 Visual Intelligence Snapshot</p>
             <h3>Business picture from source-backed dashboard state</h3>
-            <small>Charts only use saved models, verified/source-backed claims, or review-gated workspace state. Unknowns stay in source review.</small>
+            <small>Charts only use saved models, source-backed claims, approved user data, or review-gated workspace state. Unknowns stay in source review.</small>
           </div>
           <RouterLink v-if="canUseRouteName('hermes.trustedSources')" class="brief-primary-link" :to="{ name: 'hermes.trustedSources' }">Source Status</RouterLink>
         </div>
@@ -1419,7 +1435,7 @@ onMounted(() => {
               <span aria-hidden="true">📈</span>
               <div>
                 <strong>Growth trend</strong>
-                <small>Verified market-growth signals</small>
+                <small>Source-backed market-growth signals</small>
               </div>
             </div>
             <div v-if="growthTrendVisualRows.length" class="visual-bar-list compact">
@@ -1618,8 +1634,8 @@ onMounted(() => {
           </div>
           <div v-else class="coverage-focus-complete">
             <span aria-hidden="true">✅</span>
-            <strong>Every required dashboard area has imported evidence or review items.</strong>
-            <small>Keep the twice-daily autopilot active so freshness and source checks continue.</small>
+            <strong>Every required dashboard area has a source-backed record or review-gated item.</strong>
+            <small>Continue reviewing new imports before using values as business truth.</small>
           </div>
         </div>
       </section>

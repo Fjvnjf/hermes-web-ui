@@ -35,10 +35,11 @@ const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
 const savingAction = ref('')
 const selectedScenario = ref('Base')
 const scenarioNames = ['Lean', 'Base', 'Conservative', 'Aggressive'] as const
-const REVIEW_GATED_MODEL_VALUE = 'Awaiting approved financial model input'
-const REVIEW_GATED_LINE_ITEM_VALUE = 'Awaiting approved line-item model'
-const APPROVED_SOURCE_NEEDED = 'Approved source needed'
 const NO_APPROVED_FINANCIAL_VALUE = 'No approved source-backed value'
+const REVIEW_REQUIRED_VALUE = 'Review required'
+const REVIEW_GATED_MODEL_VALUE = NO_APPROVED_FINANCIAL_VALUE
+const REVIEW_GATED_LINE_ITEM_VALUE = NO_APPROVED_FINANCIAL_VALUE
+const APPROVED_SOURCE_NEEDED = REVIEW_REQUIRED_VALUE
 const SOURCE_BACKED_FINANCIAL_STATUSES = new Set<IntelligenceEvidenceStatus>([
   'Verified',
   'Source-backed',
@@ -89,6 +90,10 @@ function primaryFinancialOutputStatus(model: FinancialModelSnapshot | null): Int
   return 'To Verify'
 }
 
+function sourceReferenceIsUsable(source?: FinancialModelSnapshot['source']): boolean {
+  return Boolean(source?.title?.trim() && (source.url?.trim() || source.date?.trim()))
+}
+
 function isFiniteFinancialNumber(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
@@ -102,18 +107,23 @@ function formatPrimaryCurrency(value: number | null | undefined, currency = 'USD
   }).format(value)
 }
 
+function formatPrimaryPositiveCurrency(value: number | null | undefined, currency = 'USD'): string {
+  if (!isFiniteFinancialNumber(value) || value <= 0) return NO_APPROVED_FINANCIAL_VALUE
+  return formatPrimaryCurrency(value, currency)
+}
+
 function formatPrimaryPercent(value: number | null | undefined): string {
   if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
   return `${(value * 100).toFixed(1)}%`
 }
 
 function formatPrimaryPayback(value: number | null | undefined): string {
-  if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
+  if (!isFiniteFinancialNumber(value) || value <= 0) return NO_APPROVED_FINANCIAL_VALUE
   return `Year ${value}`
 }
 
 function formatPrimaryRoiFromMoic(value: number | null | undefined): string {
-  if (!isFiniteFinancialNumber(value)) return NO_APPROVED_FINANCIAL_VALUE
+  if (!isFiniteFinancialNumber(value) || value <= 0) return NO_APPROVED_FINANCIAL_VALUE
   return `${((value - 1) * 100).toFixed(1)}%`
 }
 
@@ -126,21 +136,21 @@ function formatPrimaryProfitabilityIndex(model: FinancialModelSnapshot | null): 
 
 function sourceLabelForFinancialModel(model: FinancialModelSnapshot, status: IntelligenceEvidenceStatus): string {
   const sourceDate = model.source?.date ? ` (${model.source.date})` : ''
-  const sourceTitle = model.source?.title ? `${model.source.title}${sourceDate}` : 'IRR Calculator saved scenario'
-  if (SOURCE_BACKED_FINANCIAL_STATUSES.has(status)) return sourceTitle
-  if (APPROVED_FINANCIAL_STATUSES.has(status)) return `${sourceTitle} / approved financial model`
-  return `${sourceTitle} / saved model assumption`
+  const sourceTitle = model.source?.title ? `${model.source.title}${sourceDate}` : 'Saved financial model'
+  if (SOURCE_BACKED_FINANCIAL_STATUSES.has(status)) return `${sourceTitle} / source-backed approved input`
+  if (APPROVED_FINANCIAL_STATUSES.has(status)) return `${sourceTitle} / approved financial input`
+  return `${sourceTitle} / Derived from Assumptions`
 }
 
 function normalizePrimaryKpi(item: ExecutiveKpi, model: FinancialModelSnapshot | null): ExecutiveKpi {
   const primaryStatus = primaryFinancialOutputStatus(model)
   const label = item.key === 'npv' ? 'NPV (saved model rate)' : item.label
   if (!model || primaryStatus === 'Missing' || primaryStatus === 'To Verify') {
-    return { ...item, label, evidenceStatus: 'To Verify', sourceLabel: 'No approved financial model' }
+    return { ...item, label, value: NO_APPROVED_FINANCIAL_VALUE, evidenceStatus: 'To Verify', sourceLabel: REVIEW_REQUIRED_VALUE }
   }
 
   const value = (() => {
-    if (item.key === 'totalInvestment') return formatPrimaryCurrency(model.capexTotal, model.currency)
+    if (item.key === 'totalInvestment') return formatPrimaryPositiveCurrency(model.capexTotal, model.currency)
     if (item.key === 'projectIrr') return formatPrimaryPercent(model.irr)
     if (item.key === 'npv') return formatPrimaryCurrency(model.npv, model.currency)
     if (item.key === 'payback') return formatPrimaryPayback(model.paybackYear)
@@ -155,7 +165,7 @@ function normalizePrimaryKpi(item: ExecutiveKpi, model: FinancialModelSnapshot |
     label,
     value,
     evidenceStatus: hasDisplayableValue ? primaryStatus : 'To Verify',
-    sourceLabel: hasDisplayableValue ? sourceLabelForFinancialModel(model, primaryStatus) : 'Not calculated from saved model yet',
+    sourceLabel: hasDisplayableValue ? sourceLabelForFinancialModel(model, primaryStatus) : REVIEW_REQUIRED_VALUE,
     lastUpdated: model.createdAt || item.lastUpdated,
   }
 }
@@ -186,7 +196,7 @@ const breakdownRows = computed(() =>
       }),
 )
 const financialWarnings = computed(() =>
-  (selectedFinancialModel.value?.warnings || ['Scenario not filled yet. Open the IRR Calculator and save this scenario before using investment outputs.'])
+  (selectedFinancialModel.value?.warnings || ['Review required: open the IRR Calculator and save this scenario before using investment outputs.'])
     .map(warning => displayAutomaticVerificationText(warning)),
 )
 const evidenceStatus = selectedFinancialOutputStatus
@@ -194,19 +204,26 @@ const financialEvidenceCandidates = computed(() =>
   intelligence.state.value.dataRoomSources
     .filter(record => record.dashboardGroup === 'financialEvidence' || (record.area === 'financial' && record.notes.toLowerCase().includes('financialevidence')))
     .slice(0, 10)
-    .map(record => ({
-      id: record.id,
-      label: record.checklistLabel || 'Financial evidence candidate',
-      value: redactsFinancials.value ? 'Restricted' : record.proposedValue || 'To Verify',
-      sourceTitle: record.source?.title || 'Source review needed',
-      sourceUrl: record.source?.url || '',
-      sourceTier: record.sourceTier || 'candidate-source',
-      evidenceStatus: (record.evidenceStatus === 'Verified' || record.evidenceStatus === 'Investor Approved'
-        ? 'To Verify'
-        : record.evidenceStatus) as IntelligenceEvidenceStatus,
-      confidence: record.confidence || 'medium',
-      notes: record.notes || 'Autopilot staged this source for review. It is not an approved investment assumption.',
-    })),
+    .map(record => {
+      const status = record.evidenceStatus as IntelligenceEvidenceStatus
+      const canDisplayCandidateValue = APPROVED_FINANCIAL_STATUSES.has(status) ||
+        (SOURCE_BACKED_FINANCIAL_STATUSES.has(status) && sourceReferenceIsUsable(record.source))
+      return {
+        id: record.id,
+        label: record.checklistLabel || 'Financial evidence candidate',
+        value: redactsFinancials.value
+          ? 'Restricted'
+          : canDisplayCandidateValue
+            ? record.proposedValue || NO_APPROVED_FINANCIAL_VALUE
+            : REVIEW_REQUIRED_VALUE,
+        sourceTitle: record.source?.title || 'Awaiting trusted-source import',
+        sourceUrl: record.source?.url || '',
+        sourceTier: record.sourceTier || 'candidate-source',
+        evidenceStatus: canDisplayCandidateValue ? status : ('To Verify' as IntelligenceEvidenceStatus),
+        confidence: record.confidence || 'medium',
+        notes: record.notes || 'Autopilot staged this source for review. It is not an approved investment assumption.',
+      }
+    }),
 )
 const processEquipmentRows = computed(() => [
   detailRow('Tanks / reactors / mixers', 'Capacity and metallurgy need approved source evidence'),
@@ -224,132 +241,6 @@ const workingCapitalRows = computed(() => [
   detailRow('Payable days', 'Supplier credit / DPO needs approved assumptions'),
   detailRow('Working capital need', 'Derived only after input evidence is reviewed'),
 ])
-const projectAnalysisTemplateKpis = computed(() => kpis.value)
-const projectAnalysisTemplateTitle = computed(() =>
-  selectedFinancialModel.value
-    ? `${selectedFinancialModel.value.scenarioName} Project Analysis`
-    : 'Scale-Up Esterquat Plant Project Analysis Template',
-)
-const projectAnalysisBreakdownTemplateRows = computed(() => [
-  {
-    category: 'Process Equipment',
-    icon: 'Wrench',
-    keyItems: 'Reactors, columns, exchangers, tanks, pumps, packaging',
-    source: 'Vendor quotes needed',
-  },
-  {
-    category: 'Utilities & Infrastructure',
-    icon: 'Bolt',
-    keyItems: 'Steam, cooling, electrical, nitrogen, WWTP, fire systems',
-    source: 'Utility and plant-scope evidence needed',
-  },
-  {
-    category: 'Buildings & Civil',
-    icon: 'Plant',
-    keyItems: 'Production, warehouse, admin, tank farm, roads',
-    source: 'Factory/location quote needed',
-  },
-  {
-    category: 'Engineering & Project Mgmt',
-    icon: 'Set square',
-    keyItems: 'Basic/detailed engineering, PM, EPC overhead',
-    source: 'Engineering proposal needed',
-  },
-  {
-    category: 'Installation & Commissioning',
-    icon: 'Tools',
-    keyItems: 'Erection, piping, E&I, start-up, training',
-    source: 'EPC or contractor quote needed',
-  },
-  {
-    category: 'Other Costs',
-    icon: 'Clipboard',
-    keyItems: 'Permits, initial inventory, working capital, contingency',
-    source: 'Legal, permit, and working-capital model needed',
-  },
-].map(row => ({
-  ...row,
-  amount: redactsFinancials.value ? 'Restricted' : REVIEW_GATED_LINE_ITEM_VALUE,
-  percent: redactsFinancials.value ? 'Restricted' : REVIEW_GATED_LINE_ITEM_VALUE,
-  evidenceStatus: 'Missing' as IntelligenceEvidenceStatus,
-})))
-const modelTotalValue = computed(() => {
-  if (redactsFinancials.value) return 'Restricted'
-  if (!selectedFinancialModel.value) return REVIEW_GATED_MODEL_VALUE
-  return projectAnalysisTemplateKpis.value.find(kpi => kpi.key === 'totalInvestment')?.value || REVIEW_GATED_MODEL_VALUE
-})
-const modelTotalPercent = computed(() => {
-  if (redactsFinancials.value) return 'Restricted'
-  return selectedFinancialModel.value ? 'Model total' : REVIEW_GATED_MODEL_VALUE
-})
-const modelSourceLabel = computed(() =>
-  selectedFinancialModel.value
-    ? sourceLabelForFinancialModel(selectedFinancialModel.value, selectedFinancialOutputStatus.value)
-    : APPROVED_SOURCE_NEEDED,
-)
-const projectAnalysisDetailCards = computed(() => [
-  {
-    title: 'Process Equipment Detail',
-    accent: 'Wrench',
-    rows: processEquipmentRows.value,
-  },
-  {
-    title: 'Utilities & Buildings Detail',
-    accent: 'Bolt',
-    rows: utilitiesBuildingRows.value,
-  },
-  {
-    title: 'Working Capital Detail',
-    accent: 'Clipboard',
-    rows: workingCapitalRows.value,
-  },
-])
-const pdfProjectAnalysisKpis = [
-  { label: 'Total Investment', status: 'Reference value archived' },
-  { label: 'Project IRR', status: 'Reference value archived' },
-  { label: 'NPV @ 12%', status: 'Reference value archived' },
-  { label: 'Payback Period', status: 'Reference value archived' },
-  { label: 'Profitability Index', status: 'Reference value archived' },
-  { label: '5-Year ROI', status: 'Reference value archived' },
-]
-const pdfInvestmentBreakdownRows = [
-  {
-    category: 'Process Equipment',
-    keyItems: 'Reactors, columns, exchangers, tanks, pumps, packaging',
-    amount: 'Reference value archived',
-    percent: 'Reference value archived',
-  },
-  {
-    category: 'Utilities & Infrastructure',
-    keyItems: 'Steam, cooling, electrical, nitrogen, WWTP, fire',
-    amount: 'Reference value archived',
-    percent: 'Reference value archived',
-  },
-  {
-    category: 'Buildings & Civil',
-    keyItems: 'Production, warehouse, admin, tank farm, roads',
-    amount: 'Reference value archived',
-    percent: 'Reference value archived',
-  },
-  {
-    category: 'Engineering & Project Mgmt',
-    keyItems: 'Basic/detailed engineering, PM, EPC overhead',
-    amount: 'Reference value archived',
-    percent: 'Reference value archived',
-  },
-  {
-    category: 'Installation & Commissioning',
-    keyItems: 'Erection, piping, E&I, start-up, training',
-    amount: 'Reference value archived',
-    percent: 'Reference value archived',
-  },
-  {
-    category: 'Other Costs',
-    keyItems: 'Permits, raw inventory (3mo), working capital, contingency',
-    amount: 'Reference value archived',
-    percent: 'Reference value archived',
-  },
-]
 
 const scenarioCards = computed(() => [
   { name: 'Lean', status: 'Missing', detail: 'Needs sourced capex, operating cost, volume, and selling-price assumptions.' },
@@ -626,130 +517,6 @@ onMounted(loadRefreshState)
         <small>{{ kpi.sourceLabel }}</small>
       </article>
     </section>
-
-    <details class="project-analysis-template reference-template-details" aria-label="Reference-only project analysis template">
-      <summary class="template-hero">
-        <div>
-          <p class="eyebrow">Reference-only project analysis template</p>
-          <h3>{{ projectAnalysisTemplateTitle }}</h3>
-          <p>
-            Collapsed screenshot-style board. Saved IRR Calculator scenarios can feed the KPI cards, while plant
-            line items stay review-gated until quotes, source files, and user-approved assumptions are attached.
-          </p>
-        </div>
-        <span class="reference-toggle-label">Reference only / collapsed</span>
-      </summary>
-
-      <div class="reference-template-body">
-        <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
-
-        <div class="template-kpi-grid">
-          <article v-for="kpi in projectAnalysisTemplateKpis" :key="`template-${kpi.key}`" class="template-kpi-card">
-            <strong>{{ displayInvestmentValue(kpi.value) }}</strong>
-            <span>{{ kpi.label }}</span>
-            <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayInvestmentStatus(kpi.evidenceStatus) }}</NTag>
-            <small>{{ kpi.sourceLabel }}</small>
-          </article>
-        </div>
-
-        <article class="template-panel investment-breakdown-template">
-          <div class="template-panel-title">
-            <div>
-              <h3>Investment Breakdown - Esterquat Plant</h3>
-              <p>Reference-only project-analysis template. It does not assert capex totals until source-backed data exists.</p>
-            </div>
-            <NButton size="small" secondary :loading="savingAction === 'finance-task'" @click="createMissingFinanceTask">
-              Create Cost Evidence Task
-            </NButton>
-          </div>
-          <div class="template-breakdown-table">
-            <div class="template-breakdown-row head">
-              <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Bar</span><span>Source</span><span>Evidence Status</span>
-            </div>
-            <div v-for="row in projectAnalysisBreakdownTemplateRows" :key="row.category" class="template-breakdown-row">
-              <strong><span>{{ row.icon }}</span> {{ row.category }}</strong>
-              <span>{{ row.keyItems }}</span>
-              <span>{{ displayInvestmentValue(row.amount) }}</span>
-              <span>{{ displayInvestmentValue(row.percent) }}</span>
-              <span class="template-placeholder-bar" aria-label="Source-backed value needed bar"></span>
-              <span>{{ row.source }}</span>
-              <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
-            </div>
-            <div class="template-breakdown-row total">
-              <strong>Total</strong>
-              <span>{{ selectedFinancialModel?.projectName || 'Project scope and location need source-backed assumptions' }}</span>
-              <span>{{ displayInvestmentValue(modelTotalValue) }}</span>
-              <span>{{ displayInvestmentValue(modelTotalPercent) }}</span>
-              <span class="template-placeholder-bar"></span>
-              <span>{{ modelSourceLabel }}</span>
-              <NTag size="small" :type="statusType(evidenceStatus)">{{ displayInvestmentStatus(evidenceStatus) }}</NTag>
-            </div>
-          </div>
-        </article>
-
-        <div class="template-detail-grid">
-          <article v-for="card in projectAnalysisDetailCards" :key="card.title" class="template-panel template-detail-panel">
-            <div class="template-panel-title compact">
-              <h3>{{ card.accent }} {{ card.title }}</h3>
-              <span>review-gated</span>
-            </div>
-            <div class="template-detail-row head"><span>Item</span><span>Spec / assumption</span><span>Cost</span><span>Status</span></div>
-            <div v-for="row in card.rows" :key="`${card.title}-${row.item}`" class="template-detail-row">
-              <strong>{{ row.item }}</strong>
-              <span>{{ row.spec }}</span>
-              <span>{{ displayInvestmentValue(row.cost) }}</span>
-              <NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
-            </div>
-          </article>
-        </div>
-
-        <details class="template-panel pdf-project-analysis-panel" aria-label="User PDF project analysis reference">
-          <summary class="template-panel-title">
-            <div>
-              <h3>Reference Template / User PDF Archive</h3>
-              <p>
-                Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
-                Old screenshot numbers are archived and are not rendered as dashboard facts.
-              </p>
-            </div>
-            <NTag size="small" type="warning">Reference only / not source-backed</NTag>
-          </summary>
-
-          <div class="pdf-reference-body">
-            <div class="pdf-kpi-grid">
-              <article v-for="kpi in pdfProjectAnalysisKpis" :key="kpi.label" class="template-kpi-card">
-                <strong>{{ redactsFinancials ? 'Restricted' : kpi.status }}</strong>
-                <span>{{ kpi.label }}</span>
-                <NTag size="small" type="warning">Reference only</NTag>
-                <small>Use Trusted Sources / Research Review to verify before use</small>
-              </article>
-            </div>
-
-            <div class="pdf-breakdown-table">
-              <div class="pdf-breakdown-row head">
-                <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Source</span><span>Evidence Status</span>
-              </div>
-              <div v-for="row in pdfInvestmentBreakdownRows" :key="row.category" class="pdf-breakdown-row">
-                <strong>{{ row.category }}</strong>
-                <span>{{ row.keyItems }}</span>
-                <span>{{ redactsFinancials ? 'Restricted' : row.amount }}</span>
-                <span>{{ redactsFinancials ? 'Restricted' : row.percent }}</span>
-                <span>User PDF screenshot / quote evidence needed</span>
-                <NTag size="small" type="warning">User Provided</NTag>
-              </div>
-              <div class="pdf-breakdown-row total">
-                <strong>Total</strong>
-                <span>Archived project scope reference</span>
-                <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
-                <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
-                <span>Reference only / not source-backed</span>
-                <NTag size="small" type="warning">{{ displayInvestmentStatus('Missing') }}</NTag>
-              </div>
-            </div>
-          </div>
-        </details>
-      </div>
-    </details>
 
     <section class="analysis-grid">
       <article class="analysis-panel">
@@ -1047,240 +814,6 @@ onMounted(loadRefreshState)
   }
 }
 
-.project-analysis-template {
-  display: grid;
-  gap: 14px;
-  margin: 0 0 14px;
-}
-
-.reference-template-details {
-  display: block;
-
-  > summary {
-    list-style: none;
-    cursor: pointer;
-
-    &::-webkit-details-marker {
-      display: none;
-    }
-  }
-}
-
-.reference-template-body {
-  display: grid;
-  gap: 14px;
-  margin-top: 14px;
-}
-
-.reference-toggle-label {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 6px 10px;
-  border: 1px solid rgba(var(--warning-rgb), 0.35);
-  border-radius: 6px;
-  background: rgba(var(--warning-rgb), 0.08);
-  color: $warning;
-  font-size: 12px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.template-hero,
-.template-kpi-card,
-.template-panel {
-  border: 1px solid rgba(var(--accent-info-rgb), 0.24);
-  border-radius: 8px;
-  background:
-    linear-gradient(135deg, rgba(var(--accent-primary-rgb), 0.08), transparent 36%),
-    $bg-card;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.16);
-}
-
-.template-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: start;
-  padding: 16px;
-  border-color: rgba(var(--accent-primary-rgb), 0.38);
-
-  h3 {
-    margin: 0;
-    color: $text-primary;
-    font-size: 24px;
-  }
-
-  p {
-    margin: 8px 0 0;
-    max-width: 860px;
-    color: $text-secondary;
-    line-height: 1.55;
-  }
-}
-
-.template-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.template-kpi-card {
-  display: grid;
-  gap: 8px;
-  min-height: 132px;
-  padding: 16px;
-  border-color: rgba(var(--accent-primary-rgb), 0.32);
-
-  strong {
-    color: $accent-primary;
-    font-size: clamp(22px, 2.4vw, 34px);
-    line-height: 1.05;
-    overflow-wrap: anywhere;
-  }
-
-  span {
-    color: $text-muted;
-    font-size: 11px;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  small {
-    color: $text-secondary;
-    font-size: 11px;
-    line-height: 1.35;
-  }
-}
-
-.template-panel {
-  position: relative;
-  min-width: 0;
-  overflow: hidden;
-  padding: 16px;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
-    background: $executive-strip;
-  }
-}
-
-.template-panel-title {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  border-bottom: 1px solid $border-color;
-  padding-bottom: 12px;
-
-  h3 {
-    margin: 0;
-    color: $text-primary;
-    font-size: 17px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  p {
-    margin: 6px 0 0;
-    color: $text-secondary;
-    line-height: 1.45;
-  }
-
-  span {
-    color: $text-muted;
-    font-size: 11px;
-    font-weight: 900;
-    text-transform: uppercase;
-  }
-
-  &.compact {
-    align-items: center;
-  }
-}
-
-.template-breakdown-table {
-  overflow-x: auto;
-}
-
-.template-breakdown-row {
-  display: grid;
-  grid-template-columns: minmax(210px, 1fr) minmax(320px, 1.45fr) minmax(120px, 0.7fr) minmax(86px, 0.45fr) minmax(90px, 0.45fr) minmax(190px, 1fr) minmax(130px, auto);
-  gap: 10px;
-  align-items: center;
-  min-width: 1150px;
-  padding: 10px 0;
-  border-top: 1px solid $border-color;
-  color: $text-secondary;
-
-  &.head {
-    border-top: 0;
-    color: $accent-primary;
-    font-size: 12px;
-    font-weight: 900;
-    text-transform: uppercase;
-  }
-
-  &.total {
-    border-top-color: rgba(var(--accent-primary-rgb), 0.6);
-    color: $text-primary;
-    font-weight: 900;
-  }
-
-  > * {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-
-  strong span {
-    color: $accent-primary;
-  }
-}
-
-.template-placeholder-bar {
-  display: block;
-  width: 64px;
-  height: 8px;
-  border: 1px dashed rgba(var(--accent-primary-rgb), 0.45);
-  border-radius: 999px;
-  background: rgba(var(--text-muted-rgb), 0.12);
-}
-
-.template-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.template-detail-row {
-  display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.1fr) minmax(90px, 0.6fr) minmax(90px, auto);
-  gap: 8px;
-  align-items: center;
-  min-width: 520px;
-  padding: 8px 0;
-  border-top: 1px solid $border-color;
-  color: $text-secondary;
-  font-size: 12px;
-
-  &.head {
-    border-top: 0;
-    color: $accent-primary;
-    font-weight: 900;
-    text-transform: uppercase;
-  }
-
-  > * {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-}
-
 .analysis-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -1292,7 +825,6 @@ onMounted(loadRefreshState)
   padding: 14px;
 }
 
-.template-detail-panel,
 .detail-panel {
   overflow-x: auto;
 }
@@ -1430,67 +962,6 @@ onMounted(loadRefreshState)
   background: $bg-secondary;
 }
 
-.pdf-project-analysis-panel {
-  display: grid;
-  gap: 12px;
-
-  > summary {
-    list-style: none;
-    cursor: pointer;
-
-    &::-webkit-details-marker {
-      display: none;
-    }
-  }
-}
-
-.pdf-reference-body {
-  display: grid;
-  gap: 12px;
-}
-
-.pdf-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(150px, 1fr));
-  gap: 10px;
-}
-
-.pdf-breakdown-table {
-  display: grid;
-  gap: 5px;
-  overflow-x: auto;
-}
-
-.pdf-breakdown-row {
-  display: grid;
-  grid-template-columns: minmax(210px, 1fr) minmax(340px, 1.4fr) minmax(125px, 0.7fr) minmax(80px, 0.45fr) minmax(210px, 1fr) minmax(125px, auto);
-  gap: 9px;
-  align-items: center;
-  min-width: 1060px;
-  padding: 9px 10px;
-  border-radius: 6px;
-  background: $bg-secondary;
-  color: $text-secondary;
-  font-size: 12px;
-
-  &.head {
-    color: $accent-primary;
-    font-weight: 900;
-    text-transform: uppercase;
-  }
-
-  &.total {
-    border: 1px solid rgba(var(--accent-primary-rgb), 0.45);
-    color: $text-primary;
-    font-weight: 900;
-  }
-
-  > * {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-}
-
 .warning-list {
   margin: 0;
   padding-left: 18px;
@@ -1500,19 +971,8 @@ onMounted(loadRefreshState)
 
 @media (max-width: 900px) {
   .analysis-hero,
-  .template-hero,
-  .template-detail-grid,
   .analysis-grid {
     grid-template-columns: 1fr;
-  }
-
-  .template-kpi-grid,
-  .pdf-kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .template-panel-title {
-    display: grid;
   }
 
   .analysis-panel:last-child {
@@ -1532,20 +992,6 @@ onMounted(loadRefreshState)
 
   .detail-row {
     grid-template-columns: 1fr;
-    min-width: 0;
-  }
-
-  .template-kpi-grid,
-  .pdf-kpi-grid,
-  .template-breakdown-row,
-  .template-detail-row,
-  .pdf-breakdown-row {
-    grid-template-columns: 1fr;
-  }
-
-  .template-breakdown-row,
-  .template-detail-row,
-  .pdf-breakdown-row {
     min-width: 0;
   }
 

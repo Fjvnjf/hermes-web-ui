@@ -1350,6 +1350,22 @@ interface ImportRegistry {
   importerVersion: string
   importedRunKeys: string[]
   skippedRunKeys: string[]
+  connectorErrorSummary?: ConnectorIssueSummary[]
+  connectorCooldowns?: Record<string, ConnectorCooldown>
+  updatedAt: string
+}
+
+interface ConnectorIssueSummary {
+  label: string
+  count: number
+  latest: string
+}
+
+interface ConnectorCooldown {
+  connector: string
+  reason: string
+  retryAfter: string
+  cooldownUntil: string
   updatedAt: string
 }
 
@@ -1381,6 +1397,8 @@ export interface DashboardAutopilotIngestResult {
   autoFilledCount: number
   stagedReviewCount: number
   missingCoverageFollowUpStarted: boolean
+  connectorErrorSummary: ConnectorIssueSummary[]
+  connectorCooldowns: Record<string, ConnectorCooldown>
   errors: string[]
 }
 
@@ -1446,6 +1464,8 @@ export interface DashboardAutopilotImportStatus {
   latestDueSlotSatisfied: boolean
   latestDueSlotAttemptedAt: string
   latestDueSlotRunError: string
+  connectorErrorSummary: ConnectorIssueSummary[]
+  connectorCooldowns: Record<string, ConnectorCooldown>
 }
 
 interface ScheduleOptions {
@@ -2575,6 +2595,36 @@ function registryPath(profile: string): string {
   return join(getProfileDir(profile), 'dashboard-intelligence', 'imported-runs.json')
 }
 
+function normalizeConnectorIssueSummary(value: unknown): ConnectorIssueSummary[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter(isPlainRecord)
+    .map(item => ({
+      label: stringValue(item.label) || 'Import warning',
+      count: Number.isFinite(Number(item.count)) ? Math.max(1, Math.floor(Number(item.count))) : 1,
+      latest: stringValue(item.latest),
+    }))
+    .filter(item => item.latest)
+    .slice(0, 12)
+}
+
+function normalizeConnectorCooldowns(value: unknown): Record<string, ConnectorCooldown> {
+  if (!isPlainRecord(value)) return {}
+  const cooldowns: Record<string, ConnectorCooldown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (!isPlainRecord(item)) continue
+    const cooldown: ConnectorCooldown = {
+      connector: stringValue(item.connector) || key,
+      reason: stringValue(item.reason),
+      retryAfter: stringValue(item.retryAfter),
+      cooldownUntil: stringValue(item.cooldownUntil),
+      updatedAt: stringValue(item.updatedAt),
+    }
+    if (cooldown.cooldownUntil) cooldowns[key] = cooldown
+  }
+  return cooldowns
+}
+
 async function readImportRegistry(profile: string): Promise<ImportRegistry> {
   try {
     const raw = await readFile(registryPath(profile), 'utf-8')
@@ -2587,13 +2637,15 @@ async function readImportRegistry(profile: string): Promise<ImportRegistry> {
           ? parsed.skippedRunKeys.map(stringValue).filter(Boolean)
           : [],
         importerVersion: stringValue(parsed.importerVersion),
+        connectorErrorSummary: normalizeConnectorIssueSummary(parsed.connectorErrorSummary),
+        connectorCooldowns: normalizeConnectorCooldowns(parsed.connectorCooldowns),
         updatedAt: stringValue(parsed.updatedAt) || new Date().toISOString(),
       }
     }
   } catch (err: any) {
     if (err?.code !== 'ENOENT') logger.warn(err, '[dashboard-autopilot] failed to read import registry')
   }
-  return { version: 1, importerVersion: '', importedRunKeys: [], skippedRunKeys: [], updatedAt: '' }
+  return { version: 1, importerVersion: '', importedRunKeys: [], skippedRunKeys: [], connectorErrorSummary: [], connectorCooldowns: {}, updatedAt: '' }
 }
 
 async function writeImportRegistry(profile: string, registry: ImportRegistry): Promise<void> {
@@ -2603,6 +2655,8 @@ async function writeImportRegistry(profile: string, registry: ImportRegistry): P
     importerVersion: DASHBOARD_AUTOPILOT_IMPORTER_VERSION,
     importedRunKeys: registry.importedRunKeys.slice(-MAX_IMPORTED_RUN_KEYS),
     skippedRunKeys: registry.skippedRunKeys.slice(-MAX_IMPORTED_RUN_KEYS),
+    connectorErrorSummary: normalizeConnectorIssueSummary(registry.connectorErrorSummary),
+    connectorCooldowns: normalizeConnectorCooldowns(registry.connectorCooldowns),
     updatedAt: new Date().toISOString(),
   }
   await mkdir(dirname(filePath), { recursive: true })
@@ -6353,6 +6407,77 @@ function retryAfterHeader(response: Response): string {
   return firstString(headers.get('retry-after'), headers.get('Retry-After'))
 }
 
+function connectorIssueLabel(text: string): string {
+  if (/UN Comtrade|Comtrade|trade source/i.test(text)) return 'Trade source'
+  if (/429|rate limit|rate limited/i.test(text)) return 'Rate limit'
+  if (/PubChem|chemical identity|compound|substance/i.test(text)) return 'Chemical source'
+  if (/SEC|companyfacts|financial|annual report|source returned 404/i.test(text)) return 'Financial source'
+  if (/Tranco|traffic|Semrush/i.test(text)) return 'Traffic source'
+  if (/market reference|market size|CAGR|Grand View|StockAnalysis|S&P Global/i.test(text)) return 'Market reference'
+  if (/product source|official product/i.test(text)) return 'Product source'
+  if (/supplier|quote|SDS|TDS|COA/i.test(text)) return 'Supplier source'
+  if (/parse|unparseable|unreadable|dashboard_updates/i.test(text)) return 'Output parse'
+  if (/due slot|cron|run/i.test(text)) return 'Scheduled run'
+  return 'Import warning'
+}
+
+function summarizeConnectorErrors(errors: string[]): ConnectorIssueSummary[] {
+  const grouped = new Map<string, ConnectorIssueSummary>()
+  for (const error of errors.map(item => item.trim()).filter(Boolean)) {
+    const label = connectorIssueLabel(error)
+    const existing = grouped.get(label)
+    if (existing) {
+      existing.count += 1
+      existing.latest = error
+    } else {
+      grouped.set(label, { label, count: 1, latest: error })
+    }
+  }
+  return [...grouped.values()]
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 12)
+}
+
+function parseRetryAfterMs(value: string): number {
+  const trimmed = value.trim()
+  if (!trimmed) return 0
+  const seconds = Number(trimmed)
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000
+  const dateMs = Date.parse(trimmed)
+  if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now())
+  return 0
+}
+
+function comtradeCooldownFromErrors(errors: string[], now: Date): ConnectorCooldown | null {
+  const error = errors.find(item => /UN Comtrade rate limited|Comtrade.*429|429.*Comtrade/i.test(item))
+  if (!error) return null
+  const retryAfter = error.match(/Retry after\s+([^.;]+)/i)?.[1]?.trim() || ''
+  const retryAfterMs = parseRetryAfterMs(retryAfter) || 60 * 60_000
+  return {
+    connector: 'official-comtrade',
+    reason: error,
+    retryAfter,
+    cooldownUntil: new Date(now.getTime() + retryAfterMs).toISOString(),
+    updatedAt: now.toISOString(),
+  }
+}
+
+function activeConnectorCooldown(registry: ImportRegistry, connector: string, now: Date): ConnectorCooldown | null {
+  const cooldown = registry.connectorCooldowns?.[connector]
+  if (!cooldown?.cooldownUntil) return null
+  const until = Date.parse(cooldown.cooldownUntil)
+  if (!Number.isFinite(until) || until <= now.getTime()) return null
+  return cooldown
+}
+
+function activeConnectorCooldowns(registry: ImportRegistry, now: Date): Record<string, ConnectorCooldown> {
+  return Object.fromEntries(Object.entries(registry.connectorCooldowns || {})
+    .filter(([, cooldown]) => {
+      const until = Date.parse(cooldown.cooldownUntil)
+      return Number.isFinite(until) && until > now.getTime()
+    }))
+}
+
 function comtradeFetchDelayMs(): number {
   return process.env.NODE_ENV === 'test' ? 0 : 1250
 }
@@ -7116,6 +7241,8 @@ export async function ingestFullDashboardAutopilotOutputs(
     autoFilledCount: 0,
     stagedReviewCount: 0,
     missingCoverageFollowUpStarted: false,
+    connectorErrorSummary: [],
+    connectorCooldowns: {},
     errors: [],
   }
   const maxFilesPerJob = options.maxFilesPerJob ?? 10
@@ -7129,6 +7256,9 @@ export async function ingestFullDashboardAutopilotOutputs(
   const envelope = await readDashboardIntelligenceState(profile)
   const state = normalizeState(envelope?.state)
   const prunedMalformedMarketReferenceClaims = pruneMalformedMarketReferenceClaims(state)
+  let importRegistry = await readImportRegistry(profile)
+  let connectorHealthChanged = false
+  const importStartedAt = new Date()
   const officialConnectorsEnabled = options.includeOfficialConnectors ?? process.env.NODE_ENV !== 'test'
   const officialCompanyFinancialConnectorsEnabled = options.includeOfficialCompanyFinancialConnectors ?? officialConnectorsEnabled
   const officialProductConnectorsEnabled = options.includeOfficialProductConnectors ?? officialConnectorsEnabled
@@ -7184,10 +7314,27 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.errors.push(...publicPriceEvidence.errors.map(error => `public price connector: ${error}`))
   }
   if (officialTradeConnectorsEnabled) {
-    const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
-    result.autoFilledCount += officialTrade.autoFilledCount
-    result.stagedReviewCount += officialTrade.stagedReviewCount
-    result.errors.push(...officialTrade.errors.map(error => `official source connector: ${error}`))
+    const cooldown = activeConnectorCooldown(importRegistry, 'official-comtrade', importStartedAt)
+    if (cooldown) {
+      result.errors.push(`official source connector: UN Comtrade cooldown active until ${cooldown.cooldownUntil}; ${cooldown.reason}`)
+    } else {
+      const officialTrade = await applyOfficialComtradeMarketProxies(state, new Date().toISOString().slice(0, 10))
+      result.autoFilledCount += officialTrade.autoFilledCount
+      result.stagedReviewCount += officialTrade.stagedReviewCount
+      const tradeErrors = officialTrade.errors.map(error => `official source connector: ${error}`)
+      result.errors.push(...tradeErrors)
+      const tradeCooldown = comtradeCooldownFromErrors(tradeErrors, importStartedAt)
+      if (tradeCooldown) {
+        importRegistry = {
+          ...importRegistry,
+          connectorCooldowns: {
+            ...(importRegistry.connectorCooldowns || {}),
+            [tradeCooldown.connector]: tradeCooldown,
+          },
+        }
+        connectorHealthChanged = true
+      }
+    }
   }
   if (officialWorldBankConnectorsEnabled) {
     const officialWorldBank = await applyOfficialWorldBankMarketContext(state, new Date().toISOString().slice(0, 10))
@@ -7218,12 +7365,26 @@ export async function ingestFullDashboardAutopilotOutputs(
     result.errors.push(...trancoTraffic.errors.map(error => `market reference connector: ${error}`))
   }
 
+  result.connectorErrorSummary = summarizeConnectorErrors(result.errors)
+  result.connectorCooldowns = normalizeConnectorCooldowns(importRegistry.connectorCooldowns)
+  if (result.connectorErrorSummary.length) connectorHealthChanged = true
+  if (connectorHealthChanged) {
+    importRegistry = {
+      ...importRegistry,
+      connectorErrorSummary: result.connectorErrorSummary,
+      connectorCooldowns: result.connectorCooldowns,
+    }
+  }
+
   if (discoveredOutputs.outputFiles.length === 0) {
     try {
       result.missingCoverageFollowUpStarted = await ensureMissingCoverageFollowUp(profile, state)
     } catch (err) {
       result.errors.push(`missing coverage follow-up: ${err instanceof Error ? err.message : 'failed to start follow-up research'}`)
     }
+    result.connectorErrorSummary = summarizeConnectorErrors(result.errors)
+    result.connectorCooldowns = normalizeConnectorCooldowns(importRegistry.connectorCooldowns)
+    if (result.connectorErrorSummary.length) connectorHealthChanged = true
 
     if (
       result.autoFilledCount > 0 ||
@@ -7240,10 +7401,11 @@ export async function ingestFullDashboardAutopilotOutputs(
         },
       })
     }
+    if (connectorHealthChanged) await writeImportRegistry(profile, importRegistry)
     return result
   }
 
-  const registry = await readImportRegistry(profile)
+  const registry = importRegistry
   const shouldReplayImportedRuns = registry.importerVersion !== DASHBOARD_AUTOPILOT_IMPORTER_VERSION
   const importedRunKeys = new Set(shouldReplayImportedRuns ? [] : registry.importedRunKeys)
   const skippedRunKeys = new Set(shouldReplayImportedRuns ? [] : registry.skippedRunKeys)
@@ -7276,6 +7438,8 @@ export async function ingestFullDashboardAutopilotOutputs(
   } catch (err) {
     result.errors.push(`missing coverage follow-up: ${err instanceof Error ? err.message : 'failed to start follow-up research'}`)
   }
+  result.connectorErrorSummary = summarizeConnectorErrors(result.errors)
+  result.connectorCooldowns = normalizeConnectorCooldowns(importRegistry.connectorCooldowns)
 
   if (
     result.importedRuns > 0 ||
@@ -7299,6 +7463,8 @@ export async function ingestFullDashboardAutopilotOutputs(
     importerVersion: DASHBOARD_AUTOPILOT_IMPORTER_VERSION,
     importedRunKeys: [...importedRunKeys],
     skippedRunKeys: [...skippedRunKeys],
+    connectorErrorSummary: result.connectorErrorSummary,
+    connectorCooldowns: result.connectorCooldowns,
     updatedAt: new Date().toISOString(),
   })
 
@@ -7372,6 +7538,8 @@ export async function readFullDashboardAutopilotImportStatus(profileInput?: stri
     latestDueSlotSatisfied,
     latestDueSlotAttemptedAt: stringValue(dueAttempt?.attemptedAt),
     latestDueSlotRunError: stringValue(dueAttempt?.error),
+    connectorErrorSummary: registry.connectorErrorSummary || [],
+    connectorCooldowns: activeConnectorCooldowns(registry, new Date()),
   }
 }
 

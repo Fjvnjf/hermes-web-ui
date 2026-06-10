@@ -220,7 +220,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Investor Economics Control Panel')
     expect(wrapper.text()).toContain('Autopilot Financial Evidence Candidates')
     expect(wrapper.text()).toContain('Process equipment quote benchmark')
-    expect(wrapper.text()).toContain('Vendor quote benchmark found; capex amount requires owner review')
+    expect(wrapper.get('.financial-autopilot-panel').text()).toContain('Review required')
+    expect(wrapper.get('.financial-autopilot-panel').text()).not.toContain('Vendor quote benchmark found; capex amount requires owner review')
     expect(wrapper.text()).toContain('Uploaded vendor quote evidence')
     expect(wrapper.text()).toContain('tier3-supplier-evidence / medium')
     expect(wrapper.text()).toContain('Process Equipment Detail')
@@ -228,26 +229,22 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Working Capital Detail')
     expect(wrapper.text()).toContain('Total Investment')
     expect(wrapper.text()).toContain('Project IRR')
-    expect(wrapper.text()).toContain('NPV @ 12%')
+    expect(wrapper.text()).not.toContain('NPV @ 12%')
     expect(wrapper.text()).toContain('Payback Period')
     expect(wrapper.text()).toContain('Profitability Index')
     expect(wrapper.text()).toContain('5-Year ROI')
     expect(wrapper.get('.kpi-grid').text()).toContain('NPV (saved model rate)')
     expect(wrapper.get('.kpi-grid').text()).not.toContain('NPV @ 12%')
-    expect(wrapper.text()).toContain('Reference-only project analysis template')
-    expect(wrapper.text()).toContain('Scale-Up Esterquat Plant Project Analysis Template')
-    expect(wrapper.text()).toContain('Investment Breakdown - Esterquat Plant')
-    expect(wrapper.text()).toContain('Reactors, columns, exchangers, tanks, pumps, packaging')
-    expect(wrapper.text()).toContain('Vendor quotes needed')
     expect(wrapper.text()).toContain('Scenario Selector')
     expect(wrapper.text()).toContain('Scenario not filled yet')
     expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).toContain('Awaiting trusted-source import')
     expect(wrapper.text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(wrapper.text()).not.toMatch(/Missing\s*\/\s*Hermes\s+verifying\s+twice\s+daily/i)
-    expect(wrapper.text()).toContain('Reference Template / User PDF Archive')
-    expect(wrapper.text()).toContain('Reference value archived')
-    expect(wrapper.text()).toContain('Use Trusted Sources / Research Review to verify before use')
+    expect(wrapper.text()).not.toContain('Reference-only project analysis template')
+    expect(wrapper.text()).not.toContain('Reference Template / User PDF Archive')
+    expect(wrapper.text()).not.toContain('Reference value archived')
+    expect(wrapper.text()).not.toContain('Scale-Up Esterquat Plant Project Analysis Template')
     expect(wrapper.text()).toContain('Derived from Assumptions')
     expect(wrapper.text()).not.toContain('$16M')
     expect(wrapper.text()).not.toContain('$49.8M')
@@ -255,10 +252,8 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).not.toContain('$16,000,000')
     expect(wrapper.text()).not.toContain('$135M')
     expect(wrapper.text()).not.toContain('50%')
-    expect(wrapper.get('.project-analysis-template').element.tagName).toBe('DETAILS')
-    expect(wrapper.get('.project-analysis-template').attributes('open')).toBeUndefined()
-    expect(wrapper.get('.pdf-project-analysis-panel').element.tagName).toBe('DETAILS')
-    expect(wrapper.get('.pdf-project-analysis-panel').attributes('open')).toBeUndefined()
+    expect(wrapper.find('.project-analysis-template').exists()).toBe(false)
+    expect(wrapper.find('.pdf-project-analysis-panel').exists()).toBe(false)
     expect(wrapper.get('.kpi-grid').text()).not.toContain('To Verify')
     expect(wrapper.get('.analysis-grid').text()).not.toContain('To Verify')
   })
@@ -322,7 +317,7 @@ describe('screenshot-matched executive business tabs', () => {
     const kpiGrid = wrapper.get('.kpi-grid').text()
     expect(kpiGrid).toContain('18.0%')
     expect(kpiGrid).toContain('Derived from Assumptions')
-    expect(kpiGrid).toContain('IRR Calculator saved scenario / saved model assumption')
+    expect(kpiGrid).toContain('Saved financial model / Derived from Assumptions')
     expect(kpiGrid).not.toContain('User Provided')
     expect(kpiGrid).not.toContain('Verified')
   })
@@ -380,6 +375,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(kpiGrid).toContain('$125,000')
     expect(kpiGrid).toContain('Verified')
     expect(kpiGrid).toContain('Approved IRR workbook (2026-06-01)')
+    expect(kpiGrid).toContain('source-backed approved input')
     expect(kpiGrid).not.toContain('Derived from Assumptions')
   })
 
@@ -425,8 +421,8 @@ describe('screenshot-matched executive business tabs', () => {
     const marketText = wrapper.text()
     const marketTextLower = marketText.toLowerCase()
 
-    expect(wrapper.get('.summary-card').text()).toContain('2')
-    expect(wrapper.get('.summary-card').text()).toContain('source-attached claims')
+    expect(wrapper.get('.summary-card').text()).toContain('0')
+    expect(wrapper.get('.summary-card').text()).toContain('approved source claims')
     expect(wrapper.text()).toContain('Executive Market Panel')
     expect(wrapper.text()).toContain('Owner research permission active')
     expect(wrapper.text()).toContain('Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.')
@@ -448,24 +444,24 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Create research task')
     expect(marketTextLower).toContain('global market intelligence')
     expect(wrapper.text()).toContain('Textile Softeners, Esterquats, and Export-Market Signals')
-    expect(wrapper.get('.global-market-intelligence').text()).toContain('Country-wise consumption growth - China')
-    expect(wrapper.get('.global-market-intelligence').text()).toContain('Review required')
+    expect(wrapper.get('.global-market-intelligence').text()).toContain('No imported trusted-source global market claims yet')
+    expect(wrapper.get('.claims-panel').text()).toContain('Country-wise consumption growth - China')
+    expect(wrapper.get('.claims-panel').text()).toContain('Review required')
     expect(wrapper.get('.global-market-intelligence').text()).not.toContain('USD 9.99B unsupported market-reference estimate')
     expect(wrapper.get('.global-market-intelligence').text()).not.toContain('China textile-chemicals anchor')
     expect(wrapper.get('.global-market-intelligence').text()).not.toContain('Global esterquat reference market')
     expect(wrapper.text()).toContain('Global Opportunity Map')
     expect(wrapper.text()).toContain('Country-wise Consumption Growth Tracker')
-    expect(wrapper.text()).toContain('Direct softener consumption')
-    expect(wrapper.text()).toContain('Auto-imported')
-    expect(wrapper.text()).toContain('China: +100.0% YoY trade proxy')
+    expect(wrapper.text()).toContain('direct textile-softener proof')
+    expect(wrapper.text()).toContain('No imported trusted-source country growth rows yet')
+    expect(wrapper.text()).not.toContain('China: +100.0% YoY trade proxy')
     expect(wrapper.text()).toContain('UN Comtrade Plus')
-    expect(wrapper.get('.country-growth-table').text()).toContain('Confidence: high')
-    expect(wrapper.get('.country-growth-table').text()).toContain('Last checked: 2024-12-31')
-    expect(wrapper.get('.market-map-brief').text()).toContain('Trade Proxy')
-    expect(wrapper.text()).toContain('official trade data, not direct textile-softener consumption')
-    expect(wrapper.text()).toContain('Official trade-proxy import/export signal')
-    expect(wrapper.text()).toContain('Vietnam')
-    expect(wrapper.text()).toContain('Bangladesh')
+    expect(wrapper.get('.claims-panel').text()).toContain('Confidence: high')
+    expect(wrapper.get('.claims-panel').text()).toContain('Last checked: 2024-12-31')
+    expect(wrapper.find('.country-growth-table').exists()).toBe(false)
+    expect(wrapper.get('.market-map-brief').text()).not.toContain('Trade Proxy')
+    expect(wrapper.text()).not.toContain('official trade data, not direct textile-softener consumption')
+    expect(wrapper.text()).not.toContain('Official trade-proxy import/export signal')
     expect(wrapper.text()).toContain('Reference Source Pack')
     expect(wrapper.text()).toContain('Market Research Questions Hermes Should Answer')
     expect(wrapper.text()).toContain('User PDF reference')
@@ -483,9 +479,9 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Market Size / Scope')
     expect(wrapper.text()).toContain('Import Dependence')
     expect(wrapper.text()).toContain('Market Segmentation Table')
-    expect(wrapper.text()).toContain('Textile Softeners Total')
-    expect(wrapper.text()).toContain('Cationic / Ester Quat')
     expect(wrapper.text()).toContain('Target Countries / Provinces')
+    expect(wrapper.get('.segmentation-panel').text()).toContain('No approved source-backed segment')
+    expect(wrapper.get('.target-panel').text()).toContain('No approved source-backed target region')
     expect(wrapper.text()).toContain('Research HS Codes')
     expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).not.toContain('Example supplier')
@@ -503,6 +499,68 @@ describe('screenshot-matched executive business tabs', () => {
       expect(wrapper.get(selector).text()).not.toContain('To Verify')
     }
     expect(competitorMarketShare('', null, 'Verified')).toBe('To Verify')
+  })
+
+  it('renders approved trusted-source market claims while hiding review-gated reference values', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Market Size / Scope',
+      value: 'Official source-backed market scope',
+      evidenceStatus: 'Official Data',
+      confidence: 'high',
+      source: { title: 'Official market bulletin', url: 'https://example.gov/market', date: '2026-06-05' },
+      lastChecked: '2026-06-06',
+      proposedDashboardField: 'Market Size / Scope',
+      fieldKey: 'market.size.scope',
+      reviewRequired: false,
+    })
+    intelligence.addMarketClaim({
+      label: 'Cationic textile softener segment',
+      value: 'Source-backed cationic segment present',
+      evidenceStatus: 'Source-backed',
+      confidence: 'medium',
+      source: { title: 'Official segment source', url: 'https://example.gov/segment', date: '2026-06-04' },
+      lastChecked: '2026-06-06',
+      proposedDashboardField: 'Cationic / Ester Quat',
+      fieldKey: 'market.segment.cationic',
+      reviewRequired: false,
+    })
+    intelligence.addMarketClaim({
+      label: 'Target Countries / Provinces',
+      value: 'Zhejiang textile cluster source-backed',
+      evidenceStatus: 'Official Data',
+      confidence: 'high',
+      source: { title: 'Official province source', url: 'https://example.gov/province', date: '2026-06-03' },
+      lastChecked: '2026-06-06',
+      proposedDashboardField: 'Target Countries / Provinces',
+      fieldKey: 'market.target.zhejiang',
+      reviewRequired: false,
+    })
+    intelligence.addMarketClaim({
+      label: 'Global market CAGR',
+      value: '999% fake CAGR',
+      evidenceStatus: 'Market Reference',
+      confidence: 'low',
+      source: { title: 'Weak market reference', url: 'https://example.com/reference', date: '2026-06-01' },
+      lastChecked: '2026-06-06',
+      reviewRequired: true,
+    })
+
+    const wrapper = mount(MarketIntelligenceView)
+    const text = wrapper.text()
+
+    expect(wrapper.get('.summary-card').text()).toContain('3')
+    expect(wrapper.get('.market-command-panel').text()).toContain('Official source-backed market scope')
+    expect(wrapper.get('.global-market-intelligence').text()).toContain('Official market bulletin')
+    expect(wrapper.get('.global-market-intelligence').text()).toContain('Confidence: high')
+    expect(wrapper.get('.global-market-intelligence').text()).toContain('Last checked: 2026-06-06')
+    expect(wrapper.get('.segmentation-panel').text()).toContain('Cationic / Ester Quat')
+    expect(wrapper.get('.segmentation-panel').text()).toContain('Source-backed cationic segment present')
+    expect(wrapper.get('.target-panel').text()).toContain('Zhejiang')
+    expect(wrapper.get('.target-panel').text()).toContain('Official province source')
+    expect(wrapper.get('.claims-panel').text()).toContain('Weak market reference')
+    expect(wrapper.get('.claims-panel').text()).toContain('Review required')
+    expect(text).not.toContain('999% fake CAGR')
   })
 
   it('documents trusted-source research permission and evidence rules', () => {
@@ -557,10 +615,18 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Single Competitor Intelligence Table')
     expect(wrapper.text()).toContain('Product category')
     expect(wrapper.text()).toContain('Evidence state')
-    expect(wrapper.text()).toContain('Traffic')
-    expect(wrapper.text()).toContain('Rating')
-    expect(wrapper.text()).toContain('Last Updated')
-    expect(wrapper.text()).toContain('Confidence')
+    const comparisonHeaderText = wrapper.get('.comparison-grid-row.head').text()
+    expect(comparisonHeaderText).toContain('PRICE')
+    expect(comparisonHeaderText).toContain('MARKET SHARE')
+    expect(comparisonHeaderText).toContain('REVENUE')
+    expect(comparisonHeaderText).toContain('YOY GROWTH')
+    expect(comparisonHeaderText).toContain('TRAFFIC')
+    expect(comparisonHeaderText).toContain('RATING')
+    expect(comparisonHeaderText).toContain('LAST UPDATED')
+    expect(comparisonHeaderText).toContain('CONFIDENCE')
+    expect(comparisonHeaderText).toContain('SOURCE')
+    expect(comparisonHeaderText).toContain('LEADER')
+    expect(comparisonHeaderText).toContain('NEXT ACTION')
     expect(wrapper.text()).toContain('No source-backed leader badge')
     expect(wrapper.text()).not.toContain('📈 Fastest Growth')
     expect(wrapper.text()).not.toContain('💰 Highest Revenue')
@@ -722,11 +788,15 @@ describe('screenshot-matched executive business tabs', () => {
     const wrapper = mount(CompetitorIntelligenceView)
     const panel = () => wrapper.get('.comparison-command-panel')
 
-    expect(panel().text()).toContain('Competitor')
-    expect(panel().text()).toContain('Product')
-    expect(panel().text()).toContain('Market Share')
-    expect(panel().text()).toContain('Revenue')
-    expect(panel().text()).toContain('YoY Growth')
+    expect(panel().text()).toContain('COMPANY')
+    expect(panel().text()).toContain('PRODUCT VARIATIONS')
+    expect(panel().text()).toContain('MARKET SHARE')
+    expect(panel().text()).toContain('REVENUE')
+    expect(panel().text()).toContain('YOY GROWTH')
+    expect(panel().text()).toContain('SOURCE')
+    expect(panel().text()).toContain('LEADER')
+    expect(panel().text()).toContain('NEXT ACTION')
+    expect(panel().text()).toContain('Review-gated empty state')
     expect(panel().text()).toContain('No approved source-backed value')
     expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     const alphaRows = wrapper.findAll('.comparison-grid-row')
@@ -753,7 +823,7 @@ describe('screenshot-matched executive business tabs', () => {
       .filter(row => row.text().includes('Alpha Source Co'))
     expect(alphaShareRows).toHaveLength(1)
 
-    const revenueSort = wrapper.findAll('.comparison-sort-button').find(button => button.text().includes('Revenue'))
+    const revenueSort = wrapper.findAll('.comparison-sort-button').find(button => button.text().includes('REVENUE'))
     expect(revenueSort).toBeTruthy()
     await revenueSort!.trigger('click')
     const firstSortedRow = wrapper.findAll('.comparison-grid-row').filter(row => !row.classes().includes('head'))[0]
@@ -878,6 +948,7 @@ describe('screenshot-matched executive business tabs', () => {
 
     expect(row.exists()).toBe(true)
     expect(row.text()).toContain('CWAS identity source only')
+    expect(row.text()).toContain('Review-gated empty state')
     expect(row.text()).toContain('No approved source-backed value')
     expect(row.text()).toContain('Still missing source-backed fields:')
     expect(row.text()).not.toContain('Official identity profile')
@@ -1197,6 +1268,28 @@ describe('screenshot-matched executive business tabs', () => {
         score: '99/100',
         notes: 'Document source supports identity and TDS review only.',
       },
+      {
+        id: 'supplier-import-unapproved-commercial-1',
+        supplier: 'Unapproved Commercial Supplier',
+        material: 'DMS / dimethyl sulfate',
+        value: 'Autopilot extracted USD 777/T with freight, duties, and delivery time from a supplier quote-looking source.',
+        source: {
+          title: 'Supplier quote-looking source',
+          url: 'https://example.com/unapproved-commercial',
+          date: '2026-06-06',
+        },
+        sourceTier: 'tier3-supplier-evidence',
+        confidence: 'medium',
+        evidenceStatus: 'Supplier Evidence',
+        reviewRequired: false,
+        dataType: 'supplier_quote',
+        pricePerTon: 'USD 777/T',
+        quality: 'Quality score 99/100',
+        reliability: '7 day delivery time',
+        payment: 'TT 30 days',
+        score: '99/100',
+        notes: 'Quote-looking extraction is not owner-approved for dashboard display.',
+      },
     ]
     intelligence.state.value.rawMaterialSignals = [{
       id: 'raw-material-stearic-identity',
@@ -1242,7 +1335,7 @@ describe('screenshot-matched executive business tabs', () => {
     const text = wrapper.text()
 
     expect(text).toContain('Supplier Scorecards - Key Raw Materials')
-    expect(text).toContain('Hermes Autopilot has imported 4 supplier scorecard rows and 1 raw-material signals with source metadata')
+    expect(text).toContain('Hermes Autopilot has imported 5 supplier scorecard rows and 1 raw-material signals with source metadata')
     expect(text).toContain('1 supplier candidate is shown as review-gated scorecard context')
     expect(text).toContain('Uploaded Quote Supplier')
     expect(text).toContain('Stearic Acid TP')
@@ -1270,6 +1363,16 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).not.toContain('LC 30 days')
     expect(text).not.toContain('Fast delivery')
     expect(text).not.toContain('99/100')
+    expect(text).toContain('Unapproved Commercial Supplier')
+    expect(text).not.toContain('USD 777/T')
+    expect(text).not.toContain('freight')
+    expect(text).not.toContain('duties')
+    expect(text).not.toContain('7 day delivery time')
+    expect(text).not.toContain('TT 30 days')
+    expect(text).not.toContain('Quality score')
+    expect(text).toContain('Review state: source-backed context only')
+    expect(text).toContain('Review state: approved supplier evidence')
+    expect(text).toContain('Review state: review-gated')
     expect(text).toContain('Collapsed reference-only supplier target template')
     expect(text).toContain('Stearic Acid TP / Stearic acid 1842')
     expect(text).toContain('Triethanolamine / TEA')
@@ -1287,11 +1390,12 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Source found - review required: Supplier evidence staged for review. Commercial values are hidden until approved for dashboard use.')
     expect(text).not.toContain('No approved quote yet')
     expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
-    expect(text).toContain('Supplier scorecard schedule is being checked automatically')
+    expect(text).toContain('Supplier scorecard autopilot keeps findings review-gated until approved')
     expect(text).toContain('Check Supplier Autopilot')
     expect(text).toContain('Search')
     expect(text).toContain('Stage')
     expect(text).toContain('Owner approval')
+    expect(text).toContain('Only approved uploaded supplier evidence can reveal price, payment, reliability, or score fields.')
     expect(text).toContain('Full dashboard autopilot')
     expect(text).toContain('Verify Supplier')
     expect(text).toContain('Awaiting trusted-source import')

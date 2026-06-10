@@ -142,6 +142,8 @@ export interface FullDashboardServerStatus {
   latestDueSlotSatisfied: boolean
   latestDueSlotAttemptedAt: string
   latestDueSlotRunError: string
+  connectorErrorSummary: Array<{ label: string; count: number; latest: string }>
+  connectorCooldowns: Record<string, { connector: string; reason: string; retryAfter: string; cooldownUntil: string; updatedAt: string }>
   dashboardRecordCount: number
   pendingReviewCount: number
   message: string
@@ -2176,6 +2178,8 @@ function emptyFullDashboardServerStatus(message = 'Full dashboard autopilot sche
     latestDueSlotSatisfied: false,
     latestDueSlotAttemptedAt: '',
     latestDueSlotRunError: '',
+    connectorErrorSummary: [],
+    connectorCooldowns: {},
     dashboardRecordCount: 0,
     pendingReviewCount: 0,
     message,
@@ -2282,6 +2286,8 @@ async function refreshFullDashboardServerStatus(): Promise<FullDashboardServerSt
       latestDueSlotSatisfied: Boolean(serverImport?.latestDueSlotSatisfied),
       latestDueSlotAttemptedAt: serverImport?.latestDueSlotAttemptedAt || '',
       latestDueSlotRunError: serverImport?.latestDueSlotRunError || '',
+      connectorErrorSummary: serverImport?.connectorErrorSummary || [],
+      connectorCooldowns: serverImport?.connectorCooldowns || {},
       ...counts,
       message: '',
       errors: autoImportError ? [autoImportError] : [],

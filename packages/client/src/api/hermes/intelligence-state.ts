@@ -29,6 +29,8 @@ export interface DashboardAutopilotImportStatus {
   latestDueSlotSatisfied: boolean
   latestDueSlotAttemptedAt: string
   latestDueSlotRunError: string
+  connectorErrorSummary?: Array<{ label: string; count: number; latest: string }>
+  connectorCooldowns?: Record<string, { connector: string; reason: string; retryAfter: string; cooldownUntil: string; updatedAt: string }>
 }
 
 export interface DashboardIntelligenceStateSaveResponse {
@@ -52,6 +54,8 @@ export interface DashboardAutopilotImportResult {
   autoFilledCount: number
   stagedReviewCount: number
   missingCoverageFollowUpStarted: boolean
+  connectorErrorSummary?: Array<{ label: string; count: number; latest: string }>
+  connectorCooldowns?: Record<string, { connector: string; reason: string; retryAfter: string; cooldownUntil: string; updatedAt: string }>
   errors: string[]
 }
 

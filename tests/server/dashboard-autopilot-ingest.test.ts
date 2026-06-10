@@ -3354,8 +3354,48 @@ describe('dashboard autopilot output ingestion', () => {
     ]))
     expect(result.errors.join('\n')).toContain('paused remaining Comtrade fetches')
     expect(result.errors.join('\n')).toContain('Retry after 60')
+    expect(result.connectorErrorSummary).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: 'Trade source',
+        count: 1,
+        latest: expect.stringContaining('UN Comtrade rate limited'),
+      }),
+    ]))
+    expect(result.connectorCooldowns['official-comtrade']).toEqual(expect.objectContaining({
+      connector: 'official-comtrade',
+      retryAfter: '60',
+      reason: expect.stringContaining('UN Comtrade rate limited'),
+    }))
     expect(envelope?.state.marketClaims || []).toHaveLength(0)
     expect(envelope?.state.researchFindings || []).toHaveLength(0)
+
+    const registry = JSON.parse(readFileSync(join(hermesHome, 'dashboard-intelligence', 'imported-runs.json'), 'utf-8'))
+    expect(registry.connectorCooldowns['official-comtrade']).toEqual(expect.objectContaining({
+      connector: 'official-comtrade',
+      retryAfter: '60',
+    }))
+
+    const second = await ingestFullDashboardAutopilotOutputs('default', {
+      includeOfficialConnectors: false,
+      includeOfficialCompanyFinancialConnectors: false,
+      includeOfficialProductConnectors: false,
+      includeOfficialSupplierConnectors: false,
+      includeOfficialTradeConnectors: true,
+      includeMarketReferenceConnectors: false,
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(second.errors).toEqual(expect.arrayContaining([
+      expect.stringContaining('UN Comtrade cooldown active until'),
+    ]))
+
+    const status = await readFullDashboardAutopilotImportStatus('default')
+    expect(status.connectorErrorSummary).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Trade source' }),
+    ]))
+    expect(status.connectorCooldowns['official-comtrade']).toEqual(expect.objectContaining({
+      connector: 'official-comtrade',
+      retryAfter: '60',
+    }))
   })
 
   it('falls back to the latest usable two-year UN Comtrade period when newer annual data is incomplete', async () => {

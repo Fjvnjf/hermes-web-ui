@@ -43,6 +43,7 @@ interface SupplierScorecardRow {
   sourceUrl?: string
   sourceMeta: string
   sourceSummary: string
+  reviewState: string
   nextAction: string
   highRisk?: boolean
 }
@@ -70,7 +71,7 @@ const intelligence = useFeasibilityIntelligence()
 const materials = ref<RawMaterialRecord[]>(loadMaterials())
 const selectedMaterialId = ref(materials.value[0]?.id || '')
 const savingKey = ref('')
-const supplierAutopilotStatus = ref('Supplier scorecard schedule is being checked automatically')
+const supplierAutopilotStatus = ref('Supplier scorecard autopilot keeps findings review-gated until approved')
 const supplierAutopilotJobId = ref('')
 const employeeRedaction = computed(() => shouldRedactForEmployee())
 
@@ -106,6 +107,20 @@ const DISPLAYABLE_PRICE_STATUSES: IntelligenceEvidenceStatus[] = [
   'User Approved',
   'Investor Approved',
 ]
+const APPROVED_SUPPLIER_EVIDENCE_STATUSES: IntelligenceEvidenceStatus[] = [
+  'Verified',
+  'User Approved',
+  'Investor Approved',
+]
+const TRUSTED_SUPPLIER_CONTEXT_STATUSES: IntelligenceEvidenceStatus[] = [
+  'Verified',
+  'Source-backed',
+  'Official Data',
+  'Trusted Source Auto-Updated',
+  'Supplier Evidence',
+  'User Approved',
+  'Investor Approved',
+]
 
 const supplierScorecardRows: SupplierScorecardRow[] = [
   {
@@ -122,6 +137,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceUrl: 'https://www.wilmar-international.com/oleochemicals',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Request quote, TDS, SDS, COA, MOQ, lead time, and payment terms for stearic acid.',
   },
   {
@@ -138,6 +154,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceUrl: 'https://www.klkoleo.com/products/',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Confirm stearic acid grade match, China delivery route, quote validity, and payment terms.',
   },
   {
@@ -154,6 +171,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceUrl: 'https://products.basf.com/global/en/ci/triethanolamine',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Verify TEA grade, SDS, China availability, distributor channel, quote, and lead time.',
   },
   {
@@ -170,6 +188,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceUrl: 'https://www.dow.com/en-us/pdp.dowsil-sh-200-fluid-1000-cst.850505z.html',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Confirm PDMS viscosity, textile softener suitability, distributor quote, and technical documents.',
   },
   {
@@ -186,6 +205,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceUrl: 'https://www.wacker.com/h/en-gb/silicone-fluids-emulsions/linear-silicone-fluids/wacker-eco-ak-1000/p/000100490',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Confirm matching silicone fluid grade, China supply, quote, SDS, TDS, and application notes.',
   },
   {
@@ -202,6 +222,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only high-risk raw-material identity target. Supplier use requires regulatory and quote evidence.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Verify supplier identity, exact CAS, legal status, transport/storage rules, SDS, and permit requirements before any quote is used.',
     highRisk: true,
   },
@@ -218,6 +239,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     sourceTitle: 'Local quote and document evidence needed',
     sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only local sourcing target. Upload or import supplier quote evidence before use.',
+    reviewState: 'Review state: reference-only template',
     nextAction: 'Identify local suppliers, request quote, SDS, TDS, COA, delivery terms, and tax/VAT details.',
   },
 ]
@@ -343,47 +365,98 @@ function supplierEvidenceText(record: SupplierScorecardRecord): string {
   return evidenceText
 }
 
+function supplierTierText(record: SupplierScorecardRecord): string {
+  return String(record.sourceTier || record.reportedSourceTier || '').toLowerCase()
+}
+
 function isReviewOnlySupplierStatus(record: SupplierScorecardRecord): boolean {
   return /reference only|candidate source|hypothesis|assumption|missing/i.test(record.evidenceStatus || '')
 }
 
-function canDisplaySensitiveSupplierValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
-  if (isUnresolvedSupplierValue(value)) return false
+function supplierRecordLooksUploaded(record: SupplierScorecardRecord): boolean {
+  const text = supplierEvidenceText(record)
+  return /supplier[_ -]?quote|quotation|quote|invoice|proforma|purchase order|\bpi\b|price offer|commercial offer|distributor quote|uploaded|upload|supplier evidence|audit packet|quote packet|manual_upload|manual upload/.test(text)
+}
+
+function supplierRecordLooksApproved(record: SupplierScorecardRecord): boolean {
+  const text = supplierEvidenceText(record)
+  if (/unapproved|not\s+approved|not\s+owner-approved|not\s+owner\s+approved|not\s+investor-approved|not\s+investor\s+approved|without\s+approval|pending\s+approval|needs\s+approval/.test(text)) {
+    return false
+  }
+  return /approved|owner-reviewed|owner reviewed|reviewed by owner|investor-approved|investor approved|verified for dashboard|approved for dashboard/.test(text)
+}
+
+function isApprovedSupplierEvidenceRecord(record: SupplierScorecardRecord): boolean {
   if (record.reviewRequired || record.reportedReviewRequired) return false
   if (!hasSupplierSourceMetadata(record)) return false
   if (isReviewOnlySupplierStatus(record)) return false
+  if (APPROVED_SUPPLIER_EVIDENCE_STATUSES.includes(record.evidenceStatus)) return true
+  return record.evidenceStatus === 'Supplier Evidence' &&
+    supplierTierText(record).includes('tier3') &&
+    supplierRecordLooksUploaded(record) &&
+    supplierRecordLooksApproved(record)
+}
+
+function isTrustedSupplierContextRecord(record: SupplierScorecardRecord): boolean {
+  if (record.reviewRequired || record.reportedReviewRequired) return false
+  if (!hasSupplierSourceMetadata(record)) return false
+  if (isReviewOnlySupplierStatus(record)) return false
+  if (!TRUSTED_SUPPLIER_CONTEXT_STATUSES.includes(record.evidenceStatus)) return false
+  return /tier1|tier2|tier3|official|supplier|company|trusted/.test(supplierTierText(record)) ||
+    /official|supplier evidence|uploaded|quote packet|\bcoa\b|\btds\b|\bsds\b|trusted/.test(supplierEvidenceText(record))
+}
+
+function supplierValueContainsBlockedLogisticsCost(value?: string | number | null): boolean {
+  return /landed\s+cost|freight|dut(?:y|ies)|tariff|customs|vat|tax|cif|fob|exw|dap|ddp|logistics\s+cost|shipping\s+cost|delivery\s+time|lead\s+time|eta|etd|\b\d+\s*(?:business\s+)?days?\b/i.test(String(value || ''))
+}
+
+function supplierValueLooksLikeQualityOrReliabilityScore(value?: string | number | null): boolean {
+  return /quality\s+(?:score|rating)|reliability\s+(?:score|rating)|supplier\s+rating|\b\d+\s*\/\s*(?:10|100)\b|\b\d{1,3}\s*%\b/i.test(String(value || ''))
+}
+
+function supplierReviewState(record: SupplierScorecardRecord): string {
+  if (record.reviewRequired || record.reportedReviewRequired || isReviewOnlySupplierStatus(record)) {
+    return 'Review state: review-gated'
+  }
+  if (isApprovedSupplierEvidenceRecord(record)) return 'Review state: approved supplier evidence'
+  if (isTrustedSupplierContextRecord(record)) return 'Review state: source-backed context only'
+  return 'Review state: source review needed'
+}
+
+function canDisplaySensitiveSupplierValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
+  if (isUnresolvedSupplierValue(value)) return false
+  if (!isApprovedSupplierEvidenceRecord(record)) return false
+  if (supplierValueContainsBlockedLogisticsCost(value)) return false
   return supplierEvidenceLooksQuoteBacked(record)
 }
 
 function canDisplaySupplierQualityValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
   if (isUnresolvedSupplierValue(value)) return false
-  if (record.reviewRequired || record.reportedReviewRequired) return false
-  if (!hasSupplierSourceMetadata(record)) return false
-  if (isReviewOnlySupplierStatus(record)) return false
+  if (supplierValueContainsBlockedLogisticsCost(value)) return false
+  if (supplierValueLooksLikeQualityOrReliabilityScore(value) && !isApprovedSupplierEvidenceRecord(record)) return false
+  if (!isTrustedSupplierContextRecord(record)) return false
   return supplierEvidenceLooksQualityBacked(record)
 }
 
 function canDisplaySupplierReliabilityValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
   if (isUnresolvedSupplierValue(value)) return false
-  if (record.reviewRequired || record.reportedReviewRequired) return false
-  if (!hasSupplierSourceMetadata(record)) return false
-  if (isReviewOnlySupplierStatus(record)) return false
+  if (!isApprovedSupplierEvidenceRecord(record)) return false
+  if (supplierValueContainsBlockedLogisticsCost(value)) return false
+  if (supplierValueLooksLikeQualityOrReliabilityScore(value)) return false
   return supplierEvidenceLooksReliabilityBacked(record)
 }
 
 function canDisplaySupplierPaymentValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
   if (isUnresolvedSupplierValue(value)) return false
-  if (record.reviewRequired || record.reportedReviewRequired) return false
-  if (!hasSupplierSourceMetadata(record)) return false
-  if (isReviewOnlySupplierStatus(record)) return false
+  if (!isApprovedSupplierEvidenceRecord(record)) return false
+  if (supplierValueContainsBlockedLogisticsCost(value)) return false
   return supplierEvidenceLooksPaymentBacked(record)
 }
 
 function canDisplaySupplierScoreValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
   if (isUnresolvedSupplierValue(value)) return false
-  if (record.reviewRequired || record.reportedReviewRequired) return false
-  if (!hasSupplierSourceMetadata(record)) return false
-  if (isReviewOnlySupplierStatus(record)) return false
+  if (!isApprovedSupplierEvidenceRecord(record)) return false
+  if (supplierValueContainsBlockedLogisticsCost(value)) return false
   return supplierEvidenceLooksScoreBacked(record)
 }
 
@@ -413,16 +486,24 @@ function importedSupplierScoreField(record: SupplierScorecardRecord, value: stri
 }
 
 function supplierTextContainsCommercialValue(text?: string | null): boolean {
-  return /(?:usd|us\$|\$|rmb|cny|¥|eur|€|\/\s*t|\/\s*mt|per\s+(?:ton|mt)|landed cost|freight|logistics|lead time|delivery terms|delivery record|shipment|moq|price|quote|quotation|invoice|proforma|payment|payment terms|\blc\b|letter of credit|\btt\b|credit days|quality rating|reliability rating|supplier rating|\d+\s*\/\s*10|\d+\s*\/\s*100|\bscore\b|scorecard)/i.test(text || '')
+  return /(?:usd|us\$|\$|rmb|cny|¥|eur|€|\/\s*t|\/\s*mt|per\s+(?:ton|mt)|landed cost|freight|dut(?:y|ies)|tariff|customs|vat|tax|cif|fob|exw|dap|ddp|logistics|lead time|delivery time|delivery terms|delivery record|shipment|moq|price|quote|quotation|invoice|proforma|payment|payment terms|\blc\b|letter of credit|\btt\b|credit days|quality rating|quality score|reliability rating|reliability score|supplier rating|\d+\s*\/\s*10|\d+\s*\/\s*100|\bscore\b|scorecard)/i.test(text || '')
 }
 
 function safeSupplierSourceSummary(record: SupplierScorecardRecord): string {
   const text = [record.value, record.notes].filter(Boolean).join(' ')
   if (!text.trim()) return 'Imported supplier/material context. Missing price, payment, score, quality, and reliability fields stay review-gated.'
   if (record.reviewRequired || record.reportedReviewRequired || supplierTextContainsCommercialValue(text)) {
-    return 'Supplier evidence imported. Commercial values are hidden until approved for dashboard use.'
+    return 'Supplier evidence imported. Commercial, logistics, and scoring values are hidden until approved for dashboard use.'
   }
   return text
+}
+
+function safeSupplierRiskSummary(record: SupplierScorecardRecord): string {
+  if (!record.riskReason?.trim()) return ''
+  if (supplierTextContainsCommercialValue(record.riskReason)) {
+    return 'Commercial/logistics risk detail hidden pending source review.'
+  }
+  return record.riskReason
 }
 
 const importedRawMaterialIdentitySignals = computed<RawMaterialIdentitySignalRow[]>(() => {
@@ -515,8 +596,9 @@ const importedSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
         sourceMeta: supplierSourceMeta(record, identitySignal),
         sourceSummary: [
           safeSupplierSourceSummary(record),
-          record.riskReason || '',
+          safeSupplierRiskSummary(record),
         ].filter(Boolean).join(' '),
+        reviewState: supplierReviewState(record),
         nextAction: record.riskReason || record.notes || `Review quote, TDS, SDS, COA, payment terms, and delivery evidence for ${record.supplier} / ${record.material}.`,
         highRisk: isDmsMaterial(`${record.supplier} ${record.material}`),
       }
@@ -557,6 +639,7 @@ const sourceReviewSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
           sourceDate ? `date: ${sourceDate}` : '',
         ].filter(Boolean).join(' / '),
         sourceSummary: `Source found - review required: ${proposed}`,
+        reviewState: 'Review state: review-gated',
         nextAction: record.riskReason || `Review supplier evidence before using price, payment, reliability, or score for ${record.supplier} / ${record.material}.`,
         highRisk: isDmsMaterial(`${record.supplier || ''} ${record.material || ''}`),
       }
@@ -649,20 +732,20 @@ const supplierAutopilotCards = computed(() => [
   {
     icon: '🔎',
     label: 'Search',
-    value: supplierAutopilotJobId.value ? 'Scheduled' : 'Auto-checking',
-    note: 'Uses the Hermes job scheduler; results stay review-gated until approved.',
+    value: supplierAutopilotJobId.value ? 'Scheduled' : 'Review-gated',
+    note: 'Uses the Hermes job scheduler when available; no supplier facts are promoted without approval.',
   },
   {
     icon: '📥',
     label: 'Stage',
     value: `${importedSupplierScorecardRows.value.length} rows`,
-    note: `${importedRawMaterialIdentitySignals.value.length} raw-material signals linked; review candidates appear with gated values.`,
+    note: `${importedRawMaterialIdentitySignals.value.length} raw-material signals linked; candidates keep commercial values hidden.`,
   },
   {
     icon: '✅',
     label: 'Verify',
     value: 'Owner approval',
-    note: 'Prices, scores, payment terms, and DMS details need evidence before use.',
+    note: 'Only approved uploaded supplier evidence can reveal price, payment, reliability, or score fields.',
   },
 ])
 
@@ -1105,6 +1188,7 @@ onMounted(() => {
               <span v-else class="verify-value">{{ displaySupplierStatus(row.evidenceStatus) }}</span>
               <small>{{ row.sourceTitle }}</small>
               <small>{{ displaySupplierText(row.sourceMeta) }}</small>
+              <small>{{ displaySupplierText(row.reviewState) }}</small>
               <small>{{ displaySupplierText(row.sourceSummary) }}</small>
             </div>
             <NButton

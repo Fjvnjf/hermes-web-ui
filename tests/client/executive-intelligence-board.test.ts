@@ -145,7 +145,7 @@ describe('Pinned Executive Intelligence Board', () => {
     const wrapper = mount(PinnedExecutiveIntelligenceBoard)
 
     expect(wrapper.text()).toContain('Market size')
-    expect(wrapper.text()).toContain('No source-backed claim captured yet')
+    expect(wrapper.text()).toContain('No approved source-backed value')
     expect(wrapper.text()).not.toContain('Largest consumer; nearly half of 2024 global textile-chemicals value')
     expect(wrapper.text()).not.toContain('Unknown supplier')
     expect(wrapper.text()).toContain('Awaiting trusted-source import')

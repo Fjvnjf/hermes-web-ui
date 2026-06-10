@@ -135,6 +135,13 @@ function compactAutopilotIssue(text: string): string {
 const serverAutopilotIssueRows = computed<AutopilotIssueRow[]>(() => {
   const status = serverAutopilotStatus.value
   if (!status) return []
+  const structured = status.connectorErrorSummary || []
+  if (structured.length) {
+    return structured.map(item => ({
+      label: `${item.label} (${item.count})`,
+      detail: compactAutopilotIssue(item.latest),
+    })).slice(0, 5)
+  }
   const values = [
     status.lastError,
     status.latestDueSlotRunError,
@@ -155,6 +162,12 @@ const serverAutopilotIssueRows = computed<AutopilotIssueRow[]>(() => {
     })
     .slice(0, 5)
 })
+const serverAutopilotCooldownRows = computed(() =>
+  Object.values(serverAutopilotStatus.value?.connectorCooldowns || {})
+    .filter(item => item.cooldownUntil)
+    .sort((a, b) => a.cooldownUntil.localeCompare(b.cooldownUntil))
+    .slice(0, 4),
+)
 
 const easyAutopilotState = computed(() => {
   const serverStatus = serverAutopilotStatus.value
@@ -180,7 +193,9 @@ const easyAutopilotState = computed(() => {
       body: firstIssue
         ? `${firstIssue.label}: ${firstIssue.detail}`
         : serverStatus?.message || 'Hermes reported a job or import warning. Existing dashboard data is preserved.',
-      action: 'Refresh status, then inspect Jobs or the Review Queue.',
+      action: serverAutopilotCooldownRows.value.length
+        ? 'Some connectors are cooling down after rate limits. Existing dashboard data is preserved.'
+        : 'Refresh status, then inspect Jobs or the Review Queue.',
     }
   }
   if (pendingReview > 0) {
@@ -867,6 +882,13 @@ async function bootstrapTrustedSourcesView() {
             <li v-for="issue in serverAutopilotIssueRows" :key="`${issue.label}-${issue.detail}`">
               <span>{{ issue.label }}</span>
               <strong>{{ issue.detail }}</strong>
+            </li>
+          </ul>
+          <ul v-if="serverAutopilotCooldownRows.length" class="server-autopilot-issues cooldowns" aria-label="Autopilot connector cooldowns">
+            <li v-for="cooldown in serverAutopilotCooldownRows" :key="cooldown.connector">
+              <span>{{ cooldown.connector }}</span>
+              <strong>Cooling down until {{ formatTimestamp(cooldown.cooldownUntil) }}</strong>
+              <small>{{ cooldown.reason }}</small>
             </li>
           </ul>
           <div class="server-autopilot-grid">
@@ -2055,6 +2077,19 @@ async function bootstrapTrustedSourcesView() {
     font-size: 12px;
     line-height: 1.38;
   }
+
+  small {
+    grid-column: 1 / -1;
+    overflow-wrap: anywhere;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+}
+
+.server-autopilot-issues.cooldowns li {
+  border-color: rgba(var(--warning-rgb), 0.24);
+  background: rgba(var(--warning-rgb), 0.055);
 }
 
 .server-autopilot-grid {

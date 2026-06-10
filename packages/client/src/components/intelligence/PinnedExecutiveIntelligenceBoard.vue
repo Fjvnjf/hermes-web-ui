@@ -20,6 +20,7 @@ import {
   EXECUTIVE_REFRESH_SCHEDULE,
   marketClaimValue,
   nextTwiceDailyRefresh,
+  type ExecutiveKpi,
   type ExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
 import {
@@ -63,10 +64,19 @@ const redactsSensitiveValues = computed(() => shouldRedactForEmployee(role.value
 const latestFinancialModel = intelligence.latestFinancialModel
 const nextUpdateLabel = computed(() => formatDateTime(refreshState.value.nextRun))
 const economicsKpis = computed(() => buildInvestorEconomicsKpis(latestFinancialModel.value, nextUpdateLabel.value))
-const visibleEconomicsKpis = computed(() =>
-  redactsSensitiveValues.value
-    ? economicsKpis.value.map(item => displayExecutiveKpi(item.sensitive ? { ...item, value: 'Restricted', evidenceStatus: 'To Verify' as const, sourceLabel: 'Owner/internal only' } : item))
-    : economicsKpis.value.map(displayExecutiveKpi),
+type DisplayExecutiveKpi = ExecutiveKpi & { displayStatus?: string }
+const visibleEconomicsKpis = computed<DisplayExecutiveKpi[]>(() =>
+  economicsKpis.value.map(item => displayExecutiveKpi(
+    redactsSensitiveValues.value && item.sensitive
+      ? {
+          ...item,
+          value: 'Restricted',
+          evidenceStatus: 'Reference Only',
+          displayStatus: 'Review required',
+          sourceLabel: 'Owner/internal only',
+        }
+      : item,
+  )),
 )
 const investmentBreakdown = computed(() => buildInvestmentBreakdownRows())
 
@@ -95,8 +105,8 @@ const competitorRows = computed(() => {
     evidenceStatus: canDisplayBoardCompetitorShare(competitor) ? competitor.evidenceStatus : 'To Verify',
   }))
 })
-const topCountries = computed(() => exportMarkets.value.slice(0, 4))
-const topRawMaterials = computed(() => rawMaterials.value.slice(0, 4))
+const topCountries = computed(() => exportMarkets.value.filter(canDisplayStoredEvidenceRecord).slice(0, 4))
+const topRawMaterials = computed(() => rawMaterials.value.filter(canDisplayStoredEvidenceRecord).slice(0, 4))
 const recentCaptures = computed(() => listRecentCaptureActivities(3))
 const openResearchJobs = computed(() => intelligence.state.value.researchJobs.slice(0, 4))
 const pendingReviewItems = computed(() => intelligence.pendingResearchFindings.value.slice(0, 4))
@@ -166,7 +176,7 @@ function marketMetric(label: string, claim: MarketClaim | null) {
   const useClaim = canDisplayBoardMarketClaim(claim)
   return {
     label,
-    value: boardMarketClaimValue(claim),
+    value: useClaim ? boardMarketClaimValue(claim) : 'No approved source-backed value',
     evidenceStatus: useClaim ? claimStatusOrToVerify(claim) : 'To Verify',
     sourceLabel: useClaim ? boardSourceMetadata(claim) : boardSourceMetadata(null),
   }
@@ -224,6 +234,7 @@ function boardSourceMetadata(record?: BoardMetadataRecord | null): string {
 type BoardKpiMetadata = {
   sourceLabel: string
   evidenceStatus: string
+  displayStatus?: string
   lastUpdated: string
 }
 
@@ -236,7 +247,7 @@ function boardKpiSourceMetadata(item?: BoardKpiMetadata | null): string {
     `Source: ${item.sourceLabel}`,
     `Confidence: ${confidence}`,
     `Last checked: ${item.lastUpdated || 'Not available'}`,
-    `Review: ${displayBoardStatus(item.evidenceStatus)}`,
+    `Review: ${displayBoardStatus('displayStatus' in item && item.displayStatus ? item.displayStatus : item.evidenceStatus)}`,
   ].join(' / ')
 }
 
@@ -245,6 +256,8 @@ function displayBoardValue(value?: string | number | null): string {
 }
 
 function displayBoardStatus(status?: string | null): string {
+  const normalized = String(status || '').trim()
+  if (/^(pending review|review required)$/i.test(normalized)) return 'Review required'
   return displayEvidenceStatus(status)
 }
 
@@ -286,10 +299,22 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 function statusType(status: string): 'default' | 'success' | 'warning' | 'error' | 'info' {
+  if (/^(pending review|review required)$/i.test(status)) return 'warning'
   if (status === 'Verified' || status === 'Source-backed' || status === 'User Approved' || status === 'Investor Approved') return 'success'
   if (status === 'Assumption' || status === 'Powerful Assumption' || status === 'Derived from Assumptions' || status === 'Reference Only') return 'warning'
-  if (status === 'Missing' || status === 'To Verify') return 'error'
+  if (status === 'Missing' || status === 'To Verify') return 'warning'
   return 'info'
+}
+
+function canDisplayStoredEvidenceRecord(record: {
+  evidenceStatus?: string | null
+  source?: string | null
+  sourceDate?: string | null
+}): boolean {
+  const status = String(record.evidenceStatus || '').trim()
+  if (['User Approved', 'Investor Approved', 'Approved Assumption'].includes(status)) return true
+  if (!['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated', 'Supplier Evidence', 'Market Reference'].includes(status)) return false
+  return Boolean(record.source?.trim() && record.sourceDate?.trim())
 }
 
 function refreshSummaryText(): string {
@@ -462,11 +487,11 @@ onMounted(() => {
         </p>
       </div>
       <div class="board-refresh">
-        <span>Last run: {{ formatDateTime(refreshState.lastRun) }}</span>
-        <span>Next update: {{ formatDateTime(refreshState.nextRun) }}</span>
+        <span>Last review: {{ formatDateTime(refreshState.lastRun) }}</span>
+        <span>{{ refreshState.localOnly ? 'Next review target' : 'Next source job' }}: {{ formatDateTime(refreshState.nextRun) }}</span>
         <span>Schedule: {{ refreshState.scheduleDisplay }}</span>
         <NTag size="small" :type="refreshState.localOnly ? 'warning' : 'success'">
-          {{ refreshState.localOnly ? 'Local metadata' : 'Hermes Job scheduled' }}
+          {{ refreshState.localOnly ? 'Review required' : 'Trusted-source job scheduled' }}
         </NTag>
       </div>
     </header>
@@ -516,7 +541,7 @@ onMounted(() => {
             <div v-for="kpi in visibleEconomicsKpis" :key="kpi.key" class="economics-kpi">
               <span>{{ kpi.label }}</span>
               <strong>{{ displayBoardValue(kpi.value) }}</strong>
-              <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayBoardStatus(kpi.evidenceStatus) }}</NTag>
+              <NTag size="small" :type="statusType(kpi.displayStatus || kpi.evidenceStatus)">{{ displayBoardStatus(kpi.displayStatus || kpi.evidenceStatus) }}</NTag>
               <small>{{ boardKpiSourceMetadata(kpi) }}</small>
             </div>
           </div>
