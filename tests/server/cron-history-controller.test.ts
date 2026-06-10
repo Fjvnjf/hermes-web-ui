@@ -151,6 +151,86 @@ describe('Hermes cron history controller', () => {
     })
   })
 
+  it('filters cron history to employee-safe jobs for employee-style roles', async () => {
+    writeJobs([
+      {
+        id: 'safe-job',
+        name: 'Customer interview follow-up',
+        prompt: 'Summarize public market research notes',
+      },
+      {
+        id: 'formula-job',
+        name: 'Formula cost review',
+        prompt: 'Review formula/CAS list and landed cost',
+      },
+    ])
+    const safeOutputDir = join(profileDirState.value, 'cron', 'output', 'safe-job')
+    const formulaOutputDir = join(profileDirState.value, 'cron', 'output', 'formula-job')
+    mkdirSync(safeOutputDir, { recursive: true })
+    mkdirSync(formulaOutputDir, { recursive: true })
+    writeFileSync(join(safeOutputDir, '2026-05-05T05-00-00.000000+00-00.md'), '# public interview notes\n')
+    writeFileSync(join(formulaOutputDir, '2026-05-05T06-00-00.000000+00-00.md'), '# formula landed cost\n')
+
+    const { listRuns } = await import('../../packages/server/src/controllers/hermes/cron-history')
+
+    const ctx = createCtx({
+      state: { user: { role: 'employee' } },
+    })
+    await listRuns(ctx)
+
+    expect(ctx.body.runs).toEqual([
+      expect.objectContaining({
+        jobId: 'safe-job',
+        fileName: '2026-05-05T05-00-00.000000+00-00.md',
+      }),
+    ])
+    expect(JSON.stringify(ctx.body)).not.toContain('formula')
+    expect(JSON.stringify(ctx.body)).not.toContain('landed cost')
+  })
+
+  it('blocks direct employee reads of restricted cron outputs without leaking content', async () => {
+    writeJobs([
+      {
+        id: 'safe-job',
+        name: 'Public market note',
+        prompt: 'Summarize public market research notes',
+      },
+      {
+        id: 'formula-job',
+        name: 'Formula cost review',
+        prompt: 'Review formula/CAS list and landed cost',
+      },
+    ])
+    const safeOutputDir = join(profileDirState.value, 'cron', 'output', 'safe-job')
+    const formulaOutputDir = join(profileDirState.value, 'cron', 'output', 'formula-job')
+    mkdirSync(safeOutputDir, { recursive: true })
+    mkdirSync(formulaOutputDir, { recursive: true })
+    writeFileSync(join(safeOutputDir, '2026-05-05T05-00-00.000000+00-00.md'), 'Supplier quote: $5/kg landed cost\n')
+    writeFileSync(join(formulaOutputDir, '2026-05-05T06-00-00.000000+00-00.md'), 'Formula/CAS list and raw_material_ratio\n')
+
+    const { readRun } = await import('../../packages/server/src/controllers/hermes/cron-history')
+
+    const blockedByContent = createCtx({
+      params: { jobId: 'safe-job', fileName: '2026-05-05T05-00-00.000000+00-00.md' },
+      state: { user: { role: 'employee' } },
+    })
+    await readRun(blockedByContent)
+
+    expect(blockedByContent.status).toBe(403)
+    expect(JSON.stringify(blockedByContent.body)).not.toContain('$5/kg')
+    expect(JSON.stringify(blockedByContent.body)).not.toContain('landed cost')
+
+    const hiddenJob = createCtx({
+      params: { jobId: 'formula-job', fileName: '2026-05-05T06-00-00.000000+00-00.md' },
+      state: { user: { role: 'employee' } },
+    })
+    await readRun(hiddenJob)
+
+    expect(hiddenJob.status).toBe(404)
+    expect(JSON.stringify(hiddenJob.body)).not.toContain('Formula/CAS')
+    expect(JSON.stringify(hiddenJob.body)).not.toContain('raw_material_ratio')
+  })
+
   it('adds scheduler metadata when the latest recorded run is newer than the newest output file', async () => {
     writeJobs([
       {

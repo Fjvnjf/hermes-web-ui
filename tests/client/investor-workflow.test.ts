@@ -962,15 +962,15 @@ describe('investor readiness pages', () => {
     const wrapper = mount(InvestmentCalculatorView, {
       global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
     })
-    const addButton = wrapper.findAll('button').find(button => button.text() === 'Stage To Verify finance draft')
+    const addButton = wrapper.findAll('button').find(button => button.text() === 'Stage review-gated finance draft')
 
-    expect(wrapper.text()).toContain('To Verify outputs stay excluded from investor slides')
+    expect(wrapper.text()).toContain('Review-gated outputs stay excluded from investor slides')
     expect(addButton).toBeTruthy()
     await addButton!.trigger('click')
 
     expect(intelligence.state.value.presentationMaterials[0].section).toBe('IRR / Investor Return')
     expect(intelligence.state.value.presentationMaterials[0].evidenceStatus).toBe('To Verify')
-    expect(intelligence.state.value.presentationMaterials[0].content).toContain('Some outputs depend on To Verify inputs')
+    expect(intelligence.state.value.presentationMaterials[0].content).toContain('Some outputs depend on review-gated inputs')
     expect(buildInvestorPresentationDraft(intelligence.state.value.presentationMaterials)).toHaveLength(0)
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'presentation')?.evidenceStatus).toBe('Missing')
   })
@@ -1849,6 +1849,78 @@ describe('investor readiness pages', () => {
     expect(claim.reviewRequired).toBe(true)
     expect(claim.riskReason).toBe('Market scope needs owner review before dashboard use.')
     expect(intelligence.state.value.evidenceItems.find(item => item.id === 'market')?.evidenceStatus).toBe('Source-backed')
+  })
+
+  it('shows imported dashboard target metadata before approving supplier scorecard findings', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addResearchFinding({
+      summary: 'Uploaded supplier evidence proposes a Stearic Acid TP scorecard row for review.',
+      keyClaim: 'Dashboard update: Stearic Acid TP supplier scorecard',
+      area: 'factory',
+      evidenceStatus: 'Source-backed',
+      confidence: 'high',
+      source: {
+        title: 'Uploaded supplier quote packet',
+        url: 'https://example.com/uploaded-supplier-quote',
+        date: '2026-06-05',
+      },
+      riskNote: 'Supplier quote and payment terms require owner approval before procurement use.',
+      dashboardTarget: {
+        group: 'supplierScorecards',
+        screen: 'rawMaterials',
+        fieldKey: 'supplierScorecards.stearicAcidTp.uploadedQuote',
+        field: 'Stearic Acid TP supplier scorecard',
+        proposedDashboardField: 'Stearic Acid TP supplier scorecard',
+        value: 'USD 1,235/T with TDS/SDS uploaded',
+        supplier: 'Uploaded Quote Supplier',
+        material: 'Stearic Acid TP',
+        sourceTier: 'tier3-supplier-evidence',
+        dataType: 'supplier_quote',
+        reviewRequired: true,
+        riskReason: 'Cost-sensitive supplier quote must stay review-gated.',
+        sensitive: true,
+      },
+    })
+    const wrapper = mount(ResearchResultReviewView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+
+    const targetPanel = wrapper.get('.target-review-panel')
+    expect(targetPanel.text()).toContain('Dashboard store')
+    expect(targetPanel.text()).toContain('Data-room evidence for supplierScorecards review')
+    expect(targetPanel.text()).toContain('Proposed dashboard field')
+    expect(targetPanel.text()).toContain('Stearic Acid TP supplier scorecard')
+    expect(targetPanel.text()).toContain('Field key')
+    expect(targetPanel.text()).toContain('supplierScorecards.stearicAcidTp.uploadedQuote')
+    expect(targetPanel.text()).toContain('Source title')
+    expect(targetPanel.text()).toContain('Uploaded supplier quote packet')
+    expect(targetPanel.text()).toContain('Confidence')
+    expect(targetPanel.text()).toContain('high')
+    expect(targetPanel.text()).toContain('Review required for sensitive claim')
+    expect(targetPanel.text()).toContain('Risk reason')
+    expect(targetPanel.text()).toContain('Cost-sensitive supplier quote must stay review-gated.')
+    expect(wrapper.get('.source-link').attributes('href')).toBe('https://example.com/uploaded-supplier-quote')
+    expect(wrapper.text()).toContain('Supplier scorecard approval currently saves a source-linked data-room record')
+
+    const approveButton = wrapper.findAll('button').find(button => button.text() === 'Approve selected updates')
+    expect(approveButton).toBeTruthy()
+    await approveButton!.trigger('click')
+
+    expect(intelligence.state.value.researchFindings[0].dashboardAppliedAt).toBeTruthy()
+    expect(intelligence.state.value.supplierScorecards).toHaveLength(0)
+    expect(intelligence.state.value.dataRoomSources[0]).toMatchObject({
+      dashboardGroup: 'supplierScorecards',
+      fieldKey: 'supplierScorecards.stearicAcidTp.uploadedQuote',
+      proposedDashboardField: 'Stearic Acid TP supplier scorecard',
+      supplier: 'Uploaded Quote Supplier',
+      material: 'Stearic Acid TP',
+      proposedValue: 'USD 1,235/T with TDS/SDS uploaded',
+      sourceTier: 'tier3-supplier-evidence',
+      dataType: 'supplier_quote',
+      confidence: 'high',
+      reviewRequired: true,
+      riskReason: 'Cost-sensitive supplier quote must stay review-gated.',
+    })
   })
 
   it('applies approved autopilot competitor findings to Competitor Intelligence', async () => {

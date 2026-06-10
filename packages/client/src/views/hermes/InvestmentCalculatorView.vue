@@ -13,7 +13,11 @@ import {
   type InvestmentEvidenceGap,
   type InvestmentScenarioInput,
 } from '@/utils/investmentCalculator'
-import type { IntelligenceEvidenceStatus } from '@/utils/investorIntelligence'
+import {
+  displayAutomaticVerificationText,
+  displayEvidenceStatus,
+  type IntelligenceEvidenceStatus,
+} from '@/utils/investorIntelligence'
 import { copyToClipboard } from '@/utils/clipboard'
 import { mkDir, writeFile } from '@/api/hermes/files'
 
@@ -69,7 +73,7 @@ const financialPresentationEvidenceStatus = computed<IntelligenceEvidenceStatus>
 })
 const financialDraftButtonLabel = computed(() =>
   financialPresentationEvidenceStatus.value === 'To Verify'
-    ? 'Stage To Verify finance draft'
+    ? 'Stage review-gated finance draft'
     : 'Add assumption-labeled draft',
 )
 const latestFinancialModel = intelligence.latestFinancialModel
@@ -148,6 +152,18 @@ function statusClass(status: EvidenceStatus): string {
   return `status-${status.toLowerCase().replace(/\s+/g, '-')}`
 }
 
+function displayCalculatorStatus(status?: string | null): string {
+  return displayEvidenceStatus(status)
+}
+
+function displayEvidenceOptionLabel(status: EvidenceStatus): string {
+  return displayCalculatorStatus(status)
+}
+
+function displayCalculatorText(text?: string | null): string {
+  return displayAutomaticVerificationText(text)
+}
+
 async function copySummary() {
   const text = financialSummaryText()
   copied.value = await copyToClipboard(text)
@@ -155,14 +171,14 @@ async function copySummary() {
 
 function financialSummaryText(): string {
   const safetyLabel = financialEvidenceStatus.value === 'To Verify'
-    ? 'Some outputs depend on To Verify inputs and must not be used as investor claims until evidence is resolved.'
+    ? 'Some outputs depend on review-gated inputs and must not be used as investor claims until evidence is resolved.'
     : financialEvidenceStatus.value === 'Derived from Assumptions'
       ? 'All outputs are derived from assumptions and must not be treated as verified investor claims without source evidence.'
       : 'Outputs are based on user-approved or source-backed inputs, but still require final investor review.'
   return [
     `Project: ${scenario.value.projectName}`,
     `Scenario: ${activeScenario.value}`,
-    `Evidence status: ${financialEvidenceStatus.value}`,
+    `Evidence status: ${displayCalculatorStatus(financialEvidenceStatus.value)}`,
     `Evidence warning: ${result.value.incomplete ? 'Incomplete or unverified assumptions' : 'Inputs marked ready'}`,
     `NPV: ${formatCurrency(result.value.npv)}`,
     `IRR: ${formatPercent(result.value.irr)}`,
@@ -346,7 +362,7 @@ function financialEvidenceTaskBody(): string {
     `Scenario: ${activeScenario.value}`,
     `Current financial evidence status: ${financialEvidenceStatus.value}`,
     `Weak inputs: ${evidenceSummary.value.weak} / ${evidenceSummary.value.total}`,
-    `To Verify inputs: ${evidenceSummary.value.toVerify}`,
+    `Review-gated inputs: ${evidenceSummary.value.toVerify}`,
     `Assumption inputs: ${evidenceSummary.value.assumptions}`,
     `Verified inputs: ${evidenceSummary.value.verified}`,
     '',
@@ -373,9 +389,9 @@ function financialDataRoomNotes(): string {
   return [
     `Project: ${scenario.value.projectName}`,
     `Scenario: ${activeScenario.value}`,
-    `Evidence status: ${financialEvidenceStatus.value}`,
+    `Evidence status: ${displayCalculatorStatus(financialEvidenceStatus.value)}`,
     `Weak inputs: ${evidenceSummary.value.weak} / ${evidenceSummary.value.total}`,
-    `To Verify inputs: ${evidenceSummary.value.toVerify}`,
+    `Review-gated inputs: ${evidenceSummary.value.toVerify}`,
     `Assumption inputs: ${evidenceSummary.value.assumptions}`,
     `Verified inputs: ${evidenceSummary.value.verified}`,
     '',
@@ -496,7 +512,7 @@ function registerFinancialModelInDataRoom() {
     notes: financialDataRoomNotes(),
   })
   if (saved.evidenceStatus === 'To Verify') {
-    message.warning('Financial model registered as To Verify in the data room; resolve weak inputs before investor use')
+    message.warning('Financial model registered for review in the data room; resolve weak inputs before investor use')
   } else if (saved.evidenceStatus === 'Derived from Assumptions') {
     message.info('Financial model registered as assumption-derived data-room evidence')
   } else {
@@ -518,7 +534,7 @@ function addFinancialSummaryToDraft() {
     source: financialSnapshotSource(),
   })
   if (financialPresentationEvidenceStatus.value === 'To Verify') {
-    message.warning('Financial summary staged as To Verify and excluded from investor slides until weak inputs are resolved')
+    message.warning('Financial summary staged for review and excluded from investor slides until weak inputs are resolved')
   } else {
     intelligence.updateEvidenceStatus('presentation', 'User Approved')
     message.success('Assumption-labeled financial summary staged for investor draft')
@@ -563,13 +579,13 @@ function addFinancialSummaryToDraft() {
     <section class="model-status-grid" aria-label="Financial model readiness">
       <article class="status-card">
         <span>Financial evidence status</span>
-        <strong>{{ financialEvidenceStatus }}</strong>
+        <strong>{{ displayCalculatorStatus(financialEvidenceStatus) }}</strong>
         <small>Outputs are never treated as verified facts automatically.</small>
       </article>
       <article class="status-card">
         <span>Input evidence</span>
         <strong>{{ evidenceSummary.weak }} weak / {{ evidenceSummary.total }} total</strong>
-        <small>{{ evidenceSummary.toVerify }} to verify, {{ evidenceSummary.assumptions }} assumptions, {{ evidenceSummary.verified }} verified.</small>
+        <small>{{ evidenceSummary.toVerify }} review-gated, {{ evidenceSummary.assumptions }} assumptions, {{ evidenceSummary.verified }} verified.</small>
       </article>
       <article class="status-card">
         <span>Latest saved model</span>
@@ -584,7 +600,7 @@ function addFinancialSummaryToDraft() {
         <NButton secondary :loading="creatingFinancialTask" @click="createFinancialEvidenceTask">Create financial evidence task</NButton>
         <RouterLink :to="{ name: 'hermes.investorReadiness' }">Investor Readiness</RouterLink>
         <small v-if="draftableFinancialOutputs">
-          Can stage as draft text. To Verify outputs stay excluded from investor slides; assumption-only outputs stay labeled as derived from assumptions.
+          Can stage as draft text. Review-gated outputs stay excluded from investor slides; assumption-only outputs stay labeled as derived from assumptions.
         </small>
         <small v-else>
           Add capex and revenue until NPV/IRR are calculable before staging output.
@@ -610,8 +626,8 @@ function addFinancialSummaryToDraft() {
         <article v-for="item in topInvestmentEvidenceGaps" :key="item.id" class="financial-gap-row">
           <div>
             <strong>{{ item.label }}</strong>
-            <p>{{ item.recommendedAction }}</p>
-            <small>{{ item.category }} / {{ item.evidenceStatus }}</small>
+            <p>{{ displayCalculatorText(item.recommendedAction) }}</p>
+            <small>{{ item.category }} / {{ displayCalculatorStatus(item.evidenceStatus) }}</small>
           </div>
           <NButton
             size="tiny"
@@ -638,28 +654,28 @@ function addFinancialSummaryToDraft() {
           Setup months
           <NInputNumber v-model:value="scenario.setupMonths.value" :min="0" />
           <select v-model="scenario.setupMonths.evidenceStatus" aria-label="Setup months evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Discount rate
           <NInputNumber v-model:value="scenario.discountRate.value" :step="0.01" :min="0" />
           <select v-model="scenario.discountRate.evidenceStatus" aria-label="Discount rate evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Tax rate
           <NInputNumber v-model:value="scenario.taxRate.value" :step="0.01" :min="0" />
           <select v-model="scenario.taxRate.evidenceStatus" aria-label="Tax rate evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Terminal / salvage value
           <NInputNumber v-model:value="scenario.salvageValue.value" :min="0" />
           <select v-model="scenario.salvageValue.evidenceStatus" aria-label="Terminal value evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
       </article>
@@ -670,35 +686,35 @@ function addFinancialSummaryToDraft() {
           Investor amount
           <NInputNumber v-model:value="scenario.funding.investorAmount.value" :min="0" />
           <select v-model="scenario.funding.investorAmount.evidenceStatus" aria-label="Investor amount evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Founder contribution
           <NInputNumber v-model:value="scenario.funding.founderContribution.value" :min="0" />
           <select v-model="scenario.funding.founderContribution.evidenceStatus" aria-label="Founder contribution evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Investor equity %
           <NInputNumber v-model:value="scenario.funding.investorEquityPercent.value" :step="0.01" :min="0" />
           <select v-model="scenario.funding.investorEquityPercent.evidenceStatus" aria-label="Investor equity evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Exit year
           <NInputNumber v-model:value="scenario.funding.exitYear.value" :min="0" />
           <select v-model="scenario.funding.exitYear.evidenceStatus" aria-label="Exit year evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Exit multiple
           <NInputNumber v-model:value="scenario.funding.exitMultiple.value" :min="0" />
           <select v-model="scenario.funding.exitMultiple.evidenceStatus" aria-label="Exit multiple evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
       </article>
@@ -709,35 +725,35 @@ function addFinancialSummaryToDraft() {
           Raw material inventory days
           <NInputNumber v-model:value="scenario.workingCapital.rawMaterialInventoryDays.value" :min="0" />
           <select v-model="scenario.workingCapital.rawMaterialInventoryDays.evidenceStatus" aria-label="Raw material inventory evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Finished goods inventory days
           <NInputNumber v-model:value="scenario.workingCapital.finishedGoodsInventoryDays.value" :min="0" />
           <select v-model="scenario.workingCapital.finishedGoodsInventoryDays.evidenceStatus" aria-label="Finished goods inventory evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Customer credit days / DSO
           <NInputNumber v-model:value="scenario.workingCapital.customerCreditDays.value" :min="0" />
           <select v-model="scenario.workingCapital.customerCreditDays.evidenceStatus" aria-label="Customer credit days evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Supplier credit days / DPO
           <NInputNumber v-model:value="scenario.workingCapital.supplierCreditDays.value" :min="0" />
           <select v-model="scenario.workingCapital.supplierCreditDays.evidenceStatus" aria-label="Supplier credit days evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
         <label>
           Safety cash buffer
           <NInputNumber v-model:value="scenario.workingCapital.safetyCashBuffer.value" :min="0" />
           <select v-model="scenario.workingCapital.safetyCashBuffer.evidenceStatus" aria-label="Safety cash buffer evidence status">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
       </article>
@@ -746,13 +762,13 @@ function addFinancialSummaryToDraft() {
     <section class="input-panel wide">
       <div class="panel-heading">
         <h3>Revenue Assumptions</h3>
-        <span :class="statusClass(scenario.products[0].evidenceStatus)">{{ scenario.products[0].evidenceStatus }}</span>
+        <span :class="statusClass(scenario.products[0].evidenceStatus)">{{ displayCalculatorStatus(scenario.products[0].evidenceStatus) }}</span>
       </div>
       <label>Product list / mix <NInput v-model:value="scenario.products[0].name" /></label>
       <label>
         Revenue evidence status
         <select v-model="scenario.products[0].evidenceStatus" aria-label="Revenue assumptions evidence status">
-          <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+          <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
         </select>
       </label>
       <div class="year-table">
@@ -778,7 +794,7 @@ function addFinancialSummaryToDraft() {
           {{ label }}
           <NInputNumber v-model:value="scenario.variableCostPerTon[key].value" :min="0" />
           <select v-model="scenario.variableCostPerTon[key].evidenceStatus">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
       </article>
@@ -789,7 +805,7 @@ function addFinancialSummaryToDraft() {
           {{ label }}
           <NInputNumber v-model:value="scenario.annualFixedCosts[key].value" :min="0" />
           <select v-model="scenario.annualFixedCosts[key].evidenceStatus">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
       </article>
@@ -800,7 +816,7 @@ function addFinancialSummaryToDraft() {
           {{ label }}
           <NInputNumber v-model:value="scenario.capex[key].value" :min="0" />
           <select v-model="scenario.capex[key].evidenceStatus">
-            <option v-for="status in evidenceOptions" :key="status">{{ status }}</option>
+            <option v-for="status in evidenceOptions" :key="status" :value="status">{{ displayEvidenceOptionLabel(status) }}</option>
           </select>
         </label>
       </article>

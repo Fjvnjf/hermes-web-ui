@@ -993,6 +993,7 @@ describe('Trusted Source Autopilot', () => {
   })
 
   it('runs the data engine across mapped fields without injecting fake screenshot values', async () => {
+    stubTrustedSourceFetch()
     const autopilot = useTrustedSourceAutopilot()
     const result = await autopilot.runTrustedSourceDataEngine('market')
 
@@ -1030,6 +1031,8 @@ describe('Trusted Source Autopilot', () => {
     expect(prompt).toContain('Evonik Industries, Stepan Company, Kao Corporation, WACKER')
     expect(prompt).toContain('triethanolamine / TEA, dimethyl sulfate / DMS')
     expect(prompt).toContain('Lean/Base/Conservative/Aggressive scenarios')
+    expect(prompt).toContain('dashboardGroup must match the containing array')
+    expect(prompt).toContain('fieldKey must be stable')
     expect(prompt).toContain('proposedDashboardField')
     expect(prompt).toContain('Put the appendix in one fenced ```json block')
     expect(prompt).toContain('source-backed Markdown tables')

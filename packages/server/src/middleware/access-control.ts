@@ -188,7 +188,7 @@ export function permissionForRequest(ctx: Pick<Context, 'path' | 'method'>): Per
     path.startsWith('/api/hermes/skills') ||
     path.startsWith('/api/hermes/plugins')) return 'view:admin'
 
-  if (path.startsWith('/api/hermes/group-chat')) return 'view:chat'
+  if (path.startsWith('/api/hermes/group-chat')) return 'view:product-development'
   if (path.startsWith('/api/hermes/media')) return 'view:settings'
 
   if (path.startsWith('/v1') || path.startsWith('/api/hermes/v1')) return 'use:proxy'

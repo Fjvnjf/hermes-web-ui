@@ -34,6 +34,7 @@ describe('RBAC request permission gate', () => {
     expect(permissionForRequest(ctx('/api/hermes/intelligence-state', 'super_admin'))).toBe('view:product-development')
     expect(permissionForRequest(ctx('/api/hermes/intelligence-state/autopilot-import-status', 'super_admin'))).toBe('view:jobs')
     expect(permissionForRequest(ctx('/api/hermes/intelligence-state/autopilot-import-now', 'super_admin', 'POST'))).toBe('view:product-development')
+    expect(permissionForRequest(ctx('/api/hermes/group-chat/rooms/room-1', 'super_admin'))).toBe('view:product-development')
     expect(permissionForRequest(ctx('/v1/chat/completions', 'super_admin'))).toBe('use:proxy')
   })
 
@@ -55,6 +56,7 @@ describe('RBAC request permission gate', () => {
       '/api/hermes/logs',
       '/api/hermes/backup/export',
       '/api/hermes/intelligence-state',
+      '/api/hermes/group-chat/rooms/room-1',
       '/v1/chat/completions',
     ]
 
@@ -73,7 +75,7 @@ describe('RBAC request permission gate', () => {
   })
 
   it('allows employees through scoped business APIs while blocking memory, investor, proxy, and system APIs', async () => {
-    for (const path of ['/api/hermes/memory', '/api/hermes/investor/portal', '/api/hermes/logs', '/api/hermes/config', '/api/hermes/available-models', '/api/hermes/backup/export', '/api/hermes/intelligence-state', '/v1/chat/completions']) {
+    for (const path of ['/api/hermes/memory', '/api/hermes/investor/portal', '/api/hermes/logs', '/api/hermes/config', '/api/hermes/available-models', '/api/hermes/backup/export', '/api/hermes/intelligence-state', '/api/hermes/group-chat/rooms/room-1', '/v1/chat/completions']) {
       const request = ctx(path, 'employee')
       const next = vi.fn(async () => {})
       await requireRequestPermission(request, next)

@@ -195,7 +195,7 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Payback Period')
     expect(wrapper.text()).toContain('Profitability Index')
     expect(wrapper.text()).toContain('5-Year ROI')
-    expect(wrapper.text()).toContain('Project analysis template')
+    expect(wrapper.text()).toContain('Reference-only project analysis template')
     expect(wrapper.text()).toContain('Scale-Up Esterquat Plant Project Analysis Template')
     expect(wrapper.text()).toContain('Investment Breakdown - Esterquat Plant')
     expect(wrapper.text()).toContain('Reactors, columns, exchangers, tanks, pumps, packaging')
@@ -216,6 +216,12 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).not.toContain('$16,000,000')
     expect(wrapper.text()).not.toContain('$135M')
     expect(wrapper.text()).not.toContain('50%')
+    expect(wrapper.get('.project-analysis-template').element.tagName).toBe('DETAILS')
+    expect(wrapper.get('.project-analysis-template').attributes('open')).toBeUndefined()
+    expect(wrapper.get('.pdf-project-analysis-panel').element.tagName).toBe('DETAILS')
+    expect(wrapper.get('.pdf-project-analysis-panel').attributes('open')).toBeUndefined()
+    expect(wrapper.get('.kpi-grid').text()).not.toContain('To Verify')
+    expect(wrapper.get('.analysis-grid').text()).not.toContain('To Verify')
   })
 
   it('lets Investment Analysis select scenarios without inventing missing values', async () => {
@@ -304,7 +310,7 @@ describe('screenshot-matched executive business tabs', () => {
     const marketTextLower = marketText.toLowerCase()
 
     expect(wrapper.get('.summary-card').text()).toContain('1')
-    expect(wrapper.get('.summary-card').text()).toContain('source-backed claims')
+    expect(wrapper.get('.summary-card').text()).toContain('source-attached claims')
     expect(wrapper.text()).toContain('Executive Market Panel')
     expect(wrapper.text()).toContain('Owner research permission active')
     expect(wrapper.text()).toContain('Hermes may research trusted public, company, regulatory, supplier, and uploaded evidence sources.')
@@ -321,13 +327,14 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Where Hermes Should Focus Market Research Next')
     expect(wrapper.text()).toContain('Countries tracked')
     expect(wrapper.text()).toContain('Auto-imported')
-    expect(wrapper.text()).toContain('Source-backed signals')
+    expect(wrapper.text()).toContain('Source-attached signals')
     expect(wrapper.text()).toContain('Need direct proof')
     expect(wrapper.text()).toContain('Create research task')
     expect(marketTextLower).toContain('global market intelligence')
     expect(wrapper.text()).toContain('Textile Softeners, Esterquats, and Export-Market Signals')
-    expect(wrapper.text()).toContain('China textile-chemicals anchor')
-    expect(wrapper.text()).toContain('Global esterquat reference market')
+    expect(wrapper.get('.global-market-intelligence').text()).toContain('Country-wise consumption growth - China')
+    expect(wrapper.get('.global-market-intelligence').text()).not.toContain('China textile-chemicals anchor')
+    expect(wrapper.get('.global-market-intelligence').text()).not.toContain('Global esterquat reference market')
     expect(wrapper.text()).toContain('Global Opportunity Map')
     expect(wrapper.text()).toContain('Country-wise Consumption Growth Tracker')
     expect(wrapper.text()).toContain('Direct softener consumption')
@@ -336,10 +343,10 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('UN Comtrade Plus')
     expect(wrapper.get('.market-map-brief').text()).toContain('Trade Proxy')
     expect(wrapper.text()).toContain('official trade data, not direct textile-softener consumption')
-    expect(wrapper.text()).toContain('Cotton mill-use proxy')
+    expect(wrapper.text()).toContain('Official trade-proxy import/export signal')
     expect(wrapper.text()).toContain('Vietnam')
     expect(wrapper.text()).toContain('Bangladesh')
-    expect(wrapper.text()).toContain('OECD-FAO Agricultural Outlook 2025-2034')
+    expect(wrapper.text()).toContain('Reference Source Pack')
     expect(wrapper.text()).toContain('Market Research Questions Hermes Should Answer')
     expect(wrapper.text()).toContain('User PDF reference')
     expect(wrapper.text()).toContain('Imported Market Tables From Your Document')
@@ -424,10 +431,11 @@ describe('screenshot-matched executive business tabs', () => {
     expect(wrapper.text()).toContain('Rating')
     expect(wrapper.text()).toContain('Last Updated')
     expect(wrapper.text()).toContain('Confidence')
-    expect(wrapper.text()).toContain('🥇 Market Leader')
-    expect(wrapper.text()).toContain('📈 Fastest Growth')
-    expect(wrapper.text()).toContain('💰 Highest Revenue')
-    expect(wrapper.text()).toContain('🔥 Most Competitive Pricing')
+    expect(wrapper.text()).toContain('No source-backed leader badge')
+    expect(wrapper.text()).not.toContain('🥇 Market Leader')
+    expect(wrapper.text()).not.toContain('📈 Fastest Growth')
+    expect(wrapper.text()).not.toContain('💰 Highest Revenue')
+    expect(wrapper.text()).not.toContain('🔥 Most Competitive Pricing')
     expect(wrapper.text()).toContain('Reference templates, charts, and manual evidence tools')
     expect(wrapper.text()).toContain('Competitor Landscape Table')
     expect(wrapper.text()).toContain('Competitor Market Share Chart')
@@ -562,13 +570,13 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).toContain('Market Share')
     expect(panel().text()).toContain('Revenue')
     expect(panel().text()).toContain('YoY Growth')
-    expect(panel().text()).toContain('Traffic source import needed')
-    expect(panel().text()).toContain('Rating / recognition source needed')
+    expect(panel().text()).toContain('No approved source-backed value')
     expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     const alphaRows = wrapper.findAll('.comparison-grid-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(alphaRows).toHaveLength(1)
     expect(alphaRows[0].text()).toContain('CWAS equivalent / CWMS variation')
+    expect(alphaRows[0].text()).toContain('2 product variations')
     expect(alphaRows[0].text()).toContain('FY2025 company-wide revenue: US$2.332B')
     expect(alphaRows[0].text()).toContain('+6.96% source-backed')
     expect(alphaRows[0].text()).not.toContain('FY2024 company-wide net sales: US$2,180,274,000')
@@ -576,6 +584,10 @@ describe('screenshot-matched executive business tabs', () => {
     expect(alphaRows[0].text()).toContain('1.2M visits source-backed')
     expect(alphaRows[0].text()).toContain('4.8 source-backed')
     expect(alphaRows[0].text()).toContain('high')
+    expect(alphaRows[0].text()).toContain('🥇 Market Leader')
+    expect(alphaRows[0].text()).toContain('📈 Fastest Growth')
+    expect(alphaRows[0].text()).toContain('💰 Highest Revenue')
+    expect(alphaRows[0].text()).toContain('🔥 Most Competitive Pricing')
     const rawAlphaRows = wrapper.findAll('.competitor-table .competitor-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('Alpha Source Co'))
     expect(rawAlphaRows).toHaveLength(1)
@@ -605,6 +617,67 @@ describe('screenshot-matched executive business tabs', () => {
     expect(panel().text()).not.toMatch(/Hermes\s+verifying\s+twice\s+daily/i)
     expect(panel().text()).not.toContain('$18-22')
     expect(panel().text()).not.toContain('20-25%')
+  })
+
+  it('dedupes duplicate companies without borrowing sources for unsupported product or metric values', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addCompetitor({
+      companyName: 'Gamma Source Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS source-backed equivalent',
+      activeContent: '90% active',
+      pricingEvidence: '$24/kg source-backed',
+      certifications: 'Official certificate',
+      distributionPresence: 'Official distributor page',
+      marketShare: '7% source-backed',
+      revenue: '$42M source-backed',
+      yearlyGrowth: '+8% source-backed',
+      traffic: '1.2M visits source-backed',
+      rating: '4.8 source-backed',
+      lastUpdated: '2026-06-05',
+      confidence: 'high',
+      evidenceStatus: 'Source-backed',
+      source: { title: 'Official Gamma profile', url: 'https://example.com/gamma', date: '2026-06-05' },
+      notes: 'Approved source-backed competitor record.',
+    })
+    intelligence.addCompetitor({
+      companyName: 'Gamma Source Company',
+      countryRegion: 'China',
+      productEquivalent: 'Claimed unsupported CWMS variant',
+      activeContent: 'Claimed 70% active',
+      pricingEvidence: '$12/kg unsupported quote',
+      certifications: 'Claimed certificate',
+      distributionPresence: 'Claimed distributor page',
+      marketShare: '19% unsupported estimate',
+      revenue: '$999M unsupported revenue',
+      yearlyGrowth: '+99% unsupported growth',
+      traffic: '9.9M unsupported visits',
+      rating: '5.0 unsupported rating',
+      lastUpdated: '2026-06-06',
+      confidence: 'high',
+      evidenceStatus: 'Verified',
+      source: null,
+      notes: 'This duplicate lacks a usable source and must not borrow the Gamma source.',
+    })
+
+    const wrapper = mount(CompetitorIntelligenceView)
+    const gammaRows = wrapper.findAll('.comparison-grid-row')
+      .filter(row => !row.classes().includes('head') && row.text().includes('Gamma Source Co'))
+
+    expect(gammaRows).toHaveLength(1)
+    expect(gammaRows[0].text()).toContain('CWAS source-backed equivalent')
+    expect(gammaRows[0].text()).toContain('$24/kg source-backed')
+    expect(gammaRows[0].text()).toContain('7% source-backed')
+    expect(gammaRows[0].text()).toContain('$42M source-backed')
+    expect(gammaRows[0].text()).toContain('+8% source-backed')
+    expect(gammaRows[0].text()).not.toContain('Claimed unsupported CWMS variant')
+    expect(gammaRows[0].text()).not.toContain('$12/kg unsupported quote')
+    expect(gammaRows[0].text()).not.toContain('19% unsupported estimate')
+    expect(gammaRows[0].text()).not.toContain('$999M unsupported revenue')
+    expect(gammaRows[0].text()).not.toContain('+99% unsupported growth')
+    expect(gammaRows[0].text()).not.toContain('9.9M unsupported visits')
+    expect(gammaRows[0].text()).not.toContain('5.0 unsupported rating')
+    expect(gammaRows[0].text()).not.toContain('2026-06-06')
   })
 
   it('shows collective market-share context without promoting it to a company-specific leader badge', async () => {
@@ -638,8 +711,8 @@ describe('screenshot-matched executive business tabs', () => {
     const basfRow = wrapper.findAll('.comparison-grid-row')
       .filter(row => !row.classes().includes('head') && row.text().includes('BASF'))[0]
 
-    expect(basfRow.text()).toContain('No approved company-specific source yet')
-    expect(basfRow.text()).toContain('Hermes missing-coverage research is chasing')
+    expect(basfRow.text()).toContain('Review required')
+    expect(basfRow.text()).toContain('Review required for:')
     expect(basfRow.text()).toContain('company-specific market share')
     expect(basfRow.text()).not.toContain('Collective Tier-1 esterquats share 50-60%')
     expect(basfRow.text()).not.toContain('individual company share not published')
@@ -690,12 +763,12 @@ describe('screenshot-matched executive business tabs', () => {
     const row = wrapper.findAll('.comparison-grid-row')
       .filter(item => !item.classes().includes('head') && item.text().includes('Review Share Co'))[0]
 
-    expect(row.text()).toContain('No approved company-specific source yet')
-    expect(row.text()).toContain('Hermes missing-coverage research is chasing')
+    expect(row.text()).toContain('Review required')
+    expect(row.text()).toContain('Review required for:')
     expect(row.text()).toContain('company-specific market share')
     expect(row.text()).not.toContain('19% global esterquat share')
-    expect(row.text()).not.toContain('Review required')
-    expect(row.text()).toContain('💰 Highest Revenue')
+    expect(row.text()).not.toContain('💰 Highest Revenue')
+    expect(row.text()).toContain('No source-backed leader badge')
     expect(row.text()).not.toContain('🥇 Market Leader')
     expect(wrapper.findAll('.market-share-panel .share-row')
       .filter(item => item.text().includes('Review Share Co'))).toHaveLength(0)
@@ -751,16 +824,78 @@ describe('screenshot-matched executive business tabs', () => {
 
     expect(row.text()).toContain('1.17M visits')
     expect(row.text()).toContain('Official sustainability recognition')
-    expect(row.text()).toContain('No approved company-specific source yet')
+    expect(row.text()).toContain('Review required')
     expect(row.text()).not.toContain('14% global esterquat share')
-    expect(row.text()).not.toContain('Review required')
     expect(row.text()).not.toContain('🥇 Market Leader')
     expect(wrapper.findAll('.market-share-panel .share-row')
       .filter(item => item.text().includes('Traffic Evidence Co'))).toHaveLength(0)
   })
 
-  it('renders supplier scorecards as source-gated raw material verification targets and auto-schedules supplier research', async () => {
-    useFeasibilityIntelligence().addDataRoomSource({
+  it('renders imported supplier scorecards with source metadata while keeping staged candidates review-gated', async () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.state.value.supplierScorecards = [
+      {
+        id: 'supplier-import-quote-1',
+        supplier: 'Uploaded Quote Supplier',
+        material: 'Stearic Acid TP',
+        value: 'Uploaded supplier quote packet confirms the quoted material and attached evidence.',
+        source: {
+          title: 'Uploaded supplier quote packet',
+          url: 'https://example.com/uploaded-quote-packet',
+          date: '2026-06-05',
+        },
+        sourceTier: 'tier3-supplier-evidence',
+        confidence: 'high',
+        evidenceStatus: 'Supplier Evidence',
+        reviewRequired: true,
+        dataType: 'supplier_quote',
+        pricePerTon: 'USD 1,235/T',
+        quality: 'TDS/SDS uploaded',
+        reliability: 'Distributor delivery record uploaded',
+        payment: 'LC at sight',
+        score: '82/100',
+        notes: 'Uploaded supplier evidence remains owner-reviewed before procurement use.',
+      },
+      {
+        id: 'supplier-import-gap-1',
+        supplier: 'Official Product Supplier',
+        material: 'Triethanolamine / TEA',
+        value: 'Official product page confirms product identity, but no supplier quote is approved.',
+        source: {
+          title: 'Official supplier product page',
+          url: 'https://example.com/official-tea-product',
+          date: '2026-06-04',
+        },
+        sourceTier: 'tier2-company-official',
+        confidence: 'medium',
+        evidenceStatus: 'Source-backed',
+        reviewRequired: true,
+        dataType: 'document_evidence',
+        pricePerTon: '',
+        quality: '',
+        reliability: '',
+        payment: '',
+        score: '',
+      },
+    ]
+    intelligence.state.value.rawMaterialSignals = [{
+      id: 'raw-material-stearic-identity',
+      material: 'Stearic Acid TP',
+      value: 'CAS 57-11-4 identity source imported for material matching.',
+      cas: '57-11-4',
+      formula: 'C18H36O2',
+      source: {
+        title: 'PubChem stearic acid identity',
+        url: 'https://pubchem.ncbi.nlm.nih.gov/compound/Stearic-acid',
+        date: '2026-06-02',
+      },
+      sourceTier: 'tier1-official',
+      confidence: 'high',
+      evidenceStatus: 'Official Data',
+      reviewRequired: true,
+      dataType: 'regulatory_data',
+    }]
+    intelligence.addDataRoomSource({
       checklistLabel: 'Autopilot supplier scorecard - Official Supplier',
       area: 'factory',
       dashboardGroup: 'supplierScorecards',
@@ -787,13 +922,23 @@ describe('screenshot-matched executive business tabs', () => {
     const text = wrapper.text()
 
     expect(text).toContain('Supplier Scorecards - Key Raw Materials')
-    expect(text).toContain('Hermes Autopilot has staged 1 supplier candidates')
-    expect(text).toContain('Official Supplier Candidate')
+    expect(text).toContain('Hermes Autopilot has imported 2 supplier scorecard rows and 1 raw-material signals with source metadata')
+    expect(text).toContain('1 supplier candidate remains staged outside the primary scorecard')
+    expect(text).toContain('Uploaded Quote Supplier')
     expect(text).toContain('Stearic Acid TP')
-    expect(text).toContain('Quote/TDS requested; price Awaiting trusted-source import')
-    expect(text).toContain('No approved quote yet')
-    expect(text).toContain('Official supplier product catalog')
-    expect(text).toContain('Reference-only supplier target template')
+    expect(text).toContain('USD 1,235/T')
+    expect(text).toContain('TDS/SDS uploaded')
+    expect(text).toContain('Distributor delivery record uploaded')
+    expect(text).toContain('LC at sight')
+    expect(text).toContain('82/100')
+    expect(text).toContain('Uploaded supplier quote packet')
+    expect(text).toContain('Source metadata: tier3-supplier-evidence / confidence: high / date: 2026-06-05')
+    expect(text).toContain('Raw-material identity source: PubChem stearic acid identity / 2026-06-02')
+    expect(text).toContain('Official Product Supplier')
+    expect(text).toContain('Cost-sensitive: quote evidence required')
+    expect(text).toContain('Cost-sensitive: payment evidence required')
+    expect(text).toContain('Review-gated: scoring evidence required')
+    expect(text).toContain('Collapsed reference-only supplier target template')
     expect(text).toContain('Stearic Acid TP / Stearic acid 1842')
     expect(text).toContain('Triethanolamine / TEA')
     expect(text).toContain('PDMS Silicone Oil / 1000 cSt target')
@@ -805,6 +950,10 @@ describe('screenshot-matched executive business tabs', () => {
     expect(text).toContain('Dow')
     expect(text).toContain('WACKER')
     expect(text).not.toContain('No imported supplier scorecard rows yet')
+    expect(text).not.toContain('Official Supplier Candidate')
+    expect(text).not.toContain('Official supplier product catalog')
+    expect(text).not.toContain('Quote/TDS requested; price Awaiting trusted-source import')
+    expect(text).not.toContain('No approved quote yet')
     expect(text).toContain('Do not use screenshot prices or supplier scores as verified facts')
     expect(text).toContain('Supplier scorecard schedule is being checked automatically')
     expect(text).toContain('Check Supplier Autopilot')
@@ -869,10 +1018,10 @@ describe('screenshot-matched executive business tabs', () => {
     const text = wrapper.text()
 
     expect(text).toContain('Export market opportunity')
-    expect(text).toContain('Hermes Autopilot has filled 1 country-wise trade-proxy records')
+    expect(text).toContain('Trusted-source imports have filled 1 country-wise trade-proxy records')
     expect(text).toContain('China')
     expect(text).toContain('Textile auxiliary / softener trade proxy')
-    expect(text).toContain('HS 380991 trade proxy / Awaiting trusted-source import')
+    expect(text).toContain('HS 380991 trade proxy / source review needed')
     expect(text).toContain('2024 HS 380991 imports: $236,608.42K; quantity 65,409,000 kg')
     expect(text).toContain('+21.23%')
     expect(text).toContain('WITS / World Bank Comtrade - China imports of HS 380991')

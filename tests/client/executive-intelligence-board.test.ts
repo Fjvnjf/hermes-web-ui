@@ -155,6 +155,54 @@ describe('Pinned Executive Intelligence Board', () => {
     expect(competitorMarketShare('12%', null, 'Powerful Assumption')).toBe('Powerful Assumption: 12%')
   })
 
+  it('keeps source metadata visible when board values are source-backed', () => {
+    const intelligence = useFeasibilityIntelligence()
+    intelligence.addMarketClaim({
+      label: 'Growth Rate',
+      value: 'Source-backed growth: 8.2% CAGR',
+      evidenceStatus: 'Source-backed',
+      confidence: 'high',
+      source: {
+        title: 'Official market bulletin',
+        url: 'https://example.com/market-bulletin',
+        date: '2026-06-05',
+      },
+      lastChecked: '2026-06-06',
+    })
+    intelligence.addCompetitor({
+      companyName: 'Official Supplier Co',
+      countryRegion: 'China',
+      productEquivalent: 'CWAS equivalent',
+      activeContent: 'Source-backed active content profile',
+      pricingEvidence: 'Awaiting trusted-source import',
+      certifications: 'Source-backed certificate profile',
+      distributionPresence: 'Source-backed China distribution',
+      marketShare: '7%',
+      evidenceStatus: 'Source-backed',
+      confidence: 'medium',
+      source: {
+        title: 'Official annual profile',
+        url: 'https://example.com/annual-profile',
+        date: '2026-06-04',
+      },
+      notes: '',
+    })
+
+    const wrapper = mount(PinnedExecutiveIntelligenceBoard)
+    const text = wrapper.text()
+
+    expect(text).toContain('Source-backed growth: 8.2% CAGR')
+    expect(text).toContain('Official market bulletin (https://example.com/market-bulletin / 2026-06-05)')
+    expect(text).toContain('Confidence: high')
+    expect(text).toContain('Last checked: 2026-06-06')
+    expect(text).toContain('Review: Source-backed')
+    expect(text).toContain('Official Supplier Co')
+    expect(text).toContain('7%')
+    expect(text).toContain('Official annual profile (https://example.com/annual-profile / 2026-06-04)')
+    expect(text).toContain('Confidence: medium')
+    expect(text).not.toMatch(/\bTo Verify\b/)
+  })
+
   it('exposes twice daily schedule metadata and stages Sync Now into Research Result Review', async () => {
     const wrapper = mount(PinnedExecutiveIntelligenceBoard)
     expect(defaultExecutiveRefreshState().schedule).toBe(EXECUTIVE_REFRESH_SCHEDULE)

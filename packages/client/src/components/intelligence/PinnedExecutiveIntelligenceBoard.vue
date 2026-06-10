@@ -18,7 +18,6 @@ import {
   EXECUTIVE_INTELLIGENCE_STORAGE_KEY,
   EXECUTIVE_REFRESH_JOB_NAME,
   EXECUTIVE_REFRESH_SCHEDULE,
-  marketClaimSourceLabel,
   marketClaimValue,
   nextTwiceDailyRefresh,
   type ExecutiveRefreshState,
@@ -26,8 +25,10 @@ import {
 import {
   displayEvidenceStatus,
   displayUnresolvedValue,
+  formatSourceReference,
   normalizedMarketClaimStatus,
   type MarketClaim,
+  type SourceReference,
 } from '@/utils/investorIntelligence'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
@@ -75,12 +76,12 @@ const competitorRows = computed(() => {
   const records = intelligence.state.value.competitors.slice(0, 5)
   return records.map((competitor, index) => ({
     rank: String(index + 1),
-    manufacturer: competitor.companyName || 'Hermes source search running',
-    hq: competitor.countryRegion || 'Hermes source search running',
-    productEquivalent: competitor.productEquivalent || 'Hermes source search running',
+    manufacturer: competitor.companyName || 'No approved competitor name',
+    hq: competitor.countryRegion || 'No approved source-backed value',
+    productEquivalent: competitor.productEquivalent || 'No approved source-backed value',
     capacity: 'Not published by cited source',
     marketShare: competitorMarketShare(competitor.marketShare, competitor.source, competitor.evidenceStatus),
-    sourceLabel: competitor.source?.title || 'Source search running',
+    sourceLabel: boardSourceMetadata(competitor),
     evidenceStatus: competitor.evidenceStatus,
   }))
 })
@@ -152,33 +153,64 @@ function findMarketClaim(keywords: string[]): MarketClaim | null {
 }
 
 function marketMetric(label: string, claim: MarketClaim | null) {
-  const fallback = sourceBackedBoardMetric(label)
-  const useClaim = Boolean(claim?.value?.trim())
+  const useClaim = canDisplayBoardMarketClaim(claim)
   return {
     label,
-    value: useClaim ? marketClaimValue(claim) : fallback?.value || 'No approved source-backed value',
-    evidenceStatus: useClaim ? claimStatusOrToVerify(claim) : fallback?.evidenceStatus || 'Reference Only',
-    sourceLabel: useClaim ? marketClaimSourceLabel(claim) : fallback?.source?.title || 'Trusted Sources / Research Review',
+    value: boardMarketClaimValue(claim),
+    evidenceStatus: useClaim ? claimStatusOrToVerify(claim) : 'To Verify',
+    sourceLabel: useClaim ? boardSourceMetadata(claim) : boardSourceMetadata(null),
   }
 }
 
-function sourceBackedBoardMetric(label: string): MarketClaim | null {
-  if (/import/i.test(label)) {
-    return {
-      id: 'board-import-trade-proxy',
-      label: 'WTO/WITS trade proxy',
-      value: 'No approved source-backed value',
-      evidenceStatus: 'Trade Proxy',
-      confidence: 'medium',
-      source: {
-        title: 'WTO / World Bank WITS trade data',
-        url: 'https://wits.worldbank.org/',
-        date: '2026-06-04',
-      },
-      lastChecked: '2026-06-04',
-    }
+function boardMarketClaimValue(claim: MarketClaim | null): string {
+  if (canDisplayBoardMarketClaim(claim)) return marketClaimValue(claim)
+  return claim?.value?.trim() ? 'No approved source-backed value' : marketClaimValue(claim)
+}
+
+function canDisplayBoardMarketClaim(claim: MarketClaim | null): boolean {
+  if (!claim?.value?.trim()) return false
+  const status = normalizedMarketClaimStatus(claim)
+  if (['Verified', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated', 'Supplier Evidence', 'Trade Proxy', 'Market Reference'].includes(status)) {
+    return Boolean(claim.source?.title?.trim() && (claim.source.url?.trim() || claim.source.date?.trim()))
   }
-  return null
+  return ['User Approved', 'Investor Approved', 'Approved Assumption', 'Powerful Assumption'].includes(status)
+}
+
+type BoardMetadataRecord = {
+  source?: SourceReference | null
+  evidenceStatus?: string | null
+  confidence?: string | null
+  lastChecked?: string | null
+  updatedAt?: string | null
+  createdAt?: string | null
+}
+
+function boardSourceMetadata(record?: BoardMetadataRecord | null): string {
+  const sourceLabel = record?.source?.title?.trim()
+    ? formatSourceReference(record.source)
+    : 'Trusted Sources / Research Review'
+  const confidence = record?.confidence || 'review gated'
+  const lastChecked = record?.lastChecked || record?.updatedAt || record?.createdAt || record?.source?.date || 'Not available'
+  return `Source: ${sourceLabel} / Confidence: ${confidence} / Last checked: ${lastChecked} / Review: ${displayBoardStatus(record?.evidenceStatus || 'To Verify')}`
+}
+
+type BoardKpiMetadata = {
+  sourceLabel: string
+  evidenceStatus: string
+  lastUpdated: string
+}
+
+function boardKpiSourceMetadata(item?: BoardKpiMetadata | null): string {
+  if (!item) return boardSourceMetadata(null)
+  const confidence = ['Verified', 'Source-backed', 'User Approved', 'Investor Approved'].includes(item.evidenceStatus)
+    ? 'source attached'
+    : 'owner review required'
+  return [
+    `Source: ${item.sourceLabel}`,
+    `Confidence: ${confidence}`,
+    `Last checked: ${item.lastUpdated || 'Not available'}`,
+    `Review: ${displayBoardStatus(item.evidenceStatus)}`,
+  ].join(' / ')
 }
 
 function displayBoardValue(value?: string | number | null): string {
@@ -204,17 +236,20 @@ function displayExecutiveKpi<T extends { key: string; label: string }>(item: T):
   }
 }
 
-const marketMetrics = computed(() => [
-  marketMetric('Market size / status', marketSizeClaim.value),
-  marketMetric('Growth / status', growthClaim.value),
-  marketMetric('Import dependence / status', importDependenceClaim.value),
-  {
-    label: 'Target revenue',
-    value: visibleEconomicsKpis.value.find(item => item.key === 'revenueTarget')?.value || 'No approved source-backed scenario',
-    evidenceStatus: visibleEconomicsKpis.value.find(item => item.key === 'revenueTarget')?.evidenceStatus || 'To Verify',
-    sourceLabel: visibleEconomicsKpis.value.find(item => item.key === 'revenueTarget')?.sourceLabel || 'IRR Calculator',
-  },
-])
+const marketMetrics = computed(() => {
+  const revenueKpi = visibleEconomicsKpis.value.find(item => item.key === 'revenueTarget') || null
+  return [
+    marketMetric('Market size / status', marketSizeClaim.value),
+    marketMetric('Growth / status', growthClaim.value),
+    marketMetric('Import dependence / status', importDependenceClaim.value),
+    {
+      label: 'Target revenue',
+      value: revenueKpi?.value || 'No approved source-backed scenario',
+      evidenceStatus: revenueKpi?.evidenceStatus || 'To Verify',
+      sourceLabel: boardKpiSourceMetadata(revenueKpi),
+    },
+  ]
+})
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return 'Not scheduled'
@@ -455,7 +490,7 @@ onMounted(() => {
               <span>{{ kpi.label }}</span>
               <strong>{{ displayBoardValue(kpi.value) }}</strong>
               <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayBoardStatus(kpi.evidenceStatus) }}</NTag>
-              <small>{{ kpi.sourceLabel }}</small>
+              <small>{{ boardKpiSourceMetadata(kpi) }}</small>
             </div>
           </div>
 
@@ -511,14 +546,14 @@ onMounted(() => {
               </div>
               <div v-for="claim in marketSegments" :key="claim.id || claim.label" class="mini-row">
                 <span>{{ claim.label }}</span>
-                <span>{{ displayBoardValue(marketClaimValue(claim)) }}</span>
-                <span>{{ marketClaimSourceLabel(claim) }}</span>
-                <NTag size="small" :type="statusType(normalizedMarketClaimStatus(claim))">{{ displayBoardStatus(normalizedMarketClaimStatus(claim)) }}</NTag>
+                <span>{{ displayBoardValue(boardMarketClaimValue(claim)) }}</span>
+                <span>{{ boardSourceMetadata(claim) }}</span>
+                <NTag size="small" :type="statusType(canDisplayBoardMarketClaim(claim) ? normalizedMarketClaimStatus(claim) : 'To Verify')">{{ displayBoardStatus(canDisplayBoardMarketClaim(claim) ? normalizedMarketClaimStatus(claim) : 'To Verify') }}</NTag>
               </div>
               <div v-if="!marketSegments.length" class="mini-row">
                 <span>No approved source-backed market segment</span>
-                <span>No approved source-backed value</span>
-                <span>Trusted Sources / Research Review</span>
+                <span>Value hidden until source review</span>
+                <span>{{ boardSourceMetadata(null) }}</span>
                 <NTag size="small" type="warning">Reference only</NTag>
               </div>
             </div>
@@ -535,6 +570,7 @@ onMounted(() => {
                 <span>Capacity</span>
                 <span>Share</span>
                 <span>Status</span>
+                <span>Source</span>
               </div>
               <div v-for="row in competitorRows" :key="`${row.rank}-${row.manufacturer}`" class="mini-row">
                 <span>{{ row.rank }}</span>
@@ -544,15 +580,17 @@ onMounted(() => {
                 <span>{{ displayBoardValue(row.capacity) }}</span>
                 <span>{{ displayBoardValue(row.marketShare) }}</span>
                 <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayBoardStatus(row.evidenceStatus) }}</NTag>
+                <span>{{ row.sourceLabel }}</span>
               </div>
               <div v-if="!competitorRows.length" class="mini-row">
                 <span>-</span>
                 <span>No approved source-backed competitor record</span>
-                <span>No approved source-backed value</span>
-                <span>Trusted Sources / Research Review</span>
-                <span>No approved source-backed value</span>
-                <span>No approved source-backed value</span>
+                <span>Value hidden until source review</span>
+                <span>Product evidence pending</span>
+                <span>Capacity source required</span>
+                <span>Share source required</span>
                 <NTag size="small" type="warning">Reference only</NTag>
+                <span>{{ boardSourceMetadata(null) }}</span>
               </div>
             </div>
           </div>
@@ -560,7 +598,7 @@ onMounted(() => {
           <div v-if="topCountries.length" class="source-list">
             <strong>Country opportunity records</strong>
             <span v-for="record in topCountries" :key="record.id">
-              {{ record.country }} / {{ displayBoardStatus(record.evidenceStatus) }} / {{ record.source || 'Source search running' }}
+              {{ record.country }} / {{ displayBoardStatus(record.evidenceStatus) }} / {{ displayBoardValue(record.source) }}
             </span>
           </div>
 
@@ -608,7 +646,7 @@ onMounted(() => {
           <div v-if="topRawMaterials.length && isOwner" class="source-list">
             <strong>Raw material watchlist</strong>
             <span v-for="material in topRawMaterials" :key="material.id">
-              {{ material.name }} / {{ displayBoardStatus(material.evidenceStatus) }} / {{ material.source || 'Source search running' }}
+              {{ material.name }} / {{ displayBoardStatus(material.evidenceStatus) }} / {{ displayBoardValue(material.source) }}
             </span>
           </div>
 
@@ -816,8 +854,8 @@ onMounted(() => {
 }
 
 .competitor-table .mini-row {
-  grid-template-columns: 48px minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(80px, 0.8fr) minmax(90px, auto);
-  min-width: 620px;
+  grid-template-columns: 48px minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(100px, 1fr) minmax(80px, 0.8fr) minmax(80px, 0.8fr) minmax(90px, auto) minmax(160px, 1.2fr);
+  min-width: 780px;
 }
 
 .mini-head {

@@ -4,7 +4,10 @@ import { RouterLink } from 'vue-router'
 import { NButton, useMessage } from 'naive-ui'
 import { DEFAULT_KANBAN_BOARD, useKanbanStore } from '@/stores/hermes/kanban'
 import { useJobsStore } from '@/stores/hermes/jobs'
-import { useFeasibilityIntelligence } from '@/composables/useFeasibilityIntelligence'
+import {
+  useFeasibilityIntelligence,
+  type SupplierScorecardRecord,
+} from '@/composables/useFeasibilityIntelligence'
 import TrustedSourceAutopilotPanel from '@/components/intelligence/TrustedSourceAutopilotPanel.vue'
 import { EXECUTIVE_REFRESH_SCHEDULE } from '@/utils/executiveIntelligence'
 import {
@@ -40,6 +43,7 @@ interface SupplierScorecardRow {
   evidenceStatus: IntelligenceEvidenceStatus
   sourceTitle: string
   sourceUrl?: string
+  sourceMeta: string
   sourceSummary: string
   nextAction: string
   highRisk?: boolean
@@ -93,6 +97,12 @@ const sourceTypes: RawMaterialSourceType[] = [
   'Paid source',
 ]
 
+const REVIEW_GATED_PRICE_COPY = 'Cost-sensitive: quote evidence required'
+const REVIEW_GATED_PAYMENT_COPY = 'Cost-sensitive: payment evidence required'
+const REVIEW_GATED_QUALITY_COPY = 'Review-gated: TDS/SDS/COA evidence required'
+const REVIEW_GATED_RELIABILITY_COPY = 'Review-gated: reliability evidence required'
+const REVIEW_GATED_SCORE_COPY = 'Review-gated: scoring evidence required'
+
 const supplierScorecardRows: SupplierScorecardRow[] = [
   {
     supplier: 'Wilmar Oleochemicals',
@@ -106,6 +116,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'Wilmar Oleochemicals official source',
     sourceUrl: 'https://www.wilmar-international.com/oleochemicals',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Request quote, TDS, SDS, COA, MOQ, lead time, and payment terms for stearic acid.',
   },
@@ -121,6 +132,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'KLK OLEO product source',
     sourceUrl: 'https://www.klkoleo.com/products/',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Confirm stearic acid grade match, China delivery route, quote validity, and payment terms.',
   },
@@ -136,6 +148,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'BASF amines / triethanolamine source',
     sourceUrl: 'https://products.basf.com/global/en/ci/triethanolamine',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Verify TEA grade, SDS, China availability, distributor channel, quote, and lead time.',
   },
@@ -151,6 +164,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'Dow silicone product search',
     sourceUrl: 'https://www.dow.com/en-us/pdp.dowsil-sh-200-fluid-1000-cst.850505z.html',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Confirm PDMS viscosity, textile softener suitability, distributor quote, and technical documents.',
   },
@@ -166,6 +180,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'Candidate Source',
     sourceTitle: 'WACKER silicone fluids source',
     sourceUrl: 'https://www.wacker.com/h/en-gb/silicone-fluids-emulsions/linear-silicone-fluids/wacker-eco-ak-1000/p/000100490',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only target row. Use imported trusted-source records before this affects sourcing decisions.',
     nextAction: 'Confirm matching silicone fluid grade, China supply, quote, SDS, TDS, and application notes.',
   },
@@ -181,6 +196,7 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     evidenceStatus: 'To Verify',
     sourceTitle: 'PubChem identity and hazard reference',
     sourceUrl: 'https://pubchem.ncbi.nlm.nih.gov/compound/Dimethyl-sulfate',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only high-risk raw-material identity target. Supplier use requires regulatory and quote evidence.',
     nextAction: 'Verify supplier identity, exact CAS, legal status, transport/storage rules, SDS, and permit requirements before any quote is used.',
     highRisk: true,
@@ -196,15 +212,11 @@ const supplierScorecardRows: SupplierScorecardRow[] = [
     score: 'Pending supplier shortlist',
     evidenceStatus: 'To Verify',
     sourceTitle: 'Local quote and document evidence needed',
+    sourceMeta: 'Reference-only supplier target template',
     sourceSummary: 'Reference-only local sourcing target. Upload or import supplier quote evidence before use.',
     nextAction: 'Identify local suppliers, request quote, SDS, TDS, COA, delivery terms, and tax/VAT details.',
   },
 ]
-
-function noteLine(notes: string, label: string): string {
-  const match = notes.match(new RegExp(`^${label}:\\s*(.+)$`, 'im'))
-  return match?.[1]?.trim() || ''
-}
 
 function isAutopilotSupplierRecord(record: typeof intelligence.state.value.dataRoomSources[number]): boolean {
   const group = record.dashboardGroup || ''
@@ -235,11 +247,99 @@ function formulaFromText(text: string): string {
     ''
 }
 
-function isUsableSupplierPriceRecord(record: typeof intelligence.state.value.dataRoomSources[number], value: string): boolean {
-  const fieldText = `${record.checklistLabel} ${record.proposedDashboardField || ''} ${record.dataType || ''}`.toLowerCase()
-  if (!/(price|pricing|quote|cost|payment)/.test(fieldText)) return false
-  if (!value || /to verify|missing|no quote|quote required|not found|blocked|candidate/i.test(value)) return false
-  return /(?:[$¥€£]|(?:usd|rmb|cny|eur)\s*\d|\d[\d,.]*\s*(?:\/?\s*(?:t|ton|mt|kg)|per\s+(?:t|ton|mt|kg)))/i.test(value)
+function normalizeSupplierText(value?: string | number | null): string {
+  return String(value ?? '').trim()
+}
+
+function isUnresolvedSupplierValue(value?: string | number | null): boolean {
+  const normalized = normalizeSupplierText(value).toLowerCase().replace(/\s+/g, ' ')
+  return !normalized ||
+    normalized === 'to verify' ||
+    normalized === 'missing' ||
+    normalized === 'missing / to verify' ||
+    normalized === 'no approved quote yet' ||
+    normalized === 'quote/payment terms needed' ||
+    normalized === 'review needed' ||
+    normalized === 'pending quote' ||
+    normalized === 'pending regulatory review' ||
+    normalized === 'pending supplier shortlist' ||
+    normalized === 'tds/sds needed' ||
+    normalized === 'sds/regulatory proof needed' ||
+    normalized === 'quote/tds/sds/coa review needed' ||
+    normalized === 'source review needed' ||
+    normalized === 'material to verify' ||
+    normalized === 'n/a'
+}
+
+function hasSupplierSourceMetadata(record: SupplierScorecardRecord): boolean {
+  return Boolean(
+    record.source?.title?.trim() ||
+    record.source?.url?.trim() ||
+    record.sourceDate?.trim() ||
+    record.lastChecked?.trim() ||
+    record.updatedAt?.trim() ||
+    record.notes?.trim(),
+  )
+}
+
+function supplierRecordSourceDate(record: SupplierScorecardRecord): string {
+  return record.sourceDate || record.source?.date || record.lastChecked || record.updatedAt || ''
+}
+
+function supplierSourceMeta(record: SupplierScorecardRecord, identitySignal?: RawMaterialIdentitySignalRow | null): string {
+  const metadata = [
+    record.sourceTier || record.reportedSourceTier,
+    record.confidence ? `confidence: ${record.confidence}` : '',
+    supplierRecordSourceDate(record) ? `date: ${supplierRecordSourceDate(record)}` : '',
+  ].filter(Boolean).join(' / ')
+  const identity = identitySignal
+    ? `Raw-material identity source: ${identitySignal.sourceTitle}${identitySignal.lastChecked ? ` / ${identitySignal.lastChecked}` : ''}`
+    : ''
+  return [metadata ? `Source metadata: ${metadata}` : 'Source metadata pending review', identity]
+    .filter(Boolean)
+    .join('. ')
+}
+
+function supplierEvidenceLooksQuoteBacked(record: SupplierScorecardRecord): boolean {
+  const evidenceText = [
+    record.dataType,
+    record.sourceTier,
+    record.reportedSourceTier,
+    record.source?.title,
+    record.source?.url,
+    record.proposedDashboardField,
+    record.value,
+    record.notes,
+  ].filter(Boolean).join(' ').toLowerCase()
+  return /supplier[_ -]?quote|quote|invoice|proforma|purchase order|\bpi\b|coa|tds|sds|supplier evidence|distributor|uploaded|paid source/.test(evidenceText)
+}
+
+function isReviewOnlySupplierStatus(record: SupplierScorecardRecord): boolean {
+  return /reference only|candidate source|hypothesis|assumption|missing/i.test(record.evidenceStatus || '')
+}
+
+function canDisplaySensitiveSupplierValue(record: SupplierScorecardRecord, value?: string | number | null): boolean {
+  if (isUnresolvedSupplierValue(value)) return false
+  if (!hasSupplierSourceMetadata(record)) return false
+  if (isReviewOnlySupplierStatus(record)) return false
+  return supplierEvidenceLooksQuoteBacked(record)
+}
+
+function importedSupplierField(value: string | number | null | undefined, fallback: string): string {
+  if (isUnresolvedSupplierValue(value)) return fallback
+  return displaySupplierValue(value)
+}
+
+function importedSensitiveSupplierField(record: SupplierScorecardRecord, value: string | number | null | undefined, fallback: string): string {
+  if (!canDisplaySensitiveSupplierValue(record, value)) return fallback
+  return displaySupplierValue(value)
+}
+
+function importedSupplierScoreField(record: SupplierScorecardRecord, value: string | number | null | undefined): string {
+  if (isUnresolvedSupplierValue(value) || !hasSupplierSourceMetadata(record) || isReviewOnlySupplierStatus(record)) {
+    return REVIEW_GATED_SCORE_COPY
+  }
+  return displaySupplierValue(value)
 }
 
 const importedRawMaterialIdentitySignals = computed<RawMaterialIdentitySignalRow[]>(() => {
@@ -257,7 +357,7 @@ const importedRawMaterialIdentitySignals = computed<RawMaterialIdentitySignalRow
       confidence: record.confidence || 'medium',
       sourceTitle,
       sourceUrl,
-      lastChecked: record.lastChecked || record.sourceDate || record.updatedAt || '',
+      lastChecked: record.lastChecked || record.sourceDate || record.source?.date || record.updatedAt || '',
       riskReason: record.riskReason || 'Official source confirms raw-material identity only. Price, landed cost, supplier quote, formula use, and regulatory permission remain review-gated.',
     }
   })
@@ -302,73 +402,52 @@ const importedRawMaterialIdentitySignals = computed<RawMaterialIdentitySignalRow
 
 function identitySignalForMaterial(material?: RawMaterialRecord | null): RawMaterialIdentitySignalRow | null {
   if (!material) return null
-  const key = materialIdentityKey(material.name)
+  return identitySignalForMaterialName(material.name)
+}
+
+function identitySignalForMaterialName(material: string): RawMaterialIdentitySignalRow | null {
+  const key = materialIdentityKey(material)
   return importedRawMaterialIdentitySignals.value.find(signal => materialIdentityKey(signal.material) === key) || null
 }
 
 const importedSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
-  intelligence.state.value.supplierScorecards.map(record => {
-    const value = record.value || ''
-    const sourceTitle = record.source?.title || 'Trusted source record'
-    const sourceUrl = record.source?.url
-    return {
-      supplier: record.supplier,
-      region: 'Trusted-source import',
-      material: record.material,
-      pricePerTon: record.pricePerTon?.trim() || 'No approved quote yet',
-      quality: record.quality?.trim() || 'Quote/TDS/SDS/COA review needed',
-      reliability: record.reliability?.trim() || 'Quote/TDS/SDS/COA review needed',
-      payment: record.payment?.trim() || 'Quote/payment terms needed',
-      score: record.score?.trim() || 'Review needed',
-      evidenceStatus: record.evidenceStatus,
-      sourceTitle,
-      sourceUrl,
-      sourceSummary: value || record.notes || 'Imported source-backed supplier/material context. Price and supplier score are not approved without quote evidence.',
-      nextAction: record.riskReason || record.notes || `Review quote, TDS, SDS, COA, payment terms, and delivery evidence for ${record.supplier} / ${record.material}.`,
-      highRisk: isDmsMaterial(`${record.supplier} ${record.material}`),
-    }
-  }),
-)
-
-const autopilotSupplierScorecardRows = computed<SupplierScorecardRow[]>(() =>
-  intelligence.state.value.dataRoomSources
-    .filter(isAutopilotSupplierRecord)
+  intelligence.state.value.supplierScorecards
+    .filter(record => record.supplier?.trim() && record.material?.trim())
     .map(record => {
-      const supplier = record.supplier || noteLine(record.notes, 'Supplier') || record.checklistLabel
-      const material = record.material || noteLine(record.notes, 'Material') || 'Material To Verify'
-      const value = record.proposedValue || noteLine(record.notes, 'Proposed value') || ''
-      const sourceTitle = record.source?.title || 'Source review needed'
+      const value = record.value || ''
+      const identitySignal = identitySignalForMaterialName(record.material)
+      const sourceTitle = record.source?.title || record.proposedDashboardField || 'Source metadata pending review'
       const sourceUrl = record.source?.url
-      const status = record.evidenceStatus === 'Verified' || record.evidenceStatus === 'Investor Approved'
-        ? 'To Verify'
-        : record.evidenceStatus
-      const hasApprovedPrice = isUsableSupplierPriceRecord(record, value)
       return {
-        supplier,
-        region: 'Autopilot source candidate',
-        material,
-        pricePerTon: hasApprovedPrice ? value : 'No approved quote yet',
-        quality: 'Quote/TDS/SDS/COA review needed',
-        reliability: 'To Verify',
-        payment: 'To Verify',
-        score: 'Review needed',
-        evidenceStatus: status,
+        supplier: record.supplier,
+        region: 'Trusted-source import',
+        material: record.material,
+        pricePerTon: importedSensitiveSupplierField(record, record.pricePerTon, REVIEW_GATED_PRICE_COPY),
+        quality: importedSupplierField(record.quality, REVIEW_GATED_QUALITY_COPY),
+        reliability: importedSupplierField(record.reliability, REVIEW_GATED_RELIABILITY_COPY),
+        payment: importedSensitiveSupplierField(record, record.payment, REVIEW_GATED_PAYMENT_COPY),
+        score: importedSupplierScoreField(record, record.score),
+        evidenceStatus: record.evidenceStatus,
         sourceTitle,
         sourceUrl,
-        sourceSummary: value || 'Imported supplier candidate. Quote/TDS/SDS/COA evidence is still needed before scoring.',
-        nextAction: `Review the source evidence for ${supplier} / ${material}; keep price, quality, reliability, payment, and score in source review until quote/TDS/SDS/COA evidence is approved.`,
-        highRisk: isDmsMaterial(`${supplier} ${material}`),
+        sourceMeta: supplierSourceMeta(record, identitySignal),
+        sourceSummary: [
+          value || record.notes || 'Imported supplier/material context. Missing price, payment, score, quality, and reliability fields stay review-gated.',
+          record.riskReason || '',
+        ].filter(Boolean).join(' '),
+        nextAction: record.riskReason || record.notes || `Review quote, TDS, SDS, COA, payment terms, and delivery evidence for ${record.supplier} / ${record.material}.`,
+        highRisk: isDmsMaterial(`${record.supplier} ${record.material}`),
       }
     }),
 )
 
+const sourceReviewSupplierCandidateCount = computed(() =>
+  intelligence.state.value.dataRoomSources.filter(isAutopilotSupplierRecord).length,
+)
+
 const displayedSupplierScorecardRows = computed(() => {
-  const autopilotRows = [
-    ...importedSupplierScorecardRows.value,
-    ...autopilotSupplierScorecardRows.value,
-  ]
   const byKey = new Map<string, SupplierScorecardRow>()
-  for (const row of autopilotRows) {
+  for (const row of importedSupplierScorecardRows.value) {
     const key = supplierRecordKey(row)
     if (!byKey.has(key)) byKey.set(key, row)
   }
@@ -449,8 +528,8 @@ const supplierAutopilotCards = computed(() => [
   {
     icon: '📥',
     label: 'Stage',
-    value: `${autopilotSupplierScorecardRows.value.length} candidates`,
-    note: 'Imported supplier/source records appear here as source-review candidates.',
+    value: `${importedSupplierScorecardRows.value.length} rows`,
+    note: `${importedRawMaterialIdentitySignals.value.length} raw-material signals linked; review candidates stay outside primary scorecards.`,
   },
   {
     icon: '✅',
@@ -797,13 +876,17 @@ onMounted(() => {
           <p class="eyebrow">Supplier scorecards</p>
           <h3>Supplier Scorecards - Key Raw Materials</h3>
           <p>
-            Screenshot-style supplier board for stearic acid, TEA, PDMS silicone oil, DMS, and acetic acid.
-            Supplier names and product targets are source/candidate-backed; prices, quality scores, reliability,
-            payment terms, and total scores remain in source review until quote/TDS/SDS/COA evidence is attached.
+            Imported supplier/material records for stearic acid, TEA, PDMS silicone oil, DMS, and acetic acid.
+            Prices, quality scores, reliability, payment terms, and total scores stay review-gated unless source-backed
+            quote/TDS/SDS/COA evidence is imported with metadata.
           </p>
-          <p v-if="autopilotSupplierScorecardRows.length" class="autopilot-note">
-            Hermes Autopilot has staged {{ autopilotSupplierScorecardRows.length }} supplier candidates from trusted-source research.
-            They are visible here as source-review candidates and still require source review before costing or investor use.
+          <p v-if="importedSupplierScorecardRows.length || importedRawMaterialIdentitySignals.length" class="autopilot-note">
+            Hermes Autopilot has imported {{ importedSupplierScorecardRows.length }} supplier scorecard rows and
+            {{ importedRawMaterialIdentitySignals.length }} raw-material signals with source metadata.
+          </p>
+          <p v-if="sourceReviewSupplierCandidateCount" class="autopilot-note">
+            {{ sourceReviewSupplierCandidateCount }} supplier candidate{{ sourceReviewSupplierCandidateCount === 1 ? '' : 's' }}
+            {{ sourceReviewSupplierCandidateCount === 1 ? 'remains' : 'remain' }} staged outside the primary scorecard until trusted-source import or uploaded supplier evidence creates a supplierScorecards record.
           </p>
           <p class="autopilot-note">
             {{ supplierAutopilotStatus }}<span v-if="supplierAutopilotJobId"> · Job {{ supplierAutopilotJobId }}</span>
@@ -849,7 +932,7 @@ onMounted(() => {
           </div>
           <div v-if="!displayedSupplierScorecardRows.length" class="supplier-scorecard-empty">
             <strong>No imported supplier scorecard rows yet.</strong>
-            <span>Run Supplier Scorecard Autopilot or upload quote/TDS/SDS/COA evidence. Primary rows will appear here only after Hermes imports source-backed supplier records.</span>
+            <span>Run Supplier Scorecard Autopilot or upload quote/TDS/SDS/COA evidence. Primary rows appear only after Hermes imports supplierScorecards records with source metadata.</span>
           </div>
           <div
             v-for="row in displayedSupplierScorecardRows"
@@ -863,16 +946,17 @@ onMounted(() => {
             </div>
             <span>{{ row.material }}</span>
             <span class="verify-value">{{ sensitiveSupplierDisplay(displaySupplierValue(row.pricePerTon)) }}</span>
-            <span>{{ displaySupplierValue(row.quality) }}</span>
-            <span>{{ displaySupplierValue(row.reliability) }}</span>
+            <span>{{ sensitiveSupplierDisplay(displaySupplierValue(row.quality)) }}</span>
+            <span>{{ sensitiveSupplierDisplay(displaySupplierValue(row.reliability)) }}</span>
             <span>{{ sensitiveSupplierDisplay(displaySupplierValue(row.payment)) }}</span>
-            <span class="score-pill">{{ displaySupplierValue(row.score) }}</span>
+            <span class="score-pill">{{ sensitiveSupplierDisplay(displaySupplierValue(row.score)) }}</span>
             <div>
               <a v-if="row.sourceUrl" class="supplier-source-link" :href="row.sourceUrl" target="_blank" rel="noopener noreferrer">
                 {{ displaySupplierStatus(row.evidenceStatus) }}
               </a>
               <span v-else class="verify-value">{{ displaySupplierStatus(row.evidenceStatus) }}</span>
               <small>{{ row.sourceTitle }}</small>
+              <small>{{ displaySupplierText(row.sourceMeta) }}</small>
               <small>{{ displaySupplierText(row.sourceSummary) }}</small>
             </div>
             <NButton
@@ -893,7 +977,7 @@ onMounted(() => {
       </p>
 
       <details class="reference-template-archive">
-        <summary>Reference-only supplier target template</summary>
+        <summary>Collapsed reference-only supplier target template</summary>
         <p>
           These are planning targets only. They are not source-backed dashboard truth and must be checked through
           Trusted Sources, Research Review, supplier quotes, TDS, SDS, COA, and uploaded evidence before use.

@@ -19,6 +19,9 @@ import {
   displayEvidenceStatus,
   displayUnresolvedValue,
   type IntelligenceEvidenceStatus,
+  normalizedMarketClaimStatus,
+  sourceIsUsable,
+  type MarketClaim,
 } from '@/utils/investorIntelligence'
 
 const message = useMessage()
@@ -51,12 +54,26 @@ const evidenceStatuses: IntelligenceEvidenceStatus[] = [
   'Reference Only',
   'Verified',
 ]
+const exportCountryNames = [
+  'China',
+  'Bangladesh',
+  'India',
+  'Vietnam',
+  'Indonesia',
+  'Pakistan',
+  'Turkey',
+  'Turkiye',
+  'United States',
+  'USA',
+  'Germany',
+  'EU',
+]
 
 const form = ref({
   country: '',
   productScope: 'CWAS/CWMS',
   hsCode: '',
-  dataMethod: 'Trade proxy / To Verify',
+  dataMethod: 'Trade proxy / source review needed',
   valueVolume: '',
   growth: '',
   source: '',
@@ -85,7 +102,8 @@ function persist() {
 
 function countryFromClaimLabel(label: string): string {
   const parts = label.split(/\s+-\s+/)
-  return parts.length > 1 ? parts.slice(1).join(' - ').trim() : label.replace(/country-wise|consumption|growth|export|opportunity|market/gi, '').trim()
+  const candidate = parts.length > 1 ? parts.slice(1).join(' - ').trim() : label.replace(/country-wise|consumption|growth|export|opportunity|market/gi, '').trim()
+  return candidate || 'Imported source-backed region'
 }
 
 function hsCodeFromClaim(label: string, value: string, sourceUrl?: string): string {
@@ -94,50 +112,119 @@ function hsCodeFromClaim(label: string, value: string, sourceUrl?: string): stri
 }
 
 function growthFromClaim(value: string): string {
-  return value.match(/(?:yoy|growth|change)[^+\-\d]*([+\-]?\d+(?:\.\d+)?%)/i)?.[1] || 'Trade Proxy / To Verify'
+  return value.match(/(?:yoy|growth|change)?[^+\-\d]*([+\-]?\d+(?:\.\d+)?%)/i)?.[1] || ''
+}
+
+function claimHasUsableSourceValue(claim: MarketClaim): boolean {
+  return Boolean(claim.value?.trim() && sourceIsUsable(claim.source))
+}
+
+function claimSearchText(claim: MarketClaim): string {
+  return [
+    claim.fieldKey,
+    claim.dashboardGroup,
+    claim.proposedDashboardField,
+    claim.label,
+    claim.value,
+    claim.dataType,
+    claim.sourceTier,
+    claim.source?.title,
+  ].filter(Boolean).join(' ').toLowerCase()
+}
+
+function isCountryExportClaim(claim: MarketClaim): boolean {
+  return /country-wise|consumption growth|export opportunity|import proxy|trade proxy|target countr|target region|hs\s*\d+|comtrade|wits/i.test(claimSearchText(claim))
+}
+
+function sourceLabelFromClaim(claim: MarketClaim): string {
+  return [claim.source?.title, claim.source?.date, claim.source?.url].filter(Boolean).join(' / ')
+}
+
+function evidenceStatusFromClaim(claim: MarketClaim): IntelligenceEvidenceStatus {
+  const status = normalizedMarketClaimStatus(claim)
+  if (/trade|proxy|import|export|hs\s*\d+|comtrade|wits/.test(claimSearchText(claim))) return 'Trade Proxy'
+  return status
+}
+
+function normalizeCountryName(country: string): string {
+  if (/^turkiye$/i.test(country)) return 'Turkey'
+  if (/^usa$/i.test(country)) return 'United States'
+  return country
+}
+
+function countrySignalsFromClaim(claim: MarketClaim): Array<{ country: string, signal: string }> {
+  const text = `${claim.label} ${claim.value || ''}`
+  const countryPattern = new RegExp(`\\b(${exportCountryNames.join('|')})\\b\\s*:\\s*([^;|]+)`, 'gi')
+  const matches = Array.from(text.matchAll(countryPattern)).map(match => ({
+    country: normalizeCountryName(match[1]),
+    signal: match[2].trim(),
+  }))
+  if (matches.length) return matches
+
+  const country = exportCountryNames
+    .map(normalizeCountryName)
+    .find(name => new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text))
+  return [{
+    country: country || countryFromClaimLabel(claim.proposedDashboardField || claim.label),
+    signal: claim.value?.trim() || '',
+  }]
+}
+
+function exportRecordsFromClaim(claim: MarketClaim, index: number): ExportMarketRecord[] {
+  const source = sourceLabelFromClaim(claim)
+  const status = evidenceStatusFromClaim(claim)
+  return countrySignalsFromClaim(claim).map((item, itemIndex) => {
+    const value = item.signal || claim.value?.trim() || ''
+    const hsCode = hsCodeFromClaim(claim.label, value, claim.source?.url)
+    return {
+      id: `autopilot-${claim.id || index}-${itemIndex}`,
+      country: item.country,
+      productScope: 'Textile auxiliary / softener trade proxy',
+      hsCode,
+      rankingType: 'imported trusted-source country signal',
+      dataMethod: hsCode ? `HS ${hsCode} trade proxy / source review needed` : 'Trade proxy / source review needed',
+      valueVolume: value,
+      growth: growthFromClaim(value),
+      source,
+      sourceDate: claim.lastChecked || claim.source?.date || '',
+      confidence: claim.confidence || 'medium',
+      evidenceStatus: status,
+      opportunityScore: '',
+      notes: 'Imported from trusted-source market intelligence. This is a trade proxy, not proven actual consumption.',
+      lastChecked: claim.lastChecked || nowIsoDate(),
+    }
+  })
 }
 
 const autopilotRecords = computed<ExportMarketRecord[]>(() =>
   intelligence.state.value.marketClaims
-    .filter(claim => {
-      const label = claim.label.toLowerCase()
-      return label.includes('country-wise') ||
-        label.includes('consumption growth') ||
-        label.includes('export opportunity') ||
-        label.includes('import proxy') ||
-        label.includes('trade proxy')
-    })
-    .map((claim, index) => {
-      const value = claim.value || 'To Verify'
-      const source = claim.source?.title || 'Source review needed'
-      const hsCode = hsCodeFromClaim(claim.label, value, claim.source?.url)
-      return {
-        id: `autopilot-${claim.id || index}`,
-        country: countryFromClaimLabel(claim.label) || 'Country To Verify',
-        productScope: 'Textile auxiliary / softener trade proxy',
-        hsCode,
-        rankingType: 'autopilot trusted-source country signal',
-        dataMethod: hsCode ? `HS ${hsCode} trade proxy / To Verify` : 'Trade proxy / To Verify',
-        valueVolume: value,
-        growth: growthFromClaim(value),
-        source,
-        sourceDate: claim.lastChecked || claim.source?.date || nowIsoDate(),
-        confidence: claim.confidence || 'medium',
-        evidenceStatus: claim.evidenceStatus === 'Verified' || claim.evidenceStatus === 'Investor Approved'
-          ? 'Trade Proxy'
-          : claim.evidenceStatus,
-        opportunityScore: 'To Verify',
-        notes: 'Auto-filled by Full Dashboard Autopilot from sourced market intelligence. This is a trade proxy, not proven actual consumption.',
-        lastChecked: claim.lastChecked || nowIsoDate(),
-      }
-    }),
+    .filter(claim => claimHasUsableSourceValue(claim) && isCountryExportClaim(claim))
+    .flatMap(exportRecordsFromClaim),
 )
+
+function manualRecordHasSourceMetadata(record: ExportMarketRecord): boolean {
+  return Boolean(record.source?.trim() && record.sourceDate?.trim())
+}
+
+function reviewGatedManualRecord(record: ExportMarketRecord): ExportMarketRecord {
+  if (manualRecordHasSourceMetadata(record)) return record
+  return {
+    ...record,
+    valueVolume: '',
+    growth: '',
+    opportunityScore: '',
+    evidenceStatus: 'To Verify',
+    notes: record.notes || 'Saved local draft awaiting source metadata before values can appear.',
+  }
+}
 
 const displayRecords = computed(() => {
   const used = new Set(autopilotRecords.value.map(record => record.country.toLowerCase()))
   return [
     ...autopilotRecords.value,
-    ...records.value.filter(record => !used.has(record.country.toLowerCase())),
+    ...records.value
+      .filter(record => !used.has(record.country.toLowerCase()))
+      .map(reviewGatedManualRecord),
   ]
 })
 
@@ -146,10 +233,10 @@ const toVerifyCount = computed(() => displayRecords.value.filter(item => item.ev
 const tradeProxyCount = computed(() => displayRecords.value.filter(item => !item.hsCode.trim() || item.dataMethod.toLowerCase().includes('proxy')).length)
 
 const summaryCards = computed(() => [
-  { label: 'Country records', value: displayRecords.value.length, note: autopilotRecords.value.length ? `${autopilotRecords.value.length} auto-filled by Hermes` : 'User/source-entered only' },
+  { label: 'Country records', value: displayRecords.value.length, note: autopilotRecords.value.length ? `${autopilotRecords.value.length} imported trusted-source` : 'No imported claims yet' },
   { label: 'Source-backed', value: sourceBackedCount.value, note: 'Source/date required' },
   { label: 'Trade proxy', value: tradeProxyCount.value, note: 'Not actual consumption' },
-  { label: 'Hermes verifying', value: toVerifyCount.value, note: 'Twice-daily evidence search' },
+  { label: 'Review gated', value: toVerifyCount.value, note: 'Awaiting approved source evidence' },
 ])
 
 function autoVerifyText(value?: string | number | null): string {
@@ -183,19 +270,19 @@ function saveRecord() {
     hsCode: form.value.hsCode.trim(),
     rankingType: rankingType.value,
     dataMethod: form.value.dataMethod.trim() || exportMarketStatusLabel(form.value.hsCode),
-    valueVolume: form.value.valueVolume.trim() || 'To Verify',
-    growth: form.value.growth.trim() || 'To Verify',
+    valueVolume: form.value.valueVolume.trim(),
+    growth: form.value.growth.trim(),
     source: form.value.source.trim(),
     sourceDate: form.value.sourceDate.trim(),
     confidence: form.value.confidence,
     evidenceStatus: status,
-    opportunityScore: form.value.opportunityScore.trim() || 'To Verify',
+    opportunityScore: form.value.opportunityScore.trim(),
     notes: form.value.notes.trim() || exportMarketStatusLabel(form.value.hsCode),
     lastChecked: nowIsoDate(),
   }
   records.value = [record, ...records.value]
   persist()
-  if (status === 'To Verify') message.warning('Country record saved as To Verify because source/value evidence is incomplete')
+  if (status === 'To Verify') message.warning('Country record saved for trusted-source review because source/value evidence is incomplete')
   else message.success('Country opportunity record saved in this browser workspace')
 }
 
@@ -204,7 +291,7 @@ function taskBodyFor(record?: ExportMarketRecord): string {
   return [
     `Research country opportunity: ${record.country}`,
     `Product scope: ${record.productScope}`,
-    `HS code: ${record.hsCode || 'To Verify'}`,
+    `HS code: ${record.hsCode || 'Awaiting trusted-source import'}`,
     `Data method: ${record.dataMethod}`,
     `Value/volume: ${record.valueVolume}`,
     `Growth: ${record.growth}`,
@@ -216,7 +303,7 @@ function taskBodyFor(record?: ExportMarketRecord): string {
     `Notes: ${record.notes}`,
     '',
     'Do not call proxy import/export data actual consumption unless source proves consumption.',
-    'Tags: Export Market Opportunity, Country Demand, Trade Proxy, To Verify',
+    'Tags: Export Market Opportunity, Country Demand, Trade Proxy, Source Review',
   ].join('\n')
 }
 
@@ -299,7 +386,7 @@ function addToInvestorReview(record: ExportMarketRecord) {
       : '',
     riskNote: record.evidenceStatus === 'To Verify' ? 'Country opportunity is not investor-ready until HS code/data source is verified.' : 'Review source quality before investor use.',
   })
-  if (saved.evidenceStatus === 'To Verify') message.info('Country record staged for review as To Verify')
+  if (saved.evidenceStatus === 'To Verify') message.info('Country record staged for trusted-source review')
   else message.success('Country record staged for investor review')
 }
 </script>
@@ -394,17 +481,17 @@ function addToInvestorReview(record: ExportMarketRecord) {
       <header>
         <h3>Country records</h3>
         <p v-if="autopilotRecords.length" class="autopilot-note">
-          Hermes Autopilot has filled {{ autopilotRecords.length }} country-wise trade-proxy records from sourced market claims.
+          Trusted-source imports have filled {{ autopilotRecords.length }} country-wise trade-proxy records from sourced market claims.
           They stay in {{ autoVerifySentence('Trade Proxy / To Verify') }} until HS-code methodology and product-specific demand are reviewed.
         </p>
-        <p v-if="!displayRecords.length">No country rankings yet. Add source-backed records or create a research task.</p>
+        <p v-if="!displayRecords.length">No imported trusted-source country rankings yet. Add source-backed records or create a research task.</p>
       </header>
 
       <article v-for="record in displayRecords" :key="record.id" class="country-card">
         <div>
           <p class="eyebrow">{{ record.productScope }}</p>
           <h3>{{ record.country }}</h3>
-          <p>{{ record.notes || exportMarketStatusLabel(record.hsCode) }}</p>
+          <p>{{ autoVerifySentence(record.notes || exportMarketStatusLabel(record.hsCode)) }}</p>
         </div>
         <dl>
           <div><dt>HS code</dt><dd>{{ autoVerifyText(record.hsCode) }}</dd></div>
@@ -412,7 +499,7 @@ function addToInvestorReview(record: ExportMarketRecord) {
           <div><dt>Value/volume</dt><dd>{{ autoVerifyText(record.valueVolume) }}</dd></div>
           <div><dt>Growth</dt><dd>{{ autoVerifyText(record.growth) }}</dd></div>
           <div><dt>Opportunity</dt><dd>{{ autoVerifyText(record.opportunityScore) }}</dd></div>
-          <div><dt>Source</dt><dd>{{ record.source || 'Missing' }} {{ record.sourceDate ? `/ ${record.sourceDate}` : '' }}</dd></div>
+          <div><dt>Source</dt><dd>{{ autoVerifyText(record.source) }} {{ record.sourceDate ? `/ ${record.sourceDate}` : '' }}</dd></div>
           <div><dt>Status</dt><dd>{{ statusLabel(record.evidenceStatus) }}</dd></div>
         </dl>
         <div class="action-row">

@@ -22,10 +22,12 @@ import {
   buildInvestorNextActions,
   displayAutomaticVerificationText,
   displayEvidenceStatus,
+  formatSourceReference,
   isPresentationMaterialAllowed,
   sourceIsUsable,
   type InvestorNextAction,
   type PresentationMaterial,
+  type SourceReference,
 } from '@/utils/investorIntelligence'
 import { canAccessRouteName, getFrontendAccessRole, type FrontendAccessRole } from '@/utils/accessControl'
 import {
@@ -240,45 +242,86 @@ const sourceBackedCompetitorCount = computed(() =>
       .map(record => normalizedDashboardCompetitorKey(record.label)),
   ).size
 )
+
+type DashboardMetadataRecord = {
+  source?: SourceReference | null
+  evidenceStatus?: string | null
+  confidence?: string | null
+  lastChecked?: string | null
+  updatedAt?: string | null
+  createdAt?: string | null
+  original?: {
+    source?: SourceReference | null
+    evidenceStatus?: string | null
+    confidence?: string | null
+    lastChecked?: string | null
+    updatedAt?: string | null
+    createdAt?: string | null
+  }
+}
+
+function formatDashboardSourceMetadata(
+  record?: DashboardMetadataRecord | null,
+  fallbackSource = 'Trusted Sources / Research Review',
+  fallbackConfidence = 'review gated',
+): string {
+  const original = record?.original
+  const source = record?.source || original?.source || null
+  const sourceLabel = source?.title?.trim() ? formatSourceReference(source) : fallbackSource
+  const confidence = record?.confidence || original?.confidence || fallbackConfidence
+  const lastChecked = record?.lastChecked || original?.lastChecked || record?.updatedAt || original?.updatedAt || record?.createdAt || original?.createdAt || source?.date || 'Not available'
+  const reviewState = displayEvidenceStatus(record?.evidenceStatus || original?.evidenceStatus || 'To Verify')
+  return `Source: ${sourceLabel} / Confidence: ${confidence} / Last checked: ${lastChecked} / Review: ${reviewState}`
+}
+
 const executiveSnapshotCards = computed(() => {
   const financial = latestFinancialSnapshot.value
   const growthClaim = sourceBackedGrowthClaim.value
   const productSignal = sourceBackedProductSignal.value
+  const firstCompetitorRecord = sourceBackedCompetitorRecords.value[0] || null
   const nextRun = autopilotImportStatus.value?.latestDueSlotAt
     ? formatAutopilotTimestamp(autopilotImportStatus.value.latestDueSlotAt)
-    : 'twice daily'
+    : autopilotImportStatus.value?.jobCount
+      ? 'Scheduled time pending'
+      : 'Research job not connected'
 
   return [
     {
       icon: '💰',
       label: 'Revenue',
-      value: financial?.yearOneRevenue ? formatCompactMoney(financial.yearOneRevenue, financial.currency) : displayAutomaticVerificationText('To Verify'),
-      note: financial ? `${financial.scenarioName} / ${displayEvidenceStatus(financial.evidenceStatus)}` : 'Waiting for a saved source-backed model',
+      value: financial?.yearOneRevenue ? formatCompactMoney(financial.yearOneRevenue, financial.currency) : 'No approved revenue model',
+      note: financial
+        ? `${financial.scenarioName} / ${formatDashboardSourceMetadata(financial, 'IRR Calculator local scenario', 'owner review required')}`
+        : 'No saved source-backed or approved financial model',
       tone: financial ? 'gold' : 'checking',
       to: { name: 'hermes.investmentAnalysis' },
     },
     {
       icon: '📈',
       label: 'Growth Rate',
-      value: growthClaim?.value || displayAutomaticVerificationText('To Verify'),
-      note: growthClaim?.source?.title || 'Scheduled source research checks country and market sources twice daily',
+      value: growthClaim?.value || 'No approved growth signal',
+      note: growthClaim
+        ? formatDashboardSourceMetadata(growthClaim)
+        : 'No source-backed or approved growth claim is available yet',
       tone: growthClaim ? 'ok' : 'checking',
       to: { name: 'hermes.marketIntelligence' },
     },
     {
       icon: '🏆',
       label: 'Market Position',
-      value: sourceBackedCompetitorCount.value ? `${sourceBackedCompetitorCount.value} profiled` : displayAutomaticVerificationText('To Verify'),
-      note: sourceBackedCompetitorCount.value ? 'Source-backed competitor records' : 'Competitor ranking waits for evidence',
+      value: sourceBackedCompetitorCount.value ? `${sourceBackedCompetitorCount.value} profiled` : 'No approved competitor ranking',
+      note: firstCompetitorRecord
+        ? `${sourceBackedCompetitorCount.value} source-backed profile${sourceBackedCompetitorCount.value === 1 ? '' : 's'} / ${formatDashboardSourceMetadata(firstCompetitorRecord)}`
+        : 'Competitor ranking waits for source-backed evidence',
       tone: sourceBackedCompetitorCount.value ? 'info' : 'checking',
       to: { name: 'hermes.competitorIntelligence' },
     },
     {
       icon: '🎯',
       label: 'Key Opportunities',
-      value: nextBestActions.value.length ? `${nextBestActions.value.length} actions` : 'Auto-scanning',
-      note: todayPriority.value?.title || 'Generated from readiness and research queues',
-      tone: nextBestActions.value.length ? 'ok' : 'checking',
+      value: nextBestActions.value.length ? `${nextBestActions.value.length} actions` : 'No review action queued',
+      note: todayPriority.value?.title || 'Generated only from readiness and review-state queues',
+      tone: nextBestActions.value.length ? 'ok' : 'info',
       to: { name: todayPriority.value?.routeName || 'hermes.feasibility' },
     },
     {
@@ -292,8 +335,10 @@ const executiveSnapshotCards = computed(() => {
     {
       icon: '🔥',
       label: 'Trending Products',
-      value: productSignal?.value || 'Hermes scanning',
-      note: productSignal?.source?.title || 'Product demand signals update from trusted sources',
+      value: productSignal?.value || 'No approved product signal',
+      note: productSignal
+        ? formatDashboardSourceMetadata(productSignal)
+        : 'Product demand signal waits for trusted-source evidence or owner approval',
       tone: productSignal ? 'info' : 'checking',
       to: { name: 'hermes.marketIntelligence' },
     },
@@ -830,7 +875,7 @@ function sourceFamilyForCoverageArea(area: string): string {
 
 function materialStatusLabel(material: PresentationMaterial): string {
   if (material.evidenceStatus === 'Verified') return 'Source required'
-  return material.evidenceStatus
+  return displayEvidenceStatus(material.evidenceStatus)
 }
 
 function formatCaptureActivityMeta(activity: SessionCaptureActivity): string {
@@ -1411,7 +1456,7 @@ onMounted(() => {
         </div>
 
         <div v-else class="visual-empty full">
-          Hermes is verifying twice daily. Visual charts will fill when source-backed dashboard state is available.
+          No source-backed visual records yet. Charts will appear after trusted-source imports or approved user data are available.
         </div>
       </section>
 
@@ -1697,7 +1742,7 @@ onMounted(() => {
                   :to="{ name: 'hermes.researchResultReview' }"
                 >
                   <span>{{ finding.keyClaim || finding.summary }}</span>
-                  <small>{{ finding.status }} / {{ displayEvidenceStatus(finding.evidenceStatus) }}</small>
+                  <small>{{ displayEvidenceStatus(finding.status) }} / {{ displayEvidenceStatus(finding.evidenceStatus) }}</small>
                 </RouterLink>
                 <RouterLink
                   v-for="job in openResearchJobs"
@@ -1748,7 +1793,7 @@ onMounted(() => {
                 <RouterLink v-if="canUseInvestmentCalculator" class="triage-row" :to="{ name: 'hermes.investmentCalculator' }">
                   <span>{{ latestFinancialSnapshot?.scenarioName || 'No saved financial snapshot' }}</span>
                   <small>
-                    {{ latestFinancialSnapshot ? `${latestFinancialSnapshot.evidenceStatus} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
+                    {{ latestFinancialSnapshot ? `${displayEvidenceStatus(latestFinancialSnapshot.evidenceStatus)} / ${latestFinancialSnapshot.warnings.length} warning${latestFinancialSnapshot.warnings.length === 1 ? '' : 's'}` : 'Save a scenario before discussing investor returns.' }}
                   </small>
                 </RouterLink>
                 <template v-if="canUseInvestorPresentation">

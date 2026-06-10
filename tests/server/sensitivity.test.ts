@@ -15,7 +15,10 @@ describe('employee sensitivity guardrails', () => {
     expect(classifySensitivityFromText('supplier price and landed cost')).toBe('price-cost-sensitive')
     expect(classifySensitivityFromText('formula/CAS list and raw material ratio')).toBe('formula-secret')
     expect(classifySensitivityFromText('product development reactor discussion')).toBe('product-development-secret')
+    expect(classifySensitivityFromText('product-development reactor discussion')).toBe('product-development-secret')
+    expect(classifySensitivityFromText('product_development reactor discussion')).toBe('product-development-secret')
     expect(classifySensitivityFromText('investor terms and valuation')).toBe('investor-sensitive')
+    expect(classifySensitivityFromText('investor_terms and term-sheet')).toBe('investor-sensitive')
     expect(classifySensitivityFromText('provider config api key')).toBe('system-admin-only')
   })
 
@@ -42,11 +45,15 @@ describe('employee sensitivity guardrails', () => {
       grossMargin: '30%',
       publicNote: 'market interview pending',
       nested: { formulaCasList: 'secret CAS' },
+      productDevelopmentPlan: 'pilot reactor',
+      investorTerms: 'valuation note',
     }, 'employee')).toEqual({
       supplierPrice: '[Restricted]',
       grossMargin: '[Restricted]',
       publicNote: 'market interview pending',
       nested: { formulaCasList: '[Restricted]' },
+      productDevelopmentPlan: '[Restricted]',
+      investorTerms: '[Restricted]',
     })
   })
 

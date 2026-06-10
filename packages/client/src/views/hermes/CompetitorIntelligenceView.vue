@@ -235,14 +235,16 @@ const competitorResearchQueue = [
   'Transfar CWAS/CWMS equivalent products',
 ]
 const autoVerifyingText = 'Awaiting trusted-source import'
+const noApprovedSourceBackedValue = 'No approved source-backed value'
+const reviewRequiredText = 'Review required'
 const competitorMetricGapLabel: Record<CompetitorMetricField, string> = {
-  pricingEvidence: 'Trusted public price source not found yet',
-  marketShare: 'No approved company-specific source yet',
-  revenue: 'Official revenue import needed',
-  yearlyGrowth: 'Official growth import needed',
-  traffic: 'Traffic source import needed',
-  rating: 'Rating / recognition source needed',
-  lastUpdated: 'Source date pending',
+  pricingEvidence: noApprovedSourceBackedValue,
+  marketShare: noApprovedSourceBackedValue,
+  revenue: noApprovedSourceBackedValue,
+  yearlyGrowth: noApprovedSourceBackedValue,
+  traffic: noApprovedSourceBackedValue,
+  rating: noApprovedSourceBackedValue,
+  lastUpdated: noApprovedSourceBackedValue,
 }
 type CompetitorSortKey =
   | 'competitor'
@@ -261,6 +263,7 @@ interface CompetitorComparisonRow {
   id: string
   competitor: string
   product: string
+  products: string[]
   category: string
   price: string
   marketShare: string
@@ -271,6 +274,7 @@ interface CompetitorComparisonRow {
   lastUpdated: string
   source: string
   sourceUrl?: string
+  sourceDate?: string
   confidence: string
   evidenceState: CompetitorEvidenceFilter
   evidenceStatus: IntelligenceEvidenceStatus
@@ -285,6 +289,7 @@ interface CompetitorMetricRow {
   competitor: string
   hq: string
   productFocus: string
+  productVariations: string[]
   priceKg: string
   marketShare: string
   revenue: string
@@ -295,6 +300,7 @@ interface CompetitorMetricRow {
   confidence: string
   source: string
   sourceUrl?: string
+  sourceDate?: string
   evidenceStatus: IntelligenceEvidenceStatus
   nextAction: string
   metricBadgeEligible: Partial<Record<'price' | 'marketShare' | 'revenue' | 'yoyGrowth' | 'traffic' | 'rating', boolean>>
@@ -322,6 +328,7 @@ const competitorMetricFields: CompetitorMetricField[] = [
 interface CollapsedCompetitorRecord extends CompetitorIntelligenceRecord {
   records: CompetitorIntelligenceRecord[]
   productVariations: string
+  productVariationList: string[]
   sourceCount: number
 }
 
@@ -530,7 +537,9 @@ function metricEvidenceFor(competitor: CompetitorIntelligenceRecord, field: Comp
 }
 
 function metricSourceFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField) {
-  return metricEvidenceFor(competitor, field)?.source || competitor.source || null
+  const evidence = metricEvidenceFor(competitor, field)
+  if (evidence) return evidence.source || null
+  return competitor.source || null
 }
 
 function metricStatusFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): IntelligenceEvidenceStatus {
@@ -561,7 +570,11 @@ function metricStatusFor(competitor: CompetitorIntelligenceRecord, field: Compet
 }
 
 function metricValueFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField, fallback: string | undefined = ''): string {
-  return String(metricEvidenceFor(competitor, field)?.value || fallback || '').trim()
+  const evidence = metricEvidenceFor(competitor, field)
+  if (evidence && field === 'lastUpdated') {
+    return String(evidence.value || evidence.lastChecked || evidence.sourceDate || evidence.source?.date || '').trim()
+  }
+  return String(evidence ? evidence.value || '' : fallback || '').trim()
 }
 
 function metricReviewRequiredFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
@@ -596,15 +609,21 @@ function metricStatusCanDrivePrimaryDisplay(status: IntelligenceEvidenceStatus):
   ].includes(status)
 }
 
+function metricStatusCanDriveReferenceDisplay(status: IntelligenceEvidenceStatus, field: CompetitorMetricField): boolean {
+  return (field === 'traffic' || field === 'rating' || field === 'lastUpdated') && status === 'Market Reference'
+}
+
 function metricEvidenceCanDrivePrimaryDisplay(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): boolean {
-  const value = String(evidence?.value || '').trim()
+  const value = String(field === 'lastUpdated'
+    ? evidence?.value || evidence?.lastChecked || evidence?.sourceDate || evidence?.source?.date || ''
+    : evidence?.value || '').trim()
   if (!value || /^(to verify|missing|awaiting trusted-source import)$/i.test(value)) return false
   if (!sourceIsUsable(evidence?.source)) return false
   if (evidence?.reviewRequired) return false
   if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
   const status = String(evidence?.evidenceStatus || 'To Verify') as IntelligenceEvidenceStatus
   if (metricStatusCanDrivePrimaryDisplay(status)) return true
-  return (field === 'traffic' || field === 'rating' || field === 'lastUpdated') && status === 'Market Reference'
+  return metricStatusCanDriveReferenceDisplay(status, field)
 }
 
 function metricEvidenceSortScore(field: CompetitorMetricField, evidence?: CompetitorMetricEvidence): number {
@@ -654,14 +673,35 @@ function mergeMetricEvidenceForGroup(group: CompetitorIntelligenceRecord[]): Com
 function metricCanDrivePrimaryDisplay(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
   const status = metricStatusFor(competitor, field)
   if (metricStatusCanDrivePrimaryDisplay(status)) return true
-  if (
-    (field === 'traffic' || field === 'rating' || field === 'lastUpdated') &&
-    status === 'Market Reference' &&
-    !metricReviewRequiredFor(competitor, field)
-  ) {
-    return true
-  }
-  return false
+  return metricStatusCanDriveReferenceDisplay(status, field) && !metricReviewRequiredFor(competitor, field)
+}
+
+function metricRawRecordValue(record: CompetitorIntelligenceRecord, field: CompetitorMetricField): string {
+  if (field === 'lastUpdated') return String(record.lastUpdated || record.source?.date || record.updatedAt || '').trim()
+  return String(record[field as keyof CompetitorIntelligenceRecord] || '').trim()
+}
+
+function metricValueIsUnresolved(value: string): boolean {
+  return !value || /^(to verify|missing|awaiting trusted-source import)$/i.test(value.trim())
+}
+
+function recordMetricCanDrivePrimaryDisplay(record: CompetitorIntelligenceRecord, field: CompetitorMetricField): boolean {
+  const evidence = metricEvidenceFor(record, field)
+  if (evidence) return metricEvidenceCanDrivePrimaryDisplay(field, evidence)
+  const value = metricRawRecordValue(record, field)
+  if (metricValueIsUnresolved(value)) return false
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return false
+  if (!sourceIsUsable(record.source)) return false
+  if (metricReviewRequiredFor(record, field)) return false
+  const status = metricStatusFor(record, field)
+  return metricStatusCanDrivePrimaryDisplay(status) || metricStatusCanDriveReferenceDisplay(status, field)
+}
+
+function recordCanDriveSourceDisplay(record: CompetitorIntelligenceRecord): boolean {
+  if (!sourceIsUsable(record.source)) return false
+  if (record.reviewRequired) return false
+  if (metricStatusCanDrivePrimaryDisplay(record.evidenceStatus)) return true
+  return ['Market Reference', 'Trade Proxy', 'Supplier Evidence'].includes(record.evidenceStatus)
 }
 
 function isCollectiveMarketShareText(value: string): boolean {
@@ -682,12 +722,12 @@ function metricCanDriveLeaderBadge(
 
 function metricDisplayValueFor(competitor: CompetitorIntelligenceRecord, field: CompetitorMetricField, fallback: string | undefined = ''): string {
   const value = metricValueFor(competitor, field, fallback)
-  if (!value || /^(to verify|missing|awaiting trusted-source import)$/i.test(value.trim())) return competitorMetricGapLabel[field]
-  if (field === 'lastUpdated') return autoVerifyText(value)
+  if (metricValueIsUnresolved(value)) return competitorMetricGapLabel[field]
+  if (metricReviewRequiredFor(competitor, field)) return reviewRequiredText
+  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return reviewRequiredText
   if (!sourceIsUsable(metricSourceFor(competitor, field))) return competitorMetricGapLabel[field]
-  if (metricReviewRequiredFor(competitor, field)) return competitorMetricGapLabel[field]
-  if (field === 'marketShare' && isCollectiveMarketShareText(value)) return competitorMetricGapLabel[field]
-  if (!metricCanDrivePrimaryDisplay(competitor, field)) return competitorMetricGapLabel[field]
+  if (!metricCanDrivePrimaryDisplay(competitor, field)) return reviewRequiredText
+  if (field === 'lastUpdated') return autoVerifyText(value)
   return autoVerifyText(value)
 }
 
@@ -715,10 +755,52 @@ function missingMetricLabelsFor(competitor: CompetitorIntelligenceRecord): strin
     .map(field => labels[field]!)
 }
 
-function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label: string, url?: string } {
+function bestRecordMetricValueForGroup(
+  group: CompetitorIntelligenceRecord[],
+  field: CompetitorMetricField,
+  mode: 'max' | 'min',
+): string {
+  const candidates = group
+    .filter(record => recordMetricCanDrivePrimaryDisplay(record, field))
+    .map(record => ({
+      value: metricRawRecordValue(record, field),
+      numeric: comparableNumber(metricRawRecordValue(record, field)),
+    }))
+    .filter(candidate => candidate.value)
+
+  if (!candidates.length) return ''
+  const numericCandidates = candidates
+    .filter((candidate): candidate is { value: string; numeric: number } => typeof candidate.numeric === 'number' && Number.isFinite(candidate.numeric))
+  if (!numericCandidates.length) {
+    return field === 'lastUpdated'
+      ? candidates.map(candidate => candidate.value).sort().at(-1) || candidates[0].value
+      : candidates[0].value
+  }
+  return numericCandidates.reduce((best, candidate) => {
+    return mode === 'max'
+      ? candidate.numeric > best.numeric ? candidate : best
+      : candidate.numeric < best.numeric ? candidate : best
+  }).value
+}
+
+function competitorProductVariationsForDisplay(competitor: CompetitorIntelligenceRecord): string[] {
+  const collapsed = competitor as CollapsedCompetitorRecord
+  return collapsed.productVariationList?.length
+    ? collapsed.productVariationList
+    : splitCompetitorProductVariationText(collapsed.productVariations || competitor.productEquivalent)
+}
+
+function competitorNextActionFor(competitor: CompetitorIntelligenceRecord): string {
+  const missingLabels = missingMetricLabelsFor(competitor)
+  if (missingLabels.length) return `Review required for: ${missingLabels.join(', ')}.`
+  return 'All shown competitor metrics have usable sources; keep monitoring for changes.'
+}
+
+function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label: string, url?: string, date?: string } {
   const metricSources = uniqueValues(
-    (Object.values(competitor.metricEvidence || {}) || [])
-      .map(item => item?.source)
+    (Object.entries(competitor.metricEvidence || {}) || [])
+      .filter(([field, item]) => metricEvidenceCanDrivePrimaryDisplay(field as CompetitorMetricField, item))
+      .map(([, item]) => item?.source)
       .filter(source => sourceIsUsable(source))
       .map(source => `${source!.title}|${source!.url || ''}|${source!.date || ''}`),
   )
@@ -727,11 +809,21 @@ function metricSourceSummary(competitor: CompetitorIntelligenceRecord): { label:
     return {
       label: metricSources.length === 1 ? first[0] : `${metricSources.length} metric sources`,
       url: first[1] || undefined,
+      date: first[2] || undefined,
     }
   }
+  if (recordCanDriveSourceDisplay(competitor) && competitor.source) {
+    return {
+      label: competitor.source.title,
+      url: competitor.source.url,
+      date: competitor.source.date,
+    }
+  }
+  if (sourceIsUsable(competitor.source) && competitor.reviewRequired) {
+    return { label: reviewRequiredText }
+  }
   return {
-    label: competitor.sourceCount && competitor.sourceCount > 1 ? `${competitor.sourceCount} sources` : competitor.source?.title || 'Source search running',
-    url: competitor.source?.url,
+    label: noApprovedSourceBackedValue,
   }
 }
 
@@ -755,6 +847,7 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
       competitor: competitor.companyName,
       hq: competitor.countryRegion || autoVerifyingText,
       productFocus: competitor.productVariations || competitor.productEquivalent || autoVerifyingText,
+      productVariations: competitorProductVariationsForDisplay(competitor),
       priceKg: visibleSensitiveValue(metricDisplayValueFor(competitor, 'pricingEvidence', competitor.pricingEvidence)),
       marketShare: metricDisplayValueFor(competitor, 'marketShare', competitorMarketShareLabel(competitor)),
       revenue: metricDisplayValueFor(competitor, 'revenue', competitor.revenue),
@@ -765,10 +858,9 @@ const competitorMetricsRows = computed<CompetitorMetricRow[]>(() => {
       confidence: competitorConfidenceLabel(competitor),
       source: sourceSummary.label,
       sourceUrl: sourceSummary.url,
+      sourceDate: sourceSummary.date,
       evidenceStatus: competitor.evidenceStatus,
-      nextAction: missingMetricLabelsFor(competitor).length
-        ? `Hermes missing-coverage research is chasing: ${missingMetricLabelsFor(competitor).join(', ')}.`
-        : competitor.notes || 'Hermes will keep checking product equivalent, price, market share, revenue, and growth evidence.',
+      nextAction: competitorNextActionFor(competitor),
       metricBadgeEligible: {
         price: metricCanDriveLeaderBadge(competitor, 'pricingEvidence'),
         marketShare: metricCanDriveLeaderBadge(competitor, 'marketShare'),
@@ -793,7 +885,11 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
   return Array.from(groups.values()).map(group => {
     const sourceBacked = group.filter(record => competitorRecordSources(record).some(source => sourceIsUsable(source)))
     const primary = sourceBacked[0] || group[0]
-    const productVariations = uniqueValues(group.flatMap(record => competitorProductVariationValues(record))).sort((a, b) => a.localeCompare(b))
+    const productVariations = uniqueValues(
+      group
+        .filter(record => recordCanDriveSourceDisplay(record))
+        .flatMap(record => competitorProductVariationValues(record)),
+    ).sort((a, b) => a.localeCompare(b))
     const visibleSources = group.flatMap(record => competitorRecordSources(record)).filter(source => sourceIsUsable(source))
     const sourceTitles = uniqueValues(visibleSources.map(source => source.title))
     const notes = uniqueValues(group.map(record => record.notes).filter(Boolean))
@@ -806,19 +902,20 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
       countryRegion: firstUsefulValue(group.map(record => record.countryRegion), primary.countryRegion),
       productEquivalent: productVariations.length > 1
         ? productVariations.join(' / ')
-        : productVariations[0] || primary.productEquivalent,
-      productVariations: productVariations.join(' / ') || primary.productEquivalent,
+        : productVariations[0] || noApprovedSourceBackedValue,
+      productVariations: productVariations.join(' / ') || noApprovedSourceBackedValue,
+      productVariationList: productVariations,
       activeContent: firstUsefulValue(group.map(record => record.activeContent), primary.activeContent),
-      pricingEvidence: bestMetricValue(group.map(record => record.pricingEvidence), primary.pricingEvidence || autoVerifyingText, 'min'),
+      pricingEvidence: bestRecordMetricValueForGroup(group, 'pricingEvidence', 'min'),
       certifications: firstUsefulValue(group.map(record => record.certifications), primary.certifications),
       distributionPresence: firstUsefulValue(group.map(record => record.distributionPresence), primary.distributionPresence),
-      marketShare: bestMetricValue(group.map(record => record.marketShare || ''), primary.marketShare || '', 'max'),
-      revenue: bestMetricValue(group.map(record => record.revenue || ''), primary.revenue || '', 'max'),
-      yearlyGrowth: bestMetricValue(group.map(record => record.yearlyGrowth || ''), primary.yearlyGrowth || '', 'max'),
-      traffic: bestMetricValue(group.map(record => record.traffic || ''), primary.traffic || '', 'max'),
-      rating: bestMetricValue(group.map(record => record.rating || ''), primary.rating || '', 'max'),
-      lastUpdated: firstUsefulValue(group.map(record => record.lastUpdated || record.updatedAt || ''), primary.lastUpdated || primary.updatedAt),
-      confidence: bestConfidenceValue(group.map(record => record.confidence || ''), primary.confidence || ''),
+      marketShare: bestRecordMetricValueForGroup(group, 'marketShare', 'max'),
+      revenue: bestRecordMetricValueForGroup(group, 'revenue', 'max'),
+      yearlyGrowth: bestRecordMetricValueForGroup(group, 'yearlyGrowth', 'max'),
+      traffic: bestRecordMetricValueForGroup(group, 'traffic', 'max'),
+      rating: bestRecordMetricValueForGroup(group, 'rating', 'max'),
+      lastUpdated: bestRecordMetricValueForGroup(group, 'lastUpdated', 'max'),
+      confidence: bestRecordConfidenceForGroup(group),
       evidenceStatus: strongestEvidenceStatus(group.map(record => record.evidenceStatus)),
       metricEvidence,
       source: visibleSources[0] || primary.source || null,
@@ -836,7 +933,7 @@ function collapseCompetitorRecords(records: CompetitorIntelligenceRecord[]): Col
 }
 const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
   const rows = competitorMetricsRows.value.map(row => {
-    const hasSource = sourceIsUsable({ title: row.source, url: row.sourceUrl })
+    const hasSource = sourceIsUsable({ title: row.source, url: row.sourceUrl, date: row.sourceDate })
     const hasComparableData = hasSource && [
       row.priceKg,
       row.marketShare,
@@ -845,7 +942,6 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       row.traffic,
       row.rating,
     ].some(value => comparableNumber(value) !== null)
-    const sourceMissing = !hasSource
     const comparable = hasSource
       ? {
           price: comparableNumber(row.priceKg) ?? undefined,
@@ -862,6 +958,7 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       id: row.id,
       competitor: row.competitor,
       product: row.productFocus,
+      products: row.productVariations?.length ? row.productVariations : splitCompetitorProductVariationText(row.productFocus),
       category: competitorCategoryFor(row.competitor, row.productFocus, row.hq),
       price: row.priceKg,
       marketShare: row.marketShare,
@@ -870,8 +967,9 @@ const competitorComparisonRows = computed<CompetitorComparisonRow[]>(() => {
       traffic: row.traffic,
       rating: row.rating,
       lastUpdated: row.lastUpdated,
-      source: sourceMissing ? 'Hermes source search running' : row.source,
+      source: row.source,
       sourceUrl: row.sourceUrl,
+      sourceDate: row.sourceDate,
       confidence: row.confidence || confidenceLabelForRow(row.evidenceStatus, hasSource, hasComparableData),
       evidenceState: evidenceStateForRow(row.evidenceStatus, hasSource, hasComparableData, row.priceKg),
       evidenceStatus: row.evidenceStatus,
@@ -924,8 +1022,9 @@ function collapseCompetitorMetricRows(rows: CompetitorMetricRow[]): CompetitorMe
   return Array.from(groups.values()).map(group => {
     if (group.length === 1) return group[0]
     const primary = group.find(row => row.id.startsWith('saved-')) || group[0]
-    const productVariations = uniqueValues(group.map(row => row.productFocus)).sort((a, b) => a.localeCompare(b))
-    const sources = uniqueValues(group.map(row => row.source).filter(source => source && !/source search running/i.test(source)))
+    const productVariations = uniqueValues(group.flatMap(row => row.productVariations?.length ? row.productVariations : [row.productFocus])).sort((a, b) => a.localeCompare(b))
+    const sourceRows = group.filter(row => row.source && ![noApprovedSourceBackedValue, reviewRequiredText].includes(row.source))
+    const sources = uniqueValues(sourceRows.map(row => row.source))
     const nextActions = uniqueValues(group.map(row => row.nextAction).filter(Boolean))
     return {
       ...primary,
@@ -933,19 +1032,29 @@ function collapseCompetitorMetricRows(rows: CompetitorMetricRow[]): CompetitorMe
       productFocus: productVariations.length > 1
         ? productVariations.join(' / ')
         : productVariations[0] || primary.productFocus,
+      productVariations,
       hq: firstUsefulValue(group.map(row => row.hq), primary.hq),
-      priceKg: bestMetricValue(group.map(row => row.priceKg), autoVerifyingText, 'min'),
-      marketShare: bestMetricValue(group.map(row => row.marketShare), autoVerifyingText, 'max'),
-      revenue: bestMetricValue(group.map(row => row.revenue), autoVerifyingText, 'max'),
-      yearlyGrowth: bestMetricValue(group.map(row => row.yearlyGrowth), autoVerifyingText, 'max'),
-      traffic: bestMetricValue(group.map(row => row.traffic), autoVerifyingText, 'max'),
-      rating: bestMetricValue(group.map(row => row.rating), autoVerifyingText, 'max'),
+      priceKg: bestMetricValue(group.map(row => row.priceKg), noApprovedSourceBackedValue, 'min'),
+      marketShare: bestMetricValue(group.map(row => row.marketShare), noApprovedSourceBackedValue, 'max'),
+      revenue: bestMetricValue(group.map(row => row.revenue), noApprovedSourceBackedValue, 'max'),
+      yearlyGrowth: bestMetricValue(group.map(row => row.yearlyGrowth), noApprovedSourceBackedValue, 'max'),
+      traffic: bestMetricValue(group.map(row => row.traffic), noApprovedSourceBackedValue, 'max'),
+      rating: bestMetricValue(group.map(row => row.rating), noApprovedSourceBackedValue, 'max'),
       lastUpdated: firstUsefulValue(group.map(row => row.lastUpdated), primary.lastUpdated),
-      confidence: bestConfidenceValue(group.map(row => row.confidence), primary.confidence),
+      confidence: bestConfidenceValue(group.map(row => row.confidence), noApprovedSourceBackedValue),
       source: sources.length > 1 ? `${sources.length} sources` : sources[0] || primary.source,
-      sourceUrl: group.find(row => row.sourceUrl)?.sourceUrl,
+      sourceUrl: sourceRows.find(row => row.sourceUrl)?.sourceUrl,
+      sourceDate: sourceRows.find(row => row.sourceDate)?.sourceDate,
       evidenceStatus: strongestEvidenceStatus(group.map(row => row.evidenceStatus)),
       nextAction: nextActions.length > 1 ? nextActions.join(' / ') : nextActions[0] || primary.nextAction,
+      metricBadgeEligible: {
+        price: group.some(row => row.metricBadgeEligible.price),
+        marketShare: group.some(row => row.metricBadgeEligible.marketShare),
+        revenue: group.some(row => row.metricBadgeEligible.revenue),
+        yoyGrowth: group.some(row => row.metricBadgeEligible.yoyGrowth),
+        traffic: group.some(row => row.metricBadgeEligible.traffic),
+        rating: group.some(row => row.metricBadgeEligible.rating),
+      },
     }
   })
 }
@@ -976,7 +1085,7 @@ function competitorRecordSources(record: CompetitorIntelligenceRecord): NonNulla
 
 function isUsefulCompetitorProductVariation(value: string): boolean {
   const normalized = String(value || '').trim()
-  if (!normalized || /no source-backed value yet|awaiting trusted-source import|source review needed|not published by cited source|source search running/i.test(normalized)) return false
+  if (!normalized || /no approved source-backed value|no source-backed value yet|review required|awaiting trusted-source import|source review needed|not published by cited source|source search running/i.test(normalized)) return false
   if (/company-wide financial context|not textile-softener product-line revenue|financial context/i.test(normalized)) return false
   if (/automated ssl verification failed|page access failed|certificate-chain issue blocked|url identified|candidate identified|category presence only/i.test(normalized)) return false
   return true
@@ -1012,7 +1121,7 @@ function uniqueValues(values: Array<string | undefined>): string[] {
 }
 
 function firstUsefulValue(values: string[], fallback: string): string {
-  return values.find(value => value && !/no source-backed value yet|awaiting trusted-source import|source review needed|not published by cited source|source search running/i.test(value)) || fallback
+  return values.find(value => value && !/no approved source-backed value|no source-backed value yet|review required|awaiting trusted-source import|source review needed|not published by cited source|source search running/i.test(value)) || fallback
 }
 
 function bestMetricValue(values: string[], fallback: string, mode: 'max' | 'min'): string {
@@ -1041,6 +1150,15 @@ function bestConfidenceValue(values: string[], fallback: string): string {
     .filter(candidate => candidate.value && candidate.score > 0)
   if (!candidates.length) return firstUsefulValue(values, fallback)
   return candidates.reduce((best, candidate) => candidate.score > best.score ? candidate : best).value
+}
+
+function bestRecordConfidenceForGroup(group: CompetitorIntelligenceRecord[]): string {
+  return bestConfidenceValue(
+    group
+      .filter(record => recordCanDriveSourceDisplay(record))
+      .map(record => record.confidence || ''),
+    '',
+  )
 }
 
 function strongestEvidenceStatus(statuses: IntelligenceEvidenceStatus[]): IntelligenceEvidenceStatus {
@@ -1081,9 +1199,9 @@ function evidenceStateForRow(
 }
 
 function confidenceLabelForRow(status: IntelligenceEvidenceStatus, hasSource: boolean, hasComparableData: boolean): string {
-  if (!hasSource) return 'Auto-checking'
+  if (!hasSource) return noApprovedSourceBackedValue
   if (hasComparableData && ['Verified', 'User Approved', 'Investor Approved', 'Source-backed', 'Official Data', 'Trusted Source Auto-Updated'].includes(status)) return 'High'
-  if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return 'Review'
+  if (['Assumption', 'Powerful Assumption', 'Hypothesis', 'Conflict Detected'].includes(status)) return reviewRequiredText
   return 'Source found'
 }
 
@@ -1139,7 +1257,7 @@ function leaderId(rows: CompetitorComparisonRow[], key: keyof CompetitorComparis
     typeof row.comparable[key] === 'number' &&
     Number.isFinite(row.comparable[key])
   )
-  if (!sourceBackedRows.length) return ''
+  if (sourceBackedRows.length < 2) return ''
   return sourceBackedRows.reduce((best, row) => {
     const current = row.comparable[key] ?? 0
     const bestValue = best.comparable[key] ?? 0
@@ -1183,17 +1301,24 @@ function competitorMarketShareLabel(competitor: CompetitorIntelligenceRecord): s
 }
 
 function competitorLastUpdatedLabel(competitor: CompetitorIntelligenceRecord): string {
+  if (metricReviewRequiredFor(competitor, 'lastUpdated')) return reviewRequiredText
   const source = metricSourceFor(competitor, 'lastUpdated')
-  if (!sourceIsUsable(source)) return autoVerifyingText
+  if (!sourceIsUsable(source)) return noApprovedSourceBackedValue
   const value = metricValueFor(competitor, 'lastUpdated', competitor.lastUpdated) || source?.date || competitor.updatedAt
-  return value ? formatDateTime(value) : autoVerifyingText
+  if (!metricCanDrivePrimaryDisplay(competitor, 'lastUpdated')) return reviewRequiredText
+  return value ? formatDateTime(value) : noApprovedSourceBackedValue
 }
 
 function competitorConfidenceLabel(competitor: CompetitorIntelligenceRecord): string {
-  const metricConfidences = Object.values(competitor.metricEvidence || {})
-    .map(item => String(item?.confidence || '').trim())
+  const metricConfidences = Object.entries(competitor.metricEvidence || {})
+    .filter(([field, item]) => metricEvidenceCanDrivePrimaryDisplay(field as CompetitorMetricField, item))
+    .map(([, item]) => String(item?.confidence || '').trim())
     .filter(Boolean)
-  const explicit = metricConfidences.find(item => item === 'high') || metricConfidences[0] || String(competitor.confidence || '').trim()
+  const metricExplicit = metricConfidences.find(item => item === 'high') || metricConfidences[0]
+  if (metricExplicit) return metricExplicit
+  if (competitor.reviewRequired && sourceIsUsable(competitor.source)) return reviewRequiredText
+  if (!recordCanDriveSourceDisplay(competitor)) return noApprovedSourceBackedValue
+  const explicit = String(competitor.confidence || '').trim()
   if (explicit) return explicit
   return confidenceLabelForRow(
     competitor.evidenceStatus,
@@ -1553,7 +1678,10 @@ function addCompetitor() {
           :class="row.evidenceState.toLowerCase().replace(/[^a-z0-9]+/g, '-')"
         >
           <strong>{{ row.competitor }}</strong>
-          <span>{{ row.product }}</span>
+          <span class="product-variation-cell">
+            <span>{{ row.product }}</span>
+            <small v-if="row.products.length > 1">{{ row.products.length }} product variations</small>
+          </span>
           <span class="verify-pill">{{ row.price }}</span>
           <span class="verify-pill">{{ row.marketShare }}</span>
           <span class="verify-pill">{{ row.revenue }}</span>
@@ -2247,6 +2375,18 @@ function addCompetitor() {
   min-width: 760px;
   padding: 16px;
   color: $text-secondary;
+}
+
+.product-variation-cell {
+  display: grid;
+  gap: 4px;
+
+  small {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
 }
 
 .confidence-pill {

@@ -53,15 +53,15 @@ const BLOCKED_FILE_SEGMENTS = [
   'negotiation',
 ]
 
-const RESTRICTED_VALUE_RE = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|raw\s+material\s+price|formula\s+cost|gross\s+margin|margin|irr|npv|payback|working\s+capital|investor\s+terms?|negotiation|formula|cas\s+list|raw\s+material\s+ratio|product\s+development|dms|dimethyl\s+sulfate|reactor|process\s+design|supplier\s+cost|cost\s+sheet|api\s*key|secret|token|password|provider\s+config)\b/i
+const RESTRICTED_VALUE_RE = /\b(price|pricing|cost|costing|supplier[\s_-]+quote|supplier[\s_-]+price|supplier[\s_-]+cost|landed[\s_-]+cost|raw[\s_-]+material[\s_-]+price|formula[\s_-]+cost|gross[\s_-]+margin|margin|irr|npv|payback|working[\s_-]+capital|investor[\s_-]+terms?|equity[\s_-]+percentage|ownership|valuation|term[\s_-]+sheet|negotiation|formula|cas[\s_-]+list|raw[\s_-]+material[\s_-]+ratio|active[\s_-]+content|composition|recipe|product[\s_-]+development|dms|dimethyl[\s_-]+sulfate|reactor|process[\s_-]+design|cost[\s_-]+sheet|api[\s_-]*key|access[\s_-]?token|secret|token|password|private[\s_-]+key|ssh|cloudflare|provider[\s_-]+config|system[\s_-]+prompt|admin[\s_-]+secret)\b/i
 
-const FORMULA_RE = /\b(formula|cas\s+list|raw\s+material\s+ratio|active\s+content|composition|recipe|process\s+design|reactor|dms|dimethyl\s+sulfate)\b/i
-const PRICE_COST_RE = /\b(price|pricing|cost|costing|supplier\s+quote|supplier\s+price|landed\s+cost|raw\s+material\s+price|formula\s+cost|gross\s+margin|margin|irr|npv|payback|working\s+capital)\b/i
-const PRODUCT_DEV_RE = /\b(product\s+development|formula|cas\s+list|raw\s+material\s+ratio|reactor|process\s+design|dms|dimethyl\s+sulfate)\b/i
-const INVESTOR_RE = /\b(investor\s+terms?|equity\s+percentage|ownership|valuation|negotiation|term\s+sheet)\b/i
-const SYSTEM_RE = /\b(api\s*key|secret|token|password|private\s+key|ssh|cloudflare|provider\s+config|terminal|settings|models?)\b/i
+const FORMULA_RE = /\b(formula|cas[\s_-]+list|raw[\s_-]+material[\s_-]+ratio|active[\s_-]+content|composition|recipe|process[\s_-]+design|reactor|dms|dimethyl[\s_-]+sulfate)\b/i
+const PRICE_COST_RE = /\b(price|pricing|cost|costing|supplier[\s_-]+quote|supplier[\s_-]+price|supplier[\s_-]+cost|landed[\s_-]+cost|raw[\s_-]+material[\s_-]+price|formula[\s_-]+cost|gross[\s_-]+margin|margin|irr|npv|payback|working[\s_-]+capital)\b/i
+const PRODUCT_DEV_RE = /\b(product[\s_-]+development|formula|cas[\s_-]+list|raw[\s_-]+material[\s_-]+ratio|reactor|process[\s_-]+design|dms|dimethyl[\s_-]+sulfate)\b/i
+const INVESTOR_RE = /\b(investor[\s_-]+terms?|equity[\s_-]+percentage|ownership|valuation|negotiation|term[\s_-]+sheet)\b/i
+const SYSTEM_RE = /\b(api[\s_-]*key|access[\s_-]?token|secret|token|password|private[\s_-]+key|ssh|cloudflare|provider[\s_-]+config|system[\s_-]+prompt|admin[\s_-]+secret|terminal|settings|models?)\b/i
 
-const SENSITIVE_FIELD_RE = /(price|pricing|cost|costing|margin|formula|cas|ratio|supplier|quote|landed|irr|npv|payback|valuation|equity|ownership|secret|token|password|api[_-]?key|credential|private[_-]?key|provider|config)/i
+const SENSITIVE_FIELD_RE = /(price|pricing|cost|costing|margin|formula|cas|ratio|supplier|quote|landed|irr|npv|payback|valuation|equity|ownership|investor|terms|term[_-]?sheet|product[_-]?development|raw[_-]?material|active[_-]?content|composition|recipe|process[_-]?design|reactor|dms|secret|token|authorization|cookie|jwt|password|api[_-]?key|credential|private[_-]?key|provider|config|system|admin)/i
 
 export function isEmployeeLikeRole(role: UserRole | string | null | undefined): boolean {
   return role === 'employee' || role === 'research_assistant' || role === 'regulatory_consultant'
@@ -86,7 +86,7 @@ export function classifySensitivityFromText(...parts: Array<unknown>): DataSensi
     .join('\n')
 
   if (SYSTEM_RE.test(text)) return 'system-admin-only'
-  if (/\bproduct\s+development\b/i.test(text)) return 'product-development-secret'
+  if (/\bproduct[\s_-]+development\b/i.test(text)) return 'product-development-secret'
   if (FORMULA_RE.test(text)) return 'formula-secret'
   if (PRODUCT_DEV_RE.test(text)) return 'product-development-secret'
   if (PRICE_COST_RE.test(text)) return 'price-cost-sensitive'

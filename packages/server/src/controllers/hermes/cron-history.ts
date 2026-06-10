@@ -3,6 +3,11 @@ import { readdir, stat, readFile } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { getActiveProfileName, getProfileDir } from '../../services/hermes/hermes-profile'
+import {
+  isEmployeeLikeRole,
+  redactRestrictedTextForRole,
+  roleCanAccessText,
+} from '../../services/hermes/sensitivity'
 
 const SYNTHETIC_RUN_FILE = '__scheduler_metadata__.md'
 
@@ -43,12 +48,17 @@ interface CronJobMetadata {
   id?: string
   job_id?: string
   name?: string
+  prompt?: string | null
+  prompt_preview?: string | null
   last_run_at?: string | null
   last_status?: string | null
   last_error?: string | null
   run_count?: number | string | null
   no_agent?: boolean
   script?: string | null
+  schedule_display?: string | null
+  skill?: string | null
+  skills?: string[] | null
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -131,6 +141,48 @@ function syntheticRunEntry(job: CronJobMetadata): RunEntry | null {
   }
 }
 
+function accessRole(ctx: Context): string {
+  return ctx.state?.user?.role || 'super_admin'
+}
+
+function isScopedBusinessRole(role: string): boolean {
+  return isEmployeeLikeRole(role) || role === 'financial_analyst'
+}
+
+function canAccessJobForRole(role: string, job: CronJobMetadata | null | undefined): boolean {
+  if (!isScopedBusinessRole(role)) return true
+  if (!job) return false
+  return roleCanAccessText(
+    role,
+    job.name,
+    job.prompt,
+    job.prompt_preview,
+    job.schedule_display,
+    job.skill,
+    job.skills,
+    job.script,
+    getJobId(job),
+  )
+}
+
+function sanitizeRunEntryForRole(role: string, run: RunEntry): RunEntry {
+  if (!isScopedBusinessRole(role)) return run
+  return {
+    ...run,
+    error: run.error ? redactRestrictedTextForRole(run.error, role) : run.error,
+  }
+}
+
+function sendRunNotFound(ctx: Context): void {
+  ctx.status = 404
+  ctx.body = { error: 'Run output not found' }
+}
+
+function sendRestrictedRun(ctx: Context): void {
+  ctx.status = 403
+  ctx.body = { error: 'Run output contains restricted business or system content' }
+}
+
 function hasRunForJobAtOrAfter(runs: RunEntry[], jobId: string, runTime: string): boolean {
   return runs.some(run => run.jobId === jobId && run.runTime >= runTime)
 }
@@ -153,7 +205,7 @@ function inlineCode(value: unknown): string {
   return `${delimiter} ${text} ${delimiter}`
 }
 
-function buildSyntheticContent(job: CronJobMetadata, runTime: string): string {
+function buildSyntheticContent(job: CronJobMetadata, runTime: string, includeSystemDetails = true): string {
   const explanation = job.no_agent || stringOrNull(job.script)
     ? 'This is expected for script-only/no-agent watchdog jobs when the script exits successfully with empty stdout: Hermes treats the run as silent, so there is nothing to deliver and no output file to display.'
     : 'This can happen when a cron run updates scheduler metadata but does not produce a markdown output artifact to display.'
@@ -176,7 +228,7 @@ function buildSyntheticContent(job: CronJobMetadata, runTime: string): string {
   if (runCount !== undefined) lines.push(`- Recorded runs: ${inlineCode(runCount)}`)
   if (lastStatus) lines.push(`- Last status: ${inlineCode(lastStatus)}`)
   if (lastError) lines.push(`- Last error: ${inlineCode(lastError)}`)
-  if (script) lines.push(`- Script: ${inlineCode(script)}`)
+  if (script && includeSystemDetails) lines.push(`- Script: ${inlineCode(script)}`)
   if (job.no_agent) lines.push('- Mode: `no-agent/script-only`')
 
   return `${lines.join('\n')}\n`
@@ -187,6 +239,14 @@ export async function listRuns(ctx: Context) {
   const jobId = ctx.query.jobId as string | undefined
   const profile = requestedProfile(ctx)
   const cronOutput = getCronOutputDir(profile)
+  const role = accessRole(ctx)
+  const jobs = await readCronJobs(profile)
+  const jobsById = new Map<string, CronJobMetadata>()
+  for (const job of jobs) {
+    const id = getJobId(job)
+    if (id) jobsById.set(id, job)
+  }
+  const canSeeJobId = (id: string) => canAccessJobForRole(role, jobsById.get(id))
 
   try {
     const runs: RunEntry[] = []
@@ -196,6 +256,7 @@ export async function listRuns(ctx: Context) {
       const targetDirs = jobId ? dirs.filter(d => d === jobId) : dirs
 
       for (const dir of targetDirs) {
+        if (!canSeeJobId(dir)) continue
         const dirPath = join(cronOutput, dir)
         try {
           const dirStat = await stat(dirPath)
@@ -224,8 +285,8 @@ export async function listRuns(ctx: Context) {
       }
     }
 
-    const jobs = await readCronJobs(profile)
-    const targetJobs = jobId ? jobs.filter(job => getJobId(job) === jobId) : jobs
+    const targetJobs = (jobId ? jobs.filter(job => getJobId(job) === jobId) : jobs)
+      .filter(job => canAccessJobForRole(role, job))
     for (const job of targetJobs) {
       const id = getJobId(job)
       if (!id) continue
@@ -236,7 +297,7 @@ export async function listRuns(ctx: Context) {
     // Sort all runs by runTime descending
     runs.sort((a, b) => b.runTime.localeCompare(a.runTime))
 
-    ctx.body = { runs }
+    ctx.body = { runs: runs.map(run => sanitizeRunEntryForRole(role, run)) }
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }
@@ -247,6 +308,7 @@ export async function listRuns(ctx: Context) {
 export async function readRun(ctx: Context) {
   const { jobId, fileName } = ctx.params
   const profile = requestedProfile(ctx)
+  const role = accessRole(ctx)
 
   if (!jobId || !fileName) {
     ctx.status = 400
@@ -268,21 +330,23 @@ export async function readRun(ctx: Context) {
     return
   }
 
+  const jobs = await readCronJobs(profile)
+  const job = jobs.find(candidate => getJobId(candidate) === jobId)
+  if (!canAccessJobForRole(role, job)) return sendRunNotFound(ctx)
+
   if (fileName === SYNTHETIC_RUN_FILE) {
-    const jobs = await readCronJobs(profile)
-    const job = jobs.find(candidate => getJobId(candidate) === jobId)
     const synthetic = job ? syntheticRunEntry(job) : null
     if (!job || !synthetic) {
-      ctx.status = 404
-      ctx.body = { error: 'Run output not found' }
+      sendRunNotFound(ctx)
       return
     }
 
+    const content = buildSyntheticContent(job, synthetic.runTime, !isScopedBusinessRole(role))
     ctx.body = {
       jobId,
       fileName,
       runTime: synthetic.runTime,
-      content: buildSyntheticContent(job, synthetic.runTime),
+      content: redactRestrictedTextForRole(content, role),
     } satisfies RunDetail
     return
   }
@@ -291,16 +355,19 @@ export async function readRun(ctx: Context) {
   const filePath = join(cronOutput, jobId, fileName)
 
   if (!existsSync(filePath)) {
-    ctx.status = 404
-    ctx.body = { error: 'Run output not found' }
+    sendRunNotFound(ctx)
     return
   }
 
   try {
     const content = await readFile(filePath, 'utf-8')
     const runTime = parseRunTimeFromFileName(fileName)
+    if (isScopedBusinessRole(role) && !roleCanAccessText(role, job?.name, job?.prompt, job?.prompt_preview, content)) {
+      sendRestrictedRun(ctx)
+      return
+    }
 
-    ctx.body = { jobId, fileName, runTime, content } satisfies RunDetail
+    ctx.body = { jobId, fileName, runTime, content: redactRestrictedTextForRole(content, role) } satisfies RunDetail
   } catch (err: any) {
     ctx.status = 500
     ctx.body = { error: err.message }

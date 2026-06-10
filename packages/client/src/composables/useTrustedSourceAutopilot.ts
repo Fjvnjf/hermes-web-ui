@@ -151,7 +151,7 @@ const STORAGE_KEY = 'hermes.trustedSourceAutopilot.v1'
 export const FULL_AUTOPILOT_STATUS_KEY = 'hermes.fullDashboardAutopilot.status.v1'
 export const FULL_DASHBOARD_AUTOPILOT_JOB_NAME = 'Full Dashboard Trusted Source Autopilot'
 export const FULL_DASHBOARD_AUTOPILOT_SCHEDULE = '0 7,19 * * *'
-export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-07-source-url-candidates-v6'
+export const FULL_DASHBOARD_AUTOPILOT_PROMPT_VERSION = 'dashboard-autopilot-schema-v2026-06-10-dashboard-targets-v7'
 const MAX_STORED_SNAPSHOTS = 12
 const MAX_STORED_CLAIMS_PER_SNAPSHOT = 24
 const MAX_STORED_CLAIM_TEXT_LENGTH = 360
@@ -1172,7 +1172,8 @@ function fullDashboardAutopilotPrompt(): string {
     '',
     'Machine-readable dashboard_updates schema:',
     '- Put the appendix in one fenced ```json block. The top-level object must be: { "dashboard_updates": { ... } }.',
-    '- Each item should include fieldKey when known, field/title/label, value, sourceTitle, sourceUrl or sourceDate, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, riskReason, dataType, and sensitive when applicable.',
+    '- Preserve target identity on every item: dashboardGroup must match the containing array, fieldKey must be stable, and proposedDashboardField must name the exact dashboard cell/card to update or review.',
+    '- Each item should include dashboardGroup, fieldKey when known, proposedDashboardField, field/title/label, value, sourceTitle, sourceUrl or sourceDate, sourceTier, lastChecked, confidence, evidenceStatus, reviewRequired, riskReason, dataType, and sensitive when applicable.',
     '- For missing checklist targets, include proposedDashboardField and recommendedAction so Research Result Review and Kanban can show exactly what still needs evidence.',
     '- Use these arrays only: marketClaims, competitorRecords, rawMaterialSignals, supplierScorecards, regulatoryFindings, financialEvidence, evidenceGaps, suggestedTasks, investorMaterialCandidates.',
     '- For country-wise growth/consumption, use marketClaims with field or label like "Country-wise consumption growth - <country/region>" and keep the value To Verify when the source is only a proxy.',

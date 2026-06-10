@@ -8,7 +8,8 @@ import { ContextEngine } from '../context-engine/compressor'
 import { SessionDeleter } from '../session-deleter'
 import { countTokens, SUMMARY_PREFIX } from '../../../lib/context-compressor'
 import { AgentBridgeClient } from '../agent-bridge'
-import { authenticateUserToken, isAuthEnabled } from '../../../middleware/user-auth'
+import { isOwnerRole } from '../../../middleware/access-control'
+import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '../../../middleware/user-auth'
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -819,8 +820,11 @@ export class GroupChatServer {
         }
 
         const token = auth.token || socket.handshake.query.token || ''
-        if (await isAuthEnabled() && !await authenticateUserToken(String(token))) {
-            return next(new Error('Unauthorized'))
+        if (await isAuthEnabled()) {
+            const user = await authenticateUserToken(String(token))
+            if (!user) return next(new Error('Unauthorized'))
+            if (!isOwnerRole(user.role)) return next(new Error('Forbidden'))
+            socket.data.authenticatedUser = user
         }
         next()
     }
@@ -829,10 +833,15 @@ export class GroupChatServer {
 
     private onConnection(socket: Socket): void {
         const auth = socket.handshake.auth as { userId?: string; name?: string; description?: string; source?: string; agentSocketSecret?: string }
-        const userId = auth.userId || socket.id
-        const userName = auth.name || `User-${userId.slice(0, 6)}`
-        const description = auth.description || ''
         const requestedSource = auth.source === 'agent' && auth.agentSocketSecret === GROUP_CHAT_AGENT_SOCKET_SECRET ? 'agent' : 'human'
+        const authenticated = socket.data.authenticatedUser as AuthenticatedUser | undefined
+        const userId = requestedSource === 'agent'
+            ? auth.userId || socket.id
+            : (authenticated?.id != null ? String(authenticated.id) : auth.userId || socket.id)
+        const userName = requestedSource === 'agent'
+            ? auth.name || `User-${userId.slice(0, 6)}`
+            : authenticated?.username || auth.name || `User-${userId.slice(0, 6)}`
+        const description = auth.description || ''
 
         this.socketUserMap.set(socket.id, userId)
         this.socketRequestedSourceMap.set(socket.id, requestedSource)

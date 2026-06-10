@@ -14,6 +14,7 @@ import {
   buildInvestmentBreakdownRows,
   buildInvestorEconomicsKpis,
   defaultExecutiveRefreshState,
+  financialOutputStatus,
   nextTwiceDailyRefresh,
   type ExecutiveRefreshState,
 } from '@/utils/executiveIntelligence'
@@ -33,12 +34,18 @@ const refreshState = ref<ExecutiveRefreshState>(defaultExecutiveRefreshState())
 const savingAction = ref('')
 const selectedScenario = ref('Base')
 const scenarioNames = ['Lean', 'Base', 'Conservative', 'Aggressive'] as const
+const REVIEW_GATED_MODEL_VALUE = 'Awaiting approved financial model input'
+const REVIEW_GATED_LINE_ITEM_VALUE = 'Awaiting approved line-item model'
+const APPROVED_SOURCE_NEEDED = 'Approved source needed'
 
 const role = computed(() => getFrontendAccessRole())
 const redactsFinancials = computed(() => shouldRedactForEmployee(role.value) || role.value === 'investor_viewer' || role.value === 'developer_admin')
 const latestFinancialModel = intelligence.latestFinancialModel
 const selectedFinancialModel = computed(() =>
   intelligence.state.value.financialModels.find(model => model.scenarioName.toLowerCase().includes(selectedScenario.value.toLowerCase())) || null,
+)
+const selectedFinancialOutputStatus = computed<IntelligenceEvidenceStatus>(() =>
+  selectedFinancialModel.value ? financialOutputStatus(selectedFinancialModel.value) : 'Missing',
 )
 const nextUpdateLabel = computed(() => formatDateTime(refreshState.value.nextRun))
 const kpis = computed(() =>
@@ -49,10 +56,20 @@ const kpis = computed(() =>
       : item),
 )
 const breakdownRows = computed(() =>
-  buildInvestmentBreakdownRows().map(row => redactsFinancials.value ? { ...row, value: 'Restricted' } : row),
+  buildInvestmentBreakdownRows().map(row => redactsFinancials.value
+    ? { ...row, value: 'Restricted' }
+    : {
+        ...row,
+        value: REVIEW_GATED_LINE_ITEM_VALUE,
+        evidenceStatus: 'Missing' as IntelligenceEvidenceStatus,
+        sourceLabel: APPROVED_SOURCE_NEEDED,
+      }),
 )
-const financialWarnings = computed(() => selectedFinancialModel.value?.warnings || ['Scenario not filled yet. Open the IRR Calculator and save this scenario before using investment outputs.'])
-const evidenceStatus = computed(() => selectedFinancialModel.value ? 'Derived from Assumptions' : 'To Verify')
+const financialWarnings = computed(() =>
+  (selectedFinancialModel.value?.warnings || ['Scenario not filled yet. Open the IRR Calculator and save this scenario before using investment outputs.'])
+    .map(warning => displayAutomaticVerificationText(warning)),
+)
+const evidenceStatus = selectedFinancialOutputStatus
 const financialEvidenceCandidates = computed(() =>
   intelligence.state.value.dataRoomSources
     .filter(record => record.dashboardGroup === 'financialEvidence' || (record.area === 'financial' && record.notes.toLowerCase().includes('financialevidence')))
@@ -132,10 +149,22 @@ const projectAnalysisBreakdownTemplateRows = computed(() => [
   },
 ].map(row => ({
   ...row,
-  amount: redactsFinancials.value ? 'Restricted' : 'To Verify',
-  percent: redactsFinancials.value ? 'Restricted' : 'To Verify',
-  evidenceStatus: 'To Verify' as IntelligenceEvidenceStatus,
+  amount: redactsFinancials.value ? 'Restricted' : REVIEW_GATED_LINE_ITEM_VALUE,
+  percent: redactsFinancials.value ? 'Restricted' : REVIEW_GATED_LINE_ITEM_VALUE,
+  evidenceStatus: 'Missing' as IntelligenceEvidenceStatus,
 })))
+const modelTotalValue = computed(() => {
+  if (redactsFinancials.value) return 'Restricted'
+  if (!selectedFinancialModel.value) return REVIEW_GATED_MODEL_VALUE
+  return projectAnalysisTemplateKpis.value.find(kpi => kpi.key === 'totalInvestment')?.value || REVIEW_GATED_MODEL_VALUE
+})
+const modelTotalPercent = computed(() => {
+  if (redactsFinancials.value) return 'Restricted'
+  return selectedFinancialModel.value ? 'Model total' : REVIEW_GATED_MODEL_VALUE
+})
+const modelSourceLabel = computed(() =>
+  selectedFinancialModel.value?.source?.title || (selectedFinancialModel.value ? 'IRR Calculator saved scenario' : APPROVED_SOURCE_NEEDED),
+)
 const projectAnalysisDetailCards = computed(() => [
   {
     title: 'Process Equipment Detail',
@@ -201,10 +230,10 @@ const pdfInvestmentBreakdownRows = [
 ]
 
 const scenarioCards = computed(() => [
-  { name: 'Lean', status: 'To Verify', detail: 'Needs sourced capex, operating cost, volume, and selling-price assumptions.' },
-  { name: 'Base', status: latestFinancialModel.value?.scenarioName?.includes('Base') ? evidenceStatus.value : 'To Verify', detail: latestFinancialModel.value?.scenarioName || 'No saved base scenario snapshot.' },
-  { name: 'Conservative', status: 'To Verify', detail: 'Use the IRR Calculator to save downside assumptions before investor use.' },
-  { name: 'Aggressive', status: 'To Verify', detail: 'Upside case must stay assumption-labeled until source-backed.' },
+  { name: 'Lean', status: 'Missing', detail: 'Needs sourced capex, operating cost, volume, and selling-price assumptions.' },
+  { name: 'Base', status: latestFinancialModel.value?.scenarioName?.includes('Base') ? evidenceStatus.value : 'Missing', detail: latestFinancialModel.value?.scenarioName || 'No saved base scenario snapshot.' },
+  { name: 'Conservative', status: 'Missing', detail: 'Use the IRR Calculator to save downside assumptions before investor use.' },
+  { name: 'Aggressive', status: 'Missing', detail: 'Upside case must stay assumption-labeled until source-backed.' },
 ].map(card => {
   const model = intelligence.state.value.financialModels.find(item => item.scenarioName.toLowerCase().includes(card.name.toLowerCase()))
   return {
@@ -268,22 +297,24 @@ function detailRow(item: string, spec: string) {
   return {
     item,
     spec: displayInvestmentText(spec),
-    cost: redactsFinancials.value ? 'Restricted' : 'To Verify',
-    source: 'Source missing',
-    status: 'To Verify' as IntelligenceEvidenceStatus,
+    cost: redactsFinancials.value ? 'Restricted' : REVIEW_GATED_LINE_ITEM_VALUE,
+    source: APPROVED_SOURCE_NEEDED,
+    status: 'Missing' as IntelligenceEvidenceStatus,
   }
 }
 
 function analysisReviewSummary(): string {
   const model = selectedFinancialModel.value
+  const modelKpis = buildInvestorEconomicsKpis(model, nextUpdateLabel.value)
+  const kpiValue = (key: string) => displayInvestmentValue(modelKpis.find(item => item.key === key)?.value)
   return [
     'Investment Analysis refresh draft',
     `Schedule metadata: ${refreshState.value.scheduleDisplay}`,
     `Scenario: ${model?.scenarioName || `${selectedScenario.value} scenario not filled yet`}`,
-    `Evidence status: ${model ? 'Derived from Assumptions' : displayInvestmentStatus('To Verify')}`,
-    `NPV: ${model ? model.npv : displayInvestmentStatus('To Verify')}`,
-    `IRR: ${model?.irr ?? displayInvestmentStatus('To Verify')}`,
-    `Payback: ${model?.paybackYear ?? displayInvestmentStatus('To Verify')}`,
+    `Evidence status: ${displayInvestmentStatus(model ? financialOutputStatus(model) : 'Missing')}`,
+    `NPV: ${model ? kpiValue('npv') : REVIEW_GATED_MODEL_VALUE}`,
+    `IRR: ${model ? kpiValue('projectIrr') : REVIEW_GATED_MODEL_VALUE}`,
+    `Payback: ${model ? kpiValue('payback') : REVIEW_GATED_MODEL_VALUE}`,
     '',
     'This is not investor-approved. Review sources and assumptions before presentation use.',
   ].join('\n')
@@ -294,7 +325,7 @@ function stageAnalysisReview() {
     summary: analysisReviewSummary(),
     keyClaim: 'Investment analysis requires financial evidence review',
     area: 'financial',
-    evidenceStatus: selectedFinancialModel.value ? 'Derived from Assumptions' : 'To Verify',
+    evidenceStatus: selectedFinancialModel.value ? financialOutputStatus(selectedFinancialModel.value) : 'Missing',
     confidence: 'medium',
     source: selectedFinancialModel.value?.source || null,
     suggestedTask: 'Review financial model inputs, source documents, and assumption labels before investor use.',
@@ -324,7 +355,7 @@ async function createMissingFinanceTask() {
       body: [
         'Resolve missing Investment Analysis data before investor use.',
         'Required evidence: capex quotes, working capital assumptions, raw material/cost support, revenue assumptions, tax/discount rate rationale, and investor return assumptions.',
-        `Evidence status: ${displayInvestmentStatus('To Verify')} / Derived from Assumptions`,
+        `Evidence status: ${displayInvestmentStatus('Missing')} / Derived from Assumptions`,
         'Source page: Investment Analysis',
         'Tags: Investment Analysis, Financial Evidence, Chemicon China Feasibility',
       ].join('\n'),
@@ -474,123 +505,129 @@ onMounted(loadRefreshState)
       </article>
     </section>
 
-    <section class="project-analysis-template" aria-label="Project analysis template">
-      <div class="template-hero">
+    <details class="project-analysis-template reference-template-details" aria-label="Reference-only project analysis template">
+      <summary class="template-hero">
         <div>
-          <p class="eyebrow">Project analysis template</p>
+          <p class="eyebrow">Reference-only project analysis template</p>
           <h3>{{ projectAnalysisTemplateTitle }}</h3>
           <p>
-            Screenshot-style investment analysis board. Saved IRR Calculator scenarios can feed the KPI cards, while
-            plant line items stay in source review until quotes, source files, and user-approved assumptions are attached.
+            Collapsed screenshot-style board. Saved IRR Calculator scenarios can feed the KPI cards, while plant
+            line items stay review-gated until quotes, source files, and user-approved assumptions are attached.
           </p>
         </div>
+        <span class="reference-toggle-label">Reference only / collapsed</span>
+      </summary>
+
+      <div class="reference-template-body">
         <RouterLink class="analysis-link" :to="{ name: 'hermes.investmentCalculator' }">Open IRR Calculator</RouterLink>
-      </div>
 
-      <div class="template-kpi-grid">
-        <article v-for="kpi in projectAnalysisTemplateKpis" :key="`template-${kpi.key}`" class="template-kpi-card">
-          <strong>{{ displayInvestmentValue(kpi.value) }}</strong>
-          <span>{{ kpi.label }}</span>
-          <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayInvestmentStatus(kpi.evidenceStatus) }}</NTag>
-          <small>{{ kpi.sourceLabel }}</small>
-        </article>
-      </div>
-
-      <article class="template-panel investment-breakdown-template">
-        <div class="template-panel-title">
-          <div>
-            <h3>Investment Breakdown - Esterquat Plant</h3>
-            <p>Use this as the project-analysis template. It does not assert capex totals until source-backed data exists.</p>
-          </div>
-          <NButton size="small" secondary :loading="savingAction === 'finance-task'" @click="createMissingFinanceTask">
-            Create Cost Evidence Task
-          </NButton>
-        </div>
-        <div class="template-breakdown-table">
-          <div class="template-breakdown-row head">
-            <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Bar</span><span>Source</span><span>Evidence Status</span>
-          </div>
-          <div v-for="row in projectAnalysisBreakdownTemplateRows" :key="row.category" class="template-breakdown-row">
-            <strong><span>{{ row.icon }}</span> {{ row.category }}</strong>
-            <span>{{ row.keyItems }}</span>
-            <span>{{ displayInvestmentValue(row.amount) }}</span>
-            <span>{{ displayInvestmentValue(row.percent) }}</span>
-            <span class="template-placeholder-bar" aria-label="Source-backed value needed bar"></span>
-            <span>{{ row.source }}</span>
-            <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
-          </div>
-          <div class="template-breakdown-row total">
-            <strong>Total</strong>
-            <span>{{ selectedFinancialModel?.projectName || 'Project scope and location need source-backed assumptions' }}</span>
-            <span>{{ selectedFinancialModel && !redactsFinancials ? displayInvestmentValue(projectAnalysisTemplateKpis[0]?.value) : redactsFinancials ? 'Restricted' : displayInvestmentStatus('To Verify') }}</span>
-            <span>{{ selectedFinancialModel && !redactsFinancials ? 'Derived' : redactsFinancials ? 'Restricted' : displayInvestmentStatus('To Verify') }}</span>
-            <span class="template-placeholder-bar"></span>
-            <span>{{ selectedFinancialModel?.source?.title || 'IRR Calculator / source missing' }}</span>
-            <NTag size="small" :type="statusType(evidenceStatus)">{{ displayInvestmentStatus(evidenceStatus) }}</NTag>
-          </div>
-        </div>
-      </article>
-
-      <div class="template-detail-grid">
-        <article v-for="card in projectAnalysisDetailCards" :key="card.title" class="template-panel template-detail-panel">
-          <div class="template-panel-title compact">
-            <h3>{{ card.accent }} {{ card.title }}</h3>
-            <span>source-gated</span>
-          </div>
-          <div class="template-detail-row head"><span>Item</span><span>Spec / assumption</span><span>Cost</span><span>Status</span></div>
-          <div v-for="row in card.rows" :key="`${card.title}-${row.item}`" class="template-detail-row">
-            <strong>{{ row.item }}</strong>
-            <span>{{ row.spec }}</span>
-            <span>{{ displayInvestmentValue(row.cost) }}</span>
-            <NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
-          </div>
-        </article>
-      </div>
-
-      <article class="template-panel pdf-project-analysis-panel" aria-label="User PDF project analysis reference">
-        <div class="template-panel-title">
-          <div>
-            <h3>Reference Template / User PDF Archive</h3>
-            <p>
-              Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
-              Old screenshot numbers are archived and are not rendered as dashboard facts.
-            </p>
-          </div>
-          <NTag size="small" type="warning">Reference only / not source-backed</NTag>
-        </div>
-
-        <div class="pdf-kpi-grid">
-          <article v-for="kpi in pdfProjectAnalysisKpis" :key="kpi.label" class="template-kpi-card">
-            <strong>{{ redactsFinancials ? 'Restricted' : kpi.status }}</strong>
+        <div class="template-kpi-grid">
+          <article v-for="kpi in projectAnalysisTemplateKpis" :key="`template-${kpi.key}`" class="template-kpi-card">
+            <strong>{{ displayInvestmentValue(kpi.value) }}</strong>
             <span>{{ kpi.label }}</span>
-            <NTag size="small" type="warning">Reference only</NTag>
-            <small>Use Trusted Sources / Research Review to verify before use</small>
+            <NTag size="small" :type="statusType(kpi.evidenceStatus)">{{ displayInvestmentStatus(kpi.evidenceStatus) }}</NTag>
+            <small>{{ kpi.sourceLabel }}</small>
           </article>
         </div>
 
-        <div class="pdf-breakdown-table">
-          <div class="pdf-breakdown-row head">
-            <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Source</span><span>Evidence Status</span>
+        <article class="template-panel investment-breakdown-template">
+          <div class="template-panel-title">
+            <div>
+              <h3>Investment Breakdown - Esterquat Plant</h3>
+              <p>Reference-only project-analysis template. It does not assert capex totals until source-backed data exists.</p>
+            </div>
+            <NButton size="small" secondary :loading="savingAction === 'finance-task'" @click="createMissingFinanceTask">
+              Create Cost Evidence Task
+            </NButton>
           </div>
-          <div v-for="row in pdfInvestmentBreakdownRows" :key="row.category" class="pdf-breakdown-row">
-            <strong>{{ row.category }}</strong>
-            <span>{{ row.keyItems }}</span>
-            <span>{{ redactsFinancials ? 'Restricted' : row.amount }}</span>
-            <span>{{ redactsFinancials ? 'Restricted' : row.percent }}</span>
-            <span>User PDF screenshot / quote evidence needed</span>
-            <NTag size="small" type="warning">User Provided</NTag>
+          <div class="template-breakdown-table">
+            <div class="template-breakdown-row head">
+              <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Bar</span><span>Source</span><span>Evidence Status</span>
+            </div>
+            <div v-for="row in projectAnalysisBreakdownTemplateRows" :key="row.category" class="template-breakdown-row">
+              <strong><span>{{ row.icon }}</span> {{ row.category }}</strong>
+              <span>{{ row.keyItems }}</span>
+              <span>{{ displayInvestmentValue(row.amount) }}</span>
+              <span>{{ displayInvestmentValue(row.percent) }}</span>
+              <span class="template-placeholder-bar" aria-label="Source-backed value needed bar"></span>
+              <span>{{ row.source }}</span>
+              <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
+            </div>
+            <div class="template-breakdown-row total">
+              <strong>Total</strong>
+              <span>{{ selectedFinancialModel?.projectName || 'Project scope and location need source-backed assumptions' }}</span>
+              <span>{{ displayInvestmentValue(modelTotalValue) }}</span>
+              <span>{{ displayInvestmentValue(modelTotalPercent) }}</span>
+              <span class="template-placeholder-bar"></span>
+              <span>{{ modelSourceLabel }}</span>
+              <NTag size="small" :type="statusType(evidenceStatus)">{{ displayInvestmentStatus(evidenceStatus) }}</NTag>
+            </div>
           </div>
-          <div class="pdf-breakdown-row total">
-            <strong>Total</strong>
-            <span>Archived project scope reference</span>
-            <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
-            <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
-            <span>Reference only / not source-backed</span>
-            <NTag size="small" type="warning">{{ displayInvestmentStatus('To Verify') }}</NTag>
-          </div>
+        </article>
+
+        <div class="template-detail-grid">
+          <article v-for="card in projectAnalysisDetailCards" :key="card.title" class="template-panel template-detail-panel">
+            <div class="template-panel-title compact">
+              <h3>{{ card.accent }} {{ card.title }}</h3>
+              <span>review-gated</span>
+            </div>
+            <div class="template-detail-row head"><span>Item</span><span>Spec / assumption</span><span>Cost</span><span>Status</span></div>
+            <div v-for="row in card.rows" :key="`${card.title}-${row.item}`" class="template-detail-row">
+              <strong>{{ row.item }}</strong>
+              <span>{{ row.spec }}</span>
+              <span>{{ displayInvestmentValue(row.cost) }}</span>
+              <NTag size="small" :type="statusType(row.status)">{{ displayInvestmentStatus(row.status) }}</NTag>
+            </div>
+          </article>
         </div>
-      </article>
-    </section>
+
+        <details class="template-panel pdf-project-analysis-panel" aria-label="User PDF project analysis reference">
+          <summary class="template-panel-title">
+            <div>
+              <h3>Reference Template / User PDF Archive</h3>
+              <p>
+                Reference only. Not source-backed. Use Trusted Sources / Research Review to verify before use.
+                Old screenshot numbers are archived and are not rendered as dashboard facts.
+              </p>
+            </div>
+            <NTag size="small" type="warning">Reference only / not source-backed</NTag>
+          </summary>
+
+          <div class="pdf-reference-body">
+            <div class="pdf-kpi-grid">
+              <article v-for="kpi in pdfProjectAnalysisKpis" :key="kpi.label" class="template-kpi-card">
+                <strong>{{ redactsFinancials ? 'Restricted' : kpi.status }}</strong>
+                <span>{{ kpi.label }}</span>
+                <NTag size="small" type="warning">Reference only</NTag>
+                <small>Use Trusted Sources / Research Review to verify before use</small>
+              </article>
+            </div>
+
+            <div class="pdf-breakdown-table">
+              <div class="pdf-breakdown-row head">
+                <span>Category</span><span>Key Items</span><span>Amount</span><span>%</span><span>Source</span><span>Evidence Status</span>
+              </div>
+              <div v-for="row in pdfInvestmentBreakdownRows" :key="row.category" class="pdf-breakdown-row">
+                <strong>{{ row.category }}</strong>
+                <span>{{ row.keyItems }}</span>
+                <span>{{ redactsFinancials ? 'Restricted' : row.amount }}</span>
+                <span>{{ redactsFinancials ? 'Restricted' : row.percent }}</span>
+                <span>User PDF screenshot / quote evidence needed</span>
+                <NTag size="small" type="warning">User Provided</NTag>
+              </div>
+              <div class="pdf-breakdown-row total">
+                <strong>Total</strong>
+                <span>Archived project scope reference</span>
+                <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
+                <span>{{ redactsFinancials ? 'Restricted' : 'Reference value archived' }}</span>
+                <span>Reference only / not source-backed</span>
+                <NTag size="small" type="warning">{{ displayInvestmentStatus('Missing') }}</NTag>
+              </div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </details>
 
     <section class="analysis-grid">
       <article class="analysis-panel">
@@ -608,7 +645,7 @@ onMounted(loadRefreshState)
             <span>{{ row.label }}</span>
             <span>No source-backed line items yet</span>
             <span>{{ displayInvestmentValue(row.value) }}</span>
-            <span>{{ displayInvestmentStatus('To Verify') }}</span>
+            <span>{{ displayInvestmentValue(REVIEW_GATED_LINE_ITEM_VALUE) }}</span>
             <span class="placeholder-bar" aria-label="gray placeholder bar"></span>
             <span>{{ row.sourceLabel }}</span>
             <NTag size="small" :type="statusType(row.evidenceStatus)">{{ displayInvestmentStatus(row.evidenceStatus) }}</NTag>
@@ -652,7 +689,7 @@ onMounted(loadRefreshState)
         <div class="panel-title">
           <div>
             <h3>Process Equipment Detail</h3>
-            <p>Equipment, spec, cost, source, and status remain source-gated.</p>
+            <p>Equipment, spec, cost, source, and status remain review-gated.</p>
           </div>
         </div>
         <div class="detail-row head"><span>Equipment</span><span>Spec</span><span>Cost</span><span>Source</span><span>Status</span></div>
@@ -894,6 +931,39 @@ onMounted(loadRefreshState)
   margin: 0 0 14px;
 }
 
+.reference-template-details {
+  display: block;
+
+  > summary {
+    list-style: none;
+    cursor: pointer;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+}
+
+.reference-template-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.reference-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(var(--warning-rgb), 0.35);
+  border-radius: 6px;
+  background: rgba(var(--warning-rgb), 0.08);
+  color: $warning;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .template-hero,
 .template-kpi-card,
 .template-panel {
@@ -964,6 +1034,7 @@ onMounted(loadRefreshState)
 
 .template-panel {
   position: relative;
+  min-width: 0;
   overflow: hidden;
   padding: 16px;
 
@@ -1069,6 +1140,7 @@ onMounted(loadRefreshState)
   grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.1fr) minmax(90px, 0.6fr) minmax(90px, auto);
   gap: 8px;
   align-items: center;
+  min-width: 520px;
   padding: 8px 0;
   border-top: 1px solid $border-color;
   color: $text-secondary;
@@ -1096,6 +1168,11 @@ onMounted(loadRefreshState)
 .analysis-panel {
   min-width: 0;
   padding: 14px;
+}
+
+.template-detail-panel,
+.detail-panel {
+  overflow-x: auto;
 }
 
 .analysis-panel:last-child {
@@ -1164,6 +1241,7 @@ onMounted(loadRefreshState)
   grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.2fr) minmax(90px, 0.7fr) minmax(110px, 0.8fr) minmax(100px, auto);
   gap: 8px;
   align-items: center;
+  min-width: 660px;
   padding: 8px;
   border-top: 1px solid $border-color;
   color: $text-secondary;
@@ -1231,6 +1309,20 @@ onMounted(loadRefreshState)
 }
 
 .pdf-project-analysis-panel {
+  display: grid;
+  gap: 12px;
+
+  > summary {
+    list-style: none;
+    cursor: pointer;
+
+    &::-webkit-details-marker {
+      display: none;
+    }
+  }
+}
+
+.pdf-reference-body {
   display: grid;
   gap: 12px;
 }
@@ -1318,6 +1410,7 @@ onMounted(loadRefreshState)
 
   .detail-row {
     grid-template-columns: 1fr;
+    min-width: 0;
   }
 
   .template-kpi-grid,
@@ -1329,6 +1422,7 @@ onMounted(loadRefreshState)
   }
 
   .template-breakdown-row,
+  .template-detail-row,
   .pdf-breakdown-row {
     min-width: 0;
   }

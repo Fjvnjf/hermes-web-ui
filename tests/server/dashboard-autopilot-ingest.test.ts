@@ -2319,6 +2319,7 @@ describe('dashboard autopilot output ingestion', () => {
       }
     })
     vi.stubGlobal('fetch', fetchMock)
+    const checkedAt = new Date().toISOString().slice(0, 10)
 
     const result = await ingestFullDashboardAutopilotOutputs('default', {
       includeOfficialConnectors: false,
@@ -2349,14 +2350,24 @@ describe('dashboard autopilot output ingestion', () => {
         sourceTier: 'tier2-company-official',
         confidence: 'high',
         reviewRequired: false,
+        lastUpdated: checkedAt,
+        updatedAt: checkedAt,
         metricEvidence: expect.objectContaining({
           lastUpdated: expect.objectContaining({
-            value: '2026-06-06',
+            value: checkedAt,
             evidenceStatus: 'Source-backed',
             reviewRequired: false,
+            lastChecked: checkedAt,
+            sourceDate: checkedAt,
+            source: expect.objectContaining({
+              date: checkedAt,
+              title: 'Stepan STEPANTEX SP-90 official product page',
+              url: expect.stringContaining('STEPANTEXSP90.html'),
+            }),
           }),
         }),
         source: expect.objectContaining({
+          date: checkedAt,
           title: 'Stepan STEPANTEX SP-90 official product page',
           url: expect.stringContaining('STEPANTEXSP90.html'),
         }),
@@ -4335,6 +4346,8 @@ describe('dashboard autopilot output ingestion', () => {
     expect(prompt).toContain('Evonik Industries, Stepan Company, Kao Corporation, WACKER')
     expect(prompt).toContain('triethanolamine / TEA, dimethyl sulfate / DMS')
     expect(prompt).toContain('Lean/Base/Conservative/Aggressive scenarios')
+    expect(prompt).toContain('dashboardGroup must match the containing array')
+    expect(prompt).toContain('fieldKey must be stable')
     expect(prompt).toContain('proposedDashboardField')
     expect(prompt).toContain('dashboard_updates')
     expect(prompt).toContain('source-backed Markdown tables')

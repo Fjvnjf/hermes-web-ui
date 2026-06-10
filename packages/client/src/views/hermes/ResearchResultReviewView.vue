@@ -14,6 +14,9 @@ import { useJobsStore } from '@/stores/hermes/jobs'
 import { scheduleForResearchSuggestion } from '@/composables/useSessionCapture'
 import type { IntelligenceEvidenceStatus, SourceReference } from '@/utils/investorIntelligence'
 
+type ResearchReviewDashboardTarget = NonNullable<ResearchReviewFinding['dashboardTarget']>
+type ReviewDetailRow = { label: string; value: string; href?: string }
+
 const message = useMessage()
 const kanbanStore = useKanbanStore()
 const jobsStore = useJobsStore()
@@ -95,6 +98,103 @@ function needsEvidenceReview(item: ResearchReviewFinding): boolean {
   return item.evidenceStatus === 'Missing' ||
     item.evidenceStatus === 'To Verify' ||
     !hasUsableSource(item)
+}
+
+function textValue(value?: string | null): string {
+  return value?.trim() || ''
+}
+
+function safeHttpUrl(value?: string): string {
+  const url = value?.trim() || ''
+  return /^https?:\/\//i.test(url) ? url : ''
+}
+
+function dashboardStoreLabel(target: ResearchReviewDashboardTarget): string {
+  if (target.group === 'marketClaims') return 'Market Intelligence claims'
+  if (target.group === 'competitorRecords') return 'Competitor Intelligence records'
+  if (target.group === 'investorMaterialCandidates') return 'Investor presentation draft candidates'
+  if (target.group === 'supplierScorecards') return 'Data-room evidence for supplierScorecards review'
+  if (target.group === 'rawMaterialSignals') return 'Data-room evidence for raw-material signals'
+  if (target.group === 'regulatoryFindings') return 'Data-room evidence for regulatory findings'
+  if (target.group === 'financialEvidence') return 'Data-room evidence for financial evidence'
+  if (target.group === 'suggestedTasks') return 'Suggested research task'
+  return 'Evidence gap review'
+}
+
+function proposedDashboardField(item: ResearchReviewFinding): string {
+  const target = item.dashboardTarget
+  if (!target) return ''
+  return textValue(target.proposedDashboardField) ||
+    textValue(target.field) ||
+    textValue(target.fieldKey) ||
+    'dashboard evidence'
+}
+
+function proposedDashboardValue(target: ResearchReviewDashboardTarget): string {
+  return textValue(target.value) ||
+    textValue(target.content) ||
+    textValue(target.marketShare) ||
+    textValue(target.pricingEvidence) ||
+    textValue(target.revenue) ||
+    textValue(target.yearlyGrowth) ||
+    textValue(target.traffic) ||
+    textValue(target.rating) ||
+    textValue(target.supplier && target.material ? `${target.supplier} / ${target.material}` : '')
+}
+
+function reviewPolicyLabel(item: ResearchReviewFinding): string {
+  if (item.evidenceStatus === 'Conflict Detected') return 'Conflict detected'
+  if (item.dashboardTarget?.sensitive) return 'Review required for sensitive claim'
+  if (item.dashboardTarget?.reviewRequired || item.reviewRequired || needsEvidenceReview(item)) return 'Review required'
+  if (hasUsableSource(item)) return 'Source-backed'
+  return 'Source review needed'
+}
+
+function riskReasonLabel(item: ResearchReviewFinding): string {
+  return textValue(item.dashboardTarget?.riskReason) ||
+    textValue(item.riskReason) ||
+    textValue(item.riskNote) ||
+    (item.dashboardTarget?.reviewRequired ? 'Review required by trusted-source policy.' : '')
+}
+
+function reviewDetailRows(item: ResearchReviewFinding): ReviewDetailRow[] {
+  const target = item.dashboardTarget
+  const sourceUrl = safeHttpUrl(item.source?.url)
+  const rows: ReviewDetailRow[] = []
+
+  if (target) {
+    rows.push(
+      { label: 'Dashboard store', value: dashboardStoreLabel(target) },
+      { label: 'Proposed dashboard field', value: proposedDashboardField(item) },
+      { label: 'Field key', value: textValue(target.fieldKey) || 'No stable field key attached' },
+    )
+    const value = proposedDashboardValue(target)
+    if (value) rows.push({ label: 'Proposed value', value })
+    const sourceTier = textValue(target.sourceTier) || textValue(target.reportedSourceTier) || textValue(item.sourceTier)
+    if (sourceTier) rows.push({ label: 'Source tier', value: sourceTier })
+    const dataType = textValue(target.dataType) || textValue(item.dataType)
+    if (dataType) rows.push({ label: 'Data type', value: dataType })
+  }
+
+  rows.push(
+    { label: 'Source title', value: textValue(item.source?.title) || 'Source missing' },
+  )
+  if (sourceUrl) rows.push({ label: 'Source link', value: sourceUrl, href: sourceUrl })
+  if (textValue(item.source?.date)) rows.push({ label: 'Source date', value: textValue(item.source?.date) })
+
+  rows.push(
+    { label: 'Confidence', value: item.confidence },
+    { label: 'Review policy', value: reviewPolicyLabel(item) },
+  )
+
+  const riskReason = riskReasonLabel(item)
+  if (riskReason) rows.push({ label: 'Risk reason', value: riskReason })
+
+  return rows
+}
+
+function isSupplierScorecardTarget(item: ResearchReviewFinding): boolean {
+  return item.dashboardTarget?.group === 'supplierScorecards'
 }
 
 function sourceFromForm(): SourceReference | null {
@@ -830,6 +930,22 @@ async function createTask(item: ResearchReviewFinding) {
             <span v-if="item.dashboardTarget">Target: {{ item.dashboardTarget.screen || item.dashboardTarget.group }} / {{ item.dashboardTarget.proposedDashboardField || item.dashboardTarget.field || 'dashboard evidence' }}</span>
             <span v-if="item.dashboardAppliedAt">Applied: {{ item.dashboardAppliedAt.slice(0, 10) }}</span>
           </div>
+          <div
+            v-if="item.dashboardTarget || item.source || item.riskReason || item.riskNote"
+            class="target-review-panel"
+            aria-label="Finding source and dashboard target details"
+          >
+            <div class="target-review-grid">
+              <div v-for="row in reviewDetailRows(item)" :key="`${item.id}-${row.label}`" class="target-review-row">
+                <span>{{ row.label }}</span>
+                <a v-if="row.href" class="source-link" :href="row.href" target="_blank" rel="noreferrer noopener">{{ row.value }}</a>
+                <strong v-else>{{ row.value }}</strong>
+              </div>
+            </div>
+            <p v-if="isSupplierScorecardTarget(item)" class="target-warning">
+              Supplier scorecard approval currently saves a source-linked data-room record; durable supplierScorecards rows are populated by trusted-source import or uploaded supplier evidence, not this review action.
+            </p>
+          </div>
           <small v-if="item.riskNote">Risk: {{ item.riskNote }}</small>
         </div>
         <div class="finding-actions">
@@ -1182,6 +1298,57 @@ async function createTask(item: ResearchReviewFinding) {
     font-size: 11px;
     font-weight: 800;
   }
+}
+
+.target-review-panel {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.28);
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-info-rgb), 0.06);
+}
+
+.target-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.target-review-row {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+
+  span {
+    color: $text-muted;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  strong,
+  a {
+    min-width: 0;
+    color: $text-primary;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  a {
+    color: $accent-info;
+  }
+}
+
+.target-warning {
+  margin: 0;
+  color: $accent-primary;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .finding-actions {
